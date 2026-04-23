@@ -174,7 +174,7 @@ int omni_tensor_backend_vulkan_kernel_source_unary_f32(
     *out_device_ptr = NULL;
     if (!omni_tensor_backend_vulkan_available()) return OMNI_TENSOR_VULKAN_UNAVAILABLE;
     if (!omni_tensor_backend_vulkan_float32_available()) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
-    if (op > 16u && op != 19u) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
+    if (op > 19u) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
     if (element_count == 0 || element_count > UINT32_MAX || element_count > SIZE_MAX / sizeof(float)) {
         return OMNI_TENSOR_VULKAN_INVALID;
     }
@@ -210,7 +210,7 @@ int omni_tensor_backend_vulkan_kernel_source_unary_f32_spirv(
     *out_device_ptr = NULL;
     if (!omni_tensor_backend_vulkan_available()) return OMNI_TENSOR_VULKAN_UNAVAILABLE;
     if (!omni_tensor_backend_vulkan_float32_available()) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
-    if (op > 16u && op != 19u) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
+    if (op > 19u) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
     if (shader_words == NULL || shader_word_count < 5 || shader_word_count > SIZE_MAX / sizeof(uint32_t)) {
         return OMNI_TENSOR_VULKAN_INVALID;
     }

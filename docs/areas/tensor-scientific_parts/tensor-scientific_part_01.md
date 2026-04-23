@@ -128,21 +128,22 @@ Implemented slices:
   opcode and returns a Vulkan-placed Tensor.
 - `TENSOR-087`: Tensor unary scientific math supports `sin`, `cos`, `tan`,
   `asin`, `acos`, `atan`, `sinh`, `cosh`, `tanh`, `exp`, `log`, and `log10`
-  through a shared elementwise helper; `math/erf` and `math/erfc` are now
+  through a shared elementwise helper; `math.erf` and `math.erfc` are now
   included for CPU Tensor inputs. `Float64` and `BigInteger` Tensor inputs
   return `Float64` tensors except `Float32` inputs preserve `Float32` for
-  `math/erf`/`math/erfc`; `BigFloat` Tensor inputs preserve dtype, and
+  `math.erf`/`math.erfc`; `BigFloat` Tensor inputs preserve dtype, and
   `BigComplex` Tensor inputs preserve dtype for the elementary scientific
-  family but fail closed for `math/erf`/`math/erfc` until a complex
+  family but fail closed for `math.erf`/`math.erfc` until a complex
   error-function contract exists. Dense row-major Vulkan `Float32` tensors now
-  route the `sin` through `log10` family and `stats/normal-cdf` through the
-  dedicated `Float32` unary helper for public `map` and direct Tensor unary
-  math. Dense row-major Vulkan `Float64` tensors route `stats/normal-cdf`
+  route the `sin` through `log10` family, `math.erf`, `math.erfc`, and
+  `stats.normal-cdf` through the dedicated `Float32` unary helper for public
+  `map` and direct Tensor unary math. Dense row-major Vulkan `Float64` tensors
+  route `stats.normal-cdf`
   through a separate arithmetic polynomial approximation in the Float64 unary
   helper; other `Float64` scientific unary operations remain fail-closed rather
   than downcasting because the current Vulkan 1.0 GLSL validation path rejected
   double transcendental builtins.
-- `TENSOR-087B`: Tensor `stats/normal-cdf` applies elementwise for CPU Tensor
+- `TENSOR-087B`: Tensor `stats.normal-cdf` applies elementwise for CPU Tensor
   inputs, dense row-major CUDA `Float64`/`Float32` tensors, and dense row-major
   Vulkan `Float64`/`Float32` tensors through fixed distribution opcode `19`.
   `Float64` and `Float32` preserve float dtype, `BigInteger` returns `Float64`,
@@ -150,7 +151,7 @@ Implemented slices:
   distribution contract exists. Vulkan `Float64` uses a piecewise polynomial
   double approximation without hidden CPU fallback or Float32 downcast.
 - `TENSOR-087C`: CPU, CUDA, and Vulkan `Float64`/`Float32` Tensor
-  `stats/normal-quantile` apply elementwise
+  `stats.normal-quantile` apply elementwise
   with a whole-operation failure on the first invalid probability outside
   `0 < p < 1`. `Float64` and `Float32` preserve float dtype, `BigFloat`
   preserves dtype, `BigComplex` fails closed, and non-empty `BigInteger`
@@ -425,15 +426,18 @@ Implemented slices:
   operations cover unary `+`, `abs`, unary `-`, `sqrt`, `real-part`,
   `imag-part`, and `conjugate`; scientific unary operations cover `sin`, `cos`,
   `tan`, `asin`, `acos`, `atan`, `sinh`, `cosh`, `tanh`, `exp`, `log`, `log10`,
-  `math/erf`, `math/erfc`, `stats/normal-cdf`, and
-  `stats/normal-quantile` when the generated CUDA C/libdevice PTX module
+  `math.erf`, `math.erfc`, `stats.normal-cdf`, and
+  `stats.normal-quantile` when the generated CUDA C/libdevice PTX module
   loads. CUDA quantile propagates probability-domain status before returning an
   output tensor. Direct public
   `map` on CUDA tensors, lazy map realization to CUDA, CUDA destination
   realization from lazy CUDA maps, and direct Tensor arithmetic/component and
   scientific unary primitives preserve CUDA placement. `tensor-backends`
   reports `elementwise-map-float64`, `elementwise-map-float32`,
-  `scientific-map-float64`, `scientific-map-float32`, and
+  `scientific-map-float64`, `scientific-map-float32`,
+  `math-elementary-float64`, `math-elementary-float32`,
+  `math-error-function-float64`, `math-error-function-float32`,
+  `stats-distribution-float64`, `stats-distribution-float32`, and
   CUDA `rounding-big-integer` capability keys. There
   is no hidden CPU fallback; unsupported callables, mixed CPU/CUDA operands,
   mixed dtype/device operands, and unsupported layouts remain explicit

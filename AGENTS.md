@@ -68,6 +68,15 @@ preservation phase.
   constructors, types, and operations.
 - Do not import borrowed vocabulary from other languages just because it is
   familiar; first justify the capability gap in Omni terms.
+- Treat slash-qualified core-family names (`io/...`, `matrix/...`,
+  `tensor/...`, `ml/...`, `nn/...`, `ui/...`) as canonical single symbols, not
+  module dereferences. Dotted/path access remains the module/value-access
+  surface.
+- Use slash prefixes only when they make the language surface easier for human
+  developers to scan. Prefer generic unprefixed names for cross-cutting
+  operations, avoid deep or mechanically long slash pseudo-paths, and choose a
+  real module/import boundary when a surface is optional, independently
+  versioned, or too broad for a compact primitive family.
 - When touching an area with non-canonical aliases, prefer removing non-canonical
   spellings rather than documenting both.
 

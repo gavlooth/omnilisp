@@ -200,6 +200,39 @@ typedef struct omni_ftxui_element_create_options {
     omni_ftxui_graph_callback_fn graph_cb;
 } omni_ftxui_element_create_options;
 
+typedef enum omni_ftxui_plot_kind {
+    OMNI_FTXUI_PLOT_LINE = 0,
+    OMNI_FTXUI_PLOT_XY = 1,
+    OMNI_FTXUI_PLOT_MULTI_SERIES = 2,
+    OMNI_FTXUI_PLOT_SCATTER = 3,
+    OMNI_FTXUI_PLOT_BAR = 4,
+    OMNI_FTXUI_PLOT_HISTOGRAM = 5,
+    OMNI_FTXUI_PLOT_HEATMAP = 6,
+} omni_ftxui_plot_kind;
+
+typedef enum omni_ftxui_plot_marker {
+    OMNI_FTXUI_PLOT_MARKER_POINT = 0,
+    OMNI_FTXUI_PLOT_MARKER_CROSS = 1,
+    OMNI_FTXUI_PLOT_MARKER_PLUS = 2,
+} omni_ftxui_plot_marker;
+
+typedef struct omni_ftxui_plot_options {
+    uint32_t size;
+    uint32_t abi_version;
+    omni_ftxui_plot_kind kind;
+    int32_t width;
+    int32_t height;
+    const double* values;
+    size_t value_count;
+    const size_t* series_lengths;
+    size_t series_count;
+    const double* x_values;
+    size_t x_count;
+    size_t heatmap_rows;
+    size_t heatmap_cols;
+    omni_ftxui_plot_marker marker;
+} omni_ftxui_plot_options;
+
 typedef enum omni_ftxui_decorator_kind {
     OMNI_FTXUI_DECORATOR_BORDER = 0,
     OMNI_FTXUI_DECORATOR_BORDER_LIGHT = 1,
@@ -473,6 +506,11 @@ omni_ftxui_status omni_ftxui_element_graph_from_series(
     omni_ftxui_context_t* context,
     const double* values,
     size_t value_count,
+    omni_ftxui_element_t** out_element
+);
+omni_ftxui_status omni_ftxui_element_plot(
+    omni_ftxui_context_t* context,
+    const omni_ftxui_plot_options* options,
     omni_ftxui_element_t** out_element
 );
 void omni_ftxui_element_destroy(omni_ftxui_element_t* element);

@@ -220,12 +220,12 @@ Recent targeted validation recorded in `memory/CHANGELOG.md`:
     paths.
   - direct Vulkan `Float32` scientific unary smokes returned `(0.0 1.0 1.0
     0.0)` for `sin`/`cos`/`exp`/`log`, `1.99999988079071` for `log10 100`,
-    `0.841344714164734` for `stats/normal-cdf 1.0`, and
+    `0.841344714164734` for `stats.normal-cdf 1.0`, and
     `tensor/backend-unsupported` for Vulkan `Float64` `map sin`.
-  - direct and mapped Vulkan `Float64` `stats/normal-cdf` smokes returned
+  - direct and mapped Vulkan `Float64` `stats.normal-cdf` smokes returned
     Vulkan-placed `Float64` tensors matching the CPU double oracle within
     `1e-6` at `-1.0`, `0.0`, and `1.0`; Vulkan `Float64`
-    `stats/normal-quantile` remained fail-closed.
+    `stats.normal-quantile` remained fail-closed.
   - direct Vulkan `min` / `max` smokes returned `-2.0`, `0.0`, `vulkan`, and
     `tensor/backend-unsupported` across map, direct, lazy, and mixed-device
     paths.

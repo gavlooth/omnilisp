@@ -18,32 +18,32 @@ fn Value* ml_linear_validate(
     Interp* interp
 ) {
     if (input == null || weights == null || out_batch_count == null || out_in_features == null || out_features == null) {
-        return tensor_runtime_raise(interp, batched_reduce ? "ml/linear/batched-reduce: tensor backing storage is missing" : "ml/linear: tensor backing storage is missing");
+        return tensor_runtime_raise(interp, batched_reduce ? "ml/linear-batched-reduce: tensor backing storage is missing" : "ml/linear: tensor backing storage is missing");
     }
     *out_batch_count = 0;
     *out_in_features = 0;
     *out_features = 0;
 
     if (input.dtype != weights.dtype || (bias != null && input.dtype != bias.dtype)) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/dtype-mismatch", batched_reduce ? "ml/linear/batched-reduce: tensor dtype mismatch" : "ml/linear: tensor dtype mismatch", null);
+        return raise_error_with_payload_names(interp, "tensor", "tensor/dtype-mismatch", batched_reduce ? "ml/linear-batched-reduce: tensor dtype mismatch" : "ml/linear: tensor dtype mismatch", null);
     }
     if (!ml_linear_supported_dtype(input.dtype)) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", batched_reduce ? "ml/linear/batched-reduce: currently supports Float64 and Float32 tensors" : "ml/linear: currently supports Float64 and Float32 tensors", null);
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", batched_reduce ? "ml/linear-batched-reduce: currently supports Float64 and Float32 tensors" : "ml/linear: currently supports Float64 and Float32 tensors", null);
     }
     if (input.rank < (batched_reduce ? 2 : 1) || weights.rank != 2 || (bias != null && bias.rank != 1)) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", batched_reduce ? "ml/linear/batched-reduce: expected input rank >= 2, weights rank 2, and optional bias rank 1" : "ml/linear: expected input rank >= 1, weights rank 2, and optional bias rank 1", null);
+        return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", batched_reduce ? "ml/linear-batched-reduce: expected input rank >= 2, weights rank 2, and optional bias rank 1" : "ml/linear: expected input rank >= 1, weights rank 2, and optional bias rank 1", null);
     }
 
     usz in_features = input.shape[input.rank - 1];
     usz features = weights.shape[0];
     if (weights.shape[1] != in_features || (bias != null && bias.shape[0] != features)) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", batched_reduce ? "ml/linear/batched-reduce: input, weights, and bias shapes are incompatible" : "ml/linear: input, weights, and bias shapes are incompatible", null);
+        return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", batched_reduce ? "ml/linear-batched-reduce: input, weights, and bias shapes are incompatible" : "ml/linear: input, weights, and bias shapes are incompatible", null);
     }
 
     usz batch_count = 1;
     for (usz axis = 0; axis + 1 < input.rank; axis++) {
         if (!tensor_checked_mul_usz(batch_count, input.shape[axis], &batch_count)) {
-            return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", batched_reduce ? "ml/linear/batched-reduce: result shape is too large" : "ml/linear: result shape is too large", null);
+            return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", batched_reduce ? "ml/linear-batched-reduce: result shape is too large" : "ml/linear: result shape is too large", null);
         }
     }
 
@@ -100,12 +100,12 @@ fn Value* ml_linear_try_vulkan(Value* input_value, Value* weights_value, Value* 
     if (!tensor_expr_has_device(input_value, TENSOR_DEVICE_VULKAN) ||
         !tensor_expr_has_device(weights_value, TENSOR_DEVICE_VULKAN) ||
         (has_bias && !tensor_expr_has_device(bias_value, TENSOR_DEVICE_VULKAN))) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", batched_reduce ? "ml/linear/batched-reduce: Vulkan operands must be Vulkan-placed" : "ml/linear: Vulkan operands must be Vulkan-placed", null);
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", batched_reduce ? "ml/linear-batched-reduce: Vulkan operands must be Vulkan-placed" : "ml/linear: Vulkan operands must be Vulkan-placed", null);
     }
     if (tensor_expr_has_non_vulkan_device(input_value) ||
         tensor_expr_has_non_vulkan_device(weights_value) ||
         (has_bias && tensor_expr_has_non_vulkan_device(bias_value))) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", batched_reduce ? "ml/linear/batched-reduce: Vulkan operands must remain Vulkan-placed" : "ml/linear: Vulkan operands must remain Vulkan-placed", null);
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", batched_reduce ? "ml/linear-batched-reduce: Vulkan operands must remain Vulkan-placed" : "ml/linear: Vulkan operands must remain Vulkan-placed", null);
     }
 
     TensorVal* input = null;
@@ -114,18 +114,18 @@ fn Value* ml_linear_try_vulkan(Value* input_value, Value* weights_value, Value* 
     Value* resolved_input_value = null;
     Value* resolved_weights_value = null;
     Value* resolved_bias_value = null;
-    Value* err = tensor_expr_resolve_concrete_any_device(input_value, &input, &resolved_input_value, interp, batched_reduce ? "ml/linear/batched-reduce: tensor metadata is missing" : "ml/linear: tensor metadata is missing");
+    Value* err = tensor_expr_resolve_concrete_any_device(input_value, &input, &resolved_input_value, interp, batched_reduce ? "ml/linear-batched-reduce: tensor metadata is missing" : "ml/linear: tensor metadata is missing");
     if (err != null) return err;
     defer if (resolved_input_value != null && resolved_input_value != input_value) {
         boundary_cleanup_materialized_value(null, resolved_input_value, interp.current_scope);
     }
-    err = tensor_expr_resolve_concrete_any_device(weights_value, &weights, &resolved_weights_value, interp, batched_reduce ? "ml/linear/batched-reduce: tensor metadata is missing" : "ml/linear: tensor metadata is missing");
+    err = tensor_expr_resolve_concrete_any_device(weights_value, &weights, &resolved_weights_value, interp, batched_reduce ? "ml/linear-batched-reduce: tensor metadata is missing" : "ml/linear: tensor metadata is missing");
     if (err != null) return err;
     defer if (resolved_weights_value != null && resolved_weights_value != weights_value) {
         boundary_cleanup_materialized_value(null, resolved_weights_value, interp.current_scope);
     }
     if (has_bias) {
-        err = tensor_expr_resolve_concrete_any_device(bias_value, &bias, &resolved_bias_value, interp, batched_reduce ? "ml/linear/batched-reduce: tensor metadata is missing" : "ml/linear: tensor metadata is missing");
+        err = tensor_expr_resolve_concrete_any_device(bias_value, &bias, &resolved_bias_value, interp, batched_reduce ? "ml/linear-batched-reduce: tensor metadata is missing" : "ml/linear: tensor metadata is missing");
         if (err != null) return err;
     }
     defer if (resolved_bias_value != null && resolved_bias_value != bias_value) {
@@ -133,18 +133,18 @@ fn Value* ml_linear_try_vulkan(Value* input_value, Value* weights_value, Value* 
     }
 
     if (input == null || weights == null || (has_bias && bias == null)) {
-        return tensor_runtime_raise(interp, batched_reduce ? "ml/linear/batched-reduce: tensor metadata is missing" : "ml/linear: tensor metadata is missing");
+        return tensor_runtime_raise(interp, batched_reduce ? "ml/linear-batched-reduce: tensor metadata is missing" : "ml/linear: tensor metadata is missing");
     }
     if (!ml_linear_supported_dtype(input.dtype) || !ml_linear_supported_dtype(weights.dtype) || (has_bias && !ml_linear_supported_dtype(bias.dtype))) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", batched_reduce ? "ml/linear/batched-reduce: Vulkan currently supports Float64 and Float32 tensors" : "ml/linear: Vulkan currently supports Float64 and Float32 tensors", null);
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", batched_reduce ? "ml/linear-batched-reduce: Vulkan currently supports Float64 and Float32 tensors" : "ml/linear: Vulkan currently supports Float64 and Float32 tensors", null);
     }
     if (input.device != TENSOR_DEVICE_VULKAN || weights.device != TENSOR_DEVICE_VULKAN || (has_bias && bias.device != TENSOR_DEVICE_VULKAN)) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", batched_reduce ? "ml/linear/batched-reduce: Vulkan operands must realize to Vulkan storage" : "ml/linear: Vulkan operands must realize to Vulkan storage", null);
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", batched_reduce ? "ml/linear-batched-reduce: Vulkan operands must realize to Vulkan storage" : "ml/linear: Vulkan operands must realize to Vulkan storage", null);
     }
     if (!tensor_has_valid_device_storage(input, TENSOR_DEVICE_VULKAN) ||
         !tensor_has_valid_device_storage(weights, TENSOR_DEVICE_VULKAN) ||
         (has_bias && !tensor_has_valid_device_storage(bias, TENSOR_DEVICE_VULKAN))) {
-        return tensor_runtime_raise(interp, batched_reduce ? "ml/linear/batched-reduce: Vulkan tensor backing storage is missing" : "ml/linear: Vulkan tensor backing storage is missing");
+        return tensor_runtime_raise(interp, batched_reduce ? "ml/linear-batched-reduce: Vulkan tensor backing storage is missing" : "ml/linear: Vulkan tensor backing storage is missing");
     }
 
     usz batch_count = 0;
@@ -154,11 +154,11 @@ fn Value* ml_linear_try_vulkan(Value* input_value, Value* weights_value, Value* 
     if (err != null) return err;
 
     if (input.rank > usz.max / usz.sizeof) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", batched_reduce ? "ml/linear/batched-reduce: result rank is too large" : "ml/linear: result rank is too large", null);
+        return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", batched_reduce ? "ml/linear-batched-reduce: result rank is too large" : "ml/linear: result rank is too large", null);
     }
     usz* result_shape = (usz*)mem::malloc(usz.sizeof * input.rank);
     if (result_shape == null) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", batched_reduce ? "ml/linear/batched-reduce: failed to allocate result shape" : "ml/linear: failed to allocate result shape", null);
+        return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", batched_reduce ? "ml/linear-batched-reduce: failed to allocate result shape" : "ml/linear: failed to allocate result shape", null);
     }
     defer mem::free(result_shape);
     for (usz axis = 0; axis + 1 < input.rank; axis++) {
@@ -178,7 +178,7 @@ fn Value* ml_linear_try_vulkan(Value* input_value, Value* weights_value, Value* 
         interp
     );
     if (result == null) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", batched_reduce ? "ml/linear/batched-reduce: Vulkan contract path is unavailable" : "ml/linear: Vulkan contract path is unavailable", null);
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", batched_reduce ? "ml/linear-batched-reduce: Vulkan contract path is unavailable" : "ml/linear: Vulkan contract path is unavailable", null);
     }
     if (result.tag == ERROR) return result;
     bool keep_contract_result = !has_bias;
@@ -190,7 +190,7 @@ fn Value* ml_linear_try_vulkan(Value* input_value, Value* weights_value, Value* 
     SymbolId plus_sym = interp.symbols.intern("+");
     Value* plus_func = interp.global_env.lookup(plus_sym);
     if (plus_func == null) {
-        return tensor_runtime_raise(interp, batched_reduce ? "ml/linear/batched-reduce: + primitive is unavailable" : "ml/linear: + primitive is unavailable");
+        return tensor_runtime_raise(interp, batched_reduce ? "ml/linear-batched-reduce: + primitive is unavailable" : "ml/linear: + primitive is unavailable");
     }
 
     Value* biased = tensor_map_try_vulkan_direct(
@@ -206,15 +206,15 @@ fn Value* ml_linear_try_vulkan(Value* input_value, Value* weights_value, Value* 
         interp
     );
     if (biased != null) return biased;
-    return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", batched_reduce ? "ml/linear/batched-reduce: Vulkan bias map path is unavailable" : "ml/linear: Vulkan bias map path is unavailable", null);
+    return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", batched_reduce ? "ml/linear-batched-reduce: Vulkan bias map path is unavailable" : "ml/linear: Vulkan bias map path is unavailable", null);
 }
 
 fn Value* ml_linear_apply(Value*[] args, bool batched_reduce, Interp* interp) {
     if (args.len != 2 && args.len != 3) {
-        return primitive_arity_raise(interp, batched_reduce ? "ml/linear/batched-reduce" : "ml/linear", "2 or 3 arguments: input weights [bias]", args.len);
+        return primitive_arity_raise(interp, batched_reduce ? "ml/linear-batched-reduce" : "ml/linear", "2 or 3 arguments: input weights [bias]", args.len);
     }
     if (!is_tensor(args[0]) || !is_tensor(args[1]) || (args.len == 3 && !is_tensor(args[2]))) {
-        return tensor_type_raise(interp, batched_reduce ? "ml/linear/batched-reduce: expected Tensor input, Tensor weights, and optional Tensor bias" : "ml/linear: expected Tensor input, Tensor weights, and optional Tensor bias");
+        return tensor_type_raise(interp, batched_reduce ? "ml/linear-batched-reduce: expected Tensor input, Tensor weights, and optional Tensor bias" : "ml/linear: expected Tensor input, Tensor weights, and optional Tensor bias");
     }
 
     Value* vulkan_result = ml_linear_try_vulkan(args[0], args[1], args.len == 3 ? args[2] : null, args.len == 3, batched_reduce, interp);
@@ -227,8 +227,8 @@ fn Value* ml_linear_apply(Value*[] args, bool batched_reduce, Interp* interp) {
         &input,
         &input_value,
         interp,
-        batched_reduce ? "ml/linear/batched-reduce: input tensor backing storage is missing" : "ml/linear: input tensor backing storage is missing",
-        batched_reduce ? "ml/linear/batched-reduce: backend kernel is not implemented for non-CPU tensors" : "ml/linear: backend kernel is not implemented for non-CPU tensors"
+        batched_reduce ? "ml/linear-batched-reduce: input tensor backing storage is missing" : "ml/linear: input tensor backing storage is missing",
+        batched_reduce ? "ml/linear-batched-reduce: backend kernel is not implemented for non-CPU tensors" : "ml/linear: backend kernel is not implemented for non-CPU tensors"
     );
     if (err != null) return err;
     bool cleanup_input = input_value != args[0];
@@ -243,8 +243,8 @@ fn Value* ml_linear_apply(Value*[] args, bool batched_reduce, Interp* interp) {
         &weights,
         &weights_value,
         interp,
-        batched_reduce ? "ml/linear/batched-reduce: weights tensor backing storage is missing" : "ml/linear: weights tensor backing storage is missing",
-        batched_reduce ? "ml/linear/batched-reduce: backend kernel is not implemented for non-CPU tensors" : "ml/linear: backend kernel is not implemented for non-CPU tensors"
+        batched_reduce ? "ml/linear-batched-reduce: weights tensor backing storage is missing" : "ml/linear: weights tensor backing storage is missing",
+        batched_reduce ? "ml/linear-batched-reduce: backend kernel is not implemented for non-CPU tensors" : "ml/linear: backend kernel is not implemented for non-CPU tensors"
     );
     if (err != null) return err;
     bool cleanup_weights = weights_value != args[1];
@@ -260,8 +260,8 @@ fn Value* ml_linear_apply(Value*[] args, bool batched_reduce, Interp* interp) {
             &bias,
             &bias_value,
             interp,
-            batched_reduce ? "ml/linear/batched-reduce: bias tensor backing storage is missing" : "ml/linear: bias tensor backing storage is missing",
-            batched_reduce ? "ml/linear/batched-reduce: backend kernel is not implemented for non-CPU tensors" : "ml/linear: backend kernel is not implemented for non-CPU tensors"
+            batched_reduce ? "ml/linear-batched-reduce: bias tensor backing storage is missing" : "ml/linear: bias tensor backing storage is missing",
+            batched_reduce ? "ml/linear-batched-reduce: backend kernel is not implemented for non-CPU tensors" : "ml/linear: backend kernel is not implemented for non-CPU tensors"
         );
         if (err != null) return err;
     }
@@ -271,10 +271,10 @@ fn Value* ml_linear_apply(Value*[] args, bool batched_reduce, Interp* interp) {
     }
 
     if (!tensor_has_valid_storage(input) || !tensor_has_valid_storage(weights) || (bias != null && !tensor_has_valid_storage(bias))) {
-        return tensor_runtime_raise(interp, batched_reduce ? "ml/linear/batched-reduce: tensor backing storage is missing" : "ml/linear: tensor backing storage is missing");
+        return tensor_runtime_raise(interp, batched_reduce ? "ml/linear-batched-reduce: tensor backing storage is missing" : "ml/linear: tensor backing storage is missing");
     }
     if (!tensor_dense_row_major(input) || !tensor_dense_row_major(weights) || (bias != null && !tensor_dense_row_major(bias))) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", batched_reduce ? "ml/linear/batched-reduce: currently supports dense row-major tensors" : "ml/linear: currently supports dense row-major tensors", null);
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", batched_reduce ? "ml/linear-batched-reduce: currently supports dense row-major tensors" : "ml/linear: currently supports dense row-major tensors", null);
     }
 
     usz batch_count = 0;
@@ -286,11 +286,11 @@ fn Value* ml_linear_apply(Value*[] args, bool batched_reduce, Interp* interp) {
     usz* result_shape = null;
     if (input.rank > 0) {
         if (input.rank > usz.max / usz.sizeof) {
-            return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", batched_reduce ? "ml/linear/batched-reduce: result rank is too large" : "ml/linear: result rank is too large", null);
+            return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", batched_reduce ? "ml/linear-batched-reduce: result rank is too large" : "ml/linear: result rank is too large", null);
         }
         result_shape = (usz*)mem::malloc(usz.sizeof * input.rank);
         if (result_shape == null) {
-            return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", batched_reduce ? "ml/linear/batched-reduce: failed to allocate result shape" : "ml/linear: failed to allocate result shape", null);
+            return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", batched_reduce ? "ml/linear-batched-reduce: failed to allocate result shape" : "ml/linear: failed to allocate result shape", null);
         }
     }
     defer if (result_shape != null) mem::free(result_shape);
@@ -298,14 +298,14 @@ fn Value* ml_linear_apply(Value*[] args, bool batched_reduce, Interp* interp) {
         result_shape[axis] = input.shape[axis];
     }
     result_shape[input.rank - 1] = out_features;
-    Value* out_value = make_tensor_uninitialized_checked(interp, input.dtype, result_shape[0:input.rank], batched_reduce ? "ml/linear/batched-reduce: failed to allocate result tensor" : "ml/linear: failed to allocate result tensor");
+    Value* out_value = make_tensor_uninitialized_checked(interp, input.dtype, result_shape[0:input.rank], batched_reduce ? "ml/linear-batched-reduce: failed to allocate result tensor" : "ml/linear: failed to allocate result tensor");
     if (out_value == null || out_value.tag == ERROR) return out_value;
     bool keep_out = false;
     defer if (!keep_out) {
         boundary_cleanup_materialized_value(null, out_value, interp.current_scope);
     }
     if (out_value.tag != TENSOR || !tensor_has_valid_storage(out_value.tensor_val)) {
-        return tensor_runtime_raise(interp, batched_reduce ? "ml/linear/batched-reduce: result tensor backing storage is missing" : "ml/linear: result tensor backing storage is missing");
+        return tensor_runtime_raise(interp, batched_reduce ? "ml/linear-batched-reduce: result tensor backing storage is missing" : "ml/linear: result tensor backing storage is missing");
     }
 
     if (input.dtype == TENSOR_DTYPE_DOUBLE) {

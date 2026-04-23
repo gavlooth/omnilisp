@@ -94,14 +94,17 @@ fn bool repl_classify_file_read_path(char[] path, ReplFileReadKind* kind_out) {
     switch (libc::errno()) {
         case ENOENT:
             *kind_out = REPL_FILE_READ_NOT_FOUND;
+            break;
         case EACCES:
         case EPERM:
             *kind_out = REPL_FILE_READ_PERMISSION_DENIED;
+            break;
         case ENOTDIR:
         case EISDIR:
         case ELOOP:
         case ENAMETOOLONG:
             *kind_out = REPL_FILE_READ_PATH_FAILURE;
+            break;
         default:
             *kind_out = REPL_FILE_READ_GENERIC_FAILURE;
     }

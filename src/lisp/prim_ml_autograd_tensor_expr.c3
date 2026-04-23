@@ -206,7 +206,7 @@ fn Value* ml_grad_vulkan_map_scale_upstream(
         if (scalar_value == null) return nn_oom(interp);
         return ml_grad_vulkan_binary_map(interp, "*", upstream_value, upstream, scalar_value, null, dtype, result_shape);
     }
-    if (other_value == null || other == null || other.device != TENSOR_DEVICE_VULKAN || !tensor_same_shape(other, upstream)) {
+    if (other_value == null || other == null || other.device != TENSOR_DEVICE_VULKAN || !tensor_map_operand_matches_shape(other, upstream.shape[0:upstream.rank])) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/grad: Vulkan map backward does not support broadcast-reduction gradients", null);
     }
     return ml_grad_vulkan_binary_map(interp, "*", upstream_value, upstream, other_value, other, dtype, result_shape);
@@ -291,6 +291,7 @@ fn Value* ml_grad_vulkan_map_backward_to_wrt(Value* node, Value* wrt, Value* ups
     switch (op) {
         case 0:
             child_upstream = upstream_value;
+            break;
         case 1:
             if (right_path) {
                 child_upstream = ml_grad_vulkan_map_scale_upstream(
@@ -306,6 +307,7 @@ fn Value* ml_grad_vulkan_map_backward_to_wrt(Value* node, Value* wrt, Value* ups
                 );
                 if (child_upstream == null || child_upstream.tag == ERROR) return child_upstream;
             }
+            break;
         case 2: {
             Value* other_value = left_path ? output.map_right : output.map_left;
             TensorVal* other = other_value != null && other_value.tag == TENSOR ? other_value.tensor_val : null;
@@ -324,9 +326,17 @@ fn Value* ml_grad_vulkan_map_backward_to_wrt(Value* node, Value* wrt, Value* ups
             );
             if (child_upstream == null || child_upstream.tag == ERROR) return child_upstream;
         }
+            break;
         case 3: {
             Value* other_value = left_path ? output.map_right : output.map_left;
             TensorVal* other = other_value != null && other_value.tag == TENSOR ? other_value.tensor_val : null;
+            if (other == null) {
+                double scalar = left_path ? output.map_right_scalar : output.map_left_scalar;
+                other_value = output.dtype == TENSOR_DTYPE_DOUBLE
+                    ? make_double(interp, scalar)
+                    : make_float32(interp, (float)scalar);
+                if (other_value == null) return nn_oom(interp);
+            }
             if (left_path) {
                 child_upstream = ml_grad_vulkan_binary_map(
                     interp,
@@ -375,6 +385,7 @@ fn Value* ml_grad_vulkan_map_backward_to_wrt(Value* node, Value* wrt, Value* ups
             }
             if (child_upstream == null || child_upstream.tag == ERROR) return child_upstream;
         }
+            break;
         case 4:
         case 5: {
             uint mask_op = 0;
@@ -653,22 +664,28 @@ fn Value* ml_grad_expr_backprop_map(Value* node, Value* wrt, double* upstream, d
             case 0:
                 if (left_upstream != null) left_upstream[left_offset] += u;
                 if (right_upstream != null) right_upstream[right_offset] += u;
+                break;
             case 1:
                 if (left_upstream != null) left_upstream[left_offset] += u;
                 if (right_upstream != null) right_upstream[right_offset] -= u;
+                break;
             case 2:
                 if (left_upstream != null) left_upstream[left_offset] += u * b;
                 if (right_upstream != null) right_upstream[right_offset] += u * a;
+                break;
             case 3:
                 if (b == 0.0) return raise_error_with_payload_names(interp, "tensor", "tensor/invalid-argument", "ml/grad: division map backward encountered zero denominator", null);
                 if (left_upstream != null) left_upstream[left_offset] += u / b;
                 if (right_upstream != null) right_upstream[right_offset] -= u * a / (b * b);
+                break;
             case 4:
                 if (left_upstream != null && a <= b) left_upstream[left_offset] += u;
                 if (right_upstream != null && b <= a) right_upstream[right_offset] += u;
+                break;
             case 5:
                 if (left_upstream != null && a >= b) left_upstream[left_offset] += u;
                 if (right_upstream != null && b >= a) right_upstream[right_offset] += u;
+                break;
             default:
                 return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/grad: unsupported Tensor map backward rule", null);
         }

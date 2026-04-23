@@ -35,16 +35,16 @@ fn bool math_arg_to_double(Value* value, double* out) @inline {
 }
 
 fn Value* prim_math_lgamma(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return primitive_arity_raise(interp, "math/lgamma", "1 argument", args.len);
-    if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "math/lgamma", 0, "number", args[0]);
+    if (args.len < 1) return primitive_arity_raise(interp, "math.lgamma", "1 argument", args.len);
+    if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "math.lgamma", 0, "number", args[0]);
     if (is_big_float(args[0])) {
         return big_float_unary_math_value(
-            interp, args[0], BIG_FLOAT_MATH_LGAMMA, "math/lgamma: BigFloat evaluation error");
+            interp, args[0], BIG_FLOAT_MATH_LGAMMA, "math.lgamma: BigFloat evaluation error");
     }
 
     double input = 0.0;
     if (!try_numeric_to_double(args[0], &input)) {
-        return math_raise(interp, "type/range-error", "math/lgamma: value out of Float64 range");
+        return math_raise(interp, "type/range-error", "math.lgamma: value out of Float64 range");
     }
 
     double output = 0.0;
@@ -53,28 +53,28 @@ fn Value* prim_math_lgamma(Value*[] args, Env* env, Interp* interp) {
         case BOOST_MATH_STATUS_OK:
             return make_double(interp, output);
         case BOOST_MATH_STATUS_INVALID_ARGUMENT:
-            return math_raise(interp, "type/arg-mismatch", "math/lgamma: expected finite numeric input");
+            return math_raise(interp, "type/arg-mismatch", "math.lgamma: expected finite numeric input");
         case BOOST_MATH_STATUS_DOMAIN_ERROR:
-            return math_raise(interp, "type/domain-error", "math/lgamma: domain error");
+            return math_raise(interp, "type/domain-error", "math.lgamma: domain error");
         case BOOST_MATH_STATUS_RANGE_ERROR:
-            return math_raise(interp, "type/range-error", "math/lgamma: range error");
+            return math_raise(interp, "type/range-error", "math.lgamma: range error");
         default:
-            return math_runtime_raise(interp, "math/lgamma: evaluation error");
+            return math_runtime_raise(interp, "math.lgamma: evaluation error");
     }
 }
 
 fn Value* prim_math_erf(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return primitive_arity_raise(interp, "math/erf", "1 argument", args.len);
+    if (args.len < 1) return primitive_arity_raise(interp, "math.erf", "1 argument", args.len);
     if (is_tensor(args[0])) return tensor_unary_math_value(args[0], BIG_FLOAT_MATH_ERF, 0, interp);
-    if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "math/erf", 0, "number", args[0]);
+    if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "math.erf", 0, "number", args[0]);
     if (is_big_float(args[0])) {
         return big_float_unary_math_value(
-            interp, args[0], BIG_FLOAT_MATH_ERF, "math/erf: BigFloat evaluation error");
+            interp, args[0], BIG_FLOAT_MATH_ERF, "math.erf: BigFloat evaluation error");
     }
 
     double input = 0.0;
     if (!try_numeric_to_double(args[0], &input)) {
-        return math_raise(interp, "type/range-error", "math/erf: value out of Float64 range");
+        return math_raise(interp, "type/range-error", "math.erf: value out of Float64 range");
     }
 
     double output = 0.0;
@@ -83,28 +83,28 @@ fn Value* prim_math_erf(Value*[] args, Env* env, Interp* interp) {
         case BOOST_MATH_STATUS_OK:
             return make_double(interp, output);
         case BOOST_MATH_STATUS_INVALID_ARGUMENT:
-            return math_raise(interp, "type/arg-mismatch", "math/erf: expected finite numeric input");
+            return math_raise(interp, "type/arg-mismatch", "math.erf: expected finite numeric input");
         case BOOST_MATH_STATUS_DOMAIN_ERROR:
-            return math_raise(interp, "type/domain-error", "math/erf: domain error");
+            return math_raise(interp, "type/domain-error", "math.erf: domain error");
         case BOOST_MATH_STATUS_RANGE_ERROR:
-            return math_raise(interp, "type/range-error", "math/erf: range error");
+            return math_raise(interp, "type/range-error", "math.erf: range error");
         default:
-            return math_runtime_raise(interp, "math/erf: evaluation error");
+            return math_runtime_raise(interp, "math.erf: evaluation error");
     }
 }
 
 fn Value* prim_math_erfc(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return primitive_arity_raise(interp, "math/erfc", "1 argument", args.len);
+    if (args.len < 1) return primitive_arity_raise(interp, "math.erfc", "1 argument", args.len);
     if (is_tensor(args[0])) return tensor_unary_math_value(args[0], BIG_FLOAT_MATH_ERFC, 0, interp);
-    if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "math/erfc", 0, "number", args[0]);
+    if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "math.erfc", 0, "number", args[0]);
     if (is_big_float(args[0])) {
         return big_float_unary_math_value(
-            interp, args[0], BIG_FLOAT_MATH_ERFC, "math/erfc: BigFloat evaluation error");
+            interp, args[0], BIG_FLOAT_MATH_ERFC, "math.erfc: BigFloat evaluation error");
     }
 
     double input = 0.0;
     if (!try_numeric_to_double(args[0], &input)) {
-        return math_raise(interp, "type/range-error", "math/erfc: value out of Float64 range");
+        return math_raise(interp, "type/range-error", "math.erfc: value out of Float64 range");
     }
 
     double output = 0.0;
@@ -113,28 +113,28 @@ fn Value* prim_math_erfc(Value*[] args, Env* env, Interp* interp) {
         case BOOST_MATH_STATUS_OK:
             return make_double(interp, output);
         case BOOST_MATH_STATUS_INVALID_ARGUMENT:
-            return math_raise(interp, "type/arg-mismatch", "math/erfc: expected finite numeric input");
+            return math_raise(interp, "type/arg-mismatch", "math.erfc: expected finite numeric input");
         case BOOST_MATH_STATUS_DOMAIN_ERROR:
-            return math_raise(interp, "type/domain-error", "math/erfc: domain error");
+            return math_raise(interp, "type/domain-error", "math.erfc: domain error");
         case BOOST_MATH_STATUS_RANGE_ERROR:
-            return math_raise(interp, "type/range-error", "math/erfc: range error");
+            return math_raise(interp, "type/range-error", "math.erfc: range error");
         default:
-            return math_runtime_raise(interp, "math/erfc: evaluation error");
+            return math_runtime_raise(interp, "math.erfc: evaluation error");
     }
 }
 
 fn Value* prim_stats_normal_cdf(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return primitive_arity_raise(interp, "stats/normal-cdf", "1 argument", args.len);
+    if (args.len < 1) return primitive_arity_raise(interp, "stats.normal-cdf", "1 argument", args.len);
     if (is_tensor(args[0])) return tensor_unary_math_value(args[0], BIG_FLOAT_MATH_NORMAL_CDF, 0, interp);
-    if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "stats/normal-cdf", 0, "number", args[0]);
+    if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "stats.normal-cdf", 0, "number", args[0]);
     if (is_big_float(args[0])) {
         return big_float_unary_math_value(
-            interp, args[0], BIG_FLOAT_MATH_NORMAL_CDF, "stats/normal-cdf: BigFloat evaluation error");
+            interp, args[0], BIG_FLOAT_MATH_NORMAL_CDF, "stats.normal-cdf: BigFloat evaluation error");
     }
 
     double input = 0.0;
     if (!try_numeric_to_double(args[0], &input)) {
-        return math_raise(interp, "type/range-error", "stats/normal-cdf: value out of Float64 range");
+        return math_raise(interp, "type/range-error", "stats.normal-cdf: value out of Float64 range");
     }
 
     double output = 0.0;
@@ -143,28 +143,28 @@ fn Value* prim_stats_normal_cdf(Value*[] args, Env* env, Interp* interp) {
         case BOOST_MATH_STATUS_OK:
             return make_double(interp, output);
         case BOOST_MATH_STATUS_INVALID_ARGUMENT:
-            return math_raise(interp, "type/arg-mismatch", "stats/normal-cdf: expected finite numeric input");
+            return math_raise(interp, "type/arg-mismatch", "stats.normal-cdf: expected finite numeric input");
         case BOOST_MATH_STATUS_DOMAIN_ERROR:
-            return math_raise(interp, "type/domain-error", "stats/normal-cdf: domain error");
+            return math_raise(interp, "type/domain-error", "stats.normal-cdf: domain error");
         case BOOST_MATH_STATUS_RANGE_ERROR:
-            return math_raise(interp, "type/range-error", "stats/normal-cdf: range error");
+            return math_raise(interp, "type/range-error", "stats.normal-cdf: range error");
         default:
-            return math_runtime_raise(interp, "stats/normal-cdf: evaluation error");
+            return math_runtime_raise(interp, "stats.normal-cdf: evaluation error");
     }
 }
 
 fn Value* prim_stats_normal_quantile(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return primitive_arity_raise(interp, "stats/normal-quantile", "1 argument", args.len);
+    if (args.len < 1) return primitive_arity_raise(interp, "stats.normal-quantile", "1 argument", args.len);
     if (is_tensor(args[0])) return tensor_unary_math_value(args[0], BIG_FLOAT_MATH_NORMAL_QUANTILE, 0, interp);
-    if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "stats/normal-quantile", 0, "number", args[0]);
+    if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "stats.normal-quantile", 0, "number", args[0]);
     if (is_big_float(args[0])) {
         return big_float_unary_math_value(
-            interp, args[0], BIG_FLOAT_MATH_NORMAL_QUANTILE, "stats/normal-quantile: probability must be between 0 and 1");
+            interp, args[0], BIG_FLOAT_MATH_NORMAL_QUANTILE, "stats.normal-quantile: probability must be between 0 and 1");
     }
 
     double probability = 0.0;
     if (!try_numeric_to_double(args[0], &probability)) {
-        return math_raise(interp, "type/range-error", "stats/normal-quantile: probability out of Float64 range");
+        return math_raise(interp, "type/range-error", "stats.normal-quantile: probability out of Float64 range");
     }
 
     double output = 0.0;
@@ -173,13 +173,13 @@ fn Value* prim_stats_normal_quantile(Value*[] args, Env* env, Interp* interp) {
         case BOOST_MATH_STATUS_OK:
             return make_double(interp, output);
         case BOOST_MATH_STATUS_INVALID_ARGUMENT:
-            return math_raise(interp, "type/arg-mismatch", "stats/normal-quantile: expected finite numeric input");
+            return math_raise(interp, "type/arg-mismatch", "stats.normal-quantile: expected finite numeric input");
         case BOOST_MATH_STATUS_DOMAIN_ERROR:
-            return math_raise(interp, "type/domain-error", "stats/normal-quantile: probability must be between 0 and 1");
+            return math_raise(interp, "type/domain-error", "stats.normal-quantile: probability must be between 0 and 1");
         case BOOST_MATH_STATUS_RANGE_ERROR:
-            return math_raise(interp, "type/range-error", "stats/normal-quantile: range error");
+            return math_raise(interp, "type/range-error", "stats.normal-quantile: range error");
         default:
-            return math_runtime_raise(interp, "stats/normal-quantile: evaluation error");
+            return math_runtime_raise(interp, "stats.normal-quantile: evaluation error");
     }
 }
 

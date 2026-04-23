@@ -108,13 +108,13 @@ First executable split:
   no-hidden-CPU-fallback regressions.
 - `ML-VK-010-003`: add Vulkan `Float32` batched bias-add coverage with
   no-CPU-fallback regressions.
-- `ML-VK-010-004`: freeze `ml/linear/batched-reduce` as the public
+- `ML-VK-010-004`: freeze `ml/linear-batched-reduce` as the public
   batched-reduction surface for Vulkan `Float32` ml/linear before reducer
   coverage lands.
 - `ML-VK-010-004-001`: implement Vulkan `Float32` batched-reduction coverage
-  for `ml/linear/batched-reduce` with no-CPU-fallback regressions.
+  for `ml/linear-batched-reduce` with no-CPU-fallback regressions.
   - audit checks:
-    - public docs updated for `ml/linear/batched-reduce` contract surface;
+    - public docs updated for `ml/linear-batched-reduce` contract surface;
     - capability truth for `ml-linear-direct-float32`/`ml-linear` preserved during partial
       Vulkan rollout;
     - backend-unsupported diagnostics cover mixed-device, unsupported layout,
@@ -124,7 +124,7 @@ First executable split:
   concrete/view boundary explicit with permanent fail-closed tests for
   view-backed operands.
 - `ML-VK-010-006`: shipped Vulkan `Float64` `ml/linear` and
-  `ml/linear/batched-reduce` coverage through existing `contract` plus bias
+  `ml/linear-batched-reduce` coverage through existing `contract` plus bias
   `map` paths with fail-closed mixed-device tests.
 
 Acceptance:

@@ -34,7 +34,7 @@ double apply_binary(double left, double right) {
     if (params.op == 0) return left + right;
     if (params.op == 1) return left - right;
     if (params.op == 2) return left * right;
-    if (params.op == 3) return left / right;
+    if (params.op == 3) return right == 0.0 ? 0.0 : left / right;
     if (params.op == 4) return left < right ? left : right;
     if (params.op == 5) return left > right ? left : right;
     if (params.op == 6) return step(right, left);

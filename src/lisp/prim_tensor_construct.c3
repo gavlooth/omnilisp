@@ -161,7 +161,10 @@ fn bool tensor_value_is_container(Value* value) @inline {
 }
 
 fn Value* tensor_container_nth(Value* container, usz index) {
-    if (is_array(container)) return container.array_val.items[index];
+    if (is_array(container)) {
+        if (container.array_val == null || index >= container.array_val.length) return null;
+        return container.array_val.items[index];
+    }
 
     Value* cur = container;
     for (usz i = 0; i < index; i++) {

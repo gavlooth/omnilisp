@@ -198,37 +198,37 @@ fn bool tensor_map_callable_complex_unary_op(Value* func, uint* out_op) @inline 
 fn bool tensor_map_callable_cuda_unary_op(Value* func, uint* out_op) @inline {
     if (tensor_map_callable_vulkan_unary_op(func, out_op)) return tensor_cuda_unary_op_available(*out_op);
     if (out_op == null) return false;
-    if (primitive_name_equals(func, "math/erf")) {
+    if (primitive_name_equals(func, "math.erf")) {
         *out_op = 17;
         return tensor_cuda_unary_op_available(*out_op);
     }
-    if (primitive_name_equals(func, "math/erfc")) {
+    if (primitive_name_equals(func, "math.erfc")) {
         *out_op = 18;
         return tensor_cuda_unary_op_available(*out_op);
     }
-    if (primitive_name_equals(func, "stats/normal-cdf")) {
+    if (primitive_name_equals(func, "stats.normal-cdf")) {
         *out_op = 19;
         return tensor_cuda_unary_op_available(*out_op);
     }
-    if (primitive_name_equals(func, "stats/normal-quantile")) {
+    if (primitive_name_equals(func, "stats.normal-quantile")) {
         *out_op = 20;
         return tensor_cuda_unary_op_available(*out_op);
     }
     if (func != null && func.tag == METHOD_TABLE && func.method_table_val != null) {
         Primitive* fallback = method_table_fallback_prim(func.method_table_val);
-        if (tensor_primitive_payload_name_equals(fallback, "math/erf")) {
+        if (tensor_primitive_payload_name_equals(fallback, "math.erf")) {
             *out_op = 17;
             return tensor_cuda_unary_op_available(*out_op);
         }
-        if (tensor_primitive_payload_name_equals(fallback, "math/erfc")) {
+        if (tensor_primitive_payload_name_equals(fallback, "math.erfc")) {
             *out_op = 18;
             return tensor_cuda_unary_op_available(*out_op);
         }
-        if (tensor_primitive_payload_name_equals(fallback, "stats/normal-cdf")) {
+        if (tensor_primitive_payload_name_equals(fallback, "stats.normal-cdf")) {
             *out_op = 19;
             return tensor_cuda_unary_op_available(*out_op);
         }
-        if (tensor_primitive_payload_name_equals(fallback, "stats/normal-quantile")) {
+        if (tensor_primitive_payload_name_equals(fallback, "stats.normal-quantile")) {
             *out_op = 20;
             return tensor_cuda_unary_op_available(*out_op);
         }
@@ -349,11 +349,19 @@ fn bool tensor_map_callable_vulkan_unary_op(Value* func, uint* out_op) @inline {
         *out_op = 16;
         return true;
     }
-    if (primitive_name_equals(func, "stats/normal-cdf")) {
+    if (primitive_name_equals(func, "math.erf")) {
+        *out_op = 17;
+        return true;
+    }
+    if (primitive_name_equals(func, "math.erfc")) {
+        *out_op = 18;
+        return true;
+    }
+    if (primitive_name_equals(func, "stats.normal-cdf")) {
         *out_op = 19;
         return true;
     }
-    if (primitive_name_equals(func, "stats/normal-quantile")) {
+    if (primitive_name_equals(func, "stats.normal-quantile")) {
         *out_op = 20;
         return true;
     }
@@ -435,11 +443,19 @@ fn bool tensor_map_callable_vulkan_unary_op(Value* func, uint* out_op) @inline {
             *out_op = 16;
             return true;
         }
-        if (tensor_primitive_payload_name_equals(fallback, "stats/normal-cdf")) {
+        if (tensor_primitive_payload_name_equals(fallback, "math.erf")) {
+            *out_op = 17;
+            return true;
+        }
+        if (tensor_primitive_payload_name_equals(fallback, "math.erfc")) {
+            *out_op = 18;
+            return true;
+        }
+        if (tensor_primitive_payload_name_equals(fallback, "stats.normal-cdf")) {
             *out_op = 19;
             return true;
         }
-        if (tensor_primitive_payload_name_equals(fallback, "stats/normal-quantile")) {
+        if (tensor_primitive_payload_name_equals(fallback, "stats.normal-quantile")) {
             *out_op = 20;
             return true;
         }
@@ -485,6 +501,12 @@ fn bool tensor_unary_math_vulkan_op(int big_float_op, uint* out_op) @inline {
             return true;
         case BIG_FLOAT_MATH_LOG10:
             *out_op = 16;
+            return true;
+        case BIG_FLOAT_MATH_ERF:
+            *out_op = 17;
+            return true;
+        case BIG_FLOAT_MATH_ERFC:
+            *out_op = 18;
             return true;
         case BIG_FLOAT_MATH_NORMAL_CDF:
             *out_op = 19;

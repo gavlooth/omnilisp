@@ -338,14 +338,14 @@ Source: `TODO.md`
       shape diagnostics, and no-hidden-CPU-fallback regressions.
     - [x] `ML-VK-010-003` add Vulkan `Float32` batched bias-add coverage with
       no-CPU-fallback regressions.
-    - [x] `ML-VK-010-004` freeze `ml/linear/batched-reduce` as the public
+    - [x] `ML-VK-010-004` freeze `ml/linear-batched-reduce` as the public
       batched-reduction surface for Vulkan `Float32` ml/linear before reducer
       coverage lands.
     - [x] `ML-VK-010-004-001` implement Vulkan `Float32` batched-reduction
-      coverage for `ml/linear/batched-reduce` with no-CPU-fallback
+      coverage for `ml/linear-batched-reduce` with no-CPU-fallback
       regressions.
       - [x] `AUDIT-ML-VK-010-004-001-PUBLIC-DOCS` document
-        `ml/linear/batched-reduce` in public language/reference docs with
+        `ml/linear-batched-reduce` in public language/reference docs with
         explicit contract and argument shape expectations.
       - [x] `AUDIT-ML-VK-010-004-001-CAPABILITY-TRUTH` confirm the new
         operation remains on the `ml-linear-direct-float32` narrow path and does
@@ -370,7 +370,7 @@ Source: `TODO.md`
       - [x] `ML-VK-010-005-SPEC-LOCK` document the narrow expression/view
         boundary in the public language/reference docs.
     - [x] `ML-VK-010-006` add Vulkan `Float64` `ml/linear` and
-      `ml/linear/batched-reduce` coverage through existing `contract` plus
+      `ml/linear-batched-reduce` coverage through existing `contract` plus
       bias `map` paths, or record a concrete blocker with fail-closed tests.
       - [x] `ML-VK-010-006-RUNTIME` remove the stale Float32-only Vulkan
         `ml/linear` gate and route both `Float64` and `Float32` through the
@@ -380,7 +380,7 @@ Source: `TODO.md`
         widening broad Vulkan `ml-linear`.
       - [x] `ML-VK-010-006-COVERAGE` cover Vulkan `Float64` direct, rank-3,
         bias, mapped bias, mapped source, transpose-view source,
-        transpose-view weights, and `ml/linear/batched-reduce` parity.
+        transpose-view weights, and `ml/linear-batched-reduce` parity.
       - [x] `ML-VK-010-006-DIAGNOSTICS` keep mixed CPU/Vulkan operands and
         unsupported layouts fail-closed with Tensor backend diagnostics.
   - scope:

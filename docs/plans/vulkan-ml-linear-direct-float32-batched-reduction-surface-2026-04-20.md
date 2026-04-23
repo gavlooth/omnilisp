@@ -13,13 +13,13 @@ batched-reduction surface decision before reducer coverage is implemented.
 ## Candidate public names
 
 - `ml/linear/reduce`
-- `ml/linear/batched-reduce`
+- `ml/linear-batched-reduce`
 - `ml/linear/reduce-batch`
 - `ml/linear/row-reduce`
 
 ## Decision
 
-Use `ml/linear/batched-reduce` as the public surface for the first concrete
+Use `ml/linear-batched-reduce` as the public surface for the first concrete
 Vulkan `Float32` batched reduction lane.
 
 Reasoning:

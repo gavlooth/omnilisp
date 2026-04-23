@@ -330,11 +330,16 @@ complex contraction kernels are available; complex storage capability and
 complex elementwise-map capability do not imply complex contraction support.
 CUDA and Vulkan also report the dtype-changing
 `rounding-big-integer` capability when their integer-result rounding path is
-available. Backend entries report `stats-normal-float64` and
-`stats-normal-float32` separately from broad `scientific-map-*` coverage so
-partial `stats/normal-cdf` and `stats/normal-quantile` support is
-discoverable without implying every scientific unary map is present. CPU, CUDA,
-cuBLAS, and Vulkan entries also expose the backend-neutral
+available. Backend entries report granular scientific keys:
+`math-elementary-float64`, `math-elementary-float32`,
+`math-error-function-float64`, `math-error-function-float32`,
+`stats-distribution-float64`, and `stats-distribution-float32`.
+The error-function keys cover `math.erf` and `math.erfc`, not `math.lgamma`.
+The legacy `stats-normal-float64` and `stats-normal-float32` keys remain as
+compatibility aliases for `stats.normal-cdf` and `stats.normal-quantile`
+coverage, separately from broad `scientific-map-*` coverage, so partial stats
+support is discoverable without implying every scientific unary map is present.
+CPU, CUDA, cuBLAS, and Vulkan entries also expose the backend-neutral
 ML suite capability keys `ml-linear`, `ml-linear-direct-float64`,
 `ml-linear-direct-float32`, `ml-neural-relu-float64`,
 `ml-neural-relu-float32`, `ml-neural-leaky-relu-float64`,
@@ -357,7 +362,7 @@ covers concrete matching `Float64` or `Float32` `ml/linear` input, weights,
 and optional bias through `Tensor` `contract` plus broadcast `map`.
 Vulkan-only expressions may participate only when existing Tensor realization
 lowers them to concrete dense Vulkan storage of the same dtype without CPU fallback;
-`ml/linear/batched-reduce` uses the same narrow Vulkan entry. The other ML keys
+`ml/linear-batched-reduce` uses the same narrow Vulkan entry. The other ML keys
 stay explicit `false` until a backend ships the named operation family, except
 `ml-normalization` and `ml-attention`, which reflect their shipped narrow dtype keys.
 `ml/relu` applies `max(input, 0)` to `Float64` or `Float32` Tensor inputs.
@@ -391,7 +396,7 @@ preserves input shape and dtype, requires positive finite epsilon, supports CPU 
 targets axis)` accepts same-shape probability/one-hot target tensors, uses
 max-shifted log-softmax over the explicit class axis, returns the mean loss
 over non-class positions, and supports Vulkan `Float32` while keeping Vulkan
-`Float64` fail-closed until its exp/log policy is validated. `ml/grad` currently accepts CPU `linear-mean-squared-error`, `linear-activation-mean-squared-error`, `linear-softmax-cross-entropy`, `tensor-mean-squared-error`, and `tensor-softmax-cross-entropy` gradient specs; these return ordinary dictionaries with loss, output, input-gradient, parameter-gradients for closed-form linear specs, and a metadata-only `tape` dictionary; validate probability targets for softmax CE; support `relu` and `leaky-relu` activation backward for `Float64`/`Float32`; support `sigmoid`/`tanh`/`gelu` activation backward for `Float32`; support dense row-major CPU `Float64`/`Float32` Tensor-expression reverse accumulation through supported `map` and `contract` nodes for MSE and softmax-CE losses; support dense row-major Vulkan `Float32` backward for `tensor-mean-squared-error`, `tensor-softmax-cross-entropy`, and map-expression provenance paths with broadcast-compatible reductions; and keep CUDA backward and unsupported Vulkan configurations fail-closed. Tensor-expression specs require a single unambiguous `wrt` leaf match and reject unsupported map backward rules. The `tape` dictionary has `kind 'gradient-tape`, `version 1`, `policy 'metadata-only`, `owner 'scope-region`, false `retains-handles`, dtype/source metadata, optional activation metadata, and ordinary `nodes`; it does not retain native handles or execute device accumulation. `linear-activation-mean-squared-error` accepts optional `negative-slope` for `leaky-relu`, defaulting to `0.01`. `ml/sgd-step(parameters gradients learning-rate)` applies an immutable CPU/Vulkan SGD update over matching array/dictionary parameter trees with dense `Float64`/`Float32` tensor leaves and auto-migrates CPU leaves to Vulkan when the corresponding tree touches Vulkan. `ml/clip-gradients(gradients max-norm)` supports CPU `Float64`/`Float32` and all-Vulkan dense row-major `Float32` trees, auto-migrating CPU `Float32` leaves to Vulkan when another leaf is Vulkan-placed; unsupported dtype trees fail closed before fallback. `ml/optimizer-step(spec parameters gradients state)` returns updated parameters and explicit optimizer state for CPU/Vulkan dense row-major `Float64`/`Float32` SGD, Adam, AdamW, and RMSProp specs, plus CUDA dense row-major `Float32` map-backed SGD/Adam/AdamW/RMSProp; it accepts optional `clip-norm`; clipping applies before all updates; CUDA and Vulkan `clip-norm` require the matching dense row-major `Float32` gradient path as `ml/clip-gradients`. `nn/sgd`, `nn/adam`, `nn/adamw`, and `nn/rmsprop` construct validated ordinary optimizer spec dictionaries for `ml/optimizer-step` and `nn/train-step`; they do not own hidden optimizer state. `Kernel(spec)` constructs a validated data-oriented custom backend kernel dictionary with `kind` normalized to `'kernel`, `type-of` / `is?` reporting `Kernel`, and ordinary path/index/ref access; `kernel/capture(kernel inputs push)` validates checked Vulkan direct-helper Kernel families and returns a single-node `kernel-graph` plan without launching; `kernel/run(kernel inputs push)` is the explicit execution boundary, supports checked Vulkan `scale-f32`, binary `add-f32`, `sub-f32`, `mul-f32`, `div-f32`, `min-f32`, `max-f32`, scalar `add-scalar-f32`, `sub-scalar-f32`, `mul-scalar-f32`, `div-scalar-f32`, `min-scalar-f32`, `max-scalar-f32`, `scalar-sub-f32`, `scalar-div-f32`, and unary `abs-f32`, `neg-f32`, `sqrt-f32`, `identity-f32`, `zero-f32`, `sin-f32`, `cos-f32`, `tan-f32`, `asin-f32`, `acos-f32`, `atan-f32`, `sinh-f32`, `cosh-f32`, `tanh-f32`, `exp-f32`, `log-f32`, `log10-f32`, `normal-cdf-f32` `Float32` tensor kernels, and fails closed for unsupported backend compilation and launch semantics. `tensor-backends` reports this narrow support with per-optimizer `ml-optimizer-*-float64`/`ml-optimizer-*-float32` fields plus `ml-clip-gradients-float32`; CUDA optimizer Float32 keys are true when CUDA `elementwise-map-float32` is available, and Vulkan optimizer keys are true when the matching Vulkan dtype is available. Broad `ml-optimizer` remains false until the optimizer family is complete. `ml/save-optimizer(spec state [path])` and `ml/load-optimizer(source)` checkpoint explicit optimizer spec/state dictionaries and revalidate the checkpoint envelope, supported spec, and state container on load; fused CUDA optimizer kernels remain fail-closed.
+`Float64` fail-closed until its exp/log policy is validated. `ml/grad` currently accepts CPU `linear-mean-squared-error`, `linear-activation-mean-squared-error`, `linear-softmax-cross-entropy`, `tensor-mean-squared-error`, and `tensor-softmax-cross-entropy` gradient specs; these return ordinary dictionaries with loss, output, input-gradient, parameter-gradients for closed-form linear specs, and a metadata-only `tape` dictionary; validate probability targets for softmax CE; support `relu` and `leaky-relu` activation backward for `Float64`/`Float32`; support `sigmoid`/`tanh`/`gelu` activation backward for `Float32`; support dense row-major CPU `Float64`/`Float32` Tensor-expression reverse accumulation through supported `map` and `contract` nodes for MSE and softmax-CE losses; support dense row-major Vulkan `Float32` backward for `tensor-mean-squared-error`, `tensor-softmax-cross-entropy`, and map-expression provenance paths with broadcast-compatible reductions; and keep CUDA backward and unsupported Vulkan configurations fail-closed. Tensor-expression specs require a single unambiguous `wrt` leaf match and reject unsupported map backward rules. The `tape` dictionary has `kind 'gradient-tape`, `version 1`, `policy 'metadata-only`, `owner 'scope-region`, false `retains-handles`, dtype/source metadata, optional activation metadata, and ordinary `nodes`; it does not retain native handles or execute device accumulation. `linear-activation-mean-squared-error` accepts optional `negative-slope` for `leaky-relu`, defaulting to `0.01`. `ml/sgd-step(parameters gradients learning-rate)` applies an immutable CPU/Vulkan SGD update over matching array/dictionary parameter trees with dense `Float64`/`Float32` tensor leaves and auto-migrates CPU leaves to Vulkan when the corresponding tree touches Vulkan. `ml/clip-gradients(gradients max-norm)` supports CPU `Float64`/`Float32` and all-Vulkan dense row-major `Float32` trees, auto-migrating CPU `Float32` leaves to Vulkan when another leaf is Vulkan-placed; unsupported dtype trees fail closed before fallback. `ml/optimizer-step(spec parameters gradients state)` returns updated parameters and explicit optimizer state for CPU/Vulkan dense row-major `Float64`/`Float32` SGD, Adam, AdamW, and RMSProp specs, plus CUDA dense row-major `Float32` map-backed SGD/Adam/AdamW/RMSProp; it accepts optional `clip-norm`; clipping applies before all updates; CUDA and Vulkan `clip-norm` require the matching dense row-major `Float32` gradient path as `ml/clip-gradients`. `nn/sgd`, `nn/adam`, `nn/adamw`, and `nn/rmsprop` construct validated ordinary optimizer spec dictionaries for `ml/optimizer-step` and `nn/train-step`; they do not own hidden optimizer state. `Kernel(spec)` constructs a validated data-oriented custom backend kernel dictionary with `kind` normalized to `'kernel`, `type-of` / `is?` reporting `Kernel`, and ordinary path/index/ref access; `kernel/capture(kernel inputs push)` validates checked Vulkan direct-helper Kernel families and returns a single-node `kernel-graph` plan without launching; `kernel/run(kernel inputs push)` is the explicit execution boundary, supports checked Vulkan `scale-f32`, binary `add-f32`, `sub-f32`, `mul-f32`, `div-f32`, `min-f32`, `max-f32`, scalar `add-scalar-f32`, `sub-scalar-f32`, `mul-scalar-f32`, `div-scalar-f32`, `min-scalar-f32`, `max-scalar-f32`, `scalar-sub-f32`, `scalar-div-f32`, and unary `abs-f32`, `neg-f32`, `sqrt-f32`, `identity-f32`, `zero-f32`, `sin-f32`, `cos-f32`, `tan-f32`, `asin-f32`, `acos-f32`, `atan-f32`, `sinh-f32`, `cosh-f32`, `tanh-f32`, `exp-f32`, `log-f32`, `log10-f32`, `erf-f32`, `erfc-f32`, `normal-cdf-f32` `Float32` tensor kernels, and fails closed for unsupported backend compilation and launch semantics. `tensor-backends` reports this narrow support with per-optimizer `ml-optimizer-*-float64`/`ml-optimizer-*-float32` fields plus `ml-clip-gradients-float32`; CUDA optimizer Float32 keys are true when CUDA `elementwise-map-float32` is available, and Vulkan optimizer keys are true when the matching Vulkan dtype is available. Broad `ml-optimizer` remains false until the optimizer family is complete. `ml/save-optimizer(spec state [path])` and `ml/load-optimizer(source)` checkpoint explicit optimizer spec/state dictionaries and revalidate the checkpoint envelope, supported spec, and state container on load; fused CUDA optimizer kernels remain fail-closed.
 `ml/conv1d(input kernel stride padding dilation groups)` is the first
 convolution surface: it requires dense row-major `input[batch channels width]`
 and `kernel[out-channels in-channels-per-group kernel-width]`, supports CPU
@@ -520,7 +525,7 @@ are checked Vulkan `scale-f32`; binary `add-f32`, `sub-f32`, `mul-f32`,
 `max-scalar-f32`, `scalar-sub-f32`, and `scalar-div-f32`; and unary
 `abs-f32`, `neg-f32`, `sqrt-f32`, `identity-f32`, `zero-f32`, `sin-f32`,
 `cos-f32`, `tan-f32`, `asin-f32`, `acos-f32`, `atan-f32`, `sinh-f32`,
-`cosh-f32`, `tanh-f32`, `exp-f32`, `log-f32`, `log10-f32`, and
+`cosh-f32`, `tanh-f32`, `exp-f32`, `log-f32`, `log10-f32`, `erf-f32`, `erfc-f32`, and
 `normal-cdf-f32` over dense row-major `Float32` tensors. `kernel/capture`
 validates those checked direct-helper Vulkan families against runtime inputs
 and push data and returns a single-node `kernel-graph` launch plan without
@@ -582,7 +587,7 @@ ordinary state `Dictionary` as an `optimizer` payload, either returning a JSON
 checkpoint string or writing to a path. Loading accepts a checkpoint JSON string
 or path, restores an ordinary `Dictionary` with `kind`, `spec`, and `state`, and
 rejects wrong payload families or invalid optimizer specs before returning.
-`ml/linear/batched-reduce` is a public rank-`>=2` batched projection surface
+`ml/linear-batched-reduce` is a public rank-`>=2` batched projection surface
 that preserves the same dtype and output-shape semantics as `ml/linear` while
 rejecting rank-1 inputs via `tensor/shape-mismatch` and rejecting mixed-device
 or unsupported-layout Vulkan operands through `tensor/backend-unsupported`
@@ -599,8 +604,8 @@ binary elementwise `map` for `+`, `-`, `*`, `/`, `min`, and `max`;
 arithmetic/component unary `map` for unary `+`, `abs`, unary `-`, `sqrt`,
 `real-part`, `imag-part`, and `conjugate`; and, when the scientific module
 loads, scientific unary `map` for `sin`, `cos`, `tan`, `asin`, `acos`,
-`atan`, `sinh`, `cosh`, `tanh`, `exp`, `log`, `log10`, `math/erf`,
-`math/erfc`, `stats/normal-cdf`, and `stats/normal-quantile`. Arithmetic
+`atan`, `sinh`, `cosh`, `tanh`, `exp`, `log`, `log10`, `math.erf`,
+`math.erfc`, `stats.normal-cdf`, and `stats.normal-quantile`. Arithmetic
 kernels use embedded PTX; scientific kernels use PTX generated from CUDA C and
 libdevice, and CUDA quantile uses a device status word so invalid
 probabilities fail before result exposure. Supported CUDA map operand shapes are tensor/scalar, scalar/tensor,
@@ -680,11 +685,11 @@ Generic complex `map` supports unary `+`, `abs`, unary `-`, `real-part`,
 return component-width real Vulkan tensors. Complex Vulkan division reports a
 structured `tensor/domain-error` for zero denominators and fails before
 exposing non-representable results. Vulkan `Float32` tensors also support
-direct and mapped `stats/normal-cdf` through a same-dtype shader approximation
-and direct/mapped `stats/normal-quantile` through a status-bearing inverse-CDF
-shader. Vulkan `Float64` tensors support direct and mapped `stats/normal-cdf`
+direct and mapped `stats.normal-cdf` through a same-dtype shader approximation
+and direct/mapped `stats.normal-quantile` through a status-bearing inverse-CDF
+shader. Vulkan `Float64` tensors support direct and mapped `stats.normal-cdf`
 through a double piecewise polynomial approximation and direct/mapped
-`stats/normal-quantile` through a Float64 status-bearing inverse-CDF helper.
+`stats.normal-quantile` through a Float64 status-bearing inverse-CDF helper.
 Direct Vulkan `floor`, `ceiling`, `round`, and `truncate` require
 `tensor-backends` Vulkan `rounding-big-integer`; same-dtype Vulkan float
 rounding output is not a valid Tensor rounding contract.

@@ -70,6 +70,14 @@ fn bool kernel_unary_f32_operation(Value* operation, Interp* interp, uint* out_o
         *out_op = 16;
         return true;
     }
+    if (nn_symbol_is(operation, interp, "erf-f32")) {
+        *out_op = 17;
+        return true;
+    }
+    if (nn_symbol_is(operation, interp, "erfc-f32")) {
+        *out_op = 18;
+        return true;
+    }
     if (nn_symbol_is(operation, interp, "normal-cdf-f32")) {
         *out_op = 19;
         return true;

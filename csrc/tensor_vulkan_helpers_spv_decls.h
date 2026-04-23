@@ -1,6 +1,9 @@
 #ifndef OMNI_TENSOR_VULKAN_HELPERS_SPV_DECLS_H
 #define OMNI_TENSOR_VULKAN_HELPERS_SPV_DECLS_H
 
+#include <stdint.h>
+#include <stddef.h>
+
 extern const uint32_t omni_tensor_vulkan_map_add_scalar_f64_spv[];
 extern const size_t omni_tensor_vulkan_map_add_scalar_f64_spv_size;
 extern const uint32_t omni_tensor_vulkan_map_f32_spv[];

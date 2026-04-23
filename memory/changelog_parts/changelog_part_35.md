@@ -247,7 +247,7 @@ Source: `memory/CHANGELOG.md`
   - Kept broad Vulkan `ml-linear` false; the narrow bit does not imply
     full-family ML linear support, expression/view-backed lowering, mixed
     devices, or broader dtype coverage.
-  - Froze `ml/linear/batched-reduce` as the public surface for the next
+  - Froze `ml/linear-batched-reduce` as the public surface for the next
     Vulkan `Float32` batched-reduction lane under `ML-VK-010-004-001`.
   - Added regressions for Vulkan bias shape mismatch and mapped bias
     expression preservation.
@@ -255,12 +255,12 @@ Source: `memory/CHANGELOG.md`
     `pass=1622 fail=0`, file-size gate, `git diff --check`, and primitive
     docs parity.
 
-- 2026-04-20 01:35 CEST: Vulkan `ml/linear/batched-reduce` checkpoint:
-  - Registered `ml/linear/batched-reduce` in runtime and AOT primitive lookup.
+- 2026-04-20 01:35 CEST: Vulkan `ml/linear-batched-reduce` checkpoint:
+  - Registered `ml/linear-batched-reduce` in runtime and AOT primitive lookup.
   - The new public surface shares `ml/linear` CPU dense `Float64`/`Float32`
     evaluation and the narrow direct concrete Vulkan `Float32` route through
     Tensor `contract` plus optional bias `map`.
-  - `ml/linear/batched-reduce` requires input rank >= 2. Rank-1 vectors raise
+  - `ml/linear-batched-reduce` requires input rank >= 2. Rank-1 vectors raise
     `tensor/shape-mismatch`; mixed devices, unsupported layouts, and
     view-backed Vulkan operands remain fail-closed with backend diagnostics
     before any CPU fallback.
@@ -273,7 +273,7 @@ Source: `memory/CHANGELOG.md`
   - Implemented the `ML-VK-010-005` implementation branch for Vulkan-only
     expressions that existing Tensor realization lowers to concrete dense
     Vulkan `Float32` storage.
-  - `ml/linear` and `ml/linear/batched-reduce` now accept direct concrete
+  - `ml/linear` and `ml/linear-batched-reduce` now accept direct concrete
     tensors, supported Vulkan map/contract materialization, and Vulkan
     transpose views before dispatching the existing `contract` plus optional
     bias `map` route.
@@ -285,7 +285,7 @@ Source: `memory/CHANGELOG.md`
     `pass=1637 fail=0`.
 
 - 2026-04-20 02:52 CEST: Vulkan `Float64` `ml/linear` checkpoint:
-  - Widened the narrow Vulkan `ml/linear` and `ml/linear/batched-reduce`
+  - Widened the narrow Vulkan `ml/linear` and `ml/linear-batched-reduce`
     path from Float32-only to same-dtype `Float64` or `Float32`.
   - Optional Vulkan bias add now passes the actual input/result dtype into the
     existing broadcast `map +` route instead of hard-coding Float32.

@@ -1,6 +1,6 @@
 module main;
 
-const String[233] AOT_RUNTIME_LISP_SOURCES_PART3 = {
+const String[236] AOT_RUNTIME_LISP_SOURCES_PART3 = {
     "src/lisp/prim_ffi_async.c3",
     "src/lisp/prim_ffi_callback.c3",
     "src/lisp/prim_math_arithmetic.c3",
@@ -15,6 +15,8 @@ const String[233] AOT_RUNTIME_LISP_SOURCES_PART3 = {
     "src/lisp/prim_ml_autograd_vulkan_broadcast.c3",
     "src/lisp/prim_ml_gradient_clip.c3",
     "src/lisp/prim_ml_gradient_clip_vulkan.c3",
+    "src/lisp/prim_ml_visualization.c3",
+    "src/lisp/prim_ml_plot_extensions.c3",
     "src/lisp/prim_ml_optimizer.c3",
     "src/lisp/prim_ml_optimizer_cuda.c3",
     "src/lisp/prim_ml_optimizer_checkpoint.c3",
@@ -96,6 +98,7 @@ const String[233] AOT_RUNTIME_LISP_SOURCES_PART3 = {
     "src/lisp/prim_tensor_vulkan_map_direct.c3",
     "src/lisp/prim_ui_ftxui.c3",
     "src/lisp/prim_ui_ftxui_helpers.c3",
+    "src/lisp/prim_ui_ftxui_plot_lowering.c3",
     "src/lisp/prim_ui_ftxui_lowering.c3",
     "src/lisp/primitives_core.c3",
     "src/lisp/primitives_coroutine.c3",

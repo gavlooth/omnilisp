@@ -89,6 +89,19 @@ fn Value* Env.lookup(Env* self, SymbolId name) {
     return null;  // Not found
 }
 
+fn Value* Env.lookup_local(Env* self, SymbolId name) {
+    if (self == null || name == INVALID_SYMBOL_ID) return null;
+    if (self.hash_table != null) {
+        usz idx = self.hash_lookup(name);
+        if (idx != ~(usz)0) return self.bindings[idx].value;
+        return null;
+    }
+    for (usz i = 0; i < self.binding_count; i++) {
+        if (self.bindings[i].name == name) return self.bindings[i].value;
+    }
+    return null;
+}
+
 fn void? Env.set(Env* self, SymbolId name, Value* value) {
     if (self == null || name == INVALID_SYMBOL_ID) return UNBOUND_VARIABLE~;
     if (self.hash_table != null) {
@@ -114,4 +127,3 @@ fn Env* Env.extend(Env* self, Interp* interp, SymbolId name, Value* value) {
     if (!new_env.define(name, value)) return null;
     return new_env;
 }
-

@@ -103,6 +103,10 @@ the canonical reader-tag attribute:
 (export-from math-utils 'all)
 (export-from math-utils (add))
 (export-from ui.nodes (text))
+
+;; Core scientific modules are prebound.
+(math.erf 1.0)
+(stats.normal-cdf 0.0)
 ```
 
 ### Features
@@ -113,4 +117,7 @@ the canonical reader-tag attribute:
 - Circular import detection
 - Method extensions are always global (dispatch is cross-cutting)
 - `module` / `import` / `export-from` return `Void` on success
+- `math` and `stats` are always-available core scientific module values. Use
+  dotted access such as `math.erf` and `stats.normal-cdf`; old slash scientific
+  spellings are transitional single-symbol primitives.
 - Compiler backend (`AOT`) currently treats module surfaces as static lowering: module bodies are inlined, while `import` / `export-from` compile to command-style `Void` no-ops

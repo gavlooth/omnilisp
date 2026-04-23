@@ -69,7 +69,7 @@ fn Value* tensor_backend_entry(
     SymbolId placement,
     SymbolId reason
 ) {
-    Value* entry = make_hashmap_checked(interp, 32, "tensor-backends: out of memory");
+    Value* entry = make_hashmap_checked(interp, 64, "tensor-backends: out of memory");
     if (entry == null || entry.tag == ERROR) return entry;
     Value* available_value = available ? make_symbol(interp, interp.sym_true) : make_symbol(interp, interp.sym_false);
     if (!hashmap_set_checked(entry.hashmap_val, make_symbol(interp, interp.symbols.intern("name")), make_symbol(interp, name), interp) ||
@@ -90,6 +90,31 @@ fn Value* tensor_backend_set_bool_field(Interp* interp, Value* entry, char[] fie
     if (!hashmap_set_checked(entry.hashmap_val, make_symbol(interp, interp.symbols.intern(field_name)), field_value, interp)) {
         return tensor_runtime_raise(interp, "tensor-backends: out of memory while building backend entry");
     }
+    return null;
+}
+
+fn Value* tensor_backend_set_scientific_capability_fields(
+    Interp* interp,
+    Value* entry,
+    bool math_elementary_float64,
+    bool math_elementary_float32,
+    bool math_error_function_float64,
+    bool math_error_function_float32,
+    bool stats_distribution_float64,
+    bool stats_distribution_float32
+) {
+    Value* err = tensor_backend_set_bool_field(interp, entry, "math-elementary-float64", math_elementary_float64);
+    if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, entry, "math-elementary-float32", math_elementary_float32);
+    if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, entry, "math-error-function-float64", math_error_function_float64);
+    if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, entry, "math-error-function-float32", math_error_function_float32);
+    if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, entry, "stats-distribution-float64", stats_distribution_float64);
+    if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, entry, "stats-distribution-float32", stats_distribution_float32);
+    if (err != null) return err;
     return null;
 }
 
@@ -296,6 +321,17 @@ fn Value* prim_tensor_backends(Value*[] args, Env* env, Interp* interp) {
     if (err != null) return err;
     err = tensor_backend_set_bool_field(interp, vulkan_entry, "stats-normal-float32", vulkan_float32_available);
     if (err != null) return err;
+    err = tensor_backend_set_scientific_capability_fields(
+        interp,
+        vulkan_entry,
+        false,
+        vulkan_float32_available,
+        false,
+        vulkan_float32_available,
+        vulkan_float64_available,
+        vulkan_float32_available
+    );
+    if (err != null) return err;
     err = tensor_backend_set_bool_field(interp, vulkan_entry, "rounding-big-integer", vulkan_rounding_i64_available);
     if (err != null) return err;
     err = tensor_backend_set_ml_capability_fields(
@@ -368,6 +404,8 @@ fn Value* prim_tensor_backends(Value*[] args, Env* env, Interp* interp) {
     if (err != null) return err;
     err = tensor_backend_set_bool_field(interp, cublas_entry, "stats-normal-float32", false);
     if (err != null) return err;
+    err = tensor_backend_set_scientific_capability_fields(interp, cublas_entry, false, false, false, false, false, false);
+    if (err != null) return err;
     err = tensor_backend_set_bool_field(interp, cublas_entry, "matrix-hermitian-eigen-complex128", false);
     if (err != null) return err;
     err = tensor_backend_set_bool_field(interp, cublas_entry, "matrix-hermitian-eigen-complex64", false);
@@ -432,6 +470,17 @@ fn Value* prim_tensor_backends(Value*[] args, Env* env, Interp* interp) {
     err = tensor_backend_set_bool_field(interp, cuda_entry, "stats-normal-float64", cuda_scientific_map_available);
     if (err != null) return err;
     err = tensor_backend_set_bool_field(interp, cuda_entry, "stats-normal-float32", cuda_scientific_map_available);
+    if (err != null) return err;
+    err = tensor_backend_set_scientific_capability_fields(
+        interp,
+        cuda_entry,
+        cuda_scientific_map_available,
+        cuda_scientific_map_available,
+        cuda_scientific_map_available,
+        cuda_scientific_map_available,
+        cuda_scientific_map_available,
+        cuda_scientific_map_available
+    );
     if (err != null) return err;
     err = tensor_backend_set_bool_field(interp, cuda_entry, "rounding-big-integer", cuda_rounding_i64_available);
     if (err != null) return err;
@@ -501,6 +550,8 @@ fn Value* prim_tensor_backends(Value*[] args, Env* env, Interp* interp) {
     err = tensor_backend_set_bool_field(interp, cpu_entry, "stats-normal-float64", true);
     if (err != null) return err;
     err = tensor_backend_set_bool_field(interp, cpu_entry, "stats-normal-float32", true);
+    if (err != null) return err;
+    err = tensor_backend_set_scientific_capability_fields(interp, cpu_entry, true, true, true, true, true, true);
     if (err != null) return err;
     err = tensor_backend_set_ml_capability_fields(interp, cpu_entry, true, true, true, true, true, true, true, false, true, false, true, false, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true);
     if (err != null) return err;

@@ -238,6 +238,44 @@ fn void run_advanced_parser_export_from_edge_tests(Interp* interp, int* pass, in
         pass, fail);
 }
 
+fn void run_advanced_core_scientific_module_facade_tests(Interp* interp, int* pass, int* fail) {
+    test_truthy(interp, "math and stats core module facades are prebound",
+        "(and (procedure? math.erf) (procedure? stats.normal-cdf) (= (math.gcd 12 8) 4) (< (abs (- (stats.normal-cdf 0.0) 0.5)) 0.000001))",
+        pass, fail);
+
+    setup(interp, "(import math)");
+    setup(interp, "(import stats)");
+    setup(interp, "(import math (erf 'as module-erf))");
+
+    test_truthy(interp, "math module facade exports existing scalar primitives",
+        "(and (procedure? math.erf) (procedure? math.sin) (= (math.gcd 12 8) 4) (= (math.lcm 12 8) 24) (< (abs (- (math.erf 1.0) (math.erf 1.0))) 0.000001) (< (abs (- (math.erfc 1.0) (math.erfc 1.0))) 0.000001))",
+        pass, fail);
+    test_truthy(interp, "math module facade preserves Tensor unary behavior",
+        "(let (out (math.sin (Tensor Float64 [1] [0.0]))) (and (= (String (dtype out)) \"Float64\") (< (abs (ref out [0])) 0.000001)))",
+        pass, fail);
+    test_truthy(interp, "math module facade works as map callable",
+        "(let (out (map math.erf (Tensor Float64 [1] [1.0]))) (< (abs (- (ref out [0]) 0.842700792949715)) 0.000001))",
+        pass, fail);
+    test_truthy(interp, "math module import does not replace global math fallbacks",
+        "(and (= (abs -2) 2) (< (abs -0.25) 0.26))",
+        pass, fail);
+    test_truthy(interp, "math module selective import is explicit",
+        "(< (abs (- (module-erf 1.0) (math.erf 1.0))) 0.000001)",
+        pass, fail);
+    test_truthy(interp, "stats module facade exports normal distribution primitives",
+        "(and (procedure? stats.normal-cdf) (procedure? stats.normal-quantile) (< (abs (- (stats.normal-cdf 0.0) 0.5)) 0.000001) (< (abs (stats.normal-quantile 0.5)) 0.000001))",
+        pass, fail);
+    test_truthy(interp, "stats module facade preserves Tensor unary behavior",
+        "(let (out (stats.normal-cdf (Tensor Float32 [1] [0.0]))) (and (= (String (dtype out)) \"Float32\") (< (abs (- (ref out [0]) 0.5)) 0.0001)))",
+        pass, fail);
+    test_error(interp, "old slash math special function spelling is removed",
+        "(math/erf 1.0)",
+        pass, fail);
+    test_error(interp, "old slash stats distribution spelling is removed",
+        "(stats/normal-cdf 0.0)",
+        pass, fail);
+}
+
 fn void run_advanced_parser_import_edge_tests(Interp* interp, int* pass, int* fail) {
     test_error_contains(interp,
         "parser import old :all rejected",
@@ -424,6 +462,7 @@ fn void run_advanced_module_system_tests(Interp* interp, int* pass, int* fail) {
     run_advanced_module_selective_rename_tests(interp, pass, fail);
     run_advanced_module_all_dependency_tests(interp, pass, fail);
     run_advanced_module_reexport_shorthand_tests(interp, pass, fail);
+    run_advanced_core_scientific_module_facade_tests(interp, pass, fail);
     run_advanced_parser_import_edge_tests(interp, pass, fail);
     run_advanced_parser_export_from_edge_tests(interp, pass, fail);
     run_advanced_parser_module_edge_tests(interp, pass, fail);

@@ -149,6 +149,7 @@ fn FfiHandle* make_ffi_box(void* handle, char[] name, FfiHandleFinalizer finaliz
 
 fn void ffi_handle_retain(FfiHandle* box) {
     if (box == null) return;
+    if (box.refcount == uint.max) return;
     box.refcount++;
 }
 

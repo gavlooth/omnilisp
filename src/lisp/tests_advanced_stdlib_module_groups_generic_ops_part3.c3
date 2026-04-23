@@ -255,53 +255,53 @@ fn void run_advanced_collections_generic_ops_part3(Interp* interp, int* pass, in
     test_str_val(interp, "log10 lazy BigComplex tensor realizes source",
         "(String (ref (log10 (map + (Tensor BigComplex [1] [(BigComplex 0 0)]) (BigComplex 1 0))) [0]))",
         "0+0i", pass, fail);
-    test_truthy(interp, "math/erf Float64 tensor",
-        "(< (abs (- (ref (math/erf (Tensor Float64 [1] [1.0])) [0]) 0.842700792949715)) 0.000001)", pass, fail);
-    test_truthy(interp, "math/erfc Float32 tensor preserves dtype",
-        "(let (out (math/erfc (Tensor Float32 [1] [1.0]))) (and (= (String (dtype out)) \"Float32\") (< (abs (- (ref out [0]) 0.15729921)) 0.0001)))", pass, fail);
-    test_eq_double(interp, "math/erf BigInteger tensor returns Float64 tensor",
-        "(ref (math/erf (Tensor BigInteger [1] [0])) [0])", 0.0, pass, fail);
-    test_str_val(interp, "math/erfc BigFloat tensor preserves dtype",
-        "(String (ref (math/erfc (Tensor BigFloat [1] [(BigFloat \"0\")])) [0]))",
+    test_truthy(interp, "math.erf Float64 tensor",
+        "(< (abs (- (ref (math.erf (Tensor Float64 [1] [1.0])) [0]) 0.842700792949715)) 0.000001)", pass, fail);
+    test_truthy(interp, "math.erfc Float32 tensor preserves dtype",
+        "(let (out (math.erfc (Tensor Float32 [1] [1.0]))) (and (= (String (dtype out)) \"Float32\") (< (abs (- (ref out [0]) 0.15729921)) 0.0001)))", pass, fail);
+    test_eq_double(interp, "math.erf BigInteger tensor returns Float64 tensor",
+        "(ref (math.erf (Tensor BigInteger [1] [0])) [0])", 0.0, pass, fail);
+    test_str_val(interp, "math.erfc BigFloat tensor preserves dtype",
+        "(String (ref (math.erfc (Tensor BigFloat [1] [(BigFloat \"0\")])) [0]))",
         "1", pass, fail);
-    test_error_contains(interp, "math/erf BigComplex tensor rejected",
-        "(math/erf (Tensor BigComplex [1] [(BigComplex 1 0)]))",
+    test_error_contains(interp, "math.erf BigComplex tensor rejected",
+        "(math.erf (Tensor BigComplex [1] [(BigComplex 1 0)]))",
         "math: tensor dtype is not supported for this operation", pass, fail);
-    test_truthy(interp, "stats/normal-cdf Float64 tensor",
-        "(< (abs (- (ref (stats/normal-cdf (Tensor Float64 [1] [1.0])) [0]) 0.841344746068543)) 0.000001)", pass, fail);
-    test_truthy(interp, "stats/normal-cdf Float32 tensor preserves dtype",
-        "(let (out (stats/normal-cdf (Tensor Float32 [1] [0.0]))) (and (= (String (dtype out)) \"Float32\") (< (abs (- (ref out [0]) 0.5)) 0.0001)))", pass, fail);
-    test_eq_double(interp, "stats/normal-cdf BigInteger tensor returns Float64 tensor",
-        "(ref (stats/normal-cdf (Tensor BigInteger [1] [0])) [0])", 0.5, pass, fail);
-    test_str_val(interp, "stats/normal-cdf BigFloat tensor preserves dtype",
-        "(String (ref (stats/normal-cdf (Tensor BigFloat [1] [(BigFloat \"0\")])) [0]))",
+    test_truthy(interp, "stats.normal-cdf Float64 tensor",
+        "(< (abs (- (ref (stats.normal-cdf (Tensor Float64 [1] [1.0])) [0]) 0.841344746068543)) 0.000001)", pass, fail);
+    test_truthy(interp, "stats.normal-cdf Float32 tensor preserves dtype",
+        "(let (out (stats.normal-cdf (Tensor Float32 [1] [0.0]))) (and (= (String (dtype out)) \"Float32\") (< (abs (- (ref out [0]) 0.5)) 0.0001)))", pass, fail);
+    test_eq_double(interp, "stats.normal-cdf BigInteger tensor returns Float64 tensor",
+        "(ref (stats.normal-cdf (Tensor BigInteger [1] [0])) [0])", 0.5, pass, fail);
+    test_str_val(interp, "stats.normal-cdf BigFloat tensor preserves dtype",
+        "(String (ref (stats.normal-cdf (Tensor BigFloat [1] [(BigFloat \"0\")])) [0]))",
         "0.5", pass, fail);
-    test_error_contains(interp, "stats/normal-cdf BigComplex tensor rejected",
-        "(stats/normal-cdf (Tensor BigComplex [1] [(BigComplex 1 0)]))",
+    test_error_contains(interp, "stats.normal-cdf BigComplex tensor rejected",
+        "(stats.normal-cdf (Tensor BigComplex [1] [(BigComplex 1 0)]))",
         "math: tensor dtype is not supported for this operation", pass, fail);
-    test_eq_double(interp, "stats/normal-cdf lazy Float64 tensor realizes source",
-        "(ref (stats/normal-cdf (map + (Tensor Float64 [1] [0.0]) 0.0)) [0])", 0.5, pass, fail);
-    test_truthy(interp, "stats/normal-quantile Float64 tensor",
-        "(< (abs (- (ref (stats/normal-quantile (Tensor Float64 [1] [0.975])) [0]) 1.95996398454005)) 0.000001)", pass, fail);
-    test_truthy(interp, "stats/normal-quantile Float32 tensor preserves dtype",
-        "(let (out (stats/normal-quantile (Tensor Float32 [1] [0.5]))) (and (= (String (dtype out)) \"Float32\") (< (abs (ref out [0])) 0.0001)))", pass, fail);
-    test_error_contains(interp, "stats/normal-quantile Float64 tensor rejects low probability",
-        "(stats/normal-quantile (Tensor Float64 [1] [0.0]))",
-        "stats/normal-quantile: probability must be between 0 and 1", pass, fail);
-    test_error_contains(interp, "stats/normal-quantile Float64 tensor rejects high probability",
-        "(stats/normal-quantile (Tensor Float64 [1] [1.0]))",
-        "stats/normal-quantile: probability must be between 0 and 1", pass, fail);
-    test_error_contains(interp, "stats/normal-quantile BigInteger tensor rejects integer probability",
-        "(stats/normal-quantile (Tensor BigInteger [1] [0]))",
-        "stats/normal-quantile: probability must be between 0 and 1", pass, fail);
-    test_str_val(interp, "stats/normal-quantile BigFloat tensor preserves dtype",
-        "(String (ref (stats/normal-quantile (Tensor BigFloat [1] [(BigFloat \"0.5\")])) [0]))",
+    test_eq_double(interp, "stats.normal-cdf lazy Float64 tensor realizes source",
+        "(ref (stats.normal-cdf (map + (Tensor Float64 [1] [0.0]) 0.0)) [0])", 0.5, pass, fail);
+    test_truthy(interp, "stats.normal-quantile Float64 tensor",
+        "(< (abs (- (ref (stats.normal-quantile (Tensor Float64 [1] [0.975])) [0]) 1.95996398454005)) 0.000001)", pass, fail);
+    test_truthy(interp, "stats.normal-quantile Float32 tensor preserves dtype",
+        "(let (out (stats.normal-quantile (Tensor Float32 [1] [0.5]))) (and (= (String (dtype out)) \"Float32\") (< (abs (ref out [0])) 0.0001)))", pass, fail);
+    test_error_contains(interp, "stats.normal-quantile Float64 tensor rejects low probability",
+        "(stats.normal-quantile (Tensor Float64 [1] [0.0]))",
+        "stats.normal-quantile: probability must be between 0 and 1", pass, fail);
+    test_error_contains(interp, "stats.normal-quantile Float64 tensor rejects high probability",
+        "(stats.normal-quantile (Tensor Float64 [1] [1.0]))",
+        "stats.normal-quantile: probability must be between 0 and 1", pass, fail);
+    test_error_contains(interp, "stats.normal-quantile BigInteger tensor rejects integer probability",
+        "(stats.normal-quantile (Tensor BigInteger [1] [0]))",
+        "stats.normal-quantile: probability must be between 0 and 1", pass, fail);
+    test_str_val(interp, "stats.normal-quantile BigFloat tensor preserves dtype",
+        "(String (ref (stats.normal-quantile (Tensor BigFloat [1] [(BigFloat \"0.5\")])) [0]))",
         "0", pass, fail);
-    test_error_contains(interp, "stats/normal-quantile BigComplex tensor rejected",
-        "(stats/normal-quantile (Tensor BigComplex [1] [(BigComplex 1 0)]))",
+    test_error_contains(interp, "stats.normal-quantile BigComplex tensor rejected",
+        "(stats.normal-quantile (Tensor BigComplex [1] [(BigComplex 1 0)]))",
         "math: tensor dtype is not supported for this operation", pass, fail);
-    test_truthy(interp, "stats/normal-quantile lazy Float64 tensor realizes source",
-        "(< (abs (ref (stats/normal-quantile (map + (Tensor Float64 [1] [0.5]) 0.0)) [0])) 0.000001)", pass, fail);
+    test_truthy(interp, "stats.normal-quantile lazy Float64 tensor realizes source",
+        "(< (abs (ref (stats.normal-quantile (map + (Tensor Float64 [1] [0.5]) 0.0)) [0])) 0.000001)", pass, fail);
     test_eq_double(interp, "pow Float64 tensor scalar",
         "(ref (pow (Tensor Float64 [1] [2.0]) 3.0) [0])", 8.0, pass, fail);
     test_eq_double(interp, "pow scalar Float64 tensor",

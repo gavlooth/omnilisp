@@ -33,108 +33,129 @@ fn void run_advanced_collections_generic_ops_part2(Interp* interp, int* pass, in
     }
     test_truthy(interp, "map vulkan scientific unary Float32 family roundtrips when available",
         "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float32) (and (< (abs (ref (to-device (map sin (to-device (Tensor Float32 [1] [0.0]) 'vulkan)) 'cpu) [0])) 0.0001) (< (abs (- (ref (to-device (map cos (to-device (Tensor Float32 [1] [0.0]) 'vulkan)) 'cpu) [0]) 1.0)) 0.0001) (< (abs (ref (to-device (map tan (to-device (Tensor Float32 [1] [0.0]) 'vulkan)) 'cpu) [0])) 0.0001) (< (abs (ref (to-device (map asin (to-device (Tensor Float32 [1] [0.0]) 'vulkan)) 'cpu) [0])) 0.0001) (< (abs (ref (to-device (map acos (to-device (Tensor Float32 [1] [1.0]) 'vulkan)) 'cpu) [0])) 0.0001) (< (abs (ref (to-device (map atan (to-device (Tensor Float32 [1] [0.0]) 'vulkan)) 'cpu) [0])) 0.0001) (< (abs (ref (to-device (map sinh (to-device (Tensor Float32 [1] [0.0]) 'vulkan)) 'cpu) [0])) 0.0001) (< (abs (- (ref (to-device (map cosh (to-device (Tensor Float32 [1] [0.0]) 'vulkan)) 'cpu) [0]) 1.0)) 0.0001) (< (abs (ref (to-device (map tanh (to-device (Tensor Float32 [1] [0.0]) 'vulkan)) 'cpu) [0])) 0.0001) (< (abs (- (ref (to-device (map exp (to-device (Tensor Float32 [1] [0.0]) 'vulkan)) 'cpu) [0]) 1.0)) 0.0001) (< (abs (ref (to-device (map log (to-device (Tensor Float32 [1] [1.0]) 'vulkan)) 'cpu) [0])) 0.0001) (< (abs (- (ref (to-device (map log10 (to-device (Tensor Float32 [1] [100.0]) 'vulkan)) 'cpu) [0]) 2.0)) 0.0001)) true) true))", pass, fail);
-    test_truthy(interp, "map vulkan stats/normal-cdf Float32 roundtrips when available",
-        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float32) (let (out (map stats/normal-cdf (to-device (Tensor Float32 [1] [1.0]) 'vulkan))) (and (= (device out) 'vulkan) (= (String (dtype out)) \"Float32\") (< (abs (- (ref (to-device out 'cpu) [0]) 0.8413447)) 0.0002))) true) true))", pass, fail);
-    test_truthy(interp, "map vulkan stats/normal-cdf Float64 preserves placement and values when available",
-        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float64) (let (out (map stats/normal-cdf (to-device (Tensor Float64 [3] [-1.0 0.0 1.0]) 'vulkan))) (let (cpu (to-device out 'cpu)) (and (= (device out) 'vulkan) (= (String (dtype out)) \"Float64\") (< (abs (- (ref cpu [0]) 0.158655253931457)) 0.000001) (< (abs (- (ref cpu [1]) 0.5)) 0.000001) (< (abs (- (ref cpu [2]) 0.841344746068543)) 0.000001)))) true) true))", pass, fail);
+    test_truthy(interp, "map vulkan stats.normal-cdf Float32 roundtrips when available",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float32) (let (out (map stats.normal-cdf (to-device (Tensor Float32 [1] [1.0]) 'vulkan))) (and (= (device out) 'vulkan) (= (String (dtype out)) \"Float32\") (< (abs (- (ref (to-device out 'cpu) [0]) 0.8413447)) 0.0002))) true) true))", pass, fail);
+    test_truthy(interp, "map vulkan stats.normal-cdf Float64 preserves placement and values when available",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float64) (let (out (map stats.normal-cdf (to-device (Tensor Float64 [3] [-1.0 0.0 1.0]) 'vulkan))) (let (cpu (to-device out 'cpu)) (and (= (device out) 'vulkan) (= (String (dtype out)) \"Float64\") (< (abs (- (ref cpu [0]) 0.158655253931457)) 0.000001) (< (abs (- (ref cpu [1]) 0.5)) 0.000001) (< (abs (- (ref cpu [2]) 0.841344746068543)) 0.000001)))) true) true))", pass, fail);
+    test_truthy(interp, "map vulkan math.erf Float32 preserves placement and dtype when available",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float32) (let (out (map math.erf (to-device (Tensor Float32 [2] [0.0 1.0]) 'vulkan))) (let (cpu (to-device out 'cpu)) (and (= (device out) 'vulkan) (= (String (dtype out)) \"Float32\") (< (abs (ref cpu [0])) 0.0001) (< (abs (- (ref cpu [1]) 0.8427008)) 0.0002)))) true) true))", pass, fail);
+    test_truthy(interp, "map vulkan math.erfc Float32 preserves placement and dtype when available",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float32) (let (out (map math.erfc (to-device (Tensor Float32 [2] [0.0 1.0]) 'vulkan))) (let (cpu (to-device out 'cpu)) (and (= (device out) 'vulkan) (= (String (dtype out)) \"Float32\") (< (abs (- (ref cpu [0]) 1.0)) 0.0001) (< (abs (- (ref cpu [1]) 0.15729921)) 0.0002)))) true) true))", pass, fail);
+    {
+        char[] name = "map vulkan math.erf Float64 remains fail-closed";
+        EvalResult guard = run("(let (vulkan-backend (ref (tensor-backends) 3)) (and (ref vulkan-backend 'available) (ref vulkan-backend 'float64)))", interp);
+        bool enabled = !guard.error.has_error && !is_nil(guard.value) && !(is_symbol(guard.value) && guard.value.sym_val == interp.sym_false);
+        if (enabled) {
+            test_error_contains(interp, name,
+                "(map math.erf (to-device (Tensor Float64 [1] [1.0]) 'vulkan))",
+                "map: Vulkan currently supports dense row-major Float64 and Float32 unary operations", pass, fail);
+        } else {
+            emit_pass(name);
+            (*pass)++;
+        }
+    }
     test_truthy(interp, "sin vulkan tensor roundtrips when available",
         "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float32) (< (abs (ref (to-device (sin (to-device (Tensor Float32 [1] [0.0]) 'vulkan)) 'cpu) [0])) 0.0001) true) true))", pass, fail);
     test_truthy(interp, "direct Float32 log10 vulkan tensor preserves placement and dtype when available",
         "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float32) (let (out (log10 (to-device (Tensor Float32 [1] [100.0]) 'vulkan))) (and (= (device out) 'vulkan) (= (String (dtype out)) \"Float32\") (< (abs (- (ref (to-device out 'cpu) [0]) 2.0)) 0.0001))) true) true))", pass, fail);
-    test_truthy(interp, "direct stats/normal-cdf vulkan Float32 preserves placement and dtype when available",
-        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float32) (let (out (stats/normal-cdf (to-device (Tensor Float32 [1] [0.0]) 'vulkan))) (and (= (device out) 'vulkan) (= (String (dtype out)) \"Float32\") (< (abs (- (ref (to-device out 'cpu) [0]) 0.5)) 0.0002))) true) true))", pass, fail);
-    test_truthy(interp, "direct stats/normal-cdf vulkan Float64 preserves placement and dtype when available",
-        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float64) (let (out (stats/normal-cdf (to-device (Tensor Float64 [1] [1.0]) 'vulkan))) (and (= (device out) 'vulkan) (= (String (dtype out)) \"Float64\") (< (abs (- (ref (to-device out 'cpu) [0]) 0.841344746068543)) 0.000001))) true) true))", pass, fail);
-    test_truthy(interp, "direct stats/normal-quantile vulkan Float32 preserves placement dtype and values when available",
-        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float32) (let (out (stats/normal-quantile (to-device (Tensor Float32 [3] [0.025 0.5 0.975]) 'vulkan))) (let (cpu (to-device out 'cpu)) (and (= (device out) 'vulkan) (= (String (dtype out)) \"Float32\") (< (abs (- (ref cpu [0]) -1.959964)) 0.0005) (< (abs (ref cpu [1])) 0.0002) (< (abs (- (ref cpu [2]) 1.959964)) 0.0005)))) true) true))", pass, fail);
-    test_truthy(interp, "map vulkan stats/normal-quantile Float32 preserves placement dtype and values when available",
-        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float32) (let (out (map stats/normal-quantile (to-device (Tensor Float32 [3] [0.025 0.5 0.975]) 'vulkan))) (let (cpu (to-device out 'cpu)) (and (= (device out) 'vulkan) (= (String (dtype out)) \"Float32\") (< (abs (- (ref cpu [0]) -1.959964)) 0.0005) (< (abs (ref cpu [1])) 0.0002) (< (abs (- (ref cpu [2]) 1.959964)) 0.0005)))) true) true))", pass, fail);
+    test_truthy(interp, "direct stats.normal-cdf vulkan Float32 preserves placement and dtype when available",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float32) (let (out (stats.normal-cdf (to-device (Tensor Float32 [1] [0.0]) 'vulkan))) (and (= (device out) 'vulkan) (= (String (dtype out)) \"Float32\") (< (abs (- (ref (to-device out 'cpu) [0]) 0.5)) 0.0002))) true) true))", pass, fail);
+    test_truthy(interp, "direct stats.normal-cdf vulkan Float64 preserves placement and dtype when available",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float64) (let (out (stats.normal-cdf (to-device (Tensor Float64 [1] [1.0]) 'vulkan))) (and (= (device out) 'vulkan) (= (String (dtype out)) \"Float64\") (< (abs (- (ref (to-device out 'cpu) [0]) 0.841344746068543)) 0.000001))) true) true))", pass, fail);
+    test_truthy(interp, "direct math.erf vulkan Float32 preserves placement and dtype when available",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float32) (let (out (math.erf (to-device (Tensor Float32 [1] [1.0]) 'vulkan))) (and (= (device out) 'vulkan) (= (String (dtype out)) \"Float32\") (< (abs (- (ref (to-device out 'cpu) [0]) 0.8427008)) 0.0002))) true) true))", pass, fail);
+    test_truthy(interp, "direct math.erfc vulkan Float32 preserves placement and dtype when available",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float32) (let (out (math.erfc (to-device (Tensor Float32 [1] [1.0]) 'vulkan))) (and (= (device out) 'vulkan) (= (String (dtype out)) \"Float32\") (< (abs (- (ref (to-device out 'cpu) [0]) 0.15729921)) 0.0002))) true) true))", pass, fail);
+    test_truthy(interp, "direct stats.normal-quantile vulkan Float32 preserves placement dtype and values when available",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float32) (let (out (stats.normal-quantile (to-device (Tensor Float32 [3] [0.025 0.5 0.975]) 'vulkan))) (let (cpu (to-device out 'cpu)) (and (= (device out) 'vulkan) (= (String (dtype out)) \"Float32\") (< (abs (- (ref cpu [0]) -1.959964)) 0.0005) (< (abs (ref cpu [1])) 0.0002) (< (abs (- (ref cpu [2]) 1.959964)) 0.0005)))) true) true))", pass, fail);
+    test_truthy(interp, "map vulkan stats.normal-quantile Float32 preserves placement dtype and values when available",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float32) (let (out (map stats.normal-quantile (to-device (Tensor Float32 [3] [0.025 0.5 0.975]) 'vulkan))) (let (cpu (to-device out 'cpu)) (and (= (device out) 'vulkan) (= (String (dtype out)) \"Float32\") (< (abs (- (ref cpu [0]) -1.959964)) 0.0005) (< (abs (ref cpu [1])) 0.0002) (< (abs (- (ref cpu [2]) 1.959964)) 0.0005)))) true) true))", pass, fail);
     {
-        char[] name = "direct stats/normal-quantile vulkan Float32 rejects zero probability without CPU fallback";
+        char[] name = "direct stats.normal-quantile vulkan Float32 rejects zero probability without CPU fallback";
         EvalResult guard = run("(let (vulkan-backend (ref (tensor-backends) 3)) (and (ref vulkan-backend 'available) (ref vulkan-backend 'float32)))", interp);
         bool enabled = !guard.error.has_error && !is_nil(guard.value) && !(is_symbol(guard.value) && guard.value.sym_val == interp.sym_false);
         if (enabled) {
             test_error_contains(interp, name,
-                "(stats/normal-quantile (to-device (Tensor Float32 [1] [0.0]) 'vulkan))",
-                "stats/normal-quantile: probability must be between 0 and 1", pass, fail);
+                "(stats.normal-quantile (to-device (Tensor Float32 [1] [0.0]) 'vulkan))",
+                "stats.normal-quantile: probability must be between 0 and 1", pass, fail);
         } else {
             emit_pass(name);
             (*pass)++;
         }
     }
     {
-        char[] name = "map vulkan stats/normal-quantile Float32 rejects one probability without CPU fallback";
+        char[] name = "map vulkan stats.normal-quantile Float32 rejects one probability without CPU fallback";
         EvalResult guard = run("(let (vulkan-backend (ref (tensor-backends) 3)) (and (ref vulkan-backend 'available) (ref vulkan-backend 'float32)))", interp);
         bool enabled = !guard.error.has_error && !is_nil(guard.value) && !(is_symbol(guard.value) && guard.value.sym_val == interp.sym_false);
         if (enabled) {
             test_error_contains(interp, name,
-                "(map stats/normal-quantile (to-device (Tensor Float32 [1] [1.0]) 'vulkan))",
-                "stats/normal-quantile: probability must be between 0 and 1", pass, fail);
+                "(map stats.normal-quantile (to-device (Tensor Float32 [1] [1.0]) 'vulkan))",
+                "stats.normal-quantile: probability must be between 0 and 1", pass, fail);
         } else {
             emit_pass(name);
             (*pass)++;
         }
     }
     {
-        char[] name = "direct stats/normal-quantile vulkan Float32 rejects vulkan-produced non-finite probability";
+        char[] name = "direct stats.normal-quantile vulkan Float32 rejects vulkan-produced non-finite probability";
         EvalResult guard = run("(let (vulkan-backend (ref (tensor-backends) 3)) (and (ref vulkan-backend 'available) (ref vulkan-backend 'float32)))", interp);
         bool enabled = !guard.error.has_error && !is_nil(guard.value) && !(is_symbol(guard.value) && guard.value.sym_val == interp.sym_false);
         if (enabled) {
             test_error_contains(interp, name,
-                "(stats/normal-quantile (sqrt (to-device (Tensor Float32 [1] [-1.0]) 'vulkan)))",
-                "stats/normal-quantile: expected finite numeric input", pass, fail);
+                "(stats.normal-quantile (sqrt (to-device (Tensor Float32 [1] [-1.0]) 'vulkan)))",
+                "stats.normal-quantile: expected finite numeric input", pass, fail);
         } else {
             emit_pass(name);
             (*pass)++;
         }
     }
     {
-        char[] name = "direct stats/normal-quantile vulkan Float32 gives non-finite status priority";
+        char[] name = "direct stats.normal-quantile vulkan Float32 gives non-finite status priority";
         EvalResult guard = run("(let (vulkan-backend (ref (tensor-backends) 3)) (and (ref vulkan-backend 'available) (ref vulkan-backend 'float32)))", interp);
         bool enabled = !guard.error.has_error && !is_nil(guard.value) && !(is_symbol(guard.value) && guard.value.sym_val == interp.sym_false);
         if (enabled) {
             test_error_contains(interp, name,
-                "(stats/normal-quantile (sqrt (to-device (Tensor Float32 [2] [0.0 -1.0]) 'vulkan)))",
-                "stats/normal-quantile: expected finite numeric input", pass, fail);
+                "(stats.normal-quantile (sqrt (to-device (Tensor Float32 [2] [0.0 -1.0]) 'vulkan)))",
+                "stats.normal-quantile: expected finite numeric input", pass, fail);
         } else {
             emit_pass(name);
             (*pass)++;
         }
     }
     {
-        EvalResult support = run("(let (vulkan-backend (ref (tensor-backends) 3)) (if (and (ref vulkan-backend 'available) (ref vulkan-backend 'float64)) (handle (let (out (stats/normal-quantile (to-device (Tensor Float64 [1] [0.5]) 'vulkan))) (and (= (device out) 'vulkan) (= (String (dtype out)) \"Float64\") (< (abs (ref (to-device out 'cpu) [0])) 0.000001))) (raise msg false)) false))", interp);
+        EvalResult support = run("(let (vulkan-backend (ref (tensor-backends) 3)) (if (and (ref vulkan-backend 'available) (ref vulkan-backend 'float64)) (handle (let (out (stats.normal-quantile (to-device (Tensor Float64 [1] [0.5]) 'vulkan))) (and (= (device out) 'vulkan) (= (String (dtype out)) \"Float64\") (< (abs (ref (to-device out 'cpu) [0])) 0.000001))) (raise msg false)) false))", interp);
         bool enabled = !support.error.has_error && !is_nil(support.value) && !(is_symbol(support.value) && support.value.sym_val == interp.sym_false);
         if (enabled) {
-            test_truthy(interp, "direct stats/normal-quantile vulkan Float64 preserves placement dtype and values when available",
-                "(let (out (stats/normal-quantile (to-device (Tensor Float64 [3] [0.025 0.5 0.975]) 'vulkan))) (let (cpu (to-device out 'cpu)) (and (= (device out) 'vulkan) (= (String (dtype out)) \"Float64\") (< (abs (- (ref cpu [0]) -1.95996398454005)) 0.00001) (< (abs (ref cpu [1])) 0.000001) (< (abs (- (ref cpu [2]) 1.95996398454005)) 0.00001))))", pass, fail);
-            test_truthy(interp, "map vulkan stats/normal-quantile Float64 preserves placement dtype and values when available",
-                "(let (out (map stats/normal-quantile (to-device (Tensor Float64 [3] [0.025 0.5 0.975]) 'vulkan))) (let (cpu (to-device out 'cpu)) (and (= (device out) 'vulkan) (= (String (dtype out)) \"Float64\") (< (abs (- (ref cpu [0]) -1.95996398454005)) 0.00001) (< (abs (ref cpu [1])) 0.000001) (< (abs (- (ref cpu [2]) 1.95996398454005)) 0.00001))))", pass, fail);
-            test_error_contains(interp, "direct stats/normal-quantile vulkan Float64 rejects zero probability without CPU fallback",
-                "(stats/normal-quantile (to-device (Tensor Float64 [1] [0.0]) 'vulkan))",
-                "stats/normal-quantile: probability must be between 0 and 1", pass, fail);
-            test_error_contains(interp, "map vulkan stats/normal-quantile Float64 rejects one probability without CPU fallback",
-                "(map stats/normal-quantile (to-device (Tensor Float64 [1] [1.0]) 'vulkan))",
-                "stats/normal-quantile: probability must be between 0 and 1", pass, fail);
-            test_error_contains(interp, "direct stats/normal-quantile vulkan Float64 rejects vulkan-produced non-finite probability",
-                "(stats/normal-quantile (sqrt (to-device (Tensor Float64 [1] [-1.0]) 'vulkan)))",
-                "stats/normal-quantile: expected finite numeric input", pass, fail);
-            test_error_contains(interp, "direct stats/normal-quantile vulkan Float64 gives non-finite status priority",
-                "(stats/normal-quantile (sqrt (to-device (Tensor Float64 [2] [0.0 -1.0]) 'vulkan)))",
-                "stats/normal-quantile: expected finite numeric input", pass, fail);
+            test_truthy(interp, "direct stats.normal-quantile vulkan Float64 preserves placement dtype and values when available",
+                "(let (out (stats.normal-quantile (to-device (Tensor Float64 [3] [0.025 0.5 0.975]) 'vulkan))) (let (cpu (to-device out 'cpu)) (and (= (device out) 'vulkan) (= (String (dtype out)) \"Float64\") (< (abs (- (ref cpu [0]) -1.95996398454005)) 0.00001) (< (abs (ref cpu [1])) 0.000001) (< (abs (- (ref cpu [2]) 1.95996398454005)) 0.00001))))", pass, fail);
+            test_truthy(interp, "map vulkan stats.normal-quantile Float64 preserves placement dtype and values when available",
+                "(let (out (map stats.normal-quantile (to-device (Tensor Float64 [3] [0.025 0.5 0.975]) 'vulkan))) (let (cpu (to-device out 'cpu)) (and (= (device out) 'vulkan) (= (String (dtype out)) \"Float64\") (< (abs (- (ref cpu [0]) -1.95996398454005)) 0.00001) (< (abs (ref cpu [1])) 0.000001) (< (abs (- (ref cpu [2]) 1.95996398454005)) 0.00001))))", pass, fail);
+            test_error_contains(interp, "direct stats.normal-quantile vulkan Float64 rejects zero probability without CPU fallback",
+                "(stats.normal-quantile (to-device (Tensor Float64 [1] [0.0]) 'vulkan))",
+                "stats.normal-quantile: probability must be between 0 and 1", pass, fail);
+            test_error_contains(interp, "map vulkan stats.normal-quantile Float64 rejects one probability without CPU fallback",
+                "(map stats.normal-quantile (to-device (Tensor Float64 [1] [1.0]) 'vulkan))",
+                "stats.normal-quantile: probability must be between 0 and 1", pass, fail);
+            test_error_contains(interp, "direct stats.normal-quantile vulkan Float64 rejects vulkan-produced non-finite probability",
+                "(stats.normal-quantile (sqrt (to-device (Tensor Float64 [1] [-1.0]) 'vulkan)))",
+                "stats.normal-quantile: expected finite numeric input", pass, fail);
+            test_error_contains(interp, "direct stats.normal-quantile vulkan Float64 gives non-finite status priority",
+                "(stats.normal-quantile (sqrt (to-device (Tensor Float64 [2] [0.0 -1.0]) 'vulkan)))",
+                "stats.normal-quantile: expected finite numeric input", pass, fail);
         } else {
             EvalResult guard = run("(let (vulkan-backend (ref (tensor-backends) 3)) (and (ref vulkan-backend 'available) (ref vulkan-backend 'float64)))", interp);
             bool can_check_failclosed = !guard.error.has_error && !is_nil(guard.value) && !(is_symbol(guard.value) && guard.value.sym_val == interp.sym_false);
             if (can_check_failclosed) {
-                test_error_contains(interp, "direct stats/normal-quantile vulkan Float64 remains fail-closed when unavailable",
-                    "(stats/normal-quantile (to-device (Tensor Float64 [1] [0.5]) 'vulkan))",
-                    "stats/normal-quantile: Vulkan currently supports dense row-major Float32 tensors", pass, fail);
-                test_error_contains(interp, "map vulkan stats/normal-quantile Float64 remains fail-closed when unavailable",
-                    "(map stats/normal-quantile (to-device (Tensor Float64 [1] [0.5]) 'vulkan))",
-                    "stats/normal-quantile: Vulkan currently supports dense row-major Float32 tensors", pass, fail);
+                test_error_contains(interp, "direct stats.normal-quantile vulkan Float64 remains fail-closed when unavailable",
+                    "(stats.normal-quantile (to-device (Tensor Float64 [1] [0.5]) 'vulkan))",
+                    "stats.normal-quantile: Vulkan currently supports dense row-major Float32 tensors", pass, fail);
+                test_error_contains(interp, "map vulkan stats.normal-quantile Float64 remains fail-closed when unavailable",
+                    "(map stats.normal-quantile (to-device (Tensor Float64 [1] [0.5]) 'vulkan))",
+                    "stats.normal-quantile: Vulkan currently supports dense row-major Float32 tensors", pass, fail);
             } else {
-                emit_pass("direct stats/normal-quantile vulkan Float64 remains fail-closed when unavailable");
+                emit_pass("direct stats.normal-quantile vulkan Float64 remains fail-closed when unavailable");
                 (*pass)++;
-                emit_pass("map vulkan stats/normal-quantile Float64 remains fail-closed when unavailable");
+                emit_pass("map vulkan stats.normal-quantile Float64 remains fail-closed when unavailable");
                 (*pass)++;
             }
         }

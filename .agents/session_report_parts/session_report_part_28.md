@@ -349,7 +349,7 @@ Source: `.agents/SESSION_REPORT.md`
   - Added `ml-linear-direct-float32` to `tensor-backends` so CPU reports true
     and Vulkan reports the narrow bit only when Vulkan `Float32` is available.
   - Kept broad Vulkan `ml-linear` false until the full family ships.
-  - Froze `ml/linear/batched-reduce` as the public batched-reduction surface.
+  - Froze `ml/linear-batched-reduce` as the public batched-reduction surface.
   - Added Vulkan `ml/linear` regressions for bias shape mismatch and mapped
     bias expression preservation.
 - Commands run:
@@ -364,7 +364,7 @@ Source: `.agents/SESSION_REPORT.md`
   - File-size gate reports no tracked text files above 700 LOC.
 - Current best recommendation / checkpoint:
   - Continue with `ML-VK-010-004-001`: implement Vulkan `Float32`
-    `ml/linear/batched-reduce` coverage without hidden CPU fallback.
+    `ml/linear-batched-reduce` coverage without hidden CPU fallback.
 - Unresolved issues:
   - Full bounded-container suite was not run.
   - Vulkan `Float64` `ml/linear`, reducer kernels, and broader view-backed
@@ -384,11 +384,11 @@ Source: `.agents/SESSION_REPORT.md`
   - `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part8.c3`
   - `docs/todo_parts/todo_part_14.md`
 - Code or configuration changes made:
-  - Registered `ml/linear/batched-reduce` in runtime and AOT primitive lookup.
+  - Registered `ml/linear-batched-reduce` in runtime and AOT primitive lookup.
   - Routed the new surface through shared CPU dense `Float64`/`Float32`
     evaluation and the narrow direct concrete Vulkan `Float32` contract/bias
     path.
-  - Required rank >= 2 for `ml/linear/batched-reduce`; `ml/linear` keeps rank-1
+  - Required rank >= 2 for `ml/linear-batched-reduce`; `ml/linear` keeps rank-1
     vector projection support.
   - Added CPU and Vulkan regressions for dtype, bias, shape, lazy CPU input,
     mixed-device rejection, and view-backed Vulkan rejection.
@@ -424,7 +424,7 @@ Source: `.agents/SESSION_REPORT.md`
   - `docs/plans/vulkan-ml-suite-roadmap-2026-04-19.md`
 - Code or configuration changes made:
   - Added a narrow Vulkan-only expression realization lane for `ml/linear` and
-    `ml/linear/batched-reduce`.
+    `ml/linear-batched-reduce`.
   - Accepted expressions must resolve to concrete dense Vulkan `Float32`
     storage through existing Tensor realization; current coverage includes
     direct concrete tensors, supported Vulkan map/contract materialization, and
@@ -444,7 +444,7 @@ Source: `.agents/SESSION_REPORT.md`
   - Final focused advanced collections suite passed with `pass=1637 fail=0`.
 - Current best recommendation / checkpoint:
   - Continue with `ML-VK-010-006`: add Vulkan `Float64` `ml/linear` and
-    `ml/linear/batched-reduce` via existing `contract` plus bias `map`, or
+    `ml/linear-batched-reduce` via existing `contract` plus bias `map`, or
     record a concrete blocker with fail-closed tests.
 - Unresolved issues:
   - Full bounded-container suite was not run.
@@ -456,7 +456,7 @@ Source: `.agents/SESSION_REPORT.md`
 
 - Objective attempted:
   - Continue the strict `ML-VK-010-006` audit, add concrete TODO checkboxes,
-    and implement the Vulkan `Float64` `ml/linear`/`ml/linear/batched-reduce`
+    and implement the Vulkan `Float64` `ml/linear`/`ml/linear-batched-reduce`
     lane with subagent review.
 - Relevant workspace or target:
   - `/home/christos/Omni`

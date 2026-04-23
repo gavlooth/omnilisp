@@ -328,6 +328,10 @@ For helper-style handler composition in examples and public-facing docs:
 (export-from math-utils (add))
 (export-from math-utils 'all)
 (export-from ui.nodes (text))
+
+;; Core scientific modules are prebound.
+(math.erf 1.0)
+(stats.normal-cdf 0.0)
 ```
 
 - Default import is **qualified-only**: `(import mod)` binds module as value, access via `mod.sym`
@@ -340,9 +344,20 @@ For helper-style handler composition in examples and public-facing docs:
   - symbol (`math-utils`)
   - dotted/path token (`ui.nodes`)
   - string file path (`"path/to/file.omni"`)
+- Slash-qualified primitive names such as `ml/plot`, `matrix/eigenpairs`, and
+  `io/println` are ordinary single symbols, not module targets. They remain
+  available as canonical core-family primitive names; use dotted/path access
+  only for actual module values.
+- Do not use slash names as a substitute for modules when the surface is
+  optional, independently versioned, or large enough that developers need a real
+  import boundary.
 - File-based import: `(import "path/to/file.omni")`
 - Cached: modules loaded only once
 - Circular import detection
+- Core scientific modules are always available as module values. Prefer
+  `math.*` and `stats.*` for scientific math and distribution operations. Old
+  slash spellings such as `math/erf` and `stats/normal-cdf` were removed during
+  pre-alpha cleanup; they are single-symbol parses, not module access.
 - Method extensions are always global (dispatch is cross-cutting)
 - `module` / `import` / `export-from` are command-style forms and return `Void` on successful completion
 - Compiler backend (`AOT`) currently uses static module lowering: module bodies are inlined during compilation, and `import` / `export-from` lower to command-style `Void` no-ops (no runtime module loading/binding pass in generated code)

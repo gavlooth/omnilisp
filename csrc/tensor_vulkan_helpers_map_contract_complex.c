@@ -182,7 +182,7 @@ static int omni_tensor_backend_vulkan_map_complex_launch(
     result = omni_tensor_vulkan_allocate_storage_descriptor_set(device, buffer_descriptors, 5, &descriptors);
     if (result != OMNI_TENSOR_VULKAN_SUCCESS) goto cleanup;
 
-    uint32_t group_count = ((uint32_t)element_count + OMNI_TENSOR_VULKAN_MAP_LOCAL_SIZE - 1u) / OMNI_TENSOR_VULKAN_MAP_LOCAL_SIZE;
+    uint32_t group_count = (uint32_t)((element_count + OMNI_TENSOR_VULKAN_MAP_LOCAL_SIZE - 1u) / OMNI_TENSOR_VULKAN_MAP_LOCAL_SIZE);
     result = omni_tensor_vulkan_record_submit_single_dispatch(
         device,
         queue,

@@ -17,13 +17,20 @@ layout(set = 0, binding = 1, std430) buffer OutputBuffer {
     float output_data[];
 };
 
-float normal_cdf_approx(float value) {
-    float z = value * 0.70710678118654752440;
-    float sign = z < 0.0 ? -1.0 : 1.0;
-    float x = abs(z);
+float erf_approx(float value) {
+    float sign = value < 0.0 ? -1.0 : 1.0;
+    float x = abs(value);
     float t = 1.0 / (1.0 + 0.3275911 * x);
     float erf_approx = 1.0 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * exp(-(x * x));
-    return 0.5 * (1.0 + sign * erf_approx);
+    return sign * erf_approx;
+}
+
+float erfc_approx(float value) {
+    return 1.0 - erf_approx(value);
+}
+
+float normal_cdf_approx(float value) {
+    return 0.5 * (1.0 + erf_approx(value * 0.70710678118654752440));
 }
 
 float apply_unary(float value) {
@@ -77,6 +84,12 @@ float apply_unary(float value) {
     }
     if (params.op == 16) {
         return log(value) / log(10.0);
+    }
+    if (params.op == 17) {
+        return erf_approx(value);
+    }
+    if (params.op == 18) {
+        return erfc_approx(value);
     }
     if (params.op == 19) {
         return normal_cdf_approx(value);

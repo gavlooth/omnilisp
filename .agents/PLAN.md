@@ -14,6 +14,51 @@ The historical content was split mechanically to keep individual files below the
 
 ## Current Checkpoint
 
+Date: 2026-04-23 07:05 CEST
+
+- Active hypothesis:
+  - ML visualization should ship as ordinary declarative data over the existing
+    FTXUI/UI contracts, not via gnuplot/ImageMagick integration.
+- Current approach:
+  - `ml/plot`, `ml/loss-curve`, `ml/scatter`, `ml/bar-chart`, `ml/histogram`,
+    `ml/roc-curve`, and `ml/pr-curve` are implemented as graph-compatible
+    dictionaries with `props.series`, FTXUI backend metadata, typed
+    `props.plot-kind` data, optional non-interactive zoom metadata, and
+    fail-closed validation for malformed data or unsupported backends.
+  - Typed ML graph nodes now lower through a native FTXUI canvas plot shim for
+    multi-series overlays, scatter markers, bars, histogram bars, ROC/PR
+    curves, and heatmaps. Untyped `ui.graph` keeps the original graph callback
+    path.
+  - `ml/heatmap` is implemented as ordinary finite matrix metadata/data and
+    lowers to a colored FTXUI canvas, not an image display primitive.
+  - `ml/tensor-summary` and `ml/confusion-matrix` are implemented as ordinary
+    dictionaries with fail-closed validation and no hidden device-to-CPU
+    fallback.
+  - `ml/export-image` is implemented as a dependency-free PPM writer for
+    CPU Float64/Float32 grayscale/RGB tensors.
+- Validation path:
+  - Build with `c3c build --obj-out obj`.
+  - Run compiler slice for AOT primitive lookup coverage.
+  - Run focused `advanced-collections-module` for runtime primitive behavior.
+- Next checkpoint:
+  - Run final repository consistency checks for the typed plot-family slice.
+- Negative-memory constraints:
+  - Do not add gnuplot as a plotting backend.
+  - Do not use image export as the primary terminal plotting path.
+  - Do not use ImageMagick, gnuplot, or shell-out tooling for the shipped PPM
+    export path.
+  - Do not hide unsupported non-CPU tensor visualization through implicit CPU
+    fallback.
+- Current continuation:
+  - `ML-VIZ-006` is implemented as native FTXUI canvas rendering for the typed
+    plot-family expansion.
+  - The ML visualization plan queue is closed; TODO actionable count should be
+    zero after consistency checks.
+- Agent assignments:
+  - Integration owner: GPT-5 Codex in this session; no sub-agents were used.
+
+## Previous Closure Checkpoint
+
 Date: 2026-04-23
 
 - Live queue is closed: `TODO.md` reports `Current actionable count: 0` and
@@ -263,7 +308,7 @@ Date: 2026-04-20
   - added `ml-linear-direct-float32` to `tensor-backends`;
   - kept broad Vulkan `ml-linear` false while reporting the narrow Vulkan bit
     from the existing Vulkan `Float32` placement capability;
-  - froze `ml/linear/batched-reduce` as the public batched-reduction surface.
+  - froze `ml/linear-batched-reduce` as the public batched-reduction surface.
 - Validation:
   - `c3c build`
   - focused advanced collections suite: `pass=1622 fail=0`
@@ -272,7 +317,7 @@ Date: 2026-04-20
   - `scripts/check_file_size_gate.sh`
 - Next checkpoint:
   - implement `ML-VK-010-004-001`: Vulkan `Float32`
-    `ml/linear/batched-reduce` coverage with no-hidden-CPU-fallback
+    `ml/linear-batched-reduce` coverage with no-hidden-CPU-fallback
     regressions.
 
 ## Active Vulkan ML Batched Reduce Checkpoint
@@ -280,12 +325,12 @@ Date: 2026-04-20
 Date: 2026-04-20
 
 - Audit finding:
-  - `ml/linear/batched-reduce` was frozen in planning but not registered as a
+  - `ml/linear-batched-reduce` was frozen in planning but not registered as a
     runtime or AOT primitive.
   - Public docs and TODO acceptance did not spell out rank, capability, and
     no-fallback diagnostics for the new surface.
 - Implemented checkpoint:
-  - added `ml/linear/batched-reduce` as a callable primitive and AOT lookup;
+  - added `ml/linear-batched-reduce` as a callable primitive and AOT lookup;
   - shared the existing CPU dense `Float64`/`Float32` implementation and narrow
     direct concrete Vulkan `Float32` `contract` plus bias `map` path;
   - required input rank >= 2 for the batched surface while leaving `ml/linear`
@@ -309,7 +354,7 @@ Date: 2026-04-20
   - the current Tensor realization path already supports a narrow safe lane for
     Vulkan-only expressions that materialize to concrete dense Vulkan storage.
 - Implemented checkpoint:
-  - `ml/linear` and `ml/linear/batched-reduce` now resolve Vulkan-only
+  - `ml/linear` and `ml/linear-batched-reduce` now resolve Vulkan-only
     expressions before dispatching the existing Vulkan `Float32` contract path;
   - supported scope is direct concrete tensors, supported Vulkan map/contract
     materialization, and Vulkan transpose views that realize to dense Vulkan
@@ -322,7 +367,7 @@ Date: 2026-04-20
   - focused advanced collections suite: `pass=1637 fail=0`
 - Next checkpoint:
   - implement `ML-VK-010-006`: Vulkan `Float64` `ml/linear` and
-    `ml/linear/batched-reduce`, or record a concrete blocker with fail-closed
+    `ml/linear-batched-reduce`, or record a concrete blocker with fail-closed
     tests.
 
 ## Active Vulkan ML Float64 Linear Checkpoint
@@ -336,7 +381,7 @@ Date: 2026-04-20
   - `tensor-backends` only exposed `ml-linear-direct-float32`, leaving Float64
     discoverability underspecified.
 - Implemented checkpoint:
-  - widened the narrow Vulkan `ml/linear`/`ml/linear/batched-reduce` path to
+  - widened the narrow Vulkan `ml/linear`/`ml/linear-batched-reduce` path to
     same-dtype `Float64` and `Float32`;
   - changed optional bias add to pass the actual result dtype into Vulkan map;
   - added `ml-linear-direct-float64` while keeping broad Vulkan `ml-linear`
@@ -1973,3 +2018,197 @@ Date: 2026-04-21 - Adds non-executing schedule metadata to captured Tensor graph
 - Agent assignments: direct execution in this continuation; no sub-agent was
   spawned because the latest owner request did not explicitly ask for
   subagents in this turn.
+
+## 2026-04-23 06:50 CEST - Slash Surface Naming Audit Plan
+
+- Active hypothesis: slash names should stay for compact, always-present core
+  families, but broad surfaces need either explicit exceptions or real module
+  boundaries.
+- Current approach: track the naming cleanup as
+  `docs/plans/slash-surface-naming-audit-plan-2026-04-23.md` with TODO-backed
+  items instead of performing broad primitive renames in this planning turn.
+- Validation path: documentation-only plan checks use `git diff --check` and
+  `scripts/check_status_consistency.sh`; primitive renames require build,
+  compiler slice, affected runtime slice, primitive-doc parity, status
+  consistency, and file-size gate.
+- Next checkpoint: resolve `SURFACE-NAMING-001` and `SURFACE-NAMING-002` first:
+  document Pika as language-core and write the Deduce module-boundary decision.
+- Negative-memory constraints: do not treat slash as module lookup; do not add
+  deep slash pseudo-paths to avoid real module boundaries; do not convert Pika
+  into an optional module because the owner clarified Pika is part of the
+  language substrate.
+- Agent assignments: direct execution in this continuation; no sub-agent was
+  spawned because the latest owner request asked for a plan, not parallel
+  implementation.
+
+## 2026-04-23 07:25 CEST - Slash Surface Naming Integration
+
+- Active hypothesis: the naming audit should close every resolved design slice
+  and leave only product-level math special-function naming open.
+- Current approach: integrate the three parallel documentation workers and the
+  local `ml/linear-batched-reduce` runtime rename under one final state update.
+- Validation path: `c3c build --obj-out obj`, focused advanced
+  collections-module slice, compiler slice, direct eval smoke, primitive-doc
+  parity, status consistency, file-size gate, and `git diff --check`.
+- Latest checkpoint: Pika is documented as language-core; Deduce has an
+  accepted module/facade decision; ML has an accepted split between core
+  `ml/...` tensor primitives and future `ml.visualization.*` /
+  `ml.optimizers.*` facades; `ml/linear-batched-reduce` is now the only public
+  batched linear symbol in runtime registration, AOT lookup, tests, docs, and
+  diagnostics; ML/NN activation docs distinguish eager tensor operations from
+  layer-spec constructors.
+- Negative-memory constraints: do not reintroduce
+  `ml/linear/batched-reduce`; do not add compatibility aliases without an
+  owner-approved migration window; do not treat the ML visualization/optimizer
+  decisions as implemented runtime facades yet.
+- Agent assignments: main Codex thread is integration owner. Kierkegaard owned
+  Pika docs (`SURFACE-NAMING-001`), Chandrasekhar owned the Deduce decision
+  (`SURFACE-NAMING-002`), Dewey owned the ML split decision
+  (`SURFACE-NAMING-003`), and the main thread owned `SURFACE-NAMING-004`,
+  `SURFACE-NAMING-006`, final state, and validation.
+
+## 2026-04-23 07:45 CEST - Math/Stats Scientific Module Plan
+
+- Active hypothesis: because `math` and `stats` will grow into core
+  scientific surfaces, the final canonical API should be real module/facade
+  access rather than global special-function names or permanent slash
+  primitive families.
+- Current approach: close `SURFACE-NAMING-005` as a design decision and track
+  implementation under
+  `docs/plans/math-stats-scientific-module-plan-2026-04-23.md`.
+- Validation path: documentation-only checks for this slice are
+  `git diff --check` and `scripts/check_status_consistency.sh`; future runtime
+  facade slices need build, compiler lookup/codegen tests, focused scientific
+  Tensor runtime tests, parity/status/file-size gates, and Vulkan shader/helper
+  validation where backend behavior changes.
+- Latest checkpoint: current bare elementary/rounding/complex/integer helpers
+  map to target `math.*`; current `math/lgamma`, `math/erf`, and `math/erfc`
+  map to `math.lgamma`, `math.erf`, and `math.erfc`; current
+  `stats/normal-cdf` and `stats/normal-quantile` map to
+  `stats.normal-cdf` and `stats.normal-quantile`. TODO now tracks module
+  facade implementation, docs/tests migration, old-callable removal/explicit
+  prelude decision, Vulkan math special functions, and Vulkan stats
+  distribution alignment.
+- Negative-memory constraints: do not add global scientific special-function
+  names; do not add deeper slash pseudo-paths for scientific modules; do not
+  expose backend-specific Vulkan call names; do not treat broad
+  `scientific-map-*` capability as proof of every `math.*`/`stats.*` function.
+- Agent assignments: direct execution in this continuation; no sub-agent was
+  spawned because the latest owner request asked for planning, not explicit
+  parallel implementation.
+
+## 2026-04-23 07:57 CEST - Core Math/Stats Module Facades
+
+- Active hypothesis: `math` and `stats` should be true core module values,
+  not source-relative `.omni` wrappers or deeper slash pseudo-paths.
+- Current approach: create root-owned module records during primitive
+  initialization, bind module exports directly to existing primitive values,
+  and keep slash special/stat primitive names as transitional migration inputs.
+- Validation path: `c3c build --obj-out obj`, direct prebound/import smokes,
+  `/tmp` script import smoke, focused advanced collections-module slice,
+  status/manifest/docs gates, and diff whitespace check.
+- Latest checkpoint: `math` and `stats` are prebound module values. `math`
+  exports elementary math, rounding, complex helpers, integer helpers,
+  `lgamma`, `erf`, and `erfc`; `stats` exports `normal-cdf` and
+  `normal-quantile`. Runtime tests cover direct access, import rebinding,
+  selective import, Tensor behavior, map-callable behavior, and that importing
+  `math` does not replace global `abs`.
+- Negative-memory constraints: do not implement core scientific facades by
+  loading `lib/math.omni` / `lib/stats.omni` self-alias wrappers; that approach
+  triggered global method-table fallback poisoning through module-body `define`.
+  Method-table fallback replacement must check the current frame only.
+- Agent assignments: direct execution in this continuation; no sub-agent was
+  spawned because the latest owner request was a continuation and the immediate
+  blocking work was local integration/validation.
+
+## 2026-04-23 08:20 CEST - Math/Stats Docs and Tests Migration
+
+- Active hypothesis: after prebinding `math` and `stats`, active tests and docs
+  should exercise the canonical dotted module surface before slash-callable
+  removal is attempted.
+- Current approach: migrate active scientific tests/docs and diagnostic text to
+  `math.*` / `stats.*`; keep slash registrations and backend callable keys as
+  compatibility internals for `MATHSTATS-MODULE-003`.
+- Validation path: build, focused advanced collections-module, focused
+  advanced stdlib numeric, focused compiler slice, primitive docs parity, E2E
+  baseline policy, file-size gate, status consistency, and diff whitespace.
+- Latest checkpoint: `MATHSTATS-MODULE-002` is closed. Active runtime tests,
+  numeric tests, CUDA/Vulkan scientific map docs, scientific Tensor docs, and
+  diagnostics now use dotted module names. Active docs retain only explicit
+  compatibility notes for old slash spellings.
+- Negative-memory constraints: do not remove slash registrations without
+  preserving backend callable recognition for module-exported primitive values
+  and adding negative tests for removed public slash spellings.
+- Agent assignments: direct execution in this continuation; no sub-agent was
+  spawned because the work was a contiguous migration over the same surface.
+
+## 2026-04-23 08:35 CEST - Math/Stats Slash Callable Removal
+
+- Active hypothesis: after tests/docs moved to dotted module calls, the old
+  slash scientific special/stat primitives should be removed rather than kept
+  as aliases.
+- Current approach: remove public slash primitive registrations and AOT lookup
+  entries; make `math` / `stats` module exports own dotted-name primitive
+  values; update backend callable recognition to the dotted primitive names.
+- Validation path: build, direct dotted/removed-slash smokes, focused advanced
+  collections-module, focused advanced stdlib numeric, focused compiler slice,
+  primitive docs parity, E2E baseline policy, file-size gate, status
+  consistency, and diff whitespace.
+- Latest checkpoint: `MATHSTATS-MODULE-003` is closed. Old public slash
+  spellings fail, module calls and `map math.erf` continue to work, and backend
+  callable recognition no longer depends on public slash bindings.
+- Negative-memory constraints: do not reintroduce the old slash special/stat
+  callables as compatibility aliases without an explicit owner-approved
+  migration window.
+- Agent assignments: direct execution in this continuation; no sub-agent was
+  spawned because this was a tightly coupled follow-on to the same migration.
+
+## 2026-04-23 09:20 CEST - Vulkan Float32 Math Erf/Erfc
+
+- Active hypothesis: the first Vulkan special-function math boundary should be
+  dense row-major `Float32` `math.erf` / `math.erfc`, using the existing
+  backend-neutral `math.*` surface and fail-closed `Float64` behavior.
+- Current approach: add op ids `17` / `18` to the Vulkan Float32 unary shader,
+  regenerate SPIR-V, widen native Float32 unary helper whitelists through op
+  `19`, and route module primitive callables plus direct Tensor unary math to
+  those op ids. The checked `kernel/run` unary helper also exposes `erf-f32`
+  and `erfc-f32` for the same shader path.
+- Validation path: shader compile and `spirv-val`, helper rebuild, `c3c build`,
+  direct Vulkan smokes, focused advanced collections-module, focused compiler,
+  docs/status/file-size/static gates, and diff whitespace.
+- Latest checkpoint: `MATHSTATS-VK-001` is closed for the Float32 semantic
+  boundary. Vulkan `Float64` `math.erf` / `math.erfc` remains fail-closed
+  pending a documented double approximation policy. Remaining active math/stats
+  work is `MATHSTATS-VK-002`: granular capability reporting while preserving
+  the existing `stats.*` behavior and diagnostics.
+- Negative-memory constraints: do not infer Vulkan `Float64` error-function
+  support from the Float32 shader; do not add backend-named public calls; do
+  not treat broad `scientific-map-*` as proof that every `math.*` / `stats.*`
+  function is supported.
+- Agent assignments: direct integration owner was this session. No sub-agent
+  was spawned for this continuation because the immediate blocking work was
+  shader/helper/test integration in a tightly coupled surface.
+
+## 2026-04-23 09:45 CEST - Granular Math/Stats Backend Capabilities
+
+- Active hypothesis: broad `scientific-map-*` and legacy `stats-normal-*`
+  fields are too coarse for the new `math` / `stats` module surface; callers
+  need separate fields for elementary math, error functions, and stats
+  distributions.
+- Current approach: keep the old fields stable for compatibility, add
+  `math-elementary-*`, `math-error-function-*`, and
+  `stats-distribution-*` fields to every `tensor-backends` entry, and make
+  Vulkan report only the support it actually has: Float32 elementary and
+  error-function support, Float64/Float32 stats distribution support, and no
+  Float64 elementary/error-function claim.
+- Validation path: build, focused advanced collections-module capability
+  tests, docs/status/file-size/static gates, and diff whitespace.
+- Latest checkpoint: `MATHSTATS-VK-002` is closed. `MATHSTATS-VK-003` is the
+  remaining explicit policy item for Vulkan `Float64` `math.erf` /
+  `math.erfc` and Vulkan `math.lgamma`; current unsupported combinations
+  remain fail-closed.
+- Negative-memory constraints: do not name the field `math-special-*` because
+  that implies `math.lgamma`; use `math-error-function-*` for `math.erf` /
+  `math.erfc` coverage. Do not treat `scientific-map-*` as complete coverage.
+- Agent assignments: direct integration owner was this session. No sub-agent
+  was spawned for this tightly coupled continuation.

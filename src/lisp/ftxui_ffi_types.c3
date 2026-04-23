@@ -56,6 +56,23 @@ struct OmniFtxuiElementCreateOptions {
     OmniFtxuiGraphCallbackFn graph_cb;
 }
 
+struct OmniFtxuiPlotOptions {
+    uint size;
+    uint abi_version;
+    int kind;
+    int width;
+    int height;
+    double* values;
+    usz value_count;
+    usz* series_lengths;
+    usz series_count;
+    double* x_values;
+    usz x_count;
+    usz heatmap_rows;
+    usz heatmap_cols;
+    int marker;
+}
+
 struct OmniFtxuiDecoratorOptions {
     uint size;
     uint abi_version;

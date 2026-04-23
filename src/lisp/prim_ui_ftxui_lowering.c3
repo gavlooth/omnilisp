@@ -19,6 +19,9 @@ fn Value* ui_ftxui_lower_node(
     char[] kind_name = ui_ftxui_kind_name(kind_value, interp);
 
     if (kind_name.len == 0) return ftxui_raise(interp, "ui/arg-mismatch", "ui-ftxui: node kind must be string or symbol");
+    if (ui_ftxui_str_eq(kind_name, "heatmap")) {
+        return ui_ftxui_lower_heatmap_node(state, node, out_component, interp);
+    }
     if (props == null || !is_dict(props)) return ftxui_raise(interp, "ui/arg-mismatch", "ui-ftxui: node props must be dictionary");
 
     if (ui_ftxui_str_eq(kind_name, "text") || ui_ftxui_str_eq(kind_name, "paragraph")) {
@@ -200,6 +203,9 @@ fn Value* ui_ftxui_lower_node(
     }
 
     if (ui_ftxui_str_eq(kind_name, "graph")) {
+        if (ui_ftxui_dict_get(props, "plot-kind", interp) != null) {
+            return ui_ftxui_lower_typed_graph(state, props, out_component, interp);
+        }
         Value* series_value = ui_ftxui_dict_get(props, "series", interp);
         double* values = null;
         usz value_count = 0;

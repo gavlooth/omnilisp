@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include "../deps/src/libuv/include/uv.h"
 
 #define OMNI_TENSOR_CUDA_UNAVAILABLE 0
 #define OMNI_TENSOR_CUDA_SUCCESS 1
@@ -317,6 +318,12 @@ static int omni_tensor_cuda_round_module_attempted = 0;
 static int omni_tensor_cuda_ml_optimizer_module_attempted = 0;
 static int omni_tensor_cublas_resolution_attempted = 0;
 static int omni_tensor_cusolver_resolution_attempted = 0;
+static uv_mutex_t omni_tensor_cuda_resolution_mutex;
+
+__attribute__((constructor))
+static void omni_tensor_cuda_mutex_init(void) {
+    uv_mutex_init(&omni_tensor_cuda_resolution_mutex);
+}
 static int omni_tensor_cuda_disabled_for_tests = 0;
 static int omni_tensor_cublas_disabled_for_tests = 0;
 static int omni_tensor_cusolver_disabled_for_tests = 0;
@@ -353,14 +360,17 @@ static const char* omni_tensor_cuda_complex_matrix_ptx =
 ;
 
 static int omni_tensor_cuda_resolve(void) {
-    if (omni_tensor_cuda_disabled_for_tests) return 0;
+    uv_mutex_lock(&omni_tensor_cuda_resolution_mutex);
+    int result = 0;
+    if (omni_tensor_cuda_disabled_for_tests) goto done;
     if (omni_cuda_malloc != NULL &&
         omni_cuda_free != NULL &&
         omni_cuda_memcpy != NULL &&
         omni_cuda_get_device_count != NULL) {
-        return 1;
+        result = 1;
+        goto done;
     }
-    if (omni_tensor_cuda_resolution_attempted) return 0;
+    if (omni_tensor_cuda_resolution_attempted) goto done;
     omni_tensor_cuda_resolution_attempted = 1;
 
     const char* candidates[] = {
@@ -388,26 +398,32 @@ static int omni_tensor_cuda_resolve(void) {
             omni_cuda_free = (omni_cuda_free_fn)free_symbol;
             omni_cuda_memcpy = (omni_cuda_memcpy_fn)memcpy_symbol;
             omni_cuda_get_device_count = (omni_cuda_get_device_count_fn)device_count_symbol;
-            return 1;
+            result = 1;
+            goto done;
         }
 
         dlclose(handle);
     }
 
-    return 0;
+done:
+    uv_mutex_unlock(&omni_tensor_cuda_resolution_mutex);
+    return result;
 }
 
 static int omni_tensor_cusolver_resolve(void) {
-    if (omni_tensor_cusolver_disabled_for_tests) return 0;
+    uv_mutex_lock(&omni_tensor_cuda_resolution_mutex);
+    int result = 0;
+    if (omni_tensor_cusolver_disabled_for_tests) goto done;
     if (omni_cusolver_create != NULL &&
         omni_cusolver_destroy != NULL &&
         omni_cusolver_dn_zgesvd_buffer_size != NULL &&
         omni_cusolver_dn_cgesvd_buffer_size != NULL &&
         omni_cusolver_dn_zgesvd != NULL &&
         omni_cusolver_dn_cgesvd != NULL) {
-        return 1;
+        result = 1;
+        goto done;
     }
-    if (omni_tensor_cusolver_resolution_attempted) return 0;
+    if (omni_tensor_cusolver_resolution_attempted) goto done;
     omni_tensor_cusolver_resolution_attempted = 1;
 
     const char* candidates[] = {
@@ -441,26 +457,32 @@ static int omni_tensor_cusolver_resolve(void) {
             omni_cusolver_dn_cgesvd_buffer_size = (omni_cusolver_dn_cgesvd_buffer_size_fn)cgesvd_buffer_size_symbol;
             omni_cusolver_dn_zgesvd = (omni_cusolver_dn_zgesvd_fn)zgesvd_symbol;
             omni_cusolver_dn_cgesvd = (omni_cusolver_dn_cgesvd_fn)cgesvd_symbol;
-            return 1;
+            result = 1;
+            goto done;
         }
 
         dlclose(handle);
     }
 
-    return 0;
+done:
+    uv_mutex_unlock(&omni_tensor_cuda_resolution_mutex);
+    return result;
 }
 
 static int omni_tensor_cuda_driver_resolve(void) {
-    if (omni_tensor_cuda_disabled_for_tests) return 0;
+    uv_mutex_lock(&omni_tensor_cuda_resolution_mutex);
+    int result = 0;
+    if (omni_tensor_cuda_disabled_for_tests) goto done;
     if (omni_cu_init != NULL &&
         omni_cu_module_load_data != NULL &&
         omni_cu_module_get_function != NULL &&
         omni_cu_module_unload != NULL &&
         omni_cu_launch_kernel != NULL &&
         omni_cu_ctx_synchronize != NULL) {
-        return 1;
+        result = 1;
+        goto done;
     }
-    if (omni_tensor_cuda_driver_resolution_attempted) return 0;
+    if (omni_tensor_cuda_driver_resolution_attempted) goto done;
     omni_tensor_cuda_driver_resolution_attempted = 1;
 
     const char* candidates[] = {
@@ -492,13 +514,16 @@ static int omni_tensor_cuda_driver_resolve(void) {
             omni_cu_module_unload = (omni_cu_module_unload_fn)module_unload_symbol;
             omni_cu_launch_kernel = (omni_cu_launch_kernel_fn)launch_kernel_symbol;
             omni_cu_ctx_synchronize = (omni_cu_ctx_synchronize_fn)ctx_synchronize_symbol;
-            return 1;
+            result = 1;
+            goto done;
         }
 
         dlclose(handle);
     }
 
-    return 0;
+done:
+    uv_mutex_unlock(&omni_tensor_cuda_resolution_mutex);
+    return result;
 }
 
 static int omni_tensor_cuda_map_resolve(void) {
@@ -771,14 +796,17 @@ static int omni_tensor_cuda_round_resolve(void) {
 }
 
 static int omni_tensor_cublas_resolve(void) {
-    if (omni_tensor_cublas_disabled_for_tests) return 0;
+    uv_mutex_lock(&omni_tensor_cuda_resolution_mutex);
+    int result = 0;
+    if (omni_tensor_cublas_disabled_for_tests) goto done;
     if (omni_cublas_create != NULL &&
         omni_cublas_destroy != NULL &&
         omni_cublas_dgemm != NULL &&
         omni_cublas_dgemv != NULL) {
-        return 1;
+        result = 1;
+        goto done;
     }
-    if (omni_tensor_cublas_resolution_attempted) return 0;
+    if (omni_tensor_cublas_resolution_attempted) goto done;
     omni_tensor_cublas_resolution_attempted = 1;
 
     const char* candidates[] = {
@@ -818,13 +846,16 @@ static int omni_tensor_cublas_resolve(void) {
             if (cgemm_symbol != NULL) omni_cublas_cgemm = (omni_cublas_cgemm_fn)cgemm_symbol;
             if (zgemv_symbol != NULL) omni_cublas_zgemv = (omni_cublas_zgemv_fn)zgemv_symbol;
             if (cgemv_symbol != NULL) omni_cublas_cgemv = (omni_cublas_cgemv_fn)cgemv_symbol;
-            return 1;
+            result = 1;
+            goto done;
         }
 
         dlclose(handle);
     }
 
-    return 0;
+done:
+    uv_mutex_unlock(&omni_tensor_cuda_resolution_mutex);
+    return result;
 }
 
 #include "tensor_cuda_helpers_public_memory.inc"

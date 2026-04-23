@@ -443,6 +443,72 @@ fn void run_compiler_group_missing_io_ref_tests(Interp* interp, usz* pass, usz* 
         compiler_test_finish_bool(ok, "Compiler: ml/clip-gradients", "[FAIL] Compiler: ml/clip-gradients", pass, fail);
     }
     {
+        char[] code = compile_to_c3("(ml/plot [1 2 3])", interp);
+        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"ml/plot\")"})
+            && compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(ok, "Compiler: ml/plot", "[FAIL] Compiler: ml/plot", pass, fail);
+    }
+    {
+        char[] code = compile_to_c3("(ml/loss-curve [1.0 0.5 0.25])", interp);
+        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"ml/loss-curve\")"})
+            && compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(ok, "Compiler: ml/loss-curve", "[FAIL] Compiler: ml/loss-curve", pass, fail);
+    }
+    {
+        char[] code = compile_to_c3("(ml/scatter [[0 1] [1 3]])", interp);
+        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"ml/scatter\")"})
+            && compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(ok, "Compiler: ml/scatter", "[FAIL] Compiler: ml/scatter", pass, fail);
+    }
+    {
+        char[] code = compile_to_c3("(ml/bar-chart [1 2 3])", interp);
+        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"ml/bar-chart\")"})
+            && compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(ok, "Compiler: ml/bar-chart", "[FAIL] Compiler: ml/bar-chart", pass, fail);
+    }
+    {
+        char[] code = compile_to_c3("(ml/histogram [1 2 3])", interp);
+        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"ml/histogram\")"})
+            && compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(ok, "Compiler: ml/histogram", "[FAIL] Compiler: ml/histogram", pass, fail);
+    }
+    {
+        char[] code = compile_to_c3("(ml/heatmap [[1 2] [3 4]])", interp);
+        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"ml/heatmap\")"})
+            && compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(ok, "Compiler: ml/heatmap", "[FAIL] Compiler: ml/heatmap", pass, fail);
+    }
+    {
+        char[] code = compile_to_c3("(ml/roc-curve [[0.0 0.0] [1.0 1.0]])", interp);
+        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"ml/roc-curve\")"})
+            && compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(ok, "Compiler: ml/roc-curve", "[FAIL] Compiler: ml/roc-curve", pass, fail);
+    }
+    {
+        char[] code = compile_to_c3("(ml/pr-curve [[0.0 1.0] [1.0 0.5]])", interp);
+        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"ml/pr-curve\")"})
+            && compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(ok, "Compiler: ml/pr-curve", "[FAIL] Compiler: ml/pr-curve", pass, fail);
+    }
+    {
+        char[] code = compile_to_c3("(ml/tensor-summary (Tensor Float32 [2] [1 2]))", interp);
+        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"ml/tensor-summary\")"})
+            && compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(ok, "Compiler: ml/tensor-summary", "[FAIL] Compiler: ml/tensor-summary", pass, fail);
+    }
+    {
+        char[] code = compile_to_c3("(ml/confusion-matrix [0 1] [0 1])", interp);
+        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"ml/confusion-matrix\")"})
+            && compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(ok, "Compiler: ml/confusion-matrix", "[FAIL] Compiler: ml/confusion-matrix", pass, fail);
+    }
+    {
+        char[] code = compile_to_c3("(ml/export-image (Tensor Float32 [1 1] [1]) \"/tmp/omni_compiler_export.ppm\")", interp);
+        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"ml/export-image\")"})
+            && compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(ok, "Compiler: ml/export-image", "[FAIL] Compiler: ml/export-image", pass, fail);
+    }
+    {
         char[] code = compile_to_c3("(ml/save-optimizer (Dictionary 'kind 'sgd 'learning-rate 0.1) (Dictionary))", interp);
         bool ok = compiler_code_contains_all(code, {"lookup_prim(\"ml/save-optimizer\")"})
             && compiler_code_contains_none(code, {"unsupported"});

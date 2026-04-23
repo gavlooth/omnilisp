@@ -3731,3 +3731,518 @@
   as the same failure mode. ERROR-valued message/data materialization must
   propagate the original ERROR; selected subsystem payload-map OOM may degrade
   to payload-less dispatch only through an explicit fallback helper.
+
+## 2026-04-23 - ML FTXUI Plotting Surface Closure
+
+- Closed `ML-VIZ-001`.
+- Added `ml/plot(data [options])` and `ml/loss-curve(losses [options])` as
+  declarative ML visualization primitives over the existing FTXUI `graph` node
+  contract.
+- Runtime behavior:
+  - both primitives return ordinary dictionaries with `kind 'graph`,
+    `props.series`, `props.visualization`, `props.backend 'ftxui`, `props.title`,
+    and `children nil`;
+  - `ml/plot` accepts finite scalar Array/List series, x/y pair Array/List
+    series, rank-1 CPU Float64/Float32 tensors, and rank-2 `[N 2]` CPU
+    Float64/Float32 tensors, preserving x-values in `props.x`;
+  - `ml/loss-curve` accepts finite scalar Array/List series and rank-1 CPU
+    Float64/Float32 tensors;
+  - unsupported options backends fail closed with `ml/backend-unsupported`;
+    malformed data fails with `ml/invalid-visualization`; unsupported tensor
+    dtype/device/layout paths fail closed instead of falling back silently.
+- Wiring:
+  - runtime primitive table,
+  - AOT primitive lookup map,
+  - runtime source manifest,
+  - compiler codegen tests,
+  - focused advanced runtime tests,
+  - primitive/reference docs,
+  - ML visualization plan/TODO state.
+- Remaining explicit backlog:
+  - `ML-VIZ-002` `ml/tensor-summary`,
+  - `ML-VIZ-003` `ml/confusion-matrix`,
+  - `ML-VIZ-004` export-only image backend decision/implementation.
+- Validation:
+  - `c3c build --obj-out obj` passes.
+  - Compiler slice passes with `pass=292 fail=0`.
+  - Focused `advanced-collections-module` passes with `pass=2030 fail=0`.
+  - `git diff --check`, `scripts/check_primitive_docs_parity.sh`,
+    `scripts/check_status_consistency.sh`, and `scripts/check_file_size_gate.sh`
+    pass.
+- `[INVALIDATED]` The ML visualization plan's old statement that no ML-facing
+  visualization primitives exist is historical only; `ml/plot` and
+  `ml/loss-curve` now exist.
+- `[INVALIDATED]` Do not add gnuplot as the primary ML plotting backend; the
+  shipped path is FTXUI graph-node data. Image tooling remains an export-only
+  decision, not the terminal plotting plan.
+
+## 2026-04-23 - ML Tensor Summary Surface Closure
+
+- Closed `ML-VIZ-002`.
+- Added `ml/tensor-summary(tensor [options])` as ordinary ML visualization
+  summary data for any Tensor.
+- Runtime behavior:
+  - returns `kind 'tensor-summary`;
+  - reports dtype, device, payload kind, layout, dense-row-major flag, shape,
+    strides, rank, element-count, byte-length, backend, and title;
+  - reports `stats.status 'available` with finite min/max/mean/count for direct
+    concrete CPU Float64/Float32 tensors;
+  - reports explicit unavailable stats reasons for unsupported dtype,
+    non-CPU-device, non-concrete payload, missing storage, or numeric overflow;
+  - does not perform hidden device-to-CPU fallback for stats.
+- Wiring:
+  - runtime primitive table,
+  - AOT primitive lookup map,
+  - compiler codegen tests,
+  - focused advanced runtime tests,
+  - primitive/reference docs,
+  - ML visualization plan/TODO state.
+- Remaining explicit backlog:
+  - `ML-VIZ-003` `ml/confusion-matrix`,
+  - `ML-VIZ-004` export-only image backend decision/implementation.
+- Validation:
+  - `c3c build --obj-out obj` passes.
+  - Compiler slice passes with `pass=293 fail=0`.
+  - Focused `advanced-collections-module` passes with `pass=2032 fail=0`.
+
+## 2026-04-23 - ML Confusion Matrix Surface Closure
+
+- Closed `ML-VIZ-003`.
+- Added `ml/confusion-matrix(predictions targets [options])` as ordinary ML
+  visualization confusion-matrix data.
+- Runtime behavior:
+  - accepts equal-length integer class-id Array/List labels;
+  - accepts equal-length rank-1 concrete CPU Float64/Float32 Tensor labels;
+  - rejects empty inputs, unequal lengths, non-integer labels, negative labels,
+    unsupported tensor dtypes, non-CPU tensor labels, and unsupported backends;
+  - returns `kind 'confusion-matrix`, `labels`, row-major `matrix`, `total`,
+    `correct`, `accuracy`, `orientation
+    'target-rows-predicted-columns`, `backend`, and `title`;
+  - does not perform hidden device-to-CPU fallback for tensor labels.
+- Wiring:
+  - runtime primitive table,
+  - AOT primitive lookup map,
+  - compiler codegen tests,
+  - focused advanced runtime tests,
+  - primitive/reference docs,
+  - ML visualization plan/TODO state.
+- Remaining explicit backlog:
+  - `ML-VIZ-004` export-only image backend decision/implementation.
+- Validation:
+  - `c3c build --obj-out obj` passes.
+  - Compiler slice passes with `pass=294 fail=0`.
+  - Focused `advanced-collections-module` passes with `pass=2035 fail=0`.
+- `[INVALIDATED]` `ML-VIZ-003` is no longer deferred; the shipped label domain
+  is non-negative integer class IDs rather than arbitrary hashable labels.
+
+## 2026-04-23 - ML Image Export Surface Closure
+
+- Closed `ML-VIZ-004`.
+- Added `ml/export-image(tensor path [options])` as dependency-free PPM image
+  export for ML visualization.
+- Runtime behavior:
+  - accepts rank-2 grayscale CPU Float64/Float32 tensor images;
+  - accepts rank-3 HWC CPU Float64/Float32 tensor images with 1 or 3 channels;
+  - default `'range 'auto` scales `0..1` data as unit range and writes values
+    above `1` up to `255` as byte range;
+  - explicit `'range` may be `'auto`, `'unit`, or `'byte`;
+  - explicit `'format` may only be `'ppm`;
+  - explicit `'backend` may be `'image` or `'ppm`;
+  - rejects empty dimensions, unsupported channel counts, non-finite values,
+    negative values, out-of-range values, unsupported dtypes, non-CPU tensors,
+    and unsupported formats/backends;
+  - writes a plain PPM `P3` file and returns ordinary `kind 'image-export`
+    metadata with path, format, backend, range, width, height, and channels;
+  - does not auto-display and does not perform hidden device-to-CPU fallback.
+- Dependency decision:
+  - chose an in-repo PPM writer to close export-only support without adding
+    ImageMagick, gnuplot, shell-out tooling, PNG/JPEG encoders, or a new image
+    dependency.
+- Wiring:
+  - runtime primitive table,
+  - AOT primitive lookup map,
+  - compiler codegen tests,
+  - focused advanced runtime tests,
+  - primitive/reference docs,
+  - ML visualization plan/TODO state.
+- Remaining explicit backlog:
+  - none for the ML visualization surface decision.
+- Validation:
+  - `c3c build --obj-out obj` passes.
+  - Compiler slice passes with `pass=295 fail=0`.
+  - Focused `advanced-collections-module` passes with `pass=2038 fail=0`.
+  - Direct PPM smoke writes `P3`, dimensions, max value, and RGB pixel rows.
+- `[INVALIDATED]` `ML-VIZ-004` is no longer deferred; do not treat image export
+  as requiring ImageMagick or another external dependency for the shipped
+  baseline.
+
+## 2026-04-23 - ML Typed Plot Family Expansion
+
+- Closed `ML-VIZ-005`.
+- Extended the ML visualization surface beyond the initial line/loss and
+  export slices without adding PNG/JPEG, image display, ImageMagick, gnuplot,
+  or shell-out dependencies.
+- Runtime behavior:
+  - `ml/plot` now records `props.plot-kind 'line`, `'xy`, or `'multi-series`
+    and accepts Array/List multi-series overlays with `props.series-list`;
+  - `ml/scatter(points [options])` accepts x/y pair Array/List data or rank-2
+    `[N 2]` CPU Float64/Float32 tensors and records `props.points` plus
+    marker metadata;
+  - `ml/bar-chart(values [options])` accepts finite scalar series and records
+    `props.plot-kind 'bar-chart` plus optional labels;
+  - `ml/histogram(values [options])` accepts finite scalar series and returns
+    histogram counts in `props.series` plus `props.bin-edges` and
+    `props.sample-count`;
+  - `ml/heatmap(matrix [options])` accepts finite rectangular matrix data or
+    rank-2 CPU Float64/Float32 tensors and returns ordinary matrix metadata,
+    not an image/display primitive;
+  - `ml/roc-curve(points [options])` and `ml/pr-curve(points [options])`
+    provide named graph-compatible curve primitives over supplied x/y points;
+  - graph-family primitives retain existing FTXUI `props.series`
+    compatibility and support non-interactive `zoom` data-window metadata,
+    applying x-window filtering where the input has a direct index/x domain.
+- Wiring:
+  - new split source owner `src/lisp/prim_ml_plot_extensions.c3`;
+  - runtime primitive table,
+  - AOT primitive lookup map,
+  - compiler codegen tests,
+  - focused advanced runtime tests,
+  - primitive/reference docs,
+  - ML visualization plan/TODO state.
+- Validation:
+  - `c3c build --obj-out obj` passes.
+  - Compiler slice passes with `pass=301 fail=0`.
+  - Focused `advanced-collections-module` passes with `pass=2045 fail=0`.
+- `[INVALIDATED]` The earlier `ML-VIZ-005` limitation that typed plot metadata
+  was preserved only for future richer renderers is superseded by `ML-VIZ-006`;
+  typed ML plot nodes now lower through a native FTXUI canvas plot shim.
+
+## 2026-04-23 - Native FTXUI Typed Plot Rendering
+
+- Closed `ML-VIZ-006`.
+- Added native FTXUI canvas rendering for typed ML plot metadata without adding
+  PNG/JPEG, image display, ImageMagick, gnuplot, shell-out tooling, or a new
+  dependency.
+- Runtime behavior:
+  - untyped `ui.graph` keeps the existing FTXUI graph callback path;
+  - graph nodes with `props.plot-kind` lower through `omni_ftxui_element_plot`;
+  - `ml/plot` multi-series overlays render as multiple colored canvas lines;
+  - `ml/scatter` renders x/y points with point/cross/plus marker shapes;
+  - `ml/bar-chart` and `ml/histogram` render vertical bars;
+  - `ml/roc-curve` and `ml/pr-curve` render supplied x/y curve data;
+  - `ml/heatmap` lowers ordinary finite matrix data to a colored FTXUI canvas
+    heatmap and still does not use image display.
+- Wiring:
+  - `csrc/ftxui_shim.h`,
+  - `csrc/ftxui_shim.cpp`,
+  - `csrc/ftxui_shim_element.inc`,
+  - `src/lisp/ftxui_ffi_constants.c3`,
+  - `src/lisp/ftxui_ffi_types.c3`,
+  - `src/lisp/ftxui_ffi.c3`,
+  - new `src/lisp/prim_ui_ftxui_plot_lowering.c3`,
+  - `src/lisp/prim_ui_ftxui_lowering.c3`,
+  - runtime manifest,
+  - FTXUI FFI surface tests,
+  - primitive/reference docs,
+  - ML visualization plan/TODO state.
+- Validation:
+  - `scripts/build_omni_chelpers.sh` passes.
+  - `c3c build --obj-out obj` passes.
+  - `scripts/run_ftxui_smoke.sh` passes.
+  - Direct typed plot `__ui-ftxui-run` smokes for multi-series, scatter,
+    bar chart, and heatmap return `true`.
+  - Focused `advanced-ffi-system-surface` passes with `pass=123 fail=0`.
+  - Focused `advanced-collections-module` passes with `pass=2045 fail=0`.
+
+## 2026-04-23 - Slash Primitive Naming Policy
+
+- Documented the owner decision that slash-qualified names are canonical
+  single symbols for always-present core primitive families, not implicit
+  module dereferences.
+- Updated the language token section, module section, primitive reference, and
+  agent naming policy to state that names such as `io/println`,
+  `matrix/eigenpairs`, `tensor/run`, `ml/plot`, `nn/apply`, and `ui/...`
+  remain ordinary primitive symbols.
+- Clarified that module/value access remains the dotted/path surface
+  (`mod.sym`) plus explicit `module` / `import` / `export-from` forms.
+- Added the ergonomics constraint that slash prefixes should help human
+  developers scan dense primitive families, not become mandatory hierarchy
+  syntax. Generic cross-cutting operations should remain unprefixed, distinct
+  one-off operations should stay short when a prefix adds no meaning, deep or
+  mechanically long slash pseudo-paths are discouraged, and optional or
+  independently versioned surfaces should use real modules/imports.
+- No runtime behavior changed.
+- Validation:
+  - `git diff --check` passes.
+  - `scripts/check_primitive_docs_parity.sh` passes.
+  - `scripts/check_status_consistency.sh` passes with TODO actionable count 0.
+  - `scripts/check_file_size_gate.sh` passes.
+
+## 2026-04-23 - Slash Surface Naming Audit Plan
+
+- Added `docs/plans/slash-surface-naming-audit-plan-2026-04-23.md`.
+- Recorded the owner decision that Pika is language-core and Omni should be
+  built around Pika rather than treating `pika/...` as an optional helper
+  module.
+- Recorded the preferred Deduce direction: the broad `deduce/...` surface
+  should move toward a real module/facade boundary rather than continuing as a
+  growing primitive-family namespace by default.
+- Recorded the ML question as an explicit decision item because `ml/...` is
+  broad and likely to grow; current shipped names should be classified before
+  adding more names under that prefix.
+- Opened TODO-backed work items:
+  - `SURFACE-NAMING-001` document Pika as language-core;
+  - `SURFACE-NAMING-002` produce the Deduce module-boundary decision;
+  - `SURFACE-NAMING-003` decide the ML module split;
+  - `SURFACE-NAMING-004` flatten or internalize `ml/linear-batched-reduce`;
+  - `SURFACE-NAMING-005` resolve special-function math naming;
+  - `SURFACE-NAMING-006` tighten ML/NN activation docs.
+- No runtime behavior changed in this planning pass.
+- Validation:
+  - `git diff --check` passes.
+  - `scripts/check_status_consistency.sh` passes with TODO actionable count 6.
+  - TODO/plan ID sweep confirms all six `SURFACE-NAMING-*` IDs are present in
+    both the plan and TODO part.
+
+## 2026-04-23 - Slash Surface Naming Decisions and Linear Rename
+
+- Integrated the parallel naming audit follow-ups:
+  - `SURFACE-NAMING-001` closed with Pika documented as Omni language-core and
+    parser/grammar substrate.
+  - `SURFACE-NAMING-002` closed with
+    `docs/plans/deduce-module-boundary-decision-2026-04-23.md`; the accepted
+    direction moves broad `deduce/...` callable aliases toward an imported
+    `deduce` facade and keeps the unified dispatcher only as planned
+    `deduce.dispatch`.
+  - `SURFACE-NAMING-003` closed with
+    `docs/plans/ml-module-surface-split-decision-2026-04-23.md`; compact
+    tensor/learning kernels stay under `ml/...`, while visualization and
+    optimizer/checkpoint helpers move toward `ml.visualization.*` and
+    `ml.optimizers.*` facades in a later implementation slice.
+  - `SURFACE-NAMING-006` closed by tightening ML/NN activation docs so
+    `ml/<activation>` means eager Tensor activation and `nn/<activation>`
+    means layer-spec constructor.
+- Renamed the public batched linear primitive from the old deep pseudo-path
+  spelling to canonical `ml/linear-batched-reduce`:
+  - runtime registration now exposes `ml/linear-batched-reduce`;
+  - AOT primitive lookup now resolves `ml/linear-batched-reduce`;
+  - advanced runtime tests, diagnostics, language docs, primitive reference
+    docs, TODO/plans, and handoff artifacts use the new spelling;
+  - the old `ml/linear/batched-reduce` spelling has no compatibility alias.
+- Remaining open naming item:
+  - `SURFACE-NAMING-005` still needs the special-function math naming decision
+    for `math/lgamma`, `math/erf`, and `math/erfc`.
+- Validation:
+  - `c3c build --obj-out obj` passes.
+  - Focused advanced collections-module slice passes with `pass=2045 fail=0`.
+  - Focused compiler slice passes with `pass=301 fail=0`; expected bindgen
+    negative-test diagnostics are printed by that slice.
+
+## 2026-04-23 - Vulkan Float32 Math Erf/Erfc Extension
+
+- Implemented `MATHSTATS-VK-001` for the dense row-major Vulkan `Float32`
+  semantic boundary.
+- `csrc/tensor_vulkan_map_unary_f32.comp` now exposes `math.erf` and
+  `math.erfc` through unary op ids `17` and `18`, sharing the same
+  Abramowitz/Stegun-style approximation family used by `stats.normal-cdf`.
+- Regenerated `csrc/tensor_vulkan_map_unary_f32_spv.c` from a
+  `glslangValidator`-compiled and `spirv-val`-validated shader.
+- `csrc/tensor_vulkan_helpers.c` and
+  `csrc/tensor_vulkan_helpers_ml_clip.c` now allow Float32 unary op ids through
+  `19`, so direct Tensor `map`, direct Tensor unary math, checked kernel
+  sources, and ML clip helper paths agree on the supported op range.
+- `src/lisp/prim_tensor_map_callable_ops.c3` maps `math.erf` and
+  `math.erfc` module primitives to Vulkan op ids `17` and `18`; direct Tensor
+  unary math uses the same op ids. Vulkan `Float64` `math.erf` / `math.erfc`
+  still fail closed pending a double approximation policy.
+- `src/lisp/prim_kernel_unary.c3` exposes checked `kernel/run` operation names
+  `erf-f32` and `erfc-f32` for the same Vulkan Float32 unary helper.
+- Advanced tests now cover public `map math.erf`, `map math.erfc`, direct
+  `math.erf`, direct `math.erfc`, Float64 fail-closed behavior, and
+  `kernel/run` `erf-f32` / `erfc-f32`.
+- While rebuilding helpers, two pre-existing dirty compile breaks were exposed
+  and fixed:
+  - `csrc/tensor_cuda_helpers.c` had mutex/goto resolution changes with
+    `omni_tensor_cublas_resolve` still missing its `done:` label.
+  - `csrc/tensor_vulkan_helpers_runtime_decls.h` had redundant forward
+    typedefs that conflicted with concrete Vulkan struct typedefs from
+    `tensor_vulkan_helpers_internal.h`.
+- Validation:
+  - `glslangValidator -V csrc/tensor_vulkan_map_unary_f32.comp` passes.
+  - `spirv-val /tmp/tensor_vulkan_map_unary_f32.spv` passes.
+  - `scripts/build_omni_chelpers.sh` passes.
+  - `c3c build --obj-out obj` passes.
+  - Direct Vulkan smokes for `map math.erf`, direct `math.erfc`, and
+    fail-closed Vulkan `Float64` `math.erf` pass.
+  - Focused advanced collections-module slice passes with `pass=2060 fail=0`.
+  - Focused compiler slice passes with `pass=301 fail=0`; expected bindgen
+    negative-test diagnostics are printed by that slice.
+  - `scripts/check_primitive_docs_parity.sh` passes.
+  - `scripts/check_file_size_gate.sh` passes.
+  - `scripts/check_status_consistency.sh` passes.
+  - `scripts/check_e2e_baseline_policy.sh` passes.
+  - `git diff --check` passes.
+  - Direct eval of `ml/linear-batched-reduce` returns `167.0`.
+  - Direct eval of the removed old spelling returns
+    `runtime/evaluation-error`.
+  - `scripts/check_primitive_docs_parity.sh` passes.
+  - `scripts/check_status_consistency.sh` passes.
+  - `scripts/check_file_size_gate.sh` passes.
+  - `git diff --check` passes.
+
+## 2026-04-23 - Math/Stats Scientific Module Plan
+
+- Added `docs/plans/math-stats-scientific-module-plan-2026-04-23.md`.
+- Closed `SURFACE-NAMING-005` as a design decision:
+  - `math` and `stats` should become real core scientific modules/facades;
+  - current bare scientific functions and current `math/...` / `stats/...`
+    slash functions are migration inputs, not the final canonical surface;
+  - final target names use `math.*` and `stats.*`, including `math.lgamma`,
+    `math.erf`, `math.erfc`, `stats.normal-cdf`, and
+    `stats.normal-quantile`;
+  - do not add global special-function names such as `erf`, `erfc`,
+    `lgamma`, `gamma`, `digamma`, or `bessel-j`;
+  - do not add deeper scientific slash pseudo-paths.
+- Planned the current scientific surface migration:
+  - elementary, rounding, complex, integer, and special-function exports under
+    `math.*`;
+  - distribution/statistical exports under `stats.*`;
+  - old slash callables removed after facade parity unless the owner approves a
+    short migration window;
+  - bare elementary names require an explicit prelude-export decision if they
+    remain.
+- Planned Vulkan extension work for both modules:
+  - expose existing Vulkan-supported elementary math through `math.*`;
+  - expose existing Vulkan normal distribution support through `stats.*`;
+  - add dense row-major Vulkan `Float32` `math.erf` and `math.erfc` first;
+  - keep Vulkan `Float64` special functions and `math.lgamma` behind separate
+    approximation/domain-policy validation;
+  - split granular math/stats capability keys from broad `scientific-map-*`
+    reporting while preserving no-hidden-CPU-fallback behavior.
+- Opened TODO-backed implementation items:
+  - `MATHSTATS-MODULE-001` core `math` and `stats` module facades;
+  - `MATHSTATS-MODULE-002` docs/tests/examples migration;
+  - `MATHSTATS-MODULE-003` old-callable removal or explicit prelude decision;
+  - `MATHSTATS-VK-001` Vulkan math special-function extension;
+  - `MATHSTATS-VK-002` Vulkan stats distribution extension alignment.
+- No runtime behavior changed in this planning pass.
+
+## 2026-04-23 - Core Math/Stats Module Facades
+
+- Implemented `MATHSTATS-MODULE-001`.
+- Added root-owned core module facades during primitive initialization:
+  - `math` exports elementary math, rounding, complex helpers, integer helpers,
+    `math.lgamma`, `math.erf`, and `math.erfc`;
+  - `stats` exports `stats.normal-cdf` and `stats.normal-quantile`.
+- The module exports share existing primitive values, so scalar, Tensor,
+  callable/map, CUDA, and Vulkan behavior remains on the current implementation
+  paths.
+- Fixed `define` method-table fallback replacement to check only the current
+  frame before replacing an existing method table fallback. This prevents module
+  bodies from observing a parent global method table and mutating its fallback
+  while defining an export with the same name.
+- Removed the file-backed `lib/math.omni` and `lib/stats.omni` facade attempt.
+  Validation showed that `(define abs abs)` in a module could poison global
+  `abs`, and core scientific modules should not depend on source-relative
+  `lib/*.omni` lookup.
+- Updated module/scientific docs to state that `math` and `stats` are prebound
+  core module values and that old slash scientific spellings are transitional
+  single-symbol primitives.
+- Validation:
+  - `c3c build --obj-out obj` passes.
+  - Direct REPL smoke confirms `(import math)` no longer breaks `(abs 0.0)`.
+  - Direct eval smoke confirms prebound `math.erf` and `stats.normal-cdf`.
+  - `/tmp` script smoke confirms `(import math)` / `(import stats)` do not
+    require repo-relative `lib/*.omni` files.
+  - Focused advanced collections-module slice passes with `pass=2053 fail=0`.
+  - Focused compiler slice passes with `pass=301 fail=0`; expected bindgen
+    negative-test diagnostics are printed by that slice.
+  - `scripts/check_e2e_baseline_policy.sh` passes.
+  - `scripts/check_status_consistency.sh` passes.
+  - `scripts/check_file_size_gate.sh` passes.
+  - `scripts/check_primitive_docs_parity.sh` passes.
+  - `git diff --check` passes.
+
+## 2026-04-23 - Math/Stats Module Surface Docs and Tests Migration
+
+- Implemented `MATHSTATS-MODULE-002`.
+- Migrated active scientific runtime tests from the slash special/stat call
+  surface to the core module surface:
+  - scalar/special numeric tests now call `math.lgamma`, `math.erf`,
+    `math.erfc`, `stats.normal-cdf`, and `stats.normal-quantile`;
+  - CUDA/Vulkan map/direct Tensor tests now call module members;
+  - module facade tests no longer compare against slash callables.
+- Updated active scientific Tensor docs, CUDA/Vulkan scientific map docs,
+  primitive docs, and language docs to prefer `math.*` / `stats.*`.
+- Updated scientific special/stat diagnostics to report dotted module names.
+- Remaining slash references in active docs are explicit compatibility notes;
+  remaining slash names in runtime code are compatibility registrations and
+  backend callable-recognition keys for the module-exported primitive values.
+- Validation:
+  - `c3c build --obj-out obj` passes.
+  - Focused advanced collections-module slice passes with `pass=2053 fail=0`.
+  - Focused advanced stdlib numeric slice passes with `pass=411 fail=0`.
+  - Focused compiler slice passes with `pass=301 fail=0`; expected bindgen
+    negative-test diagnostics are printed by that slice.
+  - `scripts/check_e2e_baseline_policy.sh` passes.
+  - `scripts/check_file_size_gate.sh` passes.
+  - `scripts/check_primitive_docs_parity.sh` passes.
+
+## 2026-04-23 - Math/Stats Slash Scientific Callable Removal
+
+- Implemented `MATHSTATS-MODULE-003`.
+- Removed public runtime registrations and AOT primitive hash entries for
+  `math/lgamma`, `math/erf`, `math/erfc`, `stats/normal-cdf`, and
+  `stats/normal-quantile`.
+- `math` / `stats` module exports now create their own dotted-name primitive
+  values for the special/stat functions.
+- Backend callable recognition now keys on dotted primitive names such as
+  `math.erf` and `stats.normal-quantile`, preserving `map math.erf` and
+  direct Tensor module-call behavior without public slash bindings.
+- Added negative runtime tests proving old slash spellings fail.
+- Bare elementary names remain as prelude/core primitive exports; removing
+  them is a separate language-prelude decision outside this special/stat slash
+  cleanup.
+- Validation:
+  - `c3c build --obj-out obj` passes.
+  - Direct eval smokes for `math.erf`, `stats.normal-cdf`, `map math.erf`, and
+    old slash removal pass.
+  - Focused advanced collections-module slice passes with `pass=2055 fail=0`.
+  - Focused advanced stdlib numeric slice passes with `pass=411 fail=0`.
+  - Focused compiler slice passes with `pass=301 fail=0`; expected bindgen
+    negative-test diagnostics are printed by that slice.
+
+## 2026-04-23 - Math/Stats Backend Capability Granularity
+
+- Implemented `MATHSTATS-VK-002`.
+- `tensor-backends` now reports granular scientific capability fields on every
+  backend entry:
+  - `math-elementary-float64`
+  - `math-elementary-float32`
+  - `math-error-function-float64`
+  - `math-error-function-float32`
+  - `stats-distribution-float64`
+  - `stats-distribution-float32`
+- The `math-error-function-*` keys intentionally cover `math.erf` and
+  `math.erfc`; they do not claim `math.lgamma`.
+- Broad `scientific-map-float64` / `scientific-map-float32` and legacy
+  `stats-normal-float64` / `stats-normal-float32` fields remain compatibility
+  fields.
+- Vulkan reports partial support truthfully:
+  - `math-elementary-float64` is false;
+  - `math-elementary-float32` follows Vulkan Float32 availability;
+  - `math-error-function-float64` is false;
+  - `math-error-function-float32` follows Vulkan Float32 availability;
+  - `stats-distribution-float64` follows Vulkan Float64 availability;
+  - `stats-distribution-float32` follows Vulkan Float32 availability.
+- Open follow-up: `MATHSTATS-VK-003` tracks the required approximation,
+  tolerance, domain/status, and diagnostic policy before adding Vulkan
+  `Float64` `math.erf` / `math.erfc` or Vulkan `math.lgamma`.
+- Validation:
+  - `c3c build --obj-out obj` passes.
+  - Focused advanced collections-module slice passes with `pass=2062 fail=0`.
+  - `scripts/check_primitive_docs_parity.sh` passes.
+  - `scripts/check_file_size_gate.sh` passes.
+  - `scripts/check_status_consistency.sh` passes.
+  - `scripts/check_e2e_baseline_policy.sh` passes.
+  - `git diff --check` passes.

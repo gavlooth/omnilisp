@@ -1,6 +1,24 @@
 #ifndef OMNI_TENSOR_VULKAN_HELPERS_API_DECLS_H
 #define OMNI_TENSOR_VULKAN_HELPERS_API_DECLS_H
 
+#include <stdint.h>
+#include <stddef.h>
+
+typedef struct OmniVulkanDevice_T* OmniVulkanDevice;
+typedef struct OmniVulkanPipeline_T* OmniVulkanPipeline;
+typedef struct OmniVulkanPipelineLayout_T* OmniVulkanPipelineLayout;
+typedef struct OmniVulkanShaderModule_T* OmniVulkanShaderModule;
+typedef struct OmniVulkanDescriptorSet_T* OmniVulkanDescriptorSet;
+typedef struct OmniVulkanCommandBuffer_T* OmniVulkanCommandBuffer;
+typedef struct OmniVulkanQueue_T* OmniVulkanQueue;
+typedef struct OmniVulkanDeviceMemory_T* OmniVulkanDeviceMemory;
+typedef struct OmniVulkanBuffer_T* OmniVulkanBuffer;
+typedef uint64_t OmniVulkanDeviceSize;
+typedef struct OmniTensorVulkanDescriptorResources OmniTensorVulkanDescriptorResources;
+typedef struct OmniTensorVulkanStorageBufferDescriptor OmniTensorVulkanStorageBufferDescriptor;
+typedef struct OmniTensorVulkanContext OmniTensorVulkanContext;
+typedef struct OmniTensorVulkanBuffer OmniTensorVulkanBuffer;
+
 int omni_tensor_vulkan_create_compute_pipeline_for_shader(
     OmniVulkanDevice device,
     OmniVulkanPipelineLayout pipeline_layout,

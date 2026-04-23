@@ -521,13 +521,13 @@ fn Value* tensor_apply_double_unary_math_checked(double input, int big_float_op,
                 *out = output;
                 return null;
             case BOOST_MATH_STATUS_INVALID_ARGUMENT:
-                return tensor_raise(interp, "tensor/invalid-argument", "stats/normal-quantile: expected finite numeric input");
+                return tensor_raise(interp, "tensor/invalid-argument", "stats.normal-quantile: expected finite numeric input");
             case BOOST_MATH_STATUS_DOMAIN_ERROR:
-                return tensor_raise(interp, "tensor/invalid-argument", "stats/normal-quantile: probability must be between 0 and 1");
+                return tensor_raise(interp, "tensor/invalid-argument", "stats.normal-quantile: probability must be between 0 and 1");
             case BOOST_MATH_STATUS_RANGE_ERROR:
-                return tensor_raise(interp, "tensor/range-error", "stats/normal-quantile: range error");
+                return tensor_raise(interp, "tensor/range-error", "stats.normal-quantile: range error");
             default:
-                return tensor_raise(interp, "tensor/invalid-argument", "stats/normal-quantile: evaluation error");
+                return tensor_raise(interp, "tensor/invalid-argument", "stats.normal-quantile: evaluation error");
         }
     }
     *out = tensor_apply_double_unary_math(input, big_float_op);
@@ -642,7 +642,7 @@ fn Value* tensor_unary_math_value(Value* tensor_value, int big_float_op, int big
                 if (src_values[i] == null) return tensor_runtime_raise(interp, "math: tensor BigFloat element is missing");
                 void* result = omni_big_float_unary_math(src_values[i], big_float_op);
                 if (result == null && big_float_op == BIG_FLOAT_MATH_NORMAL_QUANTILE) {
-                    return tensor_raise(interp, "tensor/invalid-argument", "stats/normal-quantile: probability must be between 0 and 1");
+                    return tensor_raise(interp, "tensor/invalid-argument", "stats.normal-quantile: probability must be between 0 and 1");
                 }
                 if (result == null) return tensor_raise(interp, "tensor/invalid-argument", "math: failed to evaluate BigFloat tensor element");
                 if (dst_values[i] != null) omni_big_float_free(dst_values[i]);

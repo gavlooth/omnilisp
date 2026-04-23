@@ -322,10 +322,36 @@ null?
 | `[` `]` | Array literals, bracket attributes, and patterns |
 | `{` `}` | Dictionary literals |
 
-Slash (`/`) is part of ordinary symbol syntax. Names like `math/lgamma`,
-`stats/normal-cdf`, and `io/println` are single symbols, not module dereferences.
-They are naming-convention prefixes like `math-lgamma`; real module access uses
+Slash (`/`) is part of ordinary symbol syntax. Names like `io/println`,
+`matrix/eigenpairs`, and `ml/plot` are single symbols, not module
+dereferences. They are naming-convention prefixes; real module access uses
 module values/path access (`mod.sym`) or explicit import/export forms.
+
+Slash names are canonical for always-present core primitive families where the
+prefix is part of the operation's public name rather than a separately imported
+module. This includes surfaces such as `io/...`, `matrix/...`, `tensor/...`,
+`ml/...`, `nn/...`, `ui/...`, and structured error codes such as
+`io/not-found` or `ui/arg-mismatch`. Quoted forms preserve the same rule:
+`'ml/plot` is the symbol named `ml/plot`, not a quote of `plot` inside an `ml`
+module. Do not split core primitive families into modules solely because their
+names contain `/`.
+
+The scientific `math` and `stats` surfaces are core modules because they are
+broad scientific APIs that will grow independently from the prelude. Their
+canonical access form is dotted module access, for example `math.erf` and
+`stats.normal-cdf`. Removed pre-alpha slash spellings such as `math/erf` and
+`stats/normal-cdf` are still parsed as ordinary symbols, but they are not the
+public scientific API and are not alternate module syntax.
+
+Slash prefixes are a human-facing naming tool, not a blanket hierarchy rule.
+Use them when a stable, always-present family would otherwise produce ambiguous
+or hard-to-scan names (`ml/plot`, `matrix/eigenpairs`, `tensor/run`). Prefer
+short generic names for operations whose meaning is intentionally cross-cutting
+(`map`, `ref`, `length`, `sort`) and prefer a normal descriptive name when the
+operation is unique enough that a prefix only adds noise. Avoid deep pseudo-paths
+and mechanically long slash names; if a surface needs many independently
+versioned or optional exports, make it a real module and use dotted access or
+explicit imports.
 
 ### 1.4 Reader Dispatch (`#`)
 

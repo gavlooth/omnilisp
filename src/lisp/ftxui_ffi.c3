@@ -47,6 +47,11 @@ extern fn OmniFtxuiStatus omni_ftxui_element_graph_from_series(
     usz value_count,
     OmniFtxuiElement** out_element
 ) @extern("omni_ftxui_element_graph_from_series");
+extern fn OmniFtxuiStatus omni_ftxui_element_plot(
+    OmniFtxuiContext* context,
+    OmniFtxuiPlotOptions* options,
+    OmniFtxuiElement** out_element
+) @extern("omni_ftxui_element_plot");
 extern fn void omni_ftxui_element_destroy(OmniFtxuiElement* element) @extern("omni_ftxui_element_destroy");
 extern fn OmniFtxuiStatus omni_ftxui_element_apply_decorator(
     OmniFtxuiContext* context,

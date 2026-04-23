@@ -722,7 +722,7 @@ fn Value* ml_grad_linear_softmax_cross_entropy(Value* spec, Interp* interp) {
         for (usz out_axis = 0; out_axis < out_features; out_axis++) {
             double target_value = 0.0;
             if (!ml_reduction_read(targets, output_base + out_axis, &target_value)) return tensor_runtime_raise(interp, "ml/grad: target tensor index is invalid");
-            double upstream = ((output_values[output_base + out_axis] * target_sum) - target_value) * inv_batch;
+            double upstream = (output_values[output_base + out_axis] - target_value) * inv_batch;
             bias_grad_values[out_axis] += upstream;
             usz weight_base = out_axis * in_features;
             for (usz in_axis = 0; in_axis < in_features; in_axis++) {

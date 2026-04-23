@@ -169,8 +169,13 @@ fn Value* nn_layer_param_dict(Interp* interp, Value* weights, Value* bias) {
 }
 
 fn Value* nn_init_dense(Value* spec, Interp* interp, NnInitContext* ctx, NnLayerInit* out) {
-    usz input_features = (usz)nn_dict_get(spec, interp, "input-features").int_val;
-    usz output_features = (usz)nn_dict_get(spec, interp, "output-features").int_val;
+    long input_features_raw = nn_dict_get(spec, interp, "input-features").int_val;
+    long output_features_raw = nn_dict_get(spec, interp, "output-features").int_val;
+    if (input_features_raw < 0 || output_features_raw < 0) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/invalid-argument", "nn/init: dense dimensions must be non-negative", null);
+    }
+    usz input_features = (usz)input_features_raw;
+    usz output_features = (usz)output_features_raw;
     usz[2] weight_shape = { output_features, input_features };
     Value* weights = nn_init_tensor(
         interp,
@@ -230,10 +235,17 @@ fn Value* nn_init_batch_normalization(Value* spec, Interp* interp, NnInitContext
 }
 
 fn Value* nn_init_conv1d(Value* spec, Interp* interp, NnInitContext* ctx, NnLayerInit* out) {
-    usz in_channels = (usz)nn_dict_get(spec, interp, "in-channels").int_val;
-    usz out_channels = (usz)nn_dict_get(spec, interp, "out-channels").int_val;
-    usz kernel = (usz)nn_dict_get(spec, interp, "kernel").int_val;
-    usz groups = (usz)nn_dict_get(spec, interp, "groups").int_val;
+    long in_channels_raw = nn_dict_get(spec, interp, "in-channels").int_val;
+    long out_channels_raw = nn_dict_get(spec, interp, "out-channels").int_val;
+    long kernel_raw = nn_dict_get(spec, interp, "kernel").int_val;
+    long groups_raw = nn_dict_get(spec, interp, "groups").int_val;
+    if (in_channels_raw < 0 || out_channels_raw < 0 || kernel_raw < 0 || groups_raw < 0) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/invalid-argument", "nn/init: conv1d dimensions must be non-negative", null);
+    }
+    usz in_channels = (usz)in_channels_raw;
+    usz out_channels = (usz)out_channels_raw;
+    usz kernel = (usz)kernel_raw;
+    usz groups = (usz)groups_raw;
     usz in_per_group = in_channels / groups;
     usz[3] weight_shape = { out_channels, in_per_group, kernel };
     double fan_in = (double)(in_per_group * kernel);
@@ -256,12 +268,23 @@ fn Value* nn_init_conv1d(Value* spec, Interp* interp, NnInitContext* ctx, NnLaye
 }
 
 fn Value* nn_init_conv2d(Value* spec, Interp* interp, NnInitContext* ctx, NnLayerInit* out) {
-    usz in_channels = (usz)nn_dict_get(spec, interp, "in-channels").int_val;
-    usz out_channels = (usz)nn_dict_get(spec, interp, "out-channels").int_val;
+    long in_channels_raw = nn_dict_get(spec, interp, "in-channels").int_val;
+    long out_channels_raw = nn_dict_get(spec, interp, "out-channels").int_val;
+    if (in_channels_raw < 0 || out_channels_raw < 0) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/invalid-argument", "nn/init: conv2d dimensions must be non-negative", null);
+    }
     Value* kernel = nn_dict_get(spec, interp, "kernel");
-    usz kernel_h = (usz)kernel.array_val.items[0].int_val;
-    usz kernel_w = (usz)kernel.array_val.items[1].int_val;
-    usz groups = (usz)nn_dict_get(spec, interp, "groups").int_val;
+    long kernel_h_raw = kernel.array_val.items[0].int_val;
+    long kernel_w_raw = kernel.array_val.items[1].int_val;
+    long groups_raw = nn_dict_get(spec, interp, "groups").int_val;
+    if (kernel_h_raw < 0 || kernel_w_raw < 0 || groups_raw < 0) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/invalid-argument", "nn/init: conv2d dimensions must be non-negative", null);
+    }
+    usz in_channels = (usz)in_channels_raw;
+    usz out_channels = (usz)out_channels_raw;
+    usz kernel_h = (usz)kernel_h_raw;
+    usz kernel_w = (usz)kernel_w_raw;
+    usz groups = (usz)groups_raw;
     usz in_per_group = in_channels / groups;
     usz[4] weight_shape = { out_channels, in_per_group, kernel_h, kernel_w };
     double fan_in = (double)(in_per_group * kernel_h * kernel_w);

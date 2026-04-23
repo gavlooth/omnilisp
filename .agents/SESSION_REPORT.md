@@ -46,6 +46,8 @@ The historical content was split mechanically to keep individual files below the
 - Part 38: [.agents/session_report_parts/session_report_part_38.md](session_report_parts/session_report_part_38.md) (57 lines)
 - Part 39: [.agents/session_report_parts/session_report_part_39.md](session_report_parts/session_report_part_39.md) (899 lines)
 - Part 40: [.agents/session_report_parts/session_report_part_40.md](session_report_parts/session_report_part_40.md) (4392 lines)
+- Part 41: [.agents/session_report_parts/session_report_part_41.md](session_report_parts/session_report_part_41.md) (43 lines)
+- Part 42: [.agents/session_report_parts/session_report_part_42.md](session_report_parts/session_report_part_42.md) (622 lines)
 
 ## 2026-04-19 21:42 CEST - All Eligible Over-700 Files Split
 
@@ -4920,4 +4922,347 @@ The historical content was split mechanically to keep individual files below the
 - Dependencies, blockers, or restart requirements:
   - No local process restart is required. GitHub Actions must rerun on the
     updated branch commit for the CI fix to take effect remotely.
+- Signature: GPT-5 Codex
+
+## 2026-04-23 04:46:50 CEST - ML FTXUI Plotting Surface Implemented
+
+- Objective attempted:
+  - Proceed with the FTXUI plotting plan for ML visualization after rejecting
+    gnuplot as the primary plotting path and keeping ImageMagick/export tooling
+    out of the terminal rendering path.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `ML-VIZ-001`
+  - `docs/plans/ml-visualization-surface-decision-2026-04-22.md`
+- Code or configuration changes made:
+  - Added `src/lisp/prim_ml_visualization.c3`.
+  - Registered `ml/plot` and `ml/loss-curve` in the runtime primitive table,
+    AOT primitive lookup map, and runtime source manifest.
+  - Added compiler codegen tests and focused advanced runtime tests.
+  - Updated primitive reference docs, ML visualization plan state, TODO state,
+    `.agents/PLAN.md`, and `memory/changelog_parts/changelog_part_37.md`.
+- Key behavior:
+  - `ml/plot(data [options])` returns an ordinary `kind 'graph` dictionary with
+    `props.series` for FTXUI graph lowering, accepts finite scalar series,
+    x/y pair series, rank-1 CPU Float64/Float32 tensors, and rank-2 `[N 2]`
+    CPU Float64/Float32 tensors.
+  - `ml/loss-curve(losses [options])` returns the same graph-node shape for
+    finite scalar loss series or rank-1 CPU Float64/Float32 tensors.
+  - Both primitives accept `title`, `width`, `height`, and `backend` options;
+    only `backend 'ftxui` is currently supported.
+- Commands run:
+  - `c3c build --obj-out obj`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp`
+  - `git diff --check`
+  - `scripts/check_primitive_docs_parity.sh`
+  - `scripts/check_status_consistency.sh`
+  - `scripts/check_file_size_gate.sh`
+- Key results:
+  - Build passed and linked `build/main`.
+  - Compiler slice passed with `pass=292 fail=0`.
+  - Focused advanced collections module passed with `pass=2030 fail=0`.
+  - Diff hygiene, primitive-doc parity, status consistency, and code file-size
+    gate all passed; TODO actionable count is now 3 for the explicit residual
+    visualization items.
+- Invalidated assumptions or failed approaches:
+  - `[INVALIDATED]` The old ML visualization decision note statement that no
+    ML-facing visualization primitives exist is historical only after this
+    slice.
+  - `[INVALIDATED]` Do not add gnuplot as the primary plotting backend; the
+    shipped plotting path is ordinary FTXUI graph-node data.
+- Current best recommendation or checkpoint:
+  - Treat `ML-VIZ-001` as closed. Continue next with `ML-VIZ-002`
+    `ml/tensor-summary`, `ML-VIZ-003` `ml/confusion-matrix`, or `ML-VIZ-004`
+    export-only image backend decision when selected.
+- Unresolved issues:
+  - `ml/tensor-summary`, `ml/confusion-matrix`, and `ml/export-image` remain
+    explicit backlog items.
+  - Non-CPU tensor plotting remains fail-closed by design; callers should make
+    CPU visualization data explicit.
+- Dependencies, blockers, or restart requirements:
+  - No new dependencies were added.
+  - No live process restart is required beyond rebuilding/rerunning a process
+    that should load the new primitive table.
+- Signature: GPT-5 Codex
+
+## 2026-04-23 06:20:00 CEST - ML Typed Plot Families Implemented
+
+- Objective attempted:
+  - Expand the ML plotting surface for terminal/declarative use while keeping
+    PNG/JPEG and image display out of scope.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `ML-VIZ-005`
+  - `src/lisp/prim_ml_visualization.c3`
+  - `src/lisp/prim_ml_plot_extensions.c3`
+- Code or configuration changes made:
+  - Added split source owner `src/lisp/prim_ml_plot_extensions.c3`.
+  - Extended `ml/plot` with typed `props.plot-kind` metadata and Array/List
+    multi-series overlays.
+  - Added `ml/scatter`, `ml/bar-chart`, `ml/histogram`, `ml/heatmap`,
+    `ml/roc-curve`, and `ml/pr-curve`.
+  - Registered the new primitives in runtime lookup, AOT primitive lookup, and
+    the AOT runtime manifest.
+  - Added compiler and focused advanced runtime coverage.
+  - Updated primitive docs, ML visualization plan state, TODO state,
+    `.agents/PLAN.md`, and memory changelog.
+- Key behavior:
+  - Graph-family primitives retain the existing FTXUI `props.series` contract
+    and carry typed metadata for richer renderers: `series-list`, `points`,
+    `marker`, `labels`, `bin-edges`, `x-label`, `y-label`, and `zoom`.
+  - `zoom` is non-interactive data-window metadata; `x-min`/`x-max` also filter
+    the renderable graph series when the primitive has a direct index/x domain.
+  - `ml/heatmap` returns finite matrix metadata/data and does not display or
+    export an image.
+  - Unsupported graph backends still fail closed; no gnuplot/ImageMagick,
+    PNG/JPEG encoder, shell-out tool, or new dependency was added.
+- Commands run:
+  - `c3c build --obj-out obj`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=compiler OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- Key results:
+  - Build passed and linked `build/main`.
+  - Compiler slice passed with `pass=301 fail=0`.
+  - Focused advanced collections module passed with `pass=2045 fail=0`.
+- Invalidated assumptions or failed approaches:
+  - No new failed approach in this slice. Existing negative constraints remain:
+    do not use gnuplot as the ML plotting backend and do not use image export
+    as the primary terminal plotting path.
+- Current best recommendation or checkpoint:
+  - Treat `ML-VIZ-005` as closed. Native FTXUI rendering for typed plot
+    metadata was subsequently implemented as `ML-VIZ-006`.
+- Unresolved issues:
+  - No active ML visualization TODO remains after this slice.
+- Dependencies, blockers, or restart requirements:
+  - No new dependencies were added.
+  - Rebuild/rerun any live process that should load the new primitive table.
+- Signature: GPT-5 Codex
+
+## 2026-04-23 07:05:00 CEST - Native FTXUI Typed Plot Rendering Implemented
+
+- Objective attempted:
+  - Implement native terminal rendering for the typed ML plot families instead
+    of leaving them as metadata over the old single-series graph path.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `ML-VIZ-006`
+  - `csrc/ftxui_shim.h`
+  - `csrc/ftxui_shim.cpp`
+  - `csrc/ftxui_shim_element.inc`
+  - `src/lisp/prim_ui_ftxui_plot_lowering.c3`
+  - `src/lisp/prim_ui_ftxui_lowering.c3`
+- Code or configuration changes made:
+  - Added `omni_ftxui_element_plot` and `OmniFtxuiPlotOptions`.
+  - Added C3 FFI constants/types/extern binding for typed plot rendering.
+  - Added `prim_ui_ftxui_plot_lowering.c3` to collect Omni graph/heatmap data
+    into the flat plot ABI.
+  - Updated graph lowering so nodes with `props.plot-kind` use the new canvas
+    renderer, while untyped `ui.graph` keeps the existing graph callback path.
+  - Updated heatmap lowering so `kind 'heatmap` renders as a colored FTXUI
+    canvas from matrix data.
+  - Added FTXUI FFI surface tests for multi-series and heatmap plot elements.
+  - Updated docs, TODO, plan, session report, and changelog state.
+- Key behavior:
+  - Multi-series overlays render as multiple colored canvas lines.
+  - Scatter renders point/cross/plus marker shapes.
+  - Bar charts and histograms render vertical bars.
+  - ROC/PR curves render supplied x/y curve data.
+  - Heatmaps render as colored terminal canvas blocks without image display.
+  - No ImageMagick, gnuplot, PNG/JPEG encoder, shell-out tool, or new
+    dependency was added.
+- Commands run:
+  - `scripts/build_omni_chelpers.sh`
+  - `c3c build --obj-out obj`
+  - `scripts/run_ftxui_smoke.sh`
+  - `printf q | timeout 10s env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval "(__ui-ftxui-run (ml/plot [[1 2 3] [3 2 1]] (Dictionary 'width 40 'height 12)))"`
+  - `printf q | timeout 10s env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval "(__ui-ftxui-run (ml/scatter [[0 1] [2 5]] (Dictionary 'marker 'cross 'width 40 'height 12)))"`
+  - `printf q | timeout 10s env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval "(__ui-ftxui-run (ml/bar-chart [2 4 1] (Dictionary 'width 40 'height 12)))"`
+  - `printf q | timeout 10s env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval "(__ui-ftxui-run (ml/heatmap [[1 2] [3 4]] (Dictionary 'width 24 'height 12)))"`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system-surface OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- Key results:
+  - Helper archive rebuild passed.
+  - Build passed and linked `build/main`.
+  - FTXUI smoke script passed.
+  - Direct typed plot UI smokes returned `true`.
+  - FTXUI FFI surface passed with `pass=123 fail=0`.
+  - Focused advanced collections module passed with `pass=2045 fail=0`.
+- Invalidated assumptions or failed approaches:
+  - `[INVALIDATED]` The `ML-VIZ-005` limitation that typed plot metadata was
+    only preserved for future richer renderers is superseded; native FTXUI
+    canvas rendering now exists for typed plot nodes.
+  - `[FAILED]` A first direct `__ui-ftxui-run` smoke was launched without
+    attached stdin and entered the interactive loop; it was killed manually and
+    replaced with `printf q | timeout ...` smokes.
+- Current best recommendation or checkpoint:
+  - Treat `ML-VIZ-006` as closed. The ML visualization queue remains closed.
+- Unresolved issues:
+  - No active ML visualization TODO remains after this slice.
+- Dependencies, blockers, or restart requirements:
+  - No new dependencies were added.
+  - Rebuild/rerun any live process that should load the updated FTXUI shim and
+    primitive/lowering tables.
+- Signature: GPT-5 Codex
+
+## 2026-04-23 05:41:09 CEST - ML Image Export Surface Implemented
+
+- Objective attempted:
+  - Continue the ML visualization plan by closing `ML-VIZ-004`.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `ML-VIZ-004`
+  - `src/lisp/prim_ml_visualization.c3`
+- Code or configuration changes made:
+  - Added `ml/export-image(tensor path [options])` to the existing ML
+    visualization primitive implementation.
+  - Registered it in runtime primitive lookup and AOT primitive lookup.
+  - Added compiler and focused advanced runtime tests.
+  - Updated primitive docs, ML visualization plan state, TODO state,
+    `.agents/PLAN.md`, and memory changelog.
+- Key behavior:
+  - Writes dependency-free plain PPM `P3` files.
+  - Accepts rank-2 grayscale CPU Float64/Float32 tensors and rank-3 HWC CPU
+    Float64/Float32 tensors with 1 or 3 channels.
+  - Supports `'range 'auto`, `'range 'unit`, and `'range 'byte`; auto treats
+    `0..1` data as normalized unit range and values above `1` up to `255` as
+    byte range.
+  - Supports only `'format 'ppm`; explicit `'backend` may be `'image` or
+    `'ppm`.
+  - Returns ordinary `kind 'image-export` metadata with path, format, backend,
+    range, width, height, and channels.
+  - Fails closed for unsupported formats/backends, non-CPU tensors,
+    unsupported dtypes, unsupported channel counts, empty dimensions,
+    non-finite values, negative values, and out-of-range values.
+  - Does not auto-display and does not perform hidden device-to-CPU fallback.
+- Dependency decision:
+  - Chose an in-repo PPM writer instead of ImageMagick, gnuplot, shell-out
+    tooling, PNG/JPEG encoders, or a new image dependency.
+- Commands run:
+  - `c3c build --obj-out obj`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp`
+  - `rm -f /tmp/omni_ml_export_smoke.ppm && env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval "(ref (ml/export-image (Tensor Float32 [1 2 3] [1 0 0 0 1 0]) \"/tmp/omni_ml_export_smoke.ppm\") 'kind)" && sed -n '1,8p' /tmp/omni_ml_export_smoke.ppm`
+- Key results:
+  - Build passed and linked `build/main`.
+  - Compiler slice passed with `pass=295 fail=0`.
+  - Focused advanced collections module passed with `pass=2038 fail=0`.
+  - Direct PPM smoke returned `image-export` and wrote:
+    `P3`, `2 1`, `255`, `255 0 0`, `0 255 0`.
+- Invalidated assumptions or failed approaches:
+  - `[INVALIDATED]` `ML-VIZ-004` is no longer deferred; the shipped baseline
+    does not require ImageMagick or another external dependency.
+  - `[FAILED]` The first diagnostics test expression had one extra closing
+    paren and expected `runtime/type-error`; corrected it to parse and assert
+    the actual `type/arg-mismatch` code.
+- Current best recommendation or checkpoint:
+  - The ML visualization plan queue is closed. Start from a new owner-selected
+    capability or audit item rather than reopening this plan by default.
+- Unresolved issues:
+  - PNG/JPEG encoding, image display, and pixel buffer ABI remain out of scope
+    for this surface decision and are not open TODO items.
+- Dependencies, blockers, or restart requirements:
+  - No new dependencies were added.
+  - No live process restart is required beyond rebuilding/rerunning a process
+    that should load the new primitive table.
+- Signature: GPT-5 Codex
+
+## 2026-04-23 05:21:25 CEST - ML Confusion Matrix Surface Implemented
+
+- Objective attempted:
+  - Continue the ML visualization plan by closing `ML-VIZ-003`.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `ML-VIZ-003`
+  - `src/lisp/prim_ml_visualization.c3`
+- Code or configuration changes made:
+  - Added `ml/confusion-matrix(predictions targets [options])` to the existing
+    ML visualization primitive implementation.
+  - Registered it in runtime primitive lookup and AOT primitive lookup.
+  - Added compiler and focused advanced runtime tests.
+  - Updated primitive docs, ML visualization plan state, TODO state,
+    `.agents/PLAN.md`, and memory changelog.
+- Key behavior:
+  - Returns ordinary `kind 'confusion-matrix` data.
+  - Accepts equal-length integer class-id Array/List labels and rank-1 concrete
+    CPU Float64/Float32 Tensor labels.
+  - Produces `labels`, row-major target-row/predicted-column `matrix`, `total`,
+    `correct`, `accuracy`, `orientation`, `backend`, and `title`.
+  - Fails closed for empty inputs, unequal lengths, non-integer labels,
+    negative labels, unsupported tensor dtypes, non-CPU tensor labels, and
+    unsupported backends.
+  - Does not perform hidden device-to-CPU fallback for tensor labels.
+- Commands run:
+  - `c3c build --obj-out obj`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval "(let (cm (ml/confusion-matrix [0 1 1] [0 0 1])) (= (ref (ref (ref cm 'matrix) 0) 1) 1))"`
+- Key results:
+  - Build passed and linked `build/main`.
+  - Compiler slice passed with `pass=294 fail=0`.
+  - Focused advanced collections module passed with `pass=2035 fail=0`.
+  - Direct eval smoke returned `true`.
+- Invalidated assumptions or failed approaches:
+  - `[INVALIDATED]` `ML-VIZ-003` is no longer deferred; the shipped label
+    domain is non-negative integer class IDs, not arbitrary hashable labels.
+  - `[FAILED]` The first runtime assertion compared `accuracy` with exact
+    floating equality and failed despite correct output; the test now uses the
+    repository's existing tolerance style.
+- Current best recommendation or checkpoint:
+  - Continue next with `ML-VIZ-004`, the export-only image backend decision and
+    implementation, if ML visualization work remains the active priority.
+- Unresolved issues:
+  - `ml/export-image` remains the only explicit ML visualization backlog item.
+- Dependencies, blockers, or restart requirements:
+  - No new dependencies were added.
+  - No live process restart is required beyond rebuilding/rerunning a process
+    that should load the new primitive table.
+- Signature: GPT-5 Codex
+
+## 2026-04-23 05:08:00 CEST - ML Tensor Summary Surface Implemented
+
+- Objective attempted:
+  - Continue the ML visualization plan by closing `ML-VIZ-002` after the
+    FTXUI plotting slice.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `ML-VIZ-002`
+  - `src/lisp/prim_ml_visualization.c3`
+- Code or configuration changes made:
+  - Added `ml/tensor-summary(tensor [options])` to the existing ML
+    visualization primitive implementation.
+  - Registered it in runtime primitive lookup and AOT primitive lookup.
+  - Added compiler and focused advanced runtime tests.
+  - Updated primitive docs, ML visualization plan state, TODO state,
+    `.agents/PLAN.md`, and memory changelog.
+- Key behavior:
+  - Returns ordinary `kind 'tensor-summary` data for any Tensor.
+  - Reports dtype, device, payload, layout, shape, strides, rank,
+    element-count, byte-length, backend, title, and `stats`.
+  - Computes finite min/max/mean/count only for direct concrete CPU
+    Float64/Float32 storage.
+  - Reports unavailable stats with symbolic reasons for unsupported dtype,
+    non-CPU device, non-concrete payload, missing storage, or numeric overflow.
+  - Does not perform hidden device-to-CPU fallback for stats.
+- Commands run:
+  - `c3c build --obj-out obj`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp`
+- Key results:
+  - Build passed and linked `build/main`.
+  - Compiler slice passed with `pass=293 fail=0`.
+  - Focused advanced collections module passed with `pass=2032 fail=0`.
+- Invalidated assumptions or failed approaches:
+  - `[INVALIDATED]` `ML-VIZ-002` is no longer deferred; `ml/tensor-summary`
+    is implemented for metadata across Tensor surfaces and direct CPU real
+    stats only.
+- Current best recommendation or checkpoint:
+  - Continue next with `ML-VIZ-003` `ml/confusion-matrix` or `ML-VIZ-004`
+    export-only image backend decision when selected.
+- Unresolved issues:
+  - `ml/confusion-matrix` and `ml/export-image` remain explicit backlog items.
+- Dependencies, blockers, or restart requirements:
+  - No new dependencies were added.
+  - No live process restart is required beyond rebuilding/rerunning a process
+    that should load the new primitive table.
 - Signature: GPT-5 Codex

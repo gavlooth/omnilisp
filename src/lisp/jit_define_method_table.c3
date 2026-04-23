@@ -177,7 +177,7 @@ fn Value* jit_eval_define(Interp* interp, SymbolId name, Value* value) {
     }
 
     // Check if we're adding an untyped fallback to an existing method table
-    Value* existing_for_fallback = interp.global_env.lookup(name);
+    Value* existing_for_fallback = interp.global_env.lookup_local(name);
     if (existing_for_fallback != null && existing_for_fallback.tag == METHOD_TABLE) {
         existing_for_fallback.method_table_val.fallback = stored_val;
         return existing_for_fallback;

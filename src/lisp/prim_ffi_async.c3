@@ -71,14 +71,18 @@ fn OffloadCompletion* ffi_async_offload_callback(OffloadWork work) {
         case FFI_TYPE_UINT32:
         case FFI_TYPE_UINT64:
             ret_storage = (void*)&ret_int;
+            break;
         case FFI_TYPE_FLOAT32:
             ret_storage = (void*)&ret_f32;
+            break;
         case FFI_TYPE_DOUBLE:
             ret_storage = (void*)&ret_dbl;
+            break;
         case FFI_TYPE_PTR:
         case FFI_TYPE_STRING:
         case FFI_TYPE_BUFFER:
             ret_storage = (void*)&ret_ptr;
+            break;
         default:
             ret_storage = (void*)&ret_int;
     }
@@ -98,6 +102,7 @@ fn OffloadCompletion* ffi_async_offload_callback(OffloadWork work) {
     switch ((FfiTypeTag)ctx.ret_type) {
         case FFI_TYPE_VOID:
             completion.kind = OFFLOAD_RES_NIL;
+            break;
         case FFI_TYPE_INT:
         case FFI_TYPE_INT32:
         case FFI_TYPE_INT64:
@@ -105,21 +110,27 @@ fn OffloadCompletion* ffi_async_offload_callback(OffloadWork work) {
         case FFI_TYPE_UINT64:
             completion.kind = OFFLOAD_RES_INT;
             completion.int_result = ret_int;
+            break;
         case FFI_TYPE_BOOL:
             completion.kind = OFFLOAD_RES_INT;
             completion.int_result = ret_int != 0 ? 1 : 0;
+            break;
         case FFI_TYPE_FLOAT32:
             completion.kind = OFFLOAD_RES_DOUBLE;
             completion.double_result = (double)ret_f32;
+            break;
         case FFI_TYPE_DOUBLE:
             completion.kind = OFFLOAD_RES_DOUBLE;
             completion.double_result = ret_dbl;
+            break;
         case FFI_TYPE_STRING:
             (void)ffi_async_set_string_result(completion, (char*)ret_ptr);
+            break;
         case FFI_TYPE_PTR:
         case FFI_TYPE_BUFFER:
         case FFI_TYPE_STRUCT:
             scheduler_set_offload_error(completion, "ffi-async: pointer-like return types are not supported");
+            break;
         default:
             completion.kind = OFFLOAD_RES_NIL;
     }

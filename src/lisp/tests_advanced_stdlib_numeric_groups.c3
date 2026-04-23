@@ -398,27 +398,27 @@ fn void run_advanced_stdlib_numeric_float_math_tests(Interp* interp, int* pass, 
     test_double(interp, "log 1", "(log 1.0)", 0.0, pass, fail);
     test_double(interp, "sqrt 4", "(sqrt 4.0)", 2.0, pass, fail);
     test_double(interp, "pow 2 10", "(pow 2.0 10.0)", 1024.0, pass, fail);
-    test_double(interp, "math/lgamma 6", "(math/lgamma 6.0)", 4.78749174278, pass, fail);
-    test_double(interp, "math/lgamma half", "(math/lgamma 0.5)", 0.57236494292, pass, fail);
-    test_error_contains(interp, "math/lgamma pole domain error",
-        "(math/lgamma 0.0)", "math/lgamma: domain error", pass, fail);
-    test_error_contains(interp, "math/lgamma rejects out-of-range BigInteger",
-        "(math/lgamma (BigInteger \"10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"))",
-        "math/lgamma: value out of Float64 range", pass, fail);
-    test_double(interp, "math/erf 1", "(math/erf 1.0)", 0.84270079295, pass, fail);
-    test_double(interp, "math/erfc 1", "(math/erfc 1.0)", 0.15729920705, pass, fail);
-    test_error_contains(interp, "math/erf rejects out-of-range BigInteger",
-        "(math/erf (BigInteger \"10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"))",
-        "math/erf: value out of Float64 range", pass, fail);
-    test_double(interp, "stats/normal-cdf 0", "(stats/normal-cdf 0.0)", 0.5, pass, fail);
-    test_double(interp, "stats/normal-cdf 1.96", "(stats/normal-cdf 1.96)", 0.97500210485, pass, fail);
-    test_double(interp, "stats/normal-quantile median", "(stats/normal-quantile 0.5)", 0.0, pass, fail);
-    test_double(interp, "stats/normal-quantile 0.975", "(stats/normal-quantile 0.975)", 1.95996398454, pass, fail);
-    test_error_contains(interp, "stats/normal-quantile rejects zero probability",
-        "(stats/normal-quantile 0.0)", "stats/normal-quantile: probability must be between 0 and 1", pass, fail);
-    test_error_contains(interp, "stats/normal-cdf rejects out-of-range BigInteger",
-        "(stats/normal-cdf (BigInteger \"10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"))",
-        "stats/normal-cdf: value out of Float64 range", pass, fail);
+    test_double(interp, "math.lgamma 6", "(math.lgamma 6.0)", 4.78749174278, pass, fail);
+    test_double(interp, "math.lgamma half", "(math.lgamma 0.5)", 0.57236494292, pass, fail);
+    test_error_contains(interp, "math.lgamma pole domain error",
+        "(math.lgamma 0.0)", "math.lgamma: domain error", pass, fail);
+    test_error_contains(interp, "math.lgamma rejects out-of-range BigInteger",
+        "(math.lgamma (BigInteger \"10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"))",
+        "math.lgamma: value out of Float64 range", pass, fail);
+    test_double(interp, "math.erf 1", "(math.erf 1.0)", 0.84270079295, pass, fail);
+    test_double(interp, "math.erfc 1", "(math.erfc 1.0)", 0.15729920705, pass, fail);
+    test_error_contains(interp, "math.erf rejects out-of-range BigInteger",
+        "(math.erf (BigInteger \"10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"))",
+        "math.erf: value out of Float64 range", pass, fail);
+    test_double(interp, "stats.normal-cdf 0", "(stats.normal-cdf 0.0)", 0.5, pass, fail);
+    test_double(interp, "stats.normal-cdf 1.96", "(stats.normal-cdf 1.96)", 0.97500210485, pass, fail);
+    test_double(interp, "stats.normal-quantile median", "(stats.normal-quantile 0.5)", 0.0, pass, fail);
+    test_double(interp, "stats.normal-quantile 0.975", "(stats.normal-quantile 0.975)", 1.95996398454, pass, fail);
+    test_error_contains(interp, "stats.normal-quantile rejects zero probability",
+        "(stats.normal-quantile 0.0)", "stats.normal-quantile: probability must be between 0 and 1", pass, fail);
+    test_error_contains(interp, "stats.normal-cdf rejects out-of-range BigInteger",
+        "(stats.normal-cdf (BigInteger \"10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"))",
+        "stats.normal-cdf: value out of Float64 range", pass, fail);
     test_str_val(interp, "BigFloat sin zero",
         "(String (sin (BigFloat \"0\")))", "0", pass, fail);
     test_str_val(interp, "BigFloat cos zero",
@@ -440,19 +440,19 @@ fn void run_advanced_stdlib_numeric_float_math_tests(Interp* interp, int* pass, 
     test_str_val(interp, "BigFloat atan2 zero",
         "(String (atan2 (BigFloat \"0\") 1))", "0", pass, fail);
     test_str_val(interp, "BigFloat normal cdf median",
-        "(String (stats/normal-cdf (BigFloat \"0\")))", "0.5", pass, fail);
+        "(String (stats.normal-cdf (BigFloat \"0\")))", "0.5", pass, fail);
     test_str_val(interp, "BigFloat normal quantile median",
-        "(String (stats/normal-quantile (BigFloat \"0.5\")))", "0", pass, fail);
+        "(String (stats.normal-quantile (BigFloat \"0.5\")))", "0", pass, fail);
     test_str_val(interp, "BigFloat erfc zero",
-        "(String (math/erfc (BigFloat \"0\")))", "1", pass, fail);
+        "(String (math.erfc (BigFloat \"0\")))", "1", pass, fail);
     test_truthy(interp, "BigFloat lgamma precision",
-        "(< (abs (- (math/lgamma (BigFloat \"6\")) (BigFloat \"4.787491742782045994247700934523243048399592315172\"))) (BigFloat \"1e-45\"))",
+        "(< (abs (- (math.lgamma (BigFloat \"6\")) (BigFloat \"4.787491742782045994247700934523243048399592315172\"))) (BigFloat \"1e-45\"))",
         pass, fail);
     test_truthy(interp, "BigFloat exp beyond Float64 range stays BigFloat",
         "(= (type-of (exp (BigFloat \"1000\"))) 'BigFloat)", pass, fail);
     test_error_contains(interp, "BigFloat normal quantile rejects zero probability",
-        "(stats/normal-quantile (BigFloat \"0\"))",
-        "stats/normal-quantile: probability must be between 0 and 1", pass, fail);
+        "(stats.normal-quantile (BigFloat \"0\"))",
+        "stats.normal-quantile: probability must be between 0 and 1", pass, fail);
     test_eq(interp, "floor 3.7", "(floor 3.7)", 3, pass, fail);
     test_eq(interp, "ceiling 3.2", "(ceiling 3.2)", 4, pass, fail);
     test_eq(interp, "round 3.5", "(round 3.5)", 4, pass, fail);

@@ -99,6 +99,7 @@ fn Value* json_pointer_lookup(Value* value, char[] token, Interp* interp) {
     if (value == null) return make_nil(interp);
 
     if (value.tag == ARRAY) {
+        if (value.array_val == null) return make_nil(interp);
         usz idx = 0;
         if (!json_pointer_parse_array_index(token, &idx)) return make_nil(interp);
         if (idx >= value.array_val.length) return make_nil(interp);

@@ -85,10 +85,21 @@ fn void init_prim_hash_collections_math_bitwise(SymbolTable* st) {
     prim_hash_insert(st.intern("nn/gelu"), "aot::lookup_prim(\"nn/gelu\")");
     prim_hash_insert(st.intern("nn/softmax"), "aot::lookup_prim(\"nn/softmax\")");
     prim_hash_insert(st.intern("ml/linear"), "aot::lookup_prim(\"ml/linear\")");
-    prim_hash_insert(st.intern("ml/linear/batched-reduce"), "aot::lookup_prim(\"ml/linear/batched-reduce\")");
+    prim_hash_insert(st.intern("ml/linear-batched-reduce"), "aot::lookup_prim(\"ml/linear-batched-reduce\")");
     prim_hash_insert(st.intern("ml/grad"), "aot::lookup_prim(\"ml/grad\")");
     prim_hash_insert(st.intern("ml/sgd-step"), "aot::lookup_prim(\"ml/sgd-step\")");
     prim_hash_insert(st.intern("ml/clip-gradients"), "aot::lookup_prim(\"ml/clip-gradients\")");
+    prim_hash_insert(st.intern("ml/plot"), "aot::lookup_prim(\"ml/plot\")");
+    prim_hash_insert(st.intern("ml/loss-curve"), "aot::lookup_prim(\"ml/loss-curve\")");
+    prim_hash_insert(st.intern("ml/scatter"), "aot::lookup_prim(\"ml/scatter\")");
+    prim_hash_insert(st.intern("ml/bar-chart"), "aot::lookup_prim(\"ml/bar-chart\")");
+    prim_hash_insert(st.intern("ml/histogram"), "aot::lookup_prim(\"ml/histogram\")");
+    prim_hash_insert(st.intern("ml/heatmap"), "aot::lookup_prim(\"ml/heatmap\")");
+    prim_hash_insert(st.intern("ml/roc-curve"), "aot::lookup_prim(\"ml/roc-curve\")");
+    prim_hash_insert(st.intern("ml/pr-curve"), "aot::lookup_prim(\"ml/pr-curve\")");
+    prim_hash_insert(st.intern("ml/tensor-summary"), "aot::lookup_prim(\"ml/tensor-summary\")");
+    prim_hash_insert(st.intern("ml/confusion-matrix"), "aot::lookup_prim(\"ml/confusion-matrix\")");
+    prim_hash_insert(st.intern("ml/export-image"), "aot::lookup_prim(\"ml/export-image\")");
     prim_hash_insert(st.intern("ml/save-optimizer"), "aot::lookup_prim(\"ml/save-optimizer\")");
     prim_hash_insert(st.intern("ml/load-optimizer"), "aot::lookup_prim(\"ml/load-optimizer\")");
     prim_hash_insert(st.intern("ml/optimizer-step"), "aot::lookup_prim(\"ml/optimizer-step\")");
@@ -175,11 +186,6 @@ fn void init_prim_hash_collections_math_bitwise(SymbolTable* st) {
     prim_hash_insert(st.intern("imag-part"), "aot::lookup_prim(\"imag-part\")");
     prim_hash_insert(st.intern("conjugate"), "aot::lookup_prim(\"conjugate\")");
     prim_hash_insert(st.intern("pow"), "aot::lookup_prim(\"pow\")");
-    prim_hash_insert(st.intern("math/lgamma"), "aot::lookup_prim(\"math/lgamma\")");
-    prim_hash_insert(st.intern("math/erf"), "aot::lookup_prim(\"math/erf\")");
-    prim_hash_insert(st.intern("math/erfc"), "aot::lookup_prim(\"math/erfc\")");
-    prim_hash_insert(st.intern("stats/normal-cdf"), "aot::lookup_prim(\"stats/normal-cdf\")");
-    prim_hash_insert(st.intern("stats/normal-quantile"), "aot::lookup_prim(\"stats/normal-quantile\")");
 
     // Bitwise
     prim_hash_insert(st.intern("bitwise-and"), "aot::lookup_prim(\"bitwise-and\")");

@@ -195,7 +195,7 @@ Status update:
 - `TENSOR-100F` then added generated CUDA C/libdevice PTX scientific unary map
   kernels for dense row-major `Float64` and `Float32` op ids `5..19`: `sin`,
   `cos`, `tan`, `asin`, `acos`, `atan`, `sinh`, `cosh`, `tanh`, `exp`, `log`,
-  `log10`, `math/erf`, `math/erfc`, and `stats/normal-cdf`. Public `map`, lazy CUDA map
+  `log10`, `math.erf`, `math.erfc`, and `stats.normal-cdf`. Public `map`, lazy CUDA map
   realization, destination `realize`, and direct Tensor scientific unary
   primitives preserve CUDA placement when the scientific module loads.
 - `tensor-backends` now reports `elementwise-map-float64`,
@@ -208,5 +208,5 @@ Status update:
 - Remaining CUDA map broadening must stay explicit and fail-closed:
   unsupported arbitrary callables, mixed CPU/CUDA operands, mixed dtype/device
   operands, and unsupported layouts are not covered by the dense row-major CUDA
-  map checkpoints. `math/erf`, `math/erfc`, and `stats/normal-cdf` are fixed
+  map checkpoints. `math.erf`, `math.erfc`, and `stats.normal-cdf` are fixed
   recognized opcodes, not a general GPU callable ABI.

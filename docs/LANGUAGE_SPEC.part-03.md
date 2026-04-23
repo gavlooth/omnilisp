@@ -570,6 +570,12 @@ all non-contracted right axes.
 
 ### 7.23 Regex and Pika Parsing
 
+Pika is Omni's built-in parser and grammar substrate, not an optional helper
+module. The regex primitives and `pika/...` grammar primitives expose the same
+language-core matching foundation that Omni uses for source parsing and grammar
+work. Slash in `pika/...` is ordinary symbol syntax; it names a compact
+always-present primitive family rather than a module dereference.
+
 #### Regex primitives
 
 | Primitive | Args | Description |
@@ -603,7 +609,7 @@ Regex semantics notes:
 | `pika/parse` | 2 | Parse input with named grammar |
 | `pika/fold` | 3 | Fold parse tree with user function |
 | `pika/grammar-rules` | 1 | List rule names for a named grammar |
-| `pika/parse-lisp` | 1 | Parse Omni/Lisp source with built-in grammar |
+| `pika/parse-lisp` | 1 | Parse Omni/Lisp source with the built-in Pika grammar |
 
 Pika grammar notes:
 - Use quoted rule forms with `pika/grammar`, for example:

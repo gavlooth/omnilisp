@@ -78,10 +78,10 @@ fn Value* tensor_vulkan_map_unary_value(
     if (status != OMNI_TENSOR_VULKAN_SUCCESS) {
         tensor_free_payload(result_tensor);
         if (op == 20 && status == OMNI_TENSOR_VULKAN_DOMAIN_ERROR) {
-            return tensor_raise(interp, "tensor/domain-error", "stats/normal-quantile: probability must be between 0 and 1");
+            return tensor_raise(interp, "tensor/domain-error", "stats.normal-quantile: probability must be between 0 and 1");
         }
         if (op == 20 && status == OMNI_TENSOR_VULKAN_INVALID_ARGUMENT) {
-            return tensor_raise(interp, "tensor/domain-error", "stats/normal-quantile: expected finite numeric input");
+            return tensor_raise(interp, "tensor/domain-error", "stats.normal-quantile: expected finite numeric input");
         }
         return tensor_vulkan_status_raise(interp, status, kernel_message);
     }
@@ -389,10 +389,10 @@ fn Value* tensor_cuda_map_unary_value(
     if (status != OMNI_TENSOR_CUDA_SUCCESS) {
         tensor_free_payload(result_tensor);
         if (op == 20 && status == OMNI_TENSOR_CUDA_DOMAIN_ERROR) {
-            return tensor_raise(interp, "tensor/domain-error", "stats/normal-quantile: probability must be between 0 and 1");
+            return tensor_raise(interp, "tensor/domain-error", "stats.normal-quantile: probability must be between 0 and 1");
         }
         if (op == 20 && status == OMNI_TENSOR_CUDA_INVALID_ARGUMENT) {
-            return tensor_raise(interp, "tensor/domain-error", "stats/normal-quantile: expected finite numeric input");
+            return tensor_raise(interp, "tensor/domain-error", "stats.normal-quantile: expected finite numeric input");
         }
         return tensor_cuda_status_raise(interp, status, kernel_message);
     }

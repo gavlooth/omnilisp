@@ -123,15 +123,15 @@ Landed kernel slice:
   Vulkan placement and `Float32` Tensor output dtype where Tensor results are
   returned.
 - Distribution unary math: dense row-major Vulkan `Float32` tensors use
-  dedicated helpers for `stats/normal-cdf` fixed op id `19` and
-  `stats/normal-quantile` fixed op id `20`, preserving Vulkan placement and
+  dedicated helpers for `stats.normal-cdf` fixed op id `19` and
+  `stats.normal-quantile` fixed op id `20`, preserving Vulkan placement and
   `Float32` dtype for public `map` and direct Tensor unary math. Dense
-  row-major Vulkan `Float64` tensors support `stats/normal-cdf` through fixed
+  row-major Vulkan `Float64` tensors support `stats.normal-cdf` through fixed
   op id `19` in the existing Float64 unary helper, preserving Vulkan placement
   and `Float64` dtype. CDF uses same-dtype shader approximations; Float32
   quantile uses a separate status-bearing inverse-CDF shader so invalid
   probabilities fail before output exposure. Vulkan `Float64`
-  `stats/normal-quantile` remains deferred pending explicit double
+  `stats.normal-quantile` remains deferred pending explicit double
   inverse-CDF/status policy.
 - `Float32` large-dense SVD robustness: the singular-values/SVD shaders use
   scale-aware eigenvalue tolerance plus orthonormal completion to handle the
@@ -638,19 +638,19 @@ Non-Docker implementation order:
    rejects unsupported mixed CPU/Vulkan lazy operands and unsupported callables
    before concrete realization can materialize CPU inputs.
 2. Landed: CUDA now proves the shared probability-domain status ABI for
-   data-dependent unary distribution math through `stats/normal-quantile`.
+   data-dependent unary distribution math through `stats.normal-quantile`.
    Status `1` reports invalid probability outside `0 < p < 1`; status `2`
    reports non-finite input; higher status wins for mixed invalid tensors, and
    nonzero status fails before result exposure.
-3. Landed: CUDA `stats/normal-quantile` uses generated CUDA C/libdevice PTX op
+3. Landed: CUDA `stats.normal-quantile` uses generated CUDA C/libdevice PTX op
    `20` for dense row-major `Float64`/`Float32` Tensor storage.
-4. Landed: Vulkan `Float32` `stats/normal-quantile` uses a separate
+4. Landed: Vulkan `Float32` `stats.normal-quantile` uses a separate
    status-bearing inverse-CDF helper. Status semantics match CUDA while
    preserving Vulkan placement and `Float32` dtype for valid probabilities.
-5. Landed: Vulkan `Float64` `stats/normal-cdf` uses a documented piecewise
+5. Landed: Vulkan `Float64` `stats.normal-cdf` uses a documented piecewise
    polynomial double approximation in the Float64 unary shader/helper without
    hidden CPU fallback or Float32 downcast.
-6. Landed: Vulkan `Float64` `stats/normal-quantile` uses a separate
+6. Landed: Vulkan `Float64` `stats.normal-quantile` uses a separate
    status-bearing inverse-CDF helper. Direct and mapped paths preserve Vulkan
    placement and `Float64` dtype for representative valid probabilities;
    invalid probability and non-finite status map to the scalar-compatible

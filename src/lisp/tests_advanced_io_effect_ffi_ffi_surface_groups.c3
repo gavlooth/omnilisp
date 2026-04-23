@@ -220,6 +220,40 @@ fn void run_advanced_ftxui_table_canvas_conversion_test(int* pass, int* fail) {
     status = omni_ftxui_canvas_render(context, canvas, &canvas_element);
     ftxui_record_result("ftxui canvas render element", status == OMNI_FTXUI_STATUS_OK && canvas_element != null, pass, fail);
     if (canvas_element != null) omni_ftxui_element_destroy(canvas_element);
+
+    double[6] plot_values = { 1.0, 2.0, 3.0, 3.0, 2.0, 1.0 };
+    usz[2] plot_lengths = { 3, 3 };
+    OmniFtxuiPlotOptions plot_options = {};
+    plot_options.size = OmniFtxuiPlotOptions.sizeof;
+    plot_options.abi_version = OMNI_FTXUI_ABI_VERSION;
+    plot_options.kind = OMNI_FTXUI_PLOT_MULTI_SERIES;
+    plot_options.width = 24;
+    plot_options.height = 12;
+    plot_options.values = &plot_values[0];
+    plot_options.value_count = 6;
+    plot_options.series_lengths = &plot_lengths[0];
+    plot_options.series_count = 2;
+    plot_options.marker = OMNI_FTXUI_PLOT_MARKER_POINT;
+    OmniFtxuiElement* plot_element = null;
+    status = omni_ftxui_element_plot(context, &plot_options, &plot_element);
+    ftxui_record_result("ftxui plot render multi-series element", status == OMNI_FTXUI_STATUS_OK && plot_element != null, pass, fail);
+    if (plot_element != null) omni_ftxui_element_destroy(plot_element);
+
+    double[4] heat_values = { 1.0, 2.0, 3.0, 4.0 };
+    OmniFtxuiPlotOptions heat_options = {};
+    heat_options.size = OmniFtxuiPlotOptions.sizeof;
+    heat_options.abi_version = OMNI_FTXUI_ABI_VERSION;
+    heat_options.kind = OMNI_FTXUI_PLOT_HEATMAP;
+    heat_options.width = 16;
+    heat_options.height = 8;
+    heat_options.values = &heat_values[0];
+    heat_options.value_count = 4;
+    heat_options.heatmap_rows = 2;
+    heat_options.heatmap_cols = 2;
+    OmniFtxuiElement* heat_element = null;
+    status = omni_ftxui_element_plot(context, &heat_options, &heat_element);
+    ftxui_record_result("ftxui plot render heatmap element", status == OMNI_FTXUI_STATUS_OK && heat_element != null, pass, fail);
+    if (heat_element != null) omni_ftxui_element_destroy(heat_element);
 }
 
 fn void run_advanced_ftxui_component_callback_delivery_test(int* pass, int* fail) {

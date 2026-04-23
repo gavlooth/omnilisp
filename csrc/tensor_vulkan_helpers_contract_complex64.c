@@ -369,7 +369,7 @@ int omni_tensor_backend_vulkan_contract_complex64(
     omni_vulkan_cmd_bind_pipeline(command_buffer, OMNI_VULKAN_PIPELINE_BIND_POINT_COMPUTE, pipeline);
     omni_vulkan_cmd_bind_descriptor_sets(command_buffer, OMNI_VULKAN_PIPELINE_BIND_POINT_COMPUTE, pipeline_layout, 0, 1, &descriptor_set, 0, NULL);
     omni_vulkan_cmd_push_constants(command_buffer, pipeline_layout, OMNI_VULKAN_SHADER_STAGE_COMPUTE_BIT, 0, (uint32_t)sizeof(push), &push);
-    uint32_t group_count = ((uint32_t)out_element_count + OMNI_TENSOR_VULKAN_CONTRACT_LOCAL_SIZE - 1u) / OMNI_TENSOR_VULKAN_CONTRACT_LOCAL_SIZE;
+    uint32_t group_count = (uint32_t)((out_element_count + OMNI_TENSOR_VULKAN_CONTRACT_LOCAL_SIZE - 1u) / OMNI_TENSOR_VULKAN_CONTRACT_LOCAL_SIZE);
     omni_vulkan_cmd_dispatch(command_buffer, group_count, 1, 1);
     if (omni_vulkan_end_command_buffer(command_buffer) != OMNI_VULKAN_SUCCESS) {
         result = OMNI_TENSOR_VULKAN_EXECUTION_FAILED;

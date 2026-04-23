@@ -412,14 +412,14 @@ int omni_tensor_backend_vulkan_contract_scalar_chain_f32(
         goto cleanup;
     }
     OmniTensorVulkanContractPushConstants contract_push_data = { (uint32_t)left_rank, (uint32_t)right_rank, (uint32_t)axis_count, (uint32_t)out_element_count, (uint32_t)out_rank };
-    uint32_t contract_groups = ((uint32_t)out_element_count + OMNI_TENSOR_VULKAN_CONTRACT_LOCAL_SIZE - 1u) / OMNI_TENSOR_VULKAN_CONTRACT_LOCAL_SIZE;
+    uint32_t contract_groups = (uint32_t)((out_element_count + OMNI_TENSOR_VULKAN_CONTRACT_LOCAL_SIZE - 1u) / OMNI_TENSOR_VULKAN_CONTRACT_LOCAL_SIZE);
     omni_vulkan_cmd_bind_pipeline(command_buffer, OMNI_VULKAN_PIPELINE_BIND_POINT_COMPUTE, contract_pipeline);
     omni_vulkan_cmd_bind_descriptor_sets(command_buffer, OMNI_VULKAN_PIPELINE_BIND_POINT_COMPUTE, contract_layout, 0, 1, &descriptor_sets[0], 0, NULL);
     omni_vulkan_cmd_push_constants(command_buffer, contract_layout, OMNI_VULKAN_SHADER_STAGE_COMPUTE_BIT, 0, (uint32_t)sizeof(contract_push_data), &contract_push_data);
     omni_vulkan_cmd_dispatch(command_buffer, contract_groups, 1, 1);
     omni_tensor_vulkan_contract_region_barrier(command_buffer, contract_output, out_byte_len);
 
-    uint32_t map_groups = ((uint32_t)out_element_count + OMNI_TENSOR_VULKAN_MAP_LOCAL_SIZE - 1u) / OMNI_TENSOR_VULKAN_MAP_LOCAL_SIZE;
+    uint32_t map_groups = (uint32_t)((out_element_count + OMNI_TENSOR_VULKAN_MAP_LOCAL_SIZE - 1u) / OMNI_TENSOR_VULKAN_MAP_LOCAL_SIZE);
     omni_vulkan_cmd_bind_pipeline(command_buffer, OMNI_VULKAN_PIPELINE_BIND_POINT_COMPUTE, map_pipeline);
     for (size_t i = 0; i < scalar_op_count; i++) {
         uint32_t left_rank_for_map = modes[i] == 1u ? 0u : (uint32_t)out_rank;

@@ -142,6 +142,8 @@ fn void run_advanced_collections_generic_ops_part1(Interp* interp, int* pass, in
         "(length (tensor-backends))", 4, pass, fail);
     test_truthy(interp, "tensor-backends cpu available",
         "(= (ref (ref (tensor-backends) 0) 'available) true)", pass, fail);
+    test_truthy(interp, "tensor-backends scientific capabilities are granular",
+        "(let (cpu-backend (ref (tensor-backends) 0) cuda-backend (ref (tensor-backends) 1) cublas-backend (ref (tensor-backends) 2) vulkan-backend (ref (tensor-backends) 3)) (and (= (ref cpu-backend 'math-elementary-float64) true) (= (ref cpu-backend 'math-elementary-float32) true) (= (ref cpu-backend 'math-error-function-float64) true) (= (ref cpu-backend 'math-error-function-float32) true) (= (ref cpu-backend 'stats-distribution-float64) true) (= (ref cpu-backend 'stats-distribution-float32) true) (or (= (ref cuda-backend 'math-elementary-float64) true) (= (ref cuda-backend 'math-elementary-float64) false)) (or (= (ref cuda-backend 'math-elementary-float32) true) (= (ref cuda-backend 'math-elementary-float32) false)) (or (= (ref cuda-backend 'math-error-function-float64) true) (= (ref cuda-backend 'math-error-function-float64) false)) (or (= (ref cuda-backend 'math-error-function-float32) true) (= (ref cuda-backend 'math-error-function-float32) false)) (or (= (ref cuda-backend 'stats-distribution-float64) true) (= (ref cuda-backend 'stats-distribution-float64) false)) (or (= (ref cuda-backend 'stats-distribution-float32) true) (= (ref cuda-backend 'stats-distribution-float32) false)) (= (ref cublas-backend 'math-elementary-float64) false) (= (ref cublas-backend 'math-elementary-float32) false) (= (ref cublas-backend 'math-error-function-float64) false) (= (ref cublas-backend 'math-error-function-float32) false) (= (ref cublas-backend 'stats-distribution-float64) false) (= (ref cublas-backend 'stats-distribution-float32) false) (= (ref vulkan-backend 'math-elementary-float64) false) (= (ref vulkan-backend 'math-elementary-float32) (ref vulkan-backend 'float32)) (= (ref vulkan-backend 'math-error-function-float64) false) (= (ref vulkan-backend 'math-error-function-float32) (ref vulkan-backend 'float32)) (= (ref vulkan-backend 'stats-distribution-float64) (ref vulkan-backend 'float64)) (= (ref vulkan-backend 'stats-distribution-float32) (ref vulkan-backend 'float32))))", pass, fail);
     test_truthy(interp, "tensor-backends cpu structural complex matrix capability",
         "(let (cpu-backend (ref (tensor-backends) 0)) (and (= (ref cpu-backend 'matrix-structural-complex128) true) (= (ref cpu-backend 'matrix-structural-complex64) true) (= (ref cpu-backend 'matrix-numerical-complex128) true) (= (ref cpu-backend 'matrix-numerical-complex64) true) (= (ref cpu-backend 'matrix-hermitian-eigen-complex128) true) (= (ref cpu-backend 'matrix-hermitian-eigen-complex64) true)))", pass, fail);
     test_truthy(interp, "tensor-backends cpu general complex eigenpair capability follows LAPACK",
@@ -156,6 +158,8 @@ fn void run_advanced_collections_generic_ops_part1(Interp* interp, int* pass, in
     omni_tensor_backend_cuda_disable_for_tests(1);
     test_truthy(interp, "tensor-backends cuda disable clears cached operation capabilities",
         "(let (cuda-backend (ref (tensor-backends) 1)) (and (= (ref cuda-backend 'available) false) (= (ref cuda-backend 'elementwise-map-float32) false) (= (ref cuda-backend 'elementwise-map-complex128) false) (= (ref cuda-backend 'matrix-structural-complex128) false) (= (ref cuda-backend 'scientific-map-float32) false) (= (ref cuda-backend 'rounding-big-integer) false) (= (ref cuda-backend 'ml-optimizer-sgd-float32) false)))", pass, fail);
+    test_truthy(interp, "tensor-backends cuda disable clears scientific granular capabilities",
+        "(let (cuda-backend (ref (tensor-backends) 1)) (and (= (ref cuda-backend 'math-elementary-float64) false) (= (ref cuda-backend 'math-elementary-float32) false) (= (ref cuda-backend 'math-error-function-float64) false) (= (ref cuda-backend 'math-error-function-float32) false) (= (ref cuda-backend 'stats-distribution-float64) false) (= (ref cuda-backend 'stats-distribution-float32) false)))", pass, fail);
     omni_tensor_backend_cuda_disable_for_tests(0);
     omni_tensor_backend_cusolver_disable_for_tests(1);
     test_truthy(interp, "tensor-backends cuda cuSOLVER disabled keeps operation claims false",
@@ -441,47 +445,47 @@ fn void run_advanced_collections_generic_ops_part1(Interp* interp, int* pass, in
         "(let (cuda-backend (ref (tensor-backends) 1)) (if (ref cuda-backend 'scientific-map-float64) (and (< (abs (ref (to-device (map sin (to-device (Tensor Float64 [1] [0.0]) 'cuda)) 'cpu) [0])) 0.000001) (< (abs (- (ref (to-device (map cos (to-device (Tensor Float64 [1] [0.0]) 'cuda)) 'cpu) [0]) 1.0)) 0.000001) (< (abs (ref (to-device (map tan (to-device (Tensor Float64 [1] [0.0]) 'cuda)) 'cpu) [0])) 0.000001) (< (abs (ref (to-device (map asin (to-device (Tensor Float64 [1] [0.0]) 'cuda)) 'cpu) [0])) 0.000001) (< (abs (ref (to-device (map acos (to-device (Tensor Float64 [1] [1.0]) 'cuda)) 'cpu) [0])) 0.000001) (< (abs (ref (to-device (map atan (to-device (Tensor Float64 [1] [0.0]) 'cuda)) 'cpu) [0])) 0.000001) (< (abs (ref (to-device (map sinh (to-device (Tensor Float64 [1] [0.0]) 'cuda)) 'cpu) [0])) 0.000001) (< (abs (- (ref (to-device (map cosh (to-device (Tensor Float64 [1] [0.0]) 'cuda)) 'cpu) [0]) 1.0)) 0.000001) (< (abs (ref (to-device (map tanh (to-device (Tensor Float64 [1] [0.0]) 'cuda)) 'cpu) [0])) 0.000001) (< (abs (- (ref (to-device (map exp (to-device (Tensor Float64 [1] [0.0]) 'cuda)) 'cpu) [0]) 1.0)) 0.000001) (< (abs (ref (to-device (map log (to-device (Tensor Float64 [1] [1.0]) 'cuda)) 'cpu) [0])) 0.000001) (< (abs (- (ref (to-device (map log10 (to-device (Tensor Float64 [1] [100.0]) 'cuda)) 'cpu) [0]) 2.0)) 0.000001)) (if (ref cuda-backend 'elementwise-map-float64) (= (handle (map sin (to-device (Tensor Float64 [1] [0.0]) 'cuda)) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true)))", pass, fail);
     test_truthy(interp, "map cuda scientific unary Float32 family follows capability",
         "(let (cuda-backend (ref (tensor-backends) 1)) (if (ref cuda-backend 'scientific-map-float32) (and (< (abs (ref (to-device (map sin (to-device (Tensor Float32 [1] [0.0]) 'cuda)) 'cpu) [0])) 0.0001) (< (abs (- (ref (to-device (map cos (to-device (Tensor Float32 [1] [0.0]) 'cuda)) 'cpu) [0]) 1.0)) 0.0001) (< (abs (ref (to-device (map tan (to-device (Tensor Float32 [1] [0.0]) 'cuda)) 'cpu) [0])) 0.0001) (< (abs (ref (to-device (map asin (to-device (Tensor Float32 [1] [0.0]) 'cuda)) 'cpu) [0])) 0.0001) (< (abs (ref (to-device (map acos (to-device (Tensor Float32 [1] [1.0]) 'cuda)) 'cpu) [0])) 0.0001) (< (abs (ref (to-device (map atan (to-device (Tensor Float32 [1] [0.0]) 'cuda)) 'cpu) [0])) 0.0001) (< (abs (ref (to-device (map sinh (to-device (Tensor Float32 [1] [0.0]) 'cuda)) 'cpu) [0])) 0.0001) (< (abs (- (ref (to-device (map cosh (to-device (Tensor Float32 [1] [0.0]) 'cuda)) 'cpu) [0]) 1.0)) 0.0001) (< (abs (ref (to-device (map tanh (to-device (Tensor Float32 [1] [0.0]) 'cuda)) 'cpu) [0])) 0.0001) (< (abs (- (ref (to-device (map exp (to-device (Tensor Float32 [1] [0.0]) 'cuda)) 'cpu) [0]) 1.0)) 0.0001) (< (abs (ref (to-device (map log (to-device (Tensor Float32 [1] [1.0]) 'cuda)) 'cpu) [0])) 0.0001) (< (abs (- (ref (to-device (map log10 (to-device (Tensor Float32 [1] [100.0]) 'cuda)) 'cpu) [0]) 2.0)) 0.0001)) (if (ref cuda-backend 'elementwise-map-float32) (= (handle (map exp (to-device (Tensor Float32 [1] [0.0]) 'cuda)) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true)))", pass, fail);
-    test_truthy(interp, "map cuda math/erf and math/erfc Float64 follow scientific capability",
-        "(let (cuda-backend (ref (tensor-backends) 1)) (if (ref cuda-backend 'scientific-map-float64) (and (< (abs (- (ref (to-device (map math/erf (to-device (Tensor Float64 [1] [1.0]) 'cuda)) 'cpu) [0]) 0.842700792949715)) 0.000001) (< (abs (- (ref (to-device (map math/erfc (to-device (Tensor Float64 [1] [1.0]) 'cuda)) 'cpu) [0]) 0.157299207050285)) 0.000001)) (if (ref cuda-backend 'elementwise-map-float64) (= (handle (map math/erf (to-device (Tensor Float64 [1] [1.0]) 'cuda)) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true)))", pass, fail);
-    test_truthy(interp, "map cuda math/erf Float32 preserves dtype when available",
-        "(let (cuda-backend (ref (tensor-backends) 1)) (if (ref cuda-backend 'scientific-map-float32) (let (out (map math/erf (to-device (Tensor Float32 [1] [1.0]) 'cuda))) (and (= (device out) 'cuda) (= (String (dtype out)) \"Float32\") (< (abs (- (ref (to-device out 'cpu) [0]) 0.8427008)) 0.0001))) true))", pass, fail);
-    test_truthy(interp, "map cuda stats/normal-cdf Float64 follows scientific capability",
-        "(let (cuda-backend (ref (tensor-backends) 1)) (if (ref cuda-backend 'scientific-map-float64) (and (< (abs (- (ref (to-device (map stats/normal-cdf (to-device (Tensor Float64 [1] [0.0]) 'cuda)) 'cpu) [0]) 0.5)) 0.000001) (< (abs (- (ref (to-device (map stats/normal-cdf (to-device (Tensor Float64 [1] [1.0]) 'cuda)) 'cpu) [0]) 0.841344746068543)) 0.000001)) (if (ref cuda-backend 'elementwise-map-float64) (= (handle (map stats/normal-cdf (to-device (Tensor Float64 [1] [0.0]) 'cuda)) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true)))", pass, fail);
-    test_truthy(interp, "map cuda stats/normal-cdf Float32 preserves dtype when available",
-        "(let (cuda-backend (ref (tensor-backends) 1)) (if (ref cuda-backend 'scientific-map-float32) (let (out (map stats/normal-cdf (to-device (Tensor Float32 [1] [0.0]) 'cuda))) (and (= (device out) 'cuda) (= (String (dtype out)) \"Float32\") (< (abs (- (ref (to-device out 'cpu) [0]) 0.5)) 0.0001))) true))", pass, fail);
+    test_truthy(interp, "map cuda math.erf and math.erfc Float64 follow scientific capability",
+        "(let (cuda-backend (ref (tensor-backends) 1)) (if (ref cuda-backend 'scientific-map-float64) (and (< (abs (- (ref (to-device (map math.erf (to-device (Tensor Float64 [1] [1.0]) 'cuda)) 'cpu) [0]) 0.842700792949715)) 0.000001) (< (abs (- (ref (to-device (map math.erfc (to-device (Tensor Float64 [1] [1.0]) 'cuda)) 'cpu) [0]) 0.157299207050285)) 0.000001)) (if (ref cuda-backend 'elementwise-map-float64) (= (handle (map math.erf (to-device (Tensor Float64 [1] [1.0]) 'cuda)) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true)))", pass, fail);
+    test_truthy(interp, "map cuda math.erf Float32 preserves dtype when available",
+        "(let (cuda-backend (ref (tensor-backends) 1)) (if (ref cuda-backend 'scientific-map-float32) (let (out (map math.erf (to-device (Tensor Float32 [1] [1.0]) 'cuda))) (and (= (device out) 'cuda) (= (String (dtype out)) \"Float32\") (< (abs (- (ref (to-device out 'cpu) [0]) 0.8427008)) 0.0001))) true))", pass, fail);
+    test_truthy(interp, "map cuda stats.normal-cdf Float64 follows scientific capability",
+        "(let (cuda-backend (ref (tensor-backends) 1)) (if (ref cuda-backend 'scientific-map-float64) (and (< (abs (- (ref (to-device (map stats.normal-cdf (to-device (Tensor Float64 [1] [0.0]) 'cuda)) 'cpu) [0]) 0.5)) 0.000001) (< (abs (- (ref (to-device (map stats.normal-cdf (to-device (Tensor Float64 [1] [1.0]) 'cuda)) 'cpu) [0]) 0.841344746068543)) 0.000001)) (if (ref cuda-backend 'elementwise-map-float64) (= (handle (map stats.normal-cdf (to-device (Tensor Float64 [1] [0.0]) 'cuda)) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true)))", pass, fail);
+    test_truthy(interp, "map cuda stats.normal-cdf Float32 preserves dtype when available",
+        "(let (cuda-backend (ref (tensor-backends) 1)) (if (ref cuda-backend 'scientific-map-float32) (let (out (map stats.normal-cdf (to-device (Tensor Float32 [1] [0.0]) 'cuda))) (and (= (device out) 'cuda) (= (String (dtype out)) \"Float32\") (< (abs (- (ref (to-device out 'cpu) [0]) 0.5)) 0.0001))) true))", pass, fail);
     {
-        char[] name = "map cuda stats/normal-quantile Float64 preserves placement and values when available";
+        char[] name = "map cuda stats.normal-quantile Float64 preserves placement and values when available";
         EvalResult guard = run("(ref (ref (tensor-backends) 1) 'scientific-map-float64)", interp);
         bool enabled = !guard.error.has_error && !is_nil(guard.value) && !(is_symbol(guard.value) && guard.value.sym_val == interp.sym_false);
         if (enabled) {
             test_truthy(interp, name,
-                "(let (out (map stats/normal-quantile (to-device (Tensor Float64 [3] [0.025 0.5 0.975]) 'cuda))) (let (cpu (to-device out 'cpu)) (and (= (device out) 'cuda) (= (String (dtype out)) \"Float64\") (< (abs (- (ref cpu [0]) -1.95996398454005)) 0.00001) (< (abs (ref cpu [1])) 0.000001) (< (abs (- (ref cpu [2]) 1.95996398454005)) 0.00001))))", pass, fail);
+                "(let (out (map stats.normal-quantile (to-device (Tensor Float64 [3] [0.025 0.5 0.975]) 'cuda))) (let (cpu (to-device out 'cpu)) (and (= (device out) 'cuda) (= (String (dtype out)) \"Float64\") (< (abs (- (ref cpu [0]) -1.95996398454005)) 0.00001) (< (abs (ref cpu [1])) 0.000001) (< (abs (- (ref cpu [2]) 1.95996398454005)) 0.00001))))", pass, fail);
         } else {
             emit_pass(name);
             (*pass)++;
         }
     }
     {
-        char[] name = "map cuda stats/normal-quantile rejects zero probability without CPU fallback";
+        char[] name = "map cuda stats.normal-quantile rejects zero probability without CPU fallback";
         EvalResult guard = run("(ref (ref (tensor-backends) 1) 'scientific-map-float64)", interp);
         bool enabled = !guard.error.has_error && !is_nil(guard.value) && !(is_symbol(guard.value) && guard.value.sym_val == interp.sym_false);
         if (enabled) {
             test_error_contains(interp, name,
-                "(map stats/normal-quantile (to-device (Tensor Float64 [1] [0.0]) 'cuda))",
-                "stats/normal-quantile: probability must be between 0 and 1", pass, fail);
+                "(map stats.normal-quantile (to-device (Tensor Float64 [1] [0.0]) 'cuda))",
+                "stats.normal-quantile: probability must be between 0 and 1", pass, fail);
         } else {
             emit_pass(name);
             (*pass)++;
         }
     }
     {
-        char[] name = "map cuda stats/normal-quantile rejects non-finite probability without CPU fallback";
+        char[] name = "map cuda stats.normal-quantile rejects non-finite probability without CPU fallback";
         EvalResult guard = run("(ref (ref (tensor-backends) 1) 'scientific-map-float64)", interp);
         bool enabled = !guard.error.has_error && !is_nil(guard.value) && !(is_symbol(guard.value) && guard.value.sym_val == interp.sym_false);
         if (enabled) {
             test_error_contains(interp, name,
-                "(map stats/normal-quantile (to-device (Tensor Float64 [1] [(ref (json-parse \"[NaN]\" '(allow-nan-inf)) 0)]) 'cuda))",
-                "stats/normal-quantile: expected finite numeric input", pass, fail);
+                "(map stats.normal-quantile (to-device (Tensor Float64 [1] [(ref (json-parse \"[NaN]\" '(allow-nan-inf)) 0)]) 'cuda))",
+                "stats.normal-quantile: expected finite numeric input", pass, fail);
         } else {
             emit_pass(name);
             (*pass)++;
@@ -491,16 +495,16 @@ fn void run_advanced_collections_generic_ops_part1(Interp* interp, int* pass, in
         "(let (cuda-backend (ref (tensor-backends) 1)) (if (ref cuda-backend 'scientific-map-float64) (and (= (device (sin (to-device (Tensor Float64 [1] [0.0]) 'cuda))) 'cuda) (< (abs (ref (to-device (sin (to-device (Tensor Float64 [1] [0.0]) 'cuda)) 'cpu) [0])) 0.000001)) (if (ref cuda-backend 'elementwise-map-float64) (= (handle (sin (to-device (Tensor Float64 [1] [0.0]) 'cuda)) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true)))", pass, fail);
     test_truthy(interp, "direct Float32 log10 cuda tensor follows scientific capability",
         "(let (cuda-backend (ref (tensor-backends) 1)) (if (ref cuda-backend 'scientific-map-float32) (let (out (log10 (to-device (Tensor Float32 [1] [100.0]) 'cuda))) (and (= (device out) 'cuda) (= (String (dtype out)) \"Float32\") (< (abs (- (ref (to-device out 'cpu) [0]) 2.0)) 0.0001))) (if (ref cuda-backend 'elementwise-map-float32) (= (handle (log10 (to-device (Tensor Float32 [1] [100.0]) 'cuda)) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true)))", pass, fail);
-    test_truthy(interp, "direct math/erf cuda tensor follows scientific capability",
-        "(let (cuda-backend (ref (tensor-backends) 1)) (if (ref cuda-backend 'scientific-map-float64) (let (out (math/erf (to-device (Tensor Float64 [1] [1.0]) 'cuda))) (and (= (device out) 'cuda) (< (abs (- (ref (to-device out 'cpu) [0]) 0.842700792949715)) 0.000001))) true))", pass, fail);
-    test_truthy(interp, "direct Float32 math/erfc cuda tensor preserves dtype",
-        "(let (cuda-backend (ref (tensor-backends) 1)) (if (ref cuda-backend 'scientific-map-float32) (let (out (math/erfc (to-device (Tensor Float32 [1] [1.0]) 'cuda))) (and (= (device out) 'cuda) (= (String (dtype out)) \"Float32\") (< (abs (- (ref (to-device out 'cpu) [0]) 0.15729921)) 0.0001))) true))", pass, fail);
-    test_truthy(interp, "direct stats/normal-cdf cuda tensor follows scientific capability",
-        "(let (cuda-backend (ref (tensor-backends) 1)) (if (ref cuda-backend 'scientific-map-float64) (let (out (stats/normal-cdf (to-device (Tensor Float64 [1] [0.0]) 'cuda))) (and (= (device out) 'cuda) (< (abs (- (ref (to-device out 'cpu) [0]) 0.5)) 0.000001))) true))", pass, fail);
-    test_truthy(interp, "direct Float32 stats/normal-cdf cuda tensor preserves dtype",
-        "(let (cuda-backend (ref (tensor-backends) 1)) (if (ref cuda-backend 'scientific-map-float32) (let (out (stats/normal-cdf (to-device (Tensor Float32 [1] [0.0]) 'cuda))) (and (= (device out) 'cuda) (= (String (dtype out)) \"Float32\") (< (abs (- (ref (to-device out 'cpu) [0]) 0.5)) 0.0001))) true))", pass, fail);
-    test_truthy(interp, "direct stats/normal-quantile cuda Float32 preserves placement and dtype",
-        "(let (cuda-backend (ref (tensor-backends) 1)) (if (ref cuda-backend 'scientific-map-float32) (let (out (stats/normal-quantile (to-device (Tensor Float32 [2] [0.5 0.975]) 'cuda))) (let (cpu (to-device out 'cpu)) (and (= (device out) 'cuda) (= (String (dtype out)) \"Float32\") (< (abs (ref cpu [0])) 0.0001) (< (abs (- (ref cpu [1]) 1.959964)) 0.0002)))) true))", pass, fail);
+    test_truthy(interp, "direct math.erf cuda tensor follows scientific capability",
+        "(let (cuda-backend (ref (tensor-backends) 1)) (if (ref cuda-backend 'scientific-map-float64) (let (out (math.erf (to-device (Tensor Float64 [1] [1.0]) 'cuda))) (and (= (device out) 'cuda) (< (abs (- (ref (to-device out 'cpu) [0]) 0.842700792949715)) 0.000001))) true))", pass, fail);
+    test_truthy(interp, "direct Float32 math.erfc cuda tensor preserves dtype",
+        "(let (cuda-backend (ref (tensor-backends) 1)) (if (ref cuda-backend 'scientific-map-float32) (let (out (math.erfc (to-device (Tensor Float32 [1] [1.0]) 'cuda))) (and (= (device out) 'cuda) (= (String (dtype out)) \"Float32\") (< (abs (- (ref (to-device out 'cpu) [0]) 0.15729921)) 0.0001))) true))", pass, fail);
+    test_truthy(interp, "direct stats.normal-cdf cuda tensor follows scientific capability",
+        "(let (cuda-backend (ref (tensor-backends) 1)) (if (ref cuda-backend 'scientific-map-float64) (let (out (stats.normal-cdf (to-device (Tensor Float64 [1] [0.0]) 'cuda))) (and (= (device out) 'cuda) (< (abs (- (ref (to-device out 'cpu) [0]) 0.5)) 0.000001))) true))", pass, fail);
+    test_truthy(interp, "direct Float32 stats.normal-cdf cuda tensor preserves dtype",
+        "(let (cuda-backend (ref (tensor-backends) 1)) (if (ref cuda-backend 'scientific-map-float32) (let (out (stats.normal-cdf (to-device (Tensor Float32 [1] [0.0]) 'cuda))) (and (= (device out) 'cuda) (= (String (dtype out)) \"Float32\") (< (abs (- (ref (to-device out 'cpu) [0]) 0.5)) 0.0001))) true))", pass, fail);
+    test_truthy(interp, "direct stats.normal-quantile cuda Float32 preserves placement and dtype",
+        "(let (cuda-backend (ref (tensor-backends) 1)) (if (ref cuda-backend 'scientific-map-float32) (let (out (stats.normal-quantile (to-device (Tensor Float32 [2] [0.5 0.975]) 'cuda))) (let (cpu (to-device out 'cpu)) (and (= (device out) 'cuda) (= (String (dtype out)) \"Float32\") (< (abs (ref cpu [0])) 0.0001) (< (abs (- (ref cpu [1]) 1.959964)) 0.0002)))) true))", pass, fail);
     {
         char[] name = "direct cuda floor returns BigInteger tensor";
         EvalResult guard = run("(ref (ref (tensor-backends) 1) 'rounding-big-integer)", interp);
@@ -562,26 +566,26 @@ fn void run_advanced_collections_generic_ops_part1(Interp* interp, int* pass, in
         }
     }
     {
-        char[] name = "direct stats/normal-quantile cuda rejects one probability without CPU fallback";
+        char[] name = "direct stats.normal-quantile cuda rejects one probability without CPU fallback";
         EvalResult guard = run("(ref (ref (tensor-backends) 1) 'scientific-map-float64)", interp);
         bool enabled = !guard.error.has_error && !is_nil(guard.value) && !(is_symbol(guard.value) && guard.value.sym_val == interp.sym_false);
         if (enabled) {
             test_error_contains(interp, name,
-                "(stats/normal-quantile (to-device (Tensor Float64 [1] [1.0]) 'cuda))",
-                "stats/normal-quantile: probability must be between 0 and 1", pass, fail);
+                "(stats.normal-quantile (to-device (Tensor Float64 [1] [1.0]) 'cuda))",
+                "stats.normal-quantile: probability must be between 0 and 1", pass, fail);
         } else {
             emit_pass(name);
             (*pass)++;
         }
     }
     {
-        char[] name = "direct stats/normal-quantile cuda gives non-finite status priority";
+        char[] name = "direct stats.normal-quantile cuda gives non-finite status priority";
         EvalResult guard = run("(ref (ref (tensor-backends) 1) 'scientific-map-float64)", interp);
         bool enabled = !guard.error.has_error && !is_nil(guard.value) && !(is_symbol(guard.value) && guard.value.sym_val == interp.sym_false);
         if (enabled) {
             test_error_contains(interp, name,
-                "(stats/normal-quantile (to-device (Tensor Float64 [2] [0.0 (ref (json-parse \"[NaN]\" '(allow-nan-inf)) 0)]) 'cuda))",
-                "stats/normal-quantile: expected finite numeric input", pass, fail);
+                "(stats.normal-quantile (to-device (Tensor Float64 [2] [0.0 (ref (json-parse \"[NaN]\" '(allow-nan-inf)) 0)]) 'cuda))",
+                "stats.normal-quantile: expected finite numeric input", pass, fail);
         } else {
             emit_pass(name);
             (*pass)++;
@@ -589,12 +593,12 @@ fn void run_advanced_collections_generic_ops_part1(Interp* interp, int* pass, in
     }
     test_truthy(interp, "realize lazy cuda scientific unary map into cuda destination when available",
         "(let (cuda-backend (ref (tensor-backends) 1)) (if (ref cuda-backend 'scientific-map-float64) (let (dst (to-device (Tensor Float64 [1] [0.0]) 'cuda)) (block (realize (map sin (to-device (Tensor Float64 [1] [0.0]) 'cuda)) dst) (and (= (device dst) 'cuda) (< (abs (ref (to-device dst 'cpu) [0])) 0.000001)))) true))", pass, fail);
-    test_truthy(interp, "realize lazy cuda math/erfc map into cuda destination when available",
-        "(let (cuda-backend (ref (tensor-backends) 1)) (if (ref cuda-backend 'scientific-map-float64) (let (dst (to-device (Tensor Float64 [1] [0.0]) 'cuda)) (block (realize (map math/erfc (to-device (Tensor Float64 [1] [1.0]) 'cuda)) dst) (and (= (device dst) 'cuda) (< (abs (- (ref (to-device dst 'cpu) [0]) 0.157299207050285)) 0.000001)))) true))", pass, fail);
-    test_truthy(interp, "realize lazy cuda stats/normal-quantile map into cuda destination when available",
-        "(let (cuda-backend (ref (tensor-backends) 1)) (if (ref cuda-backend 'scientific-map-float64) (let (dst (to-device (Tensor Float64 [1] [0.0]) 'cuda)) (block (realize (map stats/normal-quantile (to-device (Tensor Float64 [1] [0.975]) 'cuda)) dst) (and (= (device dst) 'cuda) (< (abs (- (ref (to-device dst 'cpu) [0]) 1.95996398454005)) 0.00001)))) true))", pass, fail);
-    test_truthy(interp, "realize lazy cuda stats/normal-cdf map into cuda destination when available",
-        "(let (cuda-backend (ref (tensor-backends) 1)) (if (ref cuda-backend 'scientific-map-float64) (let (dst (to-device (Tensor Float64 [1] [0.0]) 'cuda)) (block (realize (map stats/normal-cdf (to-device (Tensor Float64 [1] [0.0]) 'cuda)) dst) (and (= (device dst) 'cuda) (< (abs (- (ref (to-device dst 'cpu) [0]) 0.5)) 0.000001)))) true))", pass, fail);
+    test_truthy(interp, "realize lazy cuda math.erfc map into cuda destination when available",
+        "(let (cuda-backend (ref (tensor-backends) 1)) (if (ref cuda-backend 'scientific-map-float64) (let (dst (to-device (Tensor Float64 [1] [0.0]) 'cuda)) (block (realize (map math.erfc (to-device (Tensor Float64 [1] [1.0]) 'cuda)) dst) (and (= (device dst) 'cuda) (< (abs (- (ref (to-device dst 'cpu) [0]) 0.157299207050285)) 0.000001)))) true))", pass, fail);
+    test_truthy(interp, "realize lazy cuda stats.normal-quantile map into cuda destination when available",
+        "(let (cuda-backend (ref (tensor-backends) 1)) (if (ref cuda-backend 'scientific-map-float64) (let (dst (to-device (Tensor Float64 [1] [0.0]) 'cuda)) (block (realize (map stats.normal-quantile (to-device (Tensor Float64 [1] [0.975]) 'cuda)) dst) (and (= (device dst) 'cuda) (< (abs (- (ref (to-device dst 'cpu) [0]) 1.95996398454005)) 0.00001)))) true))", pass, fail);
+    test_truthy(interp, "realize lazy cuda stats.normal-cdf map into cuda destination when available",
+        "(let (cuda-backend (ref (tensor-backends) 1)) (if (ref cuda-backend 'scientific-map-float64) (let (dst (to-device (Tensor Float64 [1] [0.0]) 'cuda)) (block (realize (map stats.normal-cdf (to-device (Tensor Float64 [1] [0.0]) 'cuda)) dst) (and (= (device dst) 'cuda) (< (abs (- (ref (to-device dst 'cpu) [0]) 0.5)) 0.000001)))) true))", pass, fail);
     test_truthy(interp, "to-device vulkan follows backend availability",
         "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (= (device (to-device (Tensor Float64 [1] [2]) 'vulkan)) 'vulkan) (= (handle (to-device (Tensor Float64 [1] [2]) 'vulkan) (raise msg (ref msg 'code))) 'tensor/backend-unavailable)))", pass, fail);
     test_truthy(interp, "to-device vulkan Float32 follows backend capability",

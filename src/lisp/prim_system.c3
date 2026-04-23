@@ -79,7 +79,9 @@ const int CLOCK_REALTIME = 0;
 
 fn Value* prim_time_ms(Value*[] args, Env* env, Interp* interp) {
     long[2] ts;  // tv_sec, tv_nsec
-    c_clock_gettime(CLOCK_REALTIME, &ts);
+    if (c_clock_gettime(CLOCK_REALTIME, &ts) != 0) {
+        return runtime_raise(interp, "system/clock-error", "clock_gettime failed");
+    }
     long ms = ts[0] * 1000 + ts[1] / 1000000;
     return make_int(interp, ms);
 }
@@ -111,6 +113,8 @@ fn Value* prim_sleep(Value*[] args, Env* env, Interp* interp) {
     else if (args[0].tag == FLOAT32) { secs = (double)args[0].float32_val; }
     else { return runtime_raise(interp, "type/arg-mismatch", "sleep: expected number"); }
     uint usec = (uint)(secs * 1000000.0);
-    c_usleep(usec);
+    if (c_usleep(usec) != 0) {
+        return runtime_raise(interp, "system/interrupted", "sleep: interrupted or failed");
+    }
     return make_void(interp);
 }

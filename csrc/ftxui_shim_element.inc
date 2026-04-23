@@ -144,6 +144,82 @@ omni_ftxui_status omni_ftxui_element_graph_from_series(
 #endif
 }
 
+omni_ftxui_status omni_ftxui_element_plot(
+    omni_ftxui_context_t* context,
+    const omni_ftxui_plot_options* options,
+    omni_ftxui_element_t** out_element
+) {
+    if (options == nullptr || out_element == nullptr) {
+        return ctx_fail(context, OMNI_FTXUI_STATUS_INVALID_ARGUMENT, "element_plot: null argument");
+    }
+    if (!validate_sized_abi(options->size, options->abi_version, sizeof(omni_ftxui_plot_options))) {
+        return ctx_fail(context, OMNI_FTXUI_STATUS_INVALID_ARGUMENT, "element_plot: invalid option ABI");
+    }
+    if (options->width <= 0 || options->height <= 0 || options->values == nullptr || options->value_count == 0) {
+        return ctx_fail(context, OMNI_FTXUI_STATUS_INVALID_ARGUMENT, "element_plot: invalid dimensions or values");
+    }
+    if (!finite_values(options->values, options->value_count)) {
+        return ctx_fail(context, OMNI_FTXUI_STATUS_INVALID_ARGUMENT, "element_plot: values must be finite");
+    }
+    if (options->x_values != nullptr && !finite_values(options->x_values, options->x_count)) {
+        return ctx_fail(context, OMNI_FTXUI_STATUS_INVALID_ARGUMENT, "element_plot: x values must be finite");
+    }
+    if (options->series_count > 0) {
+        if (options->series_lengths == nullptr) {
+            return ctx_fail(context, OMNI_FTXUI_STATUS_INVALID_ARGUMENT, "element_plot: missing series lengths");
+        }
+        size_t total = 0;
+        for (size_t i = 0; i < options->series_count; ++i) {
+            if (options->series_lengths[i] == 0 || options->series_lengths[i] > std::numeric_limits<size_t>::max() - total) {
+                return ctx_fail(context, OMNI_FTXUI_STATUS_INVALID_ARGUMENT, "element_plot: invalid series lengths");
+            }
+            total += options->series_lengths[i];
+        }
+        if (total != options->value_count) {
+            return ctx_fail(context, OMNI_FTXUI_STATUS_INVALID_ARGUMENT, "element_plot: series lengths do not match values");
+        }
+    }
+    if (options->x_values != nullptr && options->x_count != options->value_count) {
+        return ctx_fail(context, OMNI_FTXUI_STATUS_INVALID_ARGUMENT, "element_plot: x count must match value count");
+    }
+    if (options->kind == OMNI_FTXUI_PLOT_HEATMAP &&
+        (options->heatmap_rows == 0 ||
+         options->heatmap_cols == 0 ||
+         options->heatmap_rows > std::numeric_limits<size_t>::max() / options->heatmap_cols ||
+         options->heatmap_rows * options->heatmap_cols != options->value_count)) {
+        return ctx_fail(context, OMNI_FTXUI_STATUS_INVALID_ARGUMENT, "element_plot: invalid heatmap dimensions");
+    }
+#if !OMNI_FTXUI_HAS_BACKEND
+    return ctx_fail(context, OMNI_FTXUI_STATUS_BACKEND_UNAVAILABLE, "element_plot: FTXUI backend unavailable");
+#else
+    return status_try(context, "element_plot: out of memory", "element_plot: exception", [&]() -> omni_ftxui_status {
+    ftxui::Canvas canvas(options->width, options->height);
+    switch (options->kind) {
+        case OMNI_FTXUI_PLOT_LINE:
+        case OMNI_FTXUI_PLOT_XY:
+        case OMNI_FTXUI_PLOT_MULTI_SERIES:
+        case OMNI_FTXUI_PLOT_SCATTER:
+            draw_series_plot(canvas, options);
+            break;
+        case OMNI_FTXUI_PLOT_BAR:
+        case OMNI_FTXUI_PLOT_HISTOGRAM:
+            draw_bar_plot(canvas, options);
+            break;
+        case OMNI_FTXUI_PLOT_HEATMAP:
+            draw_heatmap(canvas, options);
+            break;
+        default:
+            return ctx_fail(context, OMNI_FTXUI_STATUS_INVALID_ARGUMENT, "element_plot: unknown plot kind");
+    }
+    auto* out = make_element(ftxui::canvas(canvas));
+    if (out == nullptr) return ctx_fail(context, OMNI_FTXUI_STATUS_OUT_OF_MEMORY, "element_plot: allocation failed");
+    *out_element = out;
+    ctx_clear(context);
+    return OMNI_FTXUI_STATUS_OK;
+    });
+#endif
+}
+
 void omni_ftxui_element_destroy(omni_ftxui_element_t* element) {
     delete element;
 }

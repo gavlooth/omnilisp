@@ -84,6 +84,7 @@ fn bool register_primitives(Interp* interp) {
     if (!register_language_constants(interp)) return false;
     if (!register_dispatched_primitives(interp)) return false;
     if (!register_regular_primitives(interp)) return false;
+    if (!register_math_stats_core_modules(interp)) return false;
     if (!register_builtin_types(interp)) return false;
     if (!pika::register_pika_primitives(interp)) return false;
     register_effect_fast_paths(interp);

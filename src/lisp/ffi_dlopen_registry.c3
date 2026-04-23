@@ -82,6 +82,7 @@ fn void* ffi_dlopen_registry_acquire(char[] path) {
     if (handle == null) return null;
 
     if (g_dlopen_registry_count >= g_dlopen_registry_capacity) {
+        if (g_dlopen_registry_capacity > uint.max / 2) return null;
         uint new_cap = g_dlopen_registry_capacity == 0 ? 4 : g_dlopen_registry_capacity * 2;
         DlopenRegistryEntry* new_entries = (DlopenRegistryEntry*)mem::realloc(
             g_dlopen_registry, DlopenRegistryEntry.sizeof * new_cap);

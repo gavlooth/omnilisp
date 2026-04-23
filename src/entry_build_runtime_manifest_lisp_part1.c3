@@ -1,6 +1,6 @@
 module main;
 
-const String[198] AOT_RUNTIME_LISP_SOURCES_PART1 = {
+const String[199] AOT_RUNTIME_LISP_SOURCES_PART1 = {
     "src/lisp/deduce_rule_eval_analyze_request.c3",
     "src/lisp/deduce_rule_eval_analyze_run.c3",
     "src/lisp/deduce_rule_eval_analyze_setup.c3",
@@ -193,6 +193,7 @@ const String[198] AOT_RUNTIME_LISP_SOURCES_PART1 = {
     "src/lisp/eval_env_copy_values.c3",
     "src/lisp/eval_ffi_bound_call.c3",
     "src/lisp/eval_ffi_eval.c3",
+    "src/lisp/eval_init_core_modules.c3",
     "src/lisp/eval_init_primitive_registration.c3",
     "src/lisp/eval_init_primitive_tables.c3",
     "src/lisp/eval_init_primitives.c3",

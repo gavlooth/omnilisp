@@ -11,6 +11,18 @@ The live backlog has been consolidated into `TODO.md` at the repo root.
 
 ## Current TODO-Linked Plans
 
+- `slash-surface-naming-audit-plan-2026-04-23.md`: closed surface naming
+  audit. Closed slices document Pika as language-core, choose a Deduce module
+  facade, choose the ML module split, flatten `ml/linear-batched-reduce`,
+  clarify ML/NN activation naming, and move the math/stats scientific naming
+  follow-up to the dedicated math/stats module plan.
+- `math-stats-scientific-module-plan-2026-04-23.md`: active plan for the
+  scientific module migration. The core `math` and `stats` module facades,
+  docs/tests migration, old slash special/stat callable removal, and Vulkan
+  `Float32` `math.erf` / `math.erfc` extension have shipped. Granular
+  `tensor-backends` scientific capability reporting has also shipped. Remaining
+  work is the Vulkan `Float64`/harder special-function policy captured by
+  `MATHSTATS-VK-003`.
 - `memory-tier3-evaluation-2026-04-21.md`: closed evaluation note for the
   remaining Tier 3 memory proposal items. It rejects immediate `Value` inline
   collection rewrites, unmeasured TEMP lane paging, and cross-thread scope pool
@@ -81,15 +93,15 @@ The live backlog has been consolidated into `TODO.md` at the repo root.
   hidden CPU fallback.
 - `vulkan-ml-linear-direct-float32-batched-reduction-surface-2026-04-20.md`:
   accepted decision for the narrow `ml-linear-direct-float32` capability and
-  public `ml/linear/batched-reduce` surface under `ML-VK-010-004`.
+  public `ml/linear-batched-reduce` surface under `ML-VK-010-004`.
 - `cuda-cublas-backend-decision-2026-04-16.md`: CUDA/cuBLAS stays behind the
   backend-neutral Tensor surface. Current support includes explicit
   `to-device` CPU/CUDA copies, cuBLAS rank-2/rank-1 contract fast paths,
   embedded-PTX CUDA binary elementwise `map` for dense row-major `Float64` and
   `Float32` scalar, exact-shape, and right-aligned broadcast operands, CUDA
   arithmetic/component unary `map` for eligible dense row-major real tensors,
-  generated CUDA C/libdevice PTX scientific unary `map` including `math/erf`,
-  `math/erfc`, and `stats/normal-cdf`, and destination-form `realize` into
+  generated CUDA C/libdevice PTX scientific unary `map` including `math.erf`,
+  `math.erfc`, and `stats.normal-cdf`, and destination-form `realize` into
   existing dense row-major `Float64` or `Float32` CUDA destinations without
   implicit CPU fallback.
   Landed slices include Vulkan `matrix/cholesky`, Vulkan `matrix/qr`, Vulkan

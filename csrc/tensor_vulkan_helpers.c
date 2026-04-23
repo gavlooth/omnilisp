@@ -111,7 +111,7 @@ int omni_tensor_backend_vulkan_map_unary_f32(
     if (out_device_ptr == NULL) return OMNI_TENSOR_VULKAN_INVALID;
     *out_device_ptr = NULL;
     if (!omni_tensor_backend_vulkan_available()) return OMNI_TENSOR_VULKAN_UNAVAILABLE;
-    if (op > 16 && op != 19u) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
+    if (op > 19u) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
     if (element_count > SIZE_MAX / sizeof(float) || byte_len != element_count * sizeof(float)) {
         return OMNI_TENSOR_VULKAN_UNSUPPORTED;
     }

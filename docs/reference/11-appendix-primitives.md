@@ -63,6 +63,24 @@ Command-style primitive set (`42` names):
 
 All remaining registered primitive names are query-style.
 
+Slash (`/`) in primitive names is part of the symbol name. Families such as
+`io/...`, `pika/...`, `matrix/...`, `tensor/...`, `ml/...`, `nn/...`, and
+`ui/...` are canonical always-present primitive surfaces, not implicit module
+dereferences. Module access uses dotted/path values and import/export forms;
+primitive references like `pika/parse` and quoted symbols like `'pika/parse`
+refer to one interned symbol. Scientific `math` and `stats` operations are
+exposed through prebound core module values; removed pre-alpha slash names like
+`math/erf` and `stats/normal-cdf` parse as ordinary symbols but are no longer
+registered public primitives.
+
+The slash convention should improve developer scanning. It is suitable for
+dense primitive families with common nouns (`ml/plot`, `tensor/capture`) and
+structured error codes, but it is not required for every operation. Keep
+cross-cutting generic operations unprefixed (`map`, `ref`, `length`), keep
+distinct one-off operations short when the prefix adds no meaning, and prefer a
+real module boundary when a surface becomes optional, independently versioned,
+or broad enough to need explicit import management.
+
 ### Dispatched Primitives (33)
 
 These support user extension via method tables.
@@ -213,6 +231,13 @@ Callable core type symbols also provide constructor/coercion surface here:
 
 **Math:**
 
+Prefer the prebound core module facade for scientific math and statistics:
+`math.sin`, `math.erf`, `math.lgamma`, `stats.normal-cdf`, and
+`stats.normal-quantile`. The bare elementary/prelude names and the
+transitional `math/...` / `stats/...` slash spellings share the same
+implementation paths for now; the slash special/stat names are migration
+inputs, not module syntax.
+
 | Name | Arity | Description |
 |------|-------|-------------|
 | `sin` | 1 | Sine |
@@ -236,18 +261,35 @@ Callable core type symbols also provide constructor/coercion surface here:
 | `ceiling` | 1 | Ceiling; `BigFloat` inputs return exact `Integer`/`BigInteger` results up to the supported allocation cap |
 | `round` | 1 | Round; `BigFloat` inputs return exact `Integer`/`BigInteger` results up to the supported allocation cap |
 | `truncate` | 1 | Truncate; `BigFloat` inputs return exact `Integer`/`BigInteger` results up to the supported allocation cap |
-| `math/lgamma` | 1 | Natural log of absolute gamma value |
-| `math/erf` | 1 | Error function; applies elementwise to supported Tensor inputs |
-| `math/erfc` | 1 | Complementary error function; applies elementwise to supported Tensor inputs |
-| `stats/normal-cdf` | 1 | Standard normal cumulative distribution function; applies elementwise to supported Tensor inputs |
-| `stats/normal-quantile` | 1 | Standard normal inverse cumulative distribution function; applies elementwise to supported CPU, CUDA, and Vulkan Float32 Tensor inputs |
+| `math.lgamma` | 1 | Natural log of absolute gamma value |
+| `math.erf` | 1 | Error function; applies elementwise to supported Tensor inputs |
+| `math.erfc` | 1 | Complementary error function; applies elementwise to supported Tensor inputs |
+| `stats.normal-cdf` | 1 | Standard normal cumulative distribution function; applies elementwise to supported Tensor inputs |
+| `stats.normal-quantile` | 1 | Standard normal inverse cumulative distribution function; applies elementwise to supported CPU, CUDA, and Vulkan Float32 Tensor inputs |
+| `ml/linear` | 2-3 | Dense affine projection for Tensor input, weights, and optional bias; supports CPU/Vulkan Float64/Float32 paths with fail-closed unsupported-device behavior |
+| `ml/linear-batched-reduce` | 2-3 | Rank-`>=2` batched dense projection surface with the same dtype and output-shape contract as `ml/linear`; rank-1 input fails with `tensor/shape-mismatch` |
 | `ml/grad` | 1 | Data-oriented gradient spec evaluator; supports CPU linear MSE, linear-activation MSE, linear softmax cross-entropy, tensor-expression MSE, and tensor-expression softmax cross-entropy gradients, returning metadata-only scope-owned `gradient-tape` dictionaries |
 | `ml/sgd-step` | 3 | Immutable SGD parameter-tree update for CPU/Vulkan Float64/Float32 Tensor leaves; CPU leaves auto-migrate when the corresponding tree touches Vulkan: parameters, gradients, learning-rate |
 | `ml/clip-gradients` | 2 | CPU max-norm gradient clipping over dense Float64/Float32 Tensor leaves and Vulkan dense row-major `Float32` trees; CPU Float32 leaves auto-migrate when another leaf is Vulkan-placed, while unsupported dtypes fail closed |
+| `ml/plot` | 1-2 | Declarative FTXUI graph node for finite numeric Array/List series, x/y pair series, Array/List multi-series overlays, rank-1 Float64/Float32 CPU tensors, or rank-2 `[N 2]` Float64/Float32 CPU tensors: data [options] |
+| `ml/loss-curve` | 1-2 | Declarative FTXUI graph node for finite scalar loss Array/List series or rank-1 Float64/Float32 CPU tensors: losses [options] |
+| `ml/scatter` | 1-2 | Declarative FTXUI canvas-rendered scatter data with x/y points and marker metadata: points [options] |
+| `ml/bar-chart` | 1-2 | Declarative FTXUI canvas-rendered bar chart data with optional labels metadata: values [options] |
+| `ml/histogram` | 1-2 | Declarative FTXUI canvas-rendered histogram count data with bin edges and optional bin count: values [options] |
+| `ml/heatmap` | 1-2 | Declarative finite matrix heatmap data rendered as a colored FTXUI canvas without image display: matrix [options] |
+| `ml/roc-curve` | 1-2 | Declarative FTXUI canvas-rendered ROC curve data from false-positive-rate/true-positive-rate points: points [options] |
+| `ml/pr-curve` | 1-2 | Declarative FTXUI canvas-rendered precision-recall curve data from recall/precision points: points [options] |
+| `ml/tensor-summary` | 1-2 | Declarative tensor metadata summary for any Tensor with direct CPU Float64/Float32 min/max/mean stats when available: tensor [options] |
+| `ml/confusion-matrix` | 2-3 | Declarative target-row/predicted-column confusion matrix for equal-length integer class-id Array/List or rank-1 CPU Float64/Float32 Tensor labels: predictions targets [options] |
+| `ml/export-image` | 2-3 | Write a dependency-free PPM image for rank-2 grayscale or rank-3 HWC CPU Float64/Float32 Tensor data with 1 or 3 channels and unit/byte range values: tensor path [options] |
 | `ml/optimizer-step` | 4 | Data-oriented optimizer spec step; currently supports CPU/Vulkan dense row-major Float64/Float32 SGD/Adam/AdamW/RMSProp and CUDA dense row-major Float32 map-backed SGD/Adam/AdamW/RMSProp with optional state over explicit parameter/state trees |
 | `ml/save-optimizer` | 2-3 | Serialize a supported optimizer spec and explicit state Dictionary checkpoint to JSON, or write it to a path and return `Void` |
 | `ml/load-optimizer` | 1 | Load an optimizer checkpoint from JSON or path and return an ordinary `{kind spec state}` Dictionary after envelope/spec/state-container validation |
+| `ml/relu` | 1 | Tensor ReLU activation; this is an eager tensor operation, not an NN layer-spec constructor |
 | `ml/leaky-relu` | 1-2 | Leaky ReLU activation for Float64/Float32 Tensor inputs with optional non-negative finite negative-slope; preserves dtype and placement |
+| `ml/sigmoid` | 1 | Tensor sigmoid activation; this is an eager tensor operation, not an NN layer-spec constructor |
+| `ml/tanh` | 1 | Tensor tanh activation; this is an eager tensor operation, not an NN layer-spec constructor |
+| `ml/gelu` | 1 | Tensor GELU activation; this is an eager tensor operation, not an NN layer-spec constructor |
 | `ml/sum` | 2 | Axis sum reduction for supported Tensor inputs; drops reduced axes from the result shape |
 | `ml/mean` | 2 | Axis mean reduction for supported Tensor inputs; drops reduced axes from the result shape |
 | `ml/variance` | 2 | Axis population-variance reduction for supported Tensor inputs; drops reduced axes from the result shape |
@@ -274,12 +316,12 @@ Callable core type symbols also provide constructor/coercion surface here:
 | `nn/avg-pool2d` | 3 | Construct a normalized average-pooling layer spec from window/stride/padding pairs |
 | `nn/flatten` | 0-2 | Construct a normalized flatten layer spec with optional start/end axes |
 | `nn/activation` | 1 | Construct a normalized activation layer spec |
-| `nn/relu` | 0 | Construct a ReLU activation layer spec |
-| `nn/leaky-relu` | 0 | Construct a default-slope leaky ReLU activation layer spec |
-| `nn/sigmoid` | 0 | Construct a sigmoid activation layer spec |
-| `nn/tanh` | 0 | Construct a tanh activation layer spec |
-| `nn/gelu` | 0 | Construct a GELU activation layer spec |
-| `nn/softmax` | 0 | Construct a softmax activation layer spec |
+| `nn/relu` | 0 | Construct a ReLU activation layer spec; this is model metadata, not an eager tensor activation |
+| `nn/leaky-relu` | 0 | Construct a default-slope leaky ReLU activation layer spec; this is model metadata, not an eager tensor activation |
+| `nn/sigmoid` | 0 | Construct a sigmoid activation layer spec; this is model metadata, not an eager tensor activation |
+| `nn/tanh` | 0 | Construct a tanh activation layer spec; this is model metadata, not an eager tensor activation |
+| `nn/gelu` | 0 | Construct a GELU activation layer spec; this is model metadata, not an eager tensor activation |
+| `nn/softmax` | 0 | Construct a softmax activation layer spec; this is model metadata, not an eager tensor activation |
 | `nn/apply` | 2, 4-5 | Run inference from normalized model or explicit `(spec params state input [options])` data; optional options must currently be empty and supported layers lower to `ml/*` |
 | `nn/forward` | 2, 4-5 | Training-friendly forward execution over the same model or explicit data shapes as `nn/apply`; train-mode stateful layers return an `nn-forward` Dictionary containing output and updated state/model data |
 | `nn/grad` | 3-4 | Build gradients for train-mode dense or single dense-plus-activation model data using the supported CPU `ml/grad` linear MSE and softmax cross-entropy contracts |
@@ -360,7 +402,7 @@ for complex operands.
 | `Tensor` | 1-3 | Construct native CPU `Float64`, `Float32`, `Complex128`, `Complex64`, `BigInteger`, `BigFloat`, or `BigComplex` tensor storage as `(Tensor data)`, `(Tensor data dtype)`, `(Tensor iterator)`, `(Tensor iterator dtype)`, `(Tensor dtype shape data-or-scalar)`, or `(Tensor dtype shape iterator)` |
 | `Kernel` | 1 | Construct a validated data-oriented custom backend kernel spec as a typed `Kernel` dictionary; path access and `ref` remain ordinary data access |
 | `kernel/capture` | 3 | Validate a checked Vulkan Kernel against runtime inputs and push data and return a single-node `kernel-graph` launch plan with dtype/device/shape/execution/invalidation metadata without executing the kernel |
-| `kernel/run` | 3 | Explicit custom kernel execution entrypoint; supports checked Vulkan `scale-f32`, registered-source `source-scale-f32` using `source 'ml-clip-scale-f32`, direct-SPIR-V word-array `source-scale-f32` for the checked `source-scale-f32-v1` scale ABI, binary `add-f32`, `sub-f32`, `mul-f32`, `div-f32`, `min-f32`, `max-f32`, scalar `add-scalar-f32`, `sub-scalar-f32`, `mul-scalar-f32`, `div-scalar-f32`, `min-scalar-f32`, `max-scalar-f32`, `scalar-sub-f32`, `scalar-div-f32`, and unary `abs-f32`, `neg-f32`, `sqrt-f32`, `identity-f32`, `zero-f32`, `sin-f32`, `cos-f32`, `tan-f32`, `asin-f32`, `acos-f32`, `atan-f32`, `sinh-f32`, `cosh-f32`, `tanh-f32`, `exp-f32`, `log-f32`, `log10-f32`, `normal-cdf-f32` `Float32` tensor kernels; unary `Float32` kernels may also run from registered `format 'builtin-spirv` source `name 'map-unary-f32` or direct word-array source with explicit `abi 'source-unary-f32-v1`; binary `Float32` kernels may run from direct word-array source with explicit `abi 'source-binary-f32-v1`; direct scale SPIR-V sources may declare `abi 'source-scale-f32-v1`, omitted ABI means the same checked scale ABI; checked direct scale, unary, and binary SPIR-V sources may declare a matching `kernel-source-layout` metadata dictionary, with legacy binary `metadata 'storage2-output1-f32-v1` still accepted for that binary ABI only; unsupported direct-SPIR-V ABIs fail closed |
+| `kernel/run` | 3 | Explicit custom kernel execution entrypoint; supports checked Vulkan `scale-f32`, registered-source `source-scale-f32` using `source 'ml-clip-scale-f32`, direct-SPIR-V word-array `source-scale-f32` for the checked `source-scale-f32-v1` scale ABI, binary `add-f32`, `sub-f32`, `mul-f32`, `div-f32`, `min-f32`, `max-f32`, scalar `add-scalar-f32`, `sub-scalar-f32`, `mul-scalar-f32`, `div-scalar-f32`, `min-scalar-f32`, `max-scalar-f32`, `scalar-sub-f32`, `scalar-div-f32`, and unary `abs-f32`, `neg-f32`, `sqrt-f32`, `identity-f32`, `zero-f32`, `sin-f32`, `cos-f32`, `tan-f32`, `asin-f32`, `acos-f32`, `atan-f32`, `sinh-f32`, `cosh-f32`, `tanh-f32`, `exp-f32`, `log-f32`, `log10-f32`, `erf-f32`, `erfc-f32`, `normal-cdf-f32` `Float32` tensor kernels; unary `Float32` kernels may also run from registered `format 'builtin-spirv` source `name 'map-unary-f32` or direct word-array source with explicit `abi 'source-unary-f32-v1`; binary `Float32` kernels may run from direct word-array source with explicit `abi 'source-binary-f32-v1`; direct scale SPIR-V sources may declare `abi 'source-scale-f32-v1`, omitted ABI means the same checked scale ABI; checked direct scale, unary, and binary SPIR-V sources may declare a matching `kernel-source-layout` metadata dictionary, with legacy binary `metadata 'storage2-output1-f32-v1` still accepted for that binary ABI only; unsupported direct-SPIR-V ABIs fail closed |
 | `tensor/capture` | 1 | Return a non-executing `tensor-graph` plan for supported all-Vulkan `Float32` concrete/map/contract/direct-transpose-view Tensor expression graphs, including node ids, source/map/contract/view nodes, scalar operands, contract axes, view strides, output id, concrete source-node tensor values, shape, schedule metadata, command-batch planning metadata, nested metadata-only memory-plan and fusion-plan data, top-level selected-region-plan data, `fusion 'none`, and invalidation metadata. This is capture metadata; capture itself does not allocate or submit command buffers and unsupported execution still fails closed without hidden CPU fallback or `(define [kernel] ...)` sugar |
 | `tensor/run` | 1 | Execute a captured all-Vulkan `Float32` `tensor-graph` dictionary by replaying source/map nodes, contract nodes, and direct transpose-view nodes through existing Vulkan helpers; eligible source -> scalar-map* graphs with two or more scalar map nodes, dense tensor/tensor map -> scalar-map* regions, view-consuming scalar regions, contract -> scalar-map* regions, and the concrete mixed view/dense-source region lower matching `selected-region-plan` candidates and validated `command-buffer-candidate` metadata to native Vulkan command-buffer batch/reuse helpers; malformed graphs, missing source-node tensors, mixed placement, unsupported dtypes, arbitrary strided views, fused dispatch, and unsupported command-buffer regions fail closed |
 | `tensor?` | 1 | Predicate for native tensor values |
@@ -501,6 +543,10 @@ Preferred iterator consumption uses collection constructors:
 
 **Regex (Pika):**
 
+Pika is Omni's language-core parser and grammar substrate, so these regex
+primitives are part of the built-in parsing surface rather than an optional
+regular-expression module. They use deterministic Pika matching semantics.
+
 | Name | Arity | Description |
 |------|-------|-------------|
 | `re-match` | 2 | First match |
@@ -511,7 +557,11 @@ Preferred iterator consumption uses collection constructors:
 | `re-match-pos` | 2 | Match with positions |
 | `re-find-all-pos` | 2 | All matches with positions |
 
-**PEG Grammar (Pika):**
+**Pika Grammar Substrate:**
+
+The `pika/...` names expose Omni's built-in grammar machinery. They are ordinary
+slash-bearing symbols in a compact core primitive family, not module members
+that require importing a detachable Pika package.
 
 | Name | Arity | Description |
 |------|-------|-------------|
@@ -520,7 +570,7 @@ Preferred iterator consumption uses collection constructors:
 | `pika/fold` | 3 | Fold over parse tree |
 | `pika/grammar-rules` | 1 | List rule names |
 | `pika/match-span` | 3 | Match specific rule |
-| `pika/parse-lisp` | 1 | Parse Lisp syntax |
+| `pika/parse-lisp` | 1 | Parse Omni/Lisp syntax with the built-in Pika grammar |
 
 **Unicode:**
 

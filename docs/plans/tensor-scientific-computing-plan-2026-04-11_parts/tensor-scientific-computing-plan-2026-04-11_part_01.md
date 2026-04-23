@@ -123,16 +123,16 @@ Name collision note:
 - `TENSOR-087` is complete: Tensor unary scientific math applies elementwise
   `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `sinh`, `cosh`, `tanh`, `exp`,
   `log`, and `log10` for all native tensor dtypes. Follow-on support adds
-  elementwise CPU Tensor `math/erf`, `math/erfc`, `stats/normal-cdf`, and
-  `stats/normal-quantile`;
+  elementwise CPU Tensor `math.erf`, `math.erfc`, `stats.normal-cdf`, and
+  `stats.normal-quantile`;
   `Float64`/`Float32` preserve float dtype, `BigInteger` returns same-shape
   `Float64`, `BigFloat` preserves dtype, and `BigComplex` fails closed for
   these error-function/distribution primitives. CUDA dense row-major
-  `Float64`/`Float32` also supports `math/erf`, `math/erfc`,
-  `stats/normal-cdf`, and `stats/normal-quantile` through fixed scientific
+  `Float64`/`Float32` also supports `math.erf`, `math.erfc`,
+  `stats.normal-cdf`, and `stats.normal-quantile` through fixed scientific
   unary opcodes; CUDA quantile uses a probability-status word so invalid
   probabilities fail before result exposure. Vulkan `Float32` supports
-  `stats/normal-cdf` and `stats/normal-quantile` through dedicated helpers;
+  `stats.normal-cdf` and `stats.normal-quantile` through dedicated helpers;
   Vulkan quantile uses a status-bearing inverse-CDF shader so invalid
   probabilities fail before result exposure. Vulkan `Float64` distribution
   support remains deferred behind explicit double approximation/status policy.
