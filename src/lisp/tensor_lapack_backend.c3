@@ -21,6 +21,12 @@ extern fn int omni_tensor_backend_lapack_dgesvd_available() @extern("omni_tensor
 extern fn long omni_tensor_backend_lapack_dgesvd_call_count() @extern("omni_tensor_backend_lapack_dgesvd_call_count");
 extern fn int omni_tensor_backend_lapack_dgeev_available() @extern("omni_tensor_backend_lapack_dgeev_available");
 extern fn long omni_tensor_backend_lapack_dgeev_call_count() @extern("omni_tensor_backend_lapack_dgeev_call_count");
+extern fn int omni_tensor_backend_lapack_sgeev_available() @extern("omni_tensor_backend_lapack_sgeev_available");
+extern fn long omni_tensor_backend_lapack_sgeev_call_count() @extern("omni_tensor_backend_lapack_sgeev_call_count");
+extern fn int omni_tensor_backend_lapack_zgeev_available() @extern("omni_tensor_backend_lapack_zgeev_available");
+extern fn long omni_tensor_backend_lapack_zgeev_call_count() @extern("omni_tensor_backend_lapack_zgeev_call_count");
+extern fn int omni_tensor_backend_lapack_cgeev_available() @extern("omni_tensor_backend_lapack_cgeev_available");
+extern fn long omni_tensor_backend_lapack_cgeev_call_count() @extern("omni_tensor_backend_lapack_cgeev_call_count");
 extern fn void omni_tensor_backend_lapack_dgesv_disable_for_tests(int disabled) @extern("omni_tensor_backend_lapack_dgesv_disable_for_tests");
 extern fn void omni_tensor_backend_lapack_dgetrf_disable_for_tests(int disabled) @extern("omni_tensor_backend_lapack_dgetrf_disable_for_tests");
 extern fn void omni_tensor_backend_lapack_dpotrf_disable_for_tests(int disabled) @extern("omni_tensor_backend_lapack_dpotrf_disable_for_tests");
@@ -28,6 +34,9 @@ extern fn void omni_tensor_backend_lapack_dgeqrf_disable_for_tests(int disabled)
 extern fn void omni_tensor_backend_lapack_dsyev_disable_for_tests(int disabled) @extern("omni_tensor_backend_lapack_dsyev_disable_for_tests");
 extern fn void omni_tensor_backend_lapack_dgesvd_disable_for_tests(int disabled) @extern("omni_tensor_backend_lapack_dgesvd_disable_for_tests");
 extern fn void omni_tensor_backend_lapack_dgeev_disable_for_tests(int disabled) @extern("omni_tensor_backend_lapack_dgeev_disable_for_tests");
+extern fn void omni_tensor_backend_lapack_sgeev_disable_for_tests(int disabled) @extern("omni_tensor_backend_lapack_sgeev_disable_for_tests");
+extern fn void omni_tensor_backend_lapack_zgeev_disable_for_tests(int disabled) @extern("omni_tensor_backend_lapack_zgeev_disable_for_tests");
+extern fn void omni_tensor_backend_lapack_cgeev_disable_for_tests(int disabled) @extern("omni_tensor_backend_lapack_cgeev_disable_for_tests");
 
 extern fn int omni_tensor_backend_lapack_dgesv(
     usz n,
@@ -77,3 +86,25 @@ extern fn int omni_tensor_backend_lapack_dgeev(
     double* wi,
     double* vr
 ) @extern("omni_tensor_backend_lapack_dgeev");
+
+extern fn int omni_tensor_backend_lapack_sgeev(
+    usz n,
+    float* a,
+    float* wr,
+    float* wi,
+    float* vr
+) @extern("omni_tensor_backend_lapack_sgeev");
+
+extern fn int omni_tensor_backend_lapack_zgeev(
+    usz n,
+    Complex128Val* a,
+    Complex128Val* w,
+    Complex128Val* vr
+) @extern("omni_tensor_backend_lapack_zgeev");
+
+extern fn int omni_tensor_backend_lapack_cgeev(
+    usz n,
+    Complex64Val* a,
+    Complex64Val* w,
+    Complex64Val* vr
+) @extern("omni_tensor_backend_lapack_cgeev");

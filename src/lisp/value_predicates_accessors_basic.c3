@@ -341,28 +341,28 @@ fn Value* make_array_checked(Interp* interp, usz capacity, char[] oom_message) {
         ? null
         : (Array*)mem::malloc(Array.sizeof);
     if (arr == null) {
-        return raise_error(interp, oom_message);
+        return tensor_runtime_raise(interp, oom_message);
     }
 
     arr.capacity = capacity < 4 ? 4 : capacity;
     arr.length = 0;
     if (arr.capacity > usz.max / Value*.sizeof) {
         mem::free(arr);
-        return raise_error(interp, oom_message);
+        return tensor_runtime_raise(interp, oom_message);
     }
     arr.items = g_value_force_make_array_items_alloc_fail
         ? null
         : (Value**)mem::malloc(Value*.sizeof * arr.capacity);
     if (arr.items == null) {
         mem::free(arr);
-        return raise_error(interp, oom_message);
+        return tensor_runtime_raise(interp, oom_message);
     }
 
     Value* v = boundary_alloc_value_in_root(interp, true);
     if (v == null) {
         mem::free(arr.items);
         mem::free(arr);
-        return raise_error(interp, oom_message);
+        return tensor_runtime_raise(interp, oom_message);
     }
 
     v.tag = ARRAY;

@@ -231,8 +231,12 @@ fn Value* ml_pool2d_vulkan_result(TensorVal* input, MlPool2dSpec* spec, usz[] re
         tensor_free_payload(tensor);
         return tensor_vulkan_status_raise(interp, status, "ml pool2d: Vulkan pooling kernel failed");
     }
+    if (out_device == null) {
+        tensor_free_payload(tensor);
+        return tensor_runtime_raise(interp, "ml pool2d: Vulkan pooling kernel did not return result storage");
+    }
     tensor.device_handle = out_device;
-    tensor.device_finalizer = out_device != null ? &tensor_vulkan_device_finalizer : null;
+    tensor.device_finalizer = &tensor_vulkan_device_finalizer;
 
     Value* result = interp.alloc_value();
     if (result == null) {
@@ -247,13 +251,10 @@ fn Value* ml_pool2d_vulkan_result(TensorVal* input, MlPool2dSpec* spec, usz[] re
 
 fn Value* ml_pool2d_try_vulkan(Value* input_value, usz kernel_height, usz kernel_width, usz stride_height, usz stride_width, usz padding_height, usz padding_width, bool average, Interp* interp) {
     if (!tensor_expr_has_device(input_value, TENSOR_DEVICE_VULKAN)) return null;
-    if (tensor_expr_has_non_vulkan_device(input_value)) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml pool2d: Vulkan operands must remain Vulkan-placed", null);
-    }
 
     TensorVal* input = null;
     Value* resolved_input_value = null;
-    Value* err = tensor_expr_resolve_concrete_any_device(input_value, &input, &resolved_input_value, interp, "ml pool2d: input tensor metadata is missing");
+    Value* err = tensor_expr_resolve_vulkan_or_migrate(input_value, &input, &resolved_input_value, interp, "ml pool2d: input tensor metadata is missing");
     if (err != null) return err;
     defer if (resolved_input_value != null && resolved_input_value != input_value) {
         boundary_cleanup_materialized_value(null, resolved_input_value, interp.current_scope);
@@ -261,7 +262,7 @@ fn Value* ml_pool2d_try_vulkan(Value* input_value, usz kernel_height, usz kernel
 
     if (input == null) return tensor_runtime_raise(interp, "ml pool2d: tensor metadata is missing");
     if (input.device != TENSOR_DEVICE_VULKAN) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml pool2d: Vulkan operands must realize to Vulkan storage", null);
+        return null;
     }
     if (!tensor_dense_row_major(input)) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml pool2d: Vulkan currently supports dense row-major tensors", null);

@@ -13,6 +13,8 @@ fn void print_value(Value* v, SymbolTable* syms) {
     }
 
     switch (v.tag) {
+        case NIL:
+            return;
         case INT:
             io::printf("%d", v.int_val);
         case DOUBLE:
@@ -101,8 +103,6 @@ fn void print_value(Value* v, SymbolTable* syms) {
             io::print(ts);
             io::print(">");
         }
-        default:
-            io::print("#<unknown>");
     }
 }
 

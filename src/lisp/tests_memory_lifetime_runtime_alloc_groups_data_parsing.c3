@@ -81,7 +81,7 @@ fn void run_memory_lifetime_runtime_alloc_groups_data_parsing_tests(Interp* inte
             tmp.current_scope = saved;
             g_boundary_force_copy_time_point_wrapper_alloc_fail = saved_force;
             if (toml_handle != null) omni_toml_result_free(toml_handle);
-            if (toml_fail == null) toml_fail = raise_error(tmp, "toml setup failed");
+            if (toml_fail == null) toml_fail = runtime_raise(tmp, "runtime/evaluation-error", "toml setup failed");
         }
 
         bool ok = setup_ok &&

@@ -1,5 +1,33 @@
 module lisp;
 
+import main;
+
+fn Value* ml_optimizer_cuda_tensor_value(TensorVal* source, void* device_handle, Interp* interp, char[] metadata_label, char[] value_label) {
+    if (source == null || device_handle == null) {
+        if (device_handle != null) omni_tensor_backend_cuda_free(device_handle);
+        return tensor_runtime_raise(interp, metadata_label);
+    }
+    TensorVal* tensor = tensor_alloc_payload_base_checked(source.dtype, source.shape[0:source.rank], false, false, metadata_label);
+    if (tensor == null) {
+        omni_tensor_backend_cuda_free(device_handle);
+        return tensor_runtime_raise(interp, metadata_label);
+    }
+    tensor.kind = TENSOR_PAYLOAD_CONCRETE;
+    tensor.device = TENSOR_DEVICE_CUDA;
+    tensor.device_handle = device_handle;
+    tensor.device_finalizer = &tensor_cuda_device_finalizer;
+
+    Value* result = interp.alloc_value();
+    if (result == null) {
+        tensor_free_payload(tensor);
+        return tensor_runtime_raise(interp, value_label);
+    }
+    result.tag = TENSOR;
+    result.tensor_val = tensor;
+    main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
+    return result;
+}
+
 fn Value* ml_optimizer_cuda_map_f32(
     TensorVal* left,
     double left_scalar,
@@ -129,6 +157,40 @@ fn Value* ml_optimizer_cuda_sgd_update_f32(
     Value** out_params,
     Value** out_velocity
 ) {
+    if (omni_tensor_backend_cuda_ml_optimizer_available() != 0) {
+        void* out_params_device = null;
+        void* out_velocity_device = null;
+        int status = omni_tensor_backend_cuda_ml_sgd_f32(
+            params.device_handle,
+            grads.device_handle,
+            has_velocity ? velocity.device_handle : null,
+            params.byte_len,
+            params.element_count,
+            (float)learning_rate,
+            (float)momentum,
+            (float)weight_decay,
+            has_velocity ? 1 : 0,
+            &out_params_device,
+            &out_velocity_device
+        );
+        if (status != OMNI_TENSOR_CUDA_SUCCESS) {
+            return tensor_cuda_status_raise(interp, status, "ml/optimizer-step: CUDA fused SGD kernel failed");
+        }
+        Value* updated = ml_optimizer_cuda_tensor_value(params, out_params_device, interp, "ml/optimizer-step: failed to allocate CUDA fused SGD parameter metadata", "ml/optimizer-step: failed to allocate CUDA fused SGD parameter value");
+        if (updated == null || updated.tag == ERROR) {
+            if (out_velocity_device != null) omni_tensor_backend_cuda_free(out_velocity_device);
+            return updated;
+        }
+        Value* next_velocity = null;
+        if (momentum > 0.0) {
+            next_velocity = ml_optimizer_cuda_tensor_value(params, out_velocity_device, interp, "ml/optimizer-step: failed to allocate CUDA fused SGD velocity metadata", "ml/optimizer-step: failed to allocate CUDA fused SGD velocity value");
+            if (next_velocity == null || next_velocity.tag == ERROR) return next_velocity;
+        }
+        *out_params = updated;
+        *out_velocity = next_velocity;
+        return null;
+    }
+
     Value* effective_grad_value = null;
     TensorVal* effective_grad = grads;
     if (weight_decay != 0.0) {
@@ -225,6 +287,9 @@ fn Value* ml_optimizer_step_tensor_try_cuda(
         return ml_optimizer_shape_mismatch(interp, "ml/optimizer-step: parameter, gradient, and velocity shapes must match");
     }
     if (params.element_count == 0) return ml_optimizer_shape_mismatch(interp, "ml/optimizer-step: empty parameter tensors are not supported");
+    if (!tensor_dense_row_major(params) || !tensor_dense_row_major(grads) || (has_velocity && !tensor_dense_row_major(velocity))) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/optimizer-step: CUDA SGD currently supports dense row-major tensors", null);
+    }
     if (!tensor_has_valid_device_storage(params, TENSOR_DEVICE_CUDA) ||
         !tensor_has_valid_device_storage(grads, TENSOR_DEVICE_CUDA) ||
         (has_velocity && !tensor_has_valid_device_storage(velocity, TENSOR_DEVICE_CUDA))) {
@@ -295,6 +360,56 @@ fn Value* ml_adam_cuda_update_f32(
     Value** out_first,
     Value** out_second
 ) {
+    if (omni_tensor_backend_cuda_ml_optimizer_available() != 0) {
+        void* out_params_device = null;
+        void* out_first_device = null;
+        void* out_second_device = null;
+        int status = omni_tensor_backend_cuda_ml_adam_f32(
+            params.device_handle,
+            grads.device_handle,
+            has_moments ? first.device_handle : null,
+            has_moments ? second.device_handle : null,
+            params.byte_len,
+            params.element_count,
+            (float)learning_rate,
+            (float)beta1,
+            (float)beta2,
+            (float)epsilon,
+            (float)weight_decay,
+            (float)first_correction,
+            (float)second_correction,
+            decoupled_weight_decay ? 1 : 0,
+            has_moments ? 1 : 0,
+            &out_params_device,
+            &out_first_device,
+            &out_second_device
+        );
+        if (status != OMNI_TENSOR_CUDA_SUCCESS) {
+            if (out_params_device != null) omni_tensor_backend_cuda_free(out_params_device);
+            if (out_first_device != null) omni_tensor_backend_cuda_free(out_first_device);
+            if (out_second_device != null) omni_tensor_backend_cuda_free(out_second_device);
+            return tensor_cuda_status_raise(interp, status, "ml/optimizer-step: CUDA fused Adam kernel failed");
+        }
+
+        Value* updated = ml_optimizer_cuda_tensor_value(params, out_params_device, interp, "ml/optimizer-step: failed to allocate CUDA fused Adam parameter metadata", "ml/optimizer-step: failed to allocate CUDA fused Adam parameter value");
+        if (updated == null || updated.tag == ERROR) {
+            if (out_first_device != null) omni_tensor_backend_cuda_free(out_first_device);
+            if (out_second_device != null) omni_tensor_backend_cuda_free(out_second_device);
+            return updated;
+        }
+        Value* next_first = ml_optimizer_cuda_tensor_value(params, out_first_device, interp, "ml/optimizer-step: failed to allocate CUDA fused Adam first-moment metadata", "ml/optimizer-step: failed to allocate CUDA fused Adam first-moment value");
+        if (next_first == null || next_first.tag == ERROR) {
+            if (out_second_device != null) omni_tensor_backend_cuda_free(out_second_device);
+            return next_first;
+        }
+        Value* next_second = ml_optimizer_cuda_tensor_value(params, out_second_device, interp, "ml/optimizer-step: failed to allocate CUDA fused Adam second-moment metadata", "ml/optimizer-step: failed to allocate CUDA fused Adam second-moment value");
+        if (next_second == null || next_second.tag == ERROR) return next_second;
+        *out_params = updated;
+        *out_first = next_first;
+        *out_second = next_second;
+        return null;
+    }
+
     Value* effective_grad_value = null;
     TensorVal* effective_grad = grads;
     if (!decoupled_weight_decay && weight_decay != 0.0) {
@@ -371,7 +486,9 @@ fn Value* ml_adam_step_tensor_try_cuda(
     bool* out_attempted
 ) {
     if (out_attempted != null) *out_attempted = false;
-    bool has_moments = first_arg != null && second_arg != null;
+    bool has_moments = false;
+    Value* err = ml_optimizer_validate_adam_moments(first_arg, second_arg, interp, &has_moments);
+    if (err != null) return err;
     bool touches_cuda = tensor_expr_has_device(params_arg, TENSOR_DEVICE_CUDA) ||
         tensor_expr_has_device(grads_arg, TENSOR_DEVICE_CUDA) ||
         (has_moments && (tensor_expr_has_device(first_arg, TENSOR_DEVICE_CUDA) || tensor_expr_has_device(second_arg, TENSOR_DEVICE_CUDA)));
@@ -392,7 +509,7 @@ fn Value* ml_adam_step_tensor_try_cuda(
     Value* grads_value = null;
     Value* first_value = null;
     Value* second_value = null;
-    Value* err = tensor_expr_resolve_concrete_any_device(params_arg, &params, &params_value, interp, "ml/optimizer-step: parameter tensor backing storage is missing");
+    err = tensor_expr_resolve_concrete_any_device(params_arg, &params, &params_value, interp, "ml/optimizer-step: parameter tensor backing storage is missing");
     if (err != null) return err;
     defer if (params_value != null && params_value != params_arg) boundary_cleanup_materialized_value(null, params_value, interp.current_scope);
     err = tensor_expr_resolve_concrete_any_device(grads_arg, &grads, &grads_value, interp, "ml/optimizer-step: gradient tensor backing storage is missing");
@@ -490,6 +607,59 @@ fn Value* ml_rmsprop_cuda_update_f32(
     Value** out_square,
     Value** out_velocity
 ) {
+    if (omni_tensor_backend_cuda_ml_optimizer_available() != 0) {
+        void* out_params_device = null;
+        void* out_square_device = null;
+        void* out_velocity_device = null;
+        int status = omni_tensor_backend_cuda_ml_rmsprop_f32(
+            params.device_handle,
+            grads.device_handle,
+            has_square ? square.device_handle : null,
+            has_velocity ? velocity.device_handle : null,
+            params.byte_len,
+            params.element_count,
+            (float)learning_rate,
+            (float)alpha,
+            (float)epsilon,
+            (float)momentum,
+            (float)weight_decay,
+            has_square ? 1 : 0,
+            has_velocity ? 1 : 0,
+            &out_params_device,
+            &out_square_device,
+            &out_velocity_device
+        );
+        if (status != OMNI_TENSOR_CUDA_SUCCESS) {
+            if (out_params_device != null) omni_tensor_backend_cuda_free(out_params_device);
+            if (out_square_device != null) omni_tensor_backend_cuda_free(out_square_device);
+            if (out_velocity_device != null) omni_tensor_backend_cuda_free(out_velocity_device);
+            return tensor_cuda_status_raise(interp, status, "ml/optimizer-step: CUDA fused RMSProp kernel failed");
+        }
+
+        Value* updated = ml_optimizer_cuda_tensor_value(params, out_params_device, interp, "ml/optimizer-step: failed to allocate CUDA fused RMSProp parameter metadata", "ml/optimizer-step: failed to allocate CUDA fused RMSProp parameter value");
+        if (updated == null || updated.tag == ERROR) {
+            if (out_square_device != null) omni_tensor_backend_cuda_free(out_square_device);
+            if (out_velocity_device != null) omni_tensor_backend_cuda_free(out_velocity_device);
+            return updated;
+        }
+        Value* next_square = ml_optimizer_cuda_tensor_value(params, out_square_device, interp, "ml/optimizer-step: failed to allocate CUDA fused RMSProp square-average metadata", "ml/optimizer-step: failed to allocate CUDA fused RMSProp square-average value");
+        if (next_square == null || next_square.tag == ERROR) {
+            if (out_velocity_device != null) omni_tensor_backend_cuda_free(out_velocity_device);
+            return next_square;
+        }
+        *out_params = updated;
+        *out_square = next_square;
+        if (momentum <= 0.0) {
+            if (out_velocity_device != null) omni_tensor_backend_cuda_free(out_velocity_device);
+            *out_velocity = null;
+            return null;
+        }
+        Value* next_velocity = ml_optimizer_cuda_tensor_value(params, out_velocity_device, interp, "ml/optimizer-step: failed to allocate CUDA fused RMSProp velocity metadata", "ml/optimizer-step: failed to allocate CUDA fused RMSProp velocity value");
+        if (next_velocity == null || next_velocity.tag == ERROR) return next_velocity;
+        *out_velocity = next_velocity;
+        return null;
+    }
+
     Value* effective_grad_value = null;
     TensorVal* effective_grad = grads;
     if (weight_decay != 0.0) {

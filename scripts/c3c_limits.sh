@@ -355,6 +355,10 @@ omni_run_with_docker_cap() {
     fi
   fi
 
+  if [[ -d /usr/include/boost ]]; then
+    docker_cmd+=(--mount "type=bind,src=/usr/include/boost,dst=/usr/include/boost,readonly")
+  fi
+
   if [[ -n "${OMNI_DOCKER_EXTRA_ARGS:-}" ]]; then
     local -a extra_args=()
     mapfile -t extra_args < <(omni_shell_split_words "$OMNI_DOCKER_EXTRA_ARGS")

@@ -11,7 +11,7 @@ import main;
  * (type-of v) -> symbol representing the type name
  */
 fn Value* prim_type_of(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return raise_error(interp, "type-of: expected 1 argument");
+    if (args.len < 1) return meta_raise(interp, "type/arity", "type-of: expected 1 argument");
     SymbolId type_name = value_type_name(args[0], interp);
     return make_symbol(interp, type_name);
 }
@@ -20,9 +20,9 @@ fn Value* prim_type_of(Value*[] args, Env* env, Interp* interp) {
  * (is? v 'TypeName) -> true if v's type is or is subtype of TypeName
  */
 fn Value* prim_is_type(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return raise_error(interp, "is?: expected 2 arguments");
+    if (args.len < 2) return meta_raise(interp, "type/arity", "is?: expected 2 arguments");
     if (args[1] == null || args[1].tag != SYMBOL) {
-        return raise_error(interp, "is?: second argument must be a symbol");
+        return meta_raise(interp, "type/arg-mismatch", "is?: second argument must be a symbol");
     }
 
     SymbolId target_name = args[1].sym_val;
@@ -54,7 +54,7 @@ fn Value* prim_is_type(Value*[] args, Env* env, Interp* interp) {
  * (instance? v) -> true if v is a user-defined type instance
  */
 fn Value* prim_is_instance(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return raise_error(interp, "instance?: expected 1 argument");
+    if (args.len < 1) return meta_raise(interp, "type/arity", "instance?: expected 1 argument");
     bool result = args[0].tag == INSTANCE;
     return result ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
@@ -64,7 +64,7 @@ fn Value* prim_is_instance(Value*[] args, Env* env, Interp* interp) {
  * Example: (type-args (Box 42)) => '(Integer)
  */
 fn Value* prim_type_args(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return raise_error(interp, "type-args: expected 1 argument");
+    if (args.len < 1) return meta_raise(interp, "type/arity", "type-args: expected 1 argument");
     if (args[0] == null || args[0].tag != INSTANCE) return make_nil(interp);
     Instance* inst = args[0].instance_val;
     if (inst == null || inst.type_arg_count == 0) return make_nil(interp);
@@ -91,7 +91,7 @@ fn Value* prim_type_args(Value*[] args, Env* env, Interp* interp) {
 // --- Memory reclamation ---
 
 fn Value* prim_free_bang(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return raise_error(interp, "unsafe-free!: expected 1 argument");
+    if (args.len < 1) return runtime_raise(interp, "type/arity", "unsafe-free!: expected 1 argument");
     Value* v = args[0];
     if (v == null) return make_void(interp);
 

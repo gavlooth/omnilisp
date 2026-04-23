@@ -1,5 +1,6 @@
 module lisp;
 
+import std::io;
 import main;
 
 fn bool Env.define(Env* self, SymbolId name, Value* value) @nodiscard {
@@ -46,16 +47,18 @@ fn bool Env.define(Env* self, SymbolId name, Value* value) @nodiscard {
 
     // Build hash table if we crossed the threshold
     if (self.hash_table == null && self.binding_count > ENV_HASH_THRESHOLD) {
-        bool hash_ready = self.build_hash_table();
-        (void)hash_ready; // Hash table allocation is an optional fast path; linear lookup remains valid.
+        if (!self.build_hash_table()) {
+            io::eprintfn("WARNING: env hash table build failed; falling back to linear lookup");
+        }
     } else if (self.hash_table != null) {
         // Check load factor: rebuild if > 70%
         bool rebuild_hash = self.binding_count > usz.max / (usz)10
             || self.hash_capacity > usz.max / (usz)7
             || self.binding_count * (usz)10 > self.hash_capacity * (usz)7;
         if (rebuild_hash) {
-            bool hash_ready = self.build_hash_table();
-            (void)hash_ready; // Failed rebuild drops to linear lookup instead of corrupting bindings.
+            if (!self.build_hash_table()) {
+                io::eprintfn("WARNING: env hash table rebuild failed; falling back to linear lookup");
+            }
         } else {
             self.hash_insert(name, new_idx);
         }

@@ -183,7 +183,7 @@ fn Value* dispatch_reverse_list(Value* list, Interp* interp) {
         out = make_cons(interp, cur.cons_val.car, out);
         cur = cur.cons_val.cdr;
     }
-    if (!is_nil(cur)) return raise_error(interp, "__reverse-list: expected a proper list");
+    if (!is_nil(cur)) return runtime_raise(interp, "type/arg-mismatch", "__reverse-list: expected a proper list");
     return out;
 }
 
@@ -196,7 +196,7 @@ fn Value* dispatch_ambiguous_error(
     Interp* interp
 ) {
     if (mt == null || interp == null) {
-        return raise_error(interp, "ambiguous method call: multiple methods match with equal specificity");
+        return runtime_raise(interp, "runtime/evaluation-error", "ambiguous method call: multiple methods match with equal specificity");
     }
 
     Value* data = dispatch_make_payload_data(interp, 16);

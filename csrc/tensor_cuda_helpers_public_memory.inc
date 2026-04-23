@@ -18,6 +18,10 @@ void omni_tensor_backend_cublas_disable_for_tests(int disabled) {
     omni_tensor_cublas_disabled_for_tests = disabled != 0;
 }
 
+void omni_tensor_backend_cusolver_disable_for_tests(int disabled) {
+    omni_tensor_cusolver_disabled_for_tests = disabled != 0;
+}
+
 int omni_tensor_backend_cublas_available(void) {
     if (!omni_tensor_backend_cuda_available()) return 0;
     if (!omni_tensor_cublas_resolve()) return 0;
@@ -38,6 +42,31 @@ int omni_tensor_backend_cublas_complex_available(void) {
         omni_cublas_cgemm != NULL &&
         omni_cublas_zgemv != NULL &&
         omni_cublas_cgemv != NULL ? 1 : 0;
+}
+
+int omni_tensor_backend_cusolver_available(void) {
+    if (!omni_tensor_backend_cuda_available()) return 0;
+    if (!omni_tensor_cusolver_resolve()) return 0;
+    void* handle = NULL;
+    if (omni_cusolver_create(&handle) != OMNI_CUSOLVER_STATUS_SUCCESS || handle == NULL) return 0;
+    int status = omni_cusolver_destroy(handle);
+    return status == OMNI_CUSOLVER_STATUS_SUCCESS ? 1 : 0;
+}
+
+int omni_tensor_backend_cusolver_complex_svd_available(void) {
+    if (!omni_tensor_backend_cusolver_available()) return 0;
+    return omni_cusolver_dn_zgesvd_buffer_size != NULL &&
+        omni_cusolver_dn_cgesvd_buffer_size != NULL &&
+        omni_cusolver_dn_zgesvd != NULL &&
+        omni_cusolver_dn_cgesvd != NULL ? 1 : 0;
+}
+
+long omni_tensor_backend_cusolver_zgesvd_call_count(void) {
+    return omni_tensor_cusolver_zgesvd_call_count;
+}
+
+long omni_tensor_backend_cusolver_cgesvd_call_count(void) {
+    return omni_tensor_cusolver_cgesvd_call_count;
 }
 
 int omni_tensor_backend_cuda_map_available(void) {
@@ -111,13 +140,18 @@ int omni_tensor_backend_cuda_copy_to_existing_device(const void* host_ptr, size_
 }
 
 int omni_tensor_backend_cuda_copy_device_to_existing_device(const void* source_device_ptr, size_t byte_len, void* dest_device_ptr) {
-    if (byte_len == 0 || source_device_ptr == dest_device_ptr) return OMNI_TENSOR_CUDA_SUCCESS;
+    if (byte_len == 0) return OMNI_TENSOR_CUDA_SUCCESS;
     if (source_device_ptr == NULL || dest_device_ptr == NULL) return OMNI_TENSOR_CUDA_INVALID;
+    if (source_device_ptr == dest_device_ptr) return OMNI_TENSOR_CUDA_SUCCESS;
     if (!omni_tensor_backend_cuda_available()) return OMNI_TENSOR_CUDA_UNAVAILABLE;
     if (omni_cuda_memcpy(dest_device_ptr, source_device_ptr, byte_len, OMNI_CUDA_MEMCPY_DEVICE_TO_DEVICE) != 0) {
         return OMNI_TENSOR_CUDA_COPY_FAILED;
     }
     return OMNI_TENSOR_CUDA_SUCCESS;
+}
+
+int omni_tensor_backend_cuda_copy_null_alias_guard_for_tests(void) {
+    return omni_tensor_backend_cuda_copy_device_to_existing_device(NULL, 1u, NULL);
 }
 
 int omni_tensor_backend_cuda_fill_f64(void* device_ptr, size_t element_count, double value) {

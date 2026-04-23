@@ -27,8 +27,12 @@ static int omni_tensor_backend_cuda_complex_matrix_launch_5(
     if (alloc_status != OMNI_TENSOR_CUDA_SUCCESS) return alloc_status;
 
     unsigned int block_dim = 256;
-    unsigned int grid_dim = (unsigned int)((launch_count + block_dim - 1) / block_dim);
-    if (grid_dim == 0) grid_dim = 1;
+    unsigned int grid_dim = 0;
+    int grid_status = omni_tensor_cuda_grid_dim_1d(launch_count, block_dim, &grid_dim);
+    if (grid_status != OMNI_TENSOR_CUDA_SUCCESS) {
+        omni_tensor_backend_cuda_free(out_device);
+        return grid_status;
+    }
     void* params[] = {
         (void*)&input_device,
         (void*)&arg0,
@@ -87,8 +91,12 @@ static int omni_tensor_backend_cuda_complex_matrix_launch_4(
     if (alloc_status != OMNI_TENSOR_CUDA_SUCCESS) return alloc_status;
 
     unsigned int block_dim = 256;
-    unsigned int grid_dim = (unsigned int)((launch_count + block_dim - 1) / block_dim);
-    if (grid_dim == 0) grid_dim = 1;
+    unsigned int grid_dim = 0;
+    int grid_status = omni_tensor_cuda_grid_dim_1d(launch_count, block_dim, &grid_dim);
+    if (grid_status != OMNI_TENSOR_CUDA_SUCCESS) {
+        omni_tensor_backend_cuda_free(out_device);
+        return grid_status;
+    }
     void* params[] = {
         (void*)&input_device,
         (void*)&arg0,
@@ -419,4 +427,343 @@ int omni_tensor_backend_cuda_trace_complex64(
         *out_imag = trace.imag;
     }
     return status;
+}
+
+static int omni_tensor_backend_cuda_complex_matrix_shape_bytes(
+    size_t byte_len,
+    size_t rows,
+    size_t cols,
+    size_t element_size,
+    size_t* out_element_count
+) {
+    if (out_element_count == NULL || element_size == 0) return OMNI_TENSOR_CUDA_INVALID;
+    *out_element_count = 0;
+    if (rows != 0 && cols > ((size_t)-1) / rows) return OMNI_TENSOR_CUDA_INVALID;
+    size_t element_count = rows * cols;
+    if (element_count == 0) return byte_len == 0 ? OMNI_TENSOR_CUDA_SUCCESS : OMNI_TENSOR_CUDA_INVALID;
+    if (element_count > UINT32_MAX ||
+        element_count > ((size_t)-1) / element_size ||
+        byte_len != element_count * element_size) {
+        return OMNI_TENSOR_CUDA_INVALID;
+    }
+    *out_element_count = element_count;
+    return OMNI_TENSOR_CUDA_SUCCESS;
+}
+
+int omni_tensor_backend_cuda_svd_input_column_major_complex128(
+    const void* input_device,
+    size_t byte_len,
+    size_t rows,
+    size_t cols,
+    void** out_device_ptr
+) {
+    if (out_device_ptr == NULL) return OMNI_TENSOR_CUDA_INVALID;
+    *out_device_ptr = NULL;
+    size_t element_count = 0;
+    const size_t element_size = sizeof(OmniTensorCudaComplex128);
+    int shape_status = omni_tensor_backend_cuda_complex_matrix_shape_bytes(
+        byte_len,
+        rows,
+        cols,
+        element_size,
+        &element_count
+    );
+    if (shape_status != OMNI_TENSOR_CUDA_SUCCESS || element_count == 0) return shape_status;
+    if (!omni_tensor_cuda_complex_matrix_resolve()) return OMNI_TENSOR_CUDA_UNAVAILABLE;
+    return omni_tensor_backend_cuda_complex_matrix_launch_5(
+        input_device,
+        byte_len,
+        element_count,
+        element_size,
+        (unsigned long long)rows,
+        (unsigned long long)cols,
+        (unsigned long long)element_count,
+        omni_tensor_cuda_svd_input_column_major_complex128_function,
+        out_device_ptr
+    );
+}
+
+int omni_tensor_backend_cuda_svd_input_column_major_complex64(
+    const void* input_device,
+    size_t byte_len,
+    size_t rows,
+    size_t cols,
+    void** out_device_ptr
+) {
+    if (out_device_ptr == NULL) return OMNI_TENSOR_CUDA_INVALID;
+    *out_device_ptr = NULL;
+    size_t element_count = 0;
+    const size_t element_size = sizeof(OmniTensorCudaComplex64);
+    int shape_status = omni_tensor_backend_cuda_complex_matrix_shape_bytes(
+        byte_len,
+        rows,
+        cols,
+        element_size,
+        &element_count
+    );
+    if (shape_status != OMNI_TENSOR_CUDA_SUCCESS || element_count == 0) return shape_status;
+    if (!omni_tensor_cuda_complex_matrix_resolve()) return OMNI_TENSOR_CUDA_UNAVAILABLE;
+    return omni_tensor_backend_cuda_complex_matrix_launch_5(
+        input_device,
+        byte_len,
+        element_count,
+        element_size,
+        (unsigned long long)rows,
+        (unsigned long long)cols,
+        (unsigned long long)element_count,
+        omni_tensor_cuda_svd_input_column_major_complex64_function,
+        out_device_ptr
+    );
+}
+
+int omni_tensor_backend_cuda_svd_adjoint_input_column_major_complex128(
+    const void* input_device,
+    size_t byte_len,
+    size_t rows,
+    size_t cols,
+    void** out_device_ptr
+) {
+    if (out_device_ptr == NULL) return OMNI_TENSOR_CUDA_INVALID;
+    *out_device_ptr = NULL;
+    size_t element_count = 0;
+    const size_t element_size = sizeof(OmniTensorCudaComplex128);
+    int shape_status = omni_tensor_backend_cuda_complex_matrix_shape_bytes(
+        byte_len,
+        rows,
+        cols,
+        element_size,
+        &element_count
+    );
+    if (shape_status != OMNI_TENSOR_CUDA_SUCCESS || element_count == 0) return shape_status;
+    if (!omni_tensor_cuda_complex_matrix_resolve()) return OMNI_TENSOR_CUDA_UNAVAILABLE;
+    return omni_tensor_backend_cuda_complex_matrix_launch_5(
+        input_device,
+        byte_len,
+        element_count,
+        element_size,
+        (unsigned long long)rows,
+        (unsigned long long)cols,
+        (unsigned long long)element_count,
+        omni_tensor_cuda_svd_adjoint_input_column_major_complex128_function,
+        out_device_ptr
+    );
+}
+
+int omni_tensor_backend_cuda_svd_adjoint_input_column_major_complex64(
+    const void* input_device,
+    size_t byte_len,
+    size_t rows,
+    size_t cols,
+    void** out_device_ptr
+) {
+    if (out_device_ptr == NULL) return OMNI_TENSOR_CUDA_INVALID;
+    *out_device_ptr = NULL;
+    size_t element_count = 0;
+    const size_t element_size = sizeof(OmniTensorCudaComplex64);
+    int shape_status = omni_tensor_backend_cuda_complex_matrix_shape_bytes(
+        byte_len,
+        rows,
+        cols,
+        element_size,
+        &element_count
+    );
+    if (shape_status != OMNI_TENSOR_CUDA_SUCCESS || element_count == 0) return shape_status;
+    if (!omni_tensor_cuda_complex_matrix_resolve()) return OMNI_TENSOR_CUDA_UNAVAILABLE;
+    return omni_tensor_backend_cuda_complex_matrix_launch_5(
+        input_device,
+        byte_len,
+        element_count,
+        element_size,
+        (unsigned long long)rows,
+        (unsigned long long)cols,
+        (unsigned long long)element_count,
+        omni_tensor_cuda_svd_adjoint_input_column_major_complex64_function,
+        out_device_ptr
+    );
+}
+
+int omni_tensor_backend_cuda_svd_u_row_major_complex128(
+    const void* input_device,
+    size_t byte_len,
+    size_t rows,
+    size_t k,
+    void** out_device_ptr
+) {
+    if (out_device_ptr == NULL) return OMNI_TENSOR_CUDA_INVALID;
+    *out_device_ptr = NULL;
+    size_t element_count = 0;
+    const size_t element_size = sizeof(OmniTensorCudaComplex128);
+    int shape_status = omni_tensor_backend_cuda_complex_matrix_shape_bytes(
+        byte_len,
+        rows,
+        k,
+        element_size,
+        &element_count
+    );
+    if (shape_status != OMNI_TENSOR_CUDA_SUCCESS || element_count == 0) return shape_status;
+    if (!omni_tensor_cuda_complex_matrix_resolve()) return OMNI_TENSOR_CUDA_UNAVAILABLE;
+    return omni_tensor_backend_cuda_complex_matrix_launch_5(
+        input_device,
+        byte_len,
+        element_count,
+        element_size,
+        (unsigned long long)rows,
+        (unsigned long long)k,
+        (unsigned long long)element_count,
+        omni_tensor_cuda_svd_u_row_major_complex128_function,
+        out_device_ptr
+    );
+}
+
+int omni_tensor_backend_cuda_svd_u_row_major_complex64(
+    const void* input_device,
+    size_t byte_len,
+    size_t rows,
+    size_t k,
+    void** out_device_ptr
+) {
+    if (out_device_ptr == NULL) return OMNI_TENSOR_CUDA_INVALID;
+    *out_device_ptr = NULL;
+    size_t element_count = 0;
+    const size_t element_size = sizeof(OmniTensorCudaComplex64);
+    int shape_status = omni_tensor_backend_cuda_complex_matrix_shape_bytes(
+        byte_len,
+        rows,
+        k,
+        element_size,
+        &element_count
+    );
+    if (shape_status != OMNI_TENSOR_CUDA_SUCCESS || element_count == 0) return shape_status;
+    if (!omni_tensor_cuda_complex_matrix_resolve()) return OMNI_TENSOR_CUDA_UNAVAILABLE;
+    return omni_tensor_backend_cuda_complex_matrix_launch_5(
+        input_device,
+        byte_len,
+        element_count,
+        element_size,
+        (unsigned long long)rows,
+        (unsigned long long)k,
+        (unsigned long long)element_count,
+        omni_tensor_cuda_svd_u_row_major_complex64_function,
+        out_device_ptr
+    );
+}
+
+int omni_tensor_backend_cuda_svd_v_from_vt_complex128(
+    const void* input_device,
+    size_t byte_len,
+    size_t k,
+    size_t cols,
+    void** out_device_ptr
+) {
+    if (out_device_ptr == NULL) return OMNI_TENSOR_CUDA_INVALID;
+    *out_device_ptr = NULL;
+    size_t element_count = 0;
+    const size_t element_size = sizeof(OmniTensorCudaComplex128);
+    int shape_status = omni_tensor_backend_cuda_complex_matrix_shape_bytes(
+        byte_len,
+        k,
+        cols,
+        element_size,
+        &element_count
+    );
+    if (shape_status != OMNI_TENSOR_CUDA_SUCCESS || element_count == 0) return shape_status;
+    if (!omni_tensor_cuda_complex_matrix_resolve()) return OMNI_TENSOR_CUDA_UNAVAILABLE;
+    return omni_tensor_backend_cuda_complex_matrix_launch_5(
+        input_device,
+        byte_len,
+        element_count,
+        element_size,
+        (unsigned long long)k,
+        (unsigned long long)cols,
+        (unsigned long long)element_count,
+        omni_tensor_cuda_svd_v_from_vt_complex128_function,
+        out_device_ptr
+    );
+}
+
+int omni_tensor_backend_cuda_svd_v_from_vt_complex64(
+    const void* input_device,
+    size_t byte_len,
+    size_t k,
+    size_t cols,
+    void** out_device_ptr
+) {
+    if (out_device_ptr == NULL) return OMNI_TENSOR_CUDA_INVALID;
+    *out_device_ptr = NULL;
+    size_t element_count = 0;
+    const size_t element_size = sizeof(OmniTensorCudaComplex64);
+    int shape_status = omni_tensor_backend_cuda_complex_matrix_shape_bytes(
+        byte_len,
+        k,
+        cols,
+        element_size,
+        &element_count
+    );
+    if (shape_status != OMNI_TENSOR_CUDA_SUCCESS || element_count == 0) return shape_status;
+    if (!omni_tensor_cuda_complex_matrix_resolve()) return OMNI_TENSOR_CUDA_UNAVAILABLE;
+    return omni_tensor_backend_cuda_complex_matrix_launch_5(
+        input_device,
+        byte_len,
+        element_count,
+        element_size,
+        (unsigned long long)k,
+        (unsigned long long)cols,
+        (unsigned long long)element_count,
+        omni_tensor_cuda_svd_v_from_vt_complex64_function,
+        out_device_ptr
+    );
+}
+
+int omni_tensor_backend_cuda_svd_adapter_shape_guard_for_tests(void) {
+    void* out_device = (void*)1;
+    int status = omni_tensor_backend_cuda_svd_input_column_major_complex128(
+        (const void*)1,
+        sizeof(OmniTensorCudaComplex128),
+        (size_t)-1,
+        2,
+        &out_device
+    );
+    if (status != OMNI_TENSOR_CUDA_INVALID || out_device != NULL) return OMNI_TENSOR_CUDA_EXECUTION_FAILED;
+
+    out_device = (void*)1;
+    status = omni_tensor_backend_cuda_svd_input_column_major_complex64(
+        (const void*)1,
+        1,
+        1,
+        1,
+        &out_device
+    );
+    if (status != OMNI_TENSOR_CUDA_INVALID || out_device != NULL) return OMNI_TENSOR_CUDA_EXECUTION_FAILED;
+
+    out_device = (void*)1;
+    status = omni_tensor_backend_cuda_svd_u_row_major_complex128(
+        (const void*)1,
+        sizeof(OmniTensorCudaComplex128),
+        (size_t)-1,
+        2,
+        &out_device
+    );
+    if (status != OMNI_TENSOR_CUDA_INVALID || out_device != NULL) return OMNI_TENSOR_CUDA_EXECUTION_FAILED;
+
+    out_device = (void*)1;
+    status = omni_tensor_backend_cuda_svd_v_from_vt_complex64(
+        (const void*)1,
+        sizeof(OmniTensorCudaComplex64),
+        (size_t)-1,
+        2,
+        &out_device
+    );
+    if (status != OMNI_TENSOR_CUDA_INVALID || out_device != NULL) return OMNI_TENSOR_CUDA_EXECUTION_FAILED;
+
+    out_device = (void*)1;
+    status = omni_tensor_backend_cuda_svd_adjoint_input_column_major_complex128(
+        (const void*)1,
+        sizeof(OmniTensorCudaComplex128),
+        (size_t)-1,
+        2,
+        &out_device
+    );
+    if (status != OMNI_TENSOR_CUDA_INVALID || out_device != NULL) return OMNI_TENSOR_CUDA_EXECUTION_FAILED;
+
+    return OMNI_TENSOR_CUDA_SUCCESS;
 }

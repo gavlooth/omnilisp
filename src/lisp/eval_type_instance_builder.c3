@@ -92,9 +92,9 @@ fn Value* make_instance_in_scope(Interp* interp, main::ScopeRegion* wrapper_scop
                     (int)i,
                     (ZString)boundary_copy_fault_name(copied.fault_code)
                 )) {
-                    return raise_error(interp, msg);
+                    return runtime_raise(interp, "runtime/evaluation-error", msg);
                 }
-                return raise_error(interp, "type constructor: boundary field copy failed");
+                return runtime_raise(interp, "boundary/copy-fault", "type constructor: boundary field copy failed");
             }
             if (copied.value != null) inst.fields[i] = *copied.value;
         }

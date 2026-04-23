@@ -1,16 +1,17 @@
 # Fixed-Width Complex Closure Plan
 
 Date: 2026-04-18
-Status: active closure plan for the remaining fixed-width complex tensor
-numerical work after CPU/Vulkan `matrix/singular-values` and spectral/nuclear
-`matrix/norm` landed.
+Status: closed closure record for fixed-width complex tensor numerical work.
+The final Vulkan general eigenpair residuals closed on 2026-04-23 with a
+passing bounded global gate.
 
 ## Objective
 
-Close the remaining fixed-width complex tensor matrix work without keeping one
-umbrella item open across unrelated implementation classes. The remaining work
-is split into three `TENSOR-100H` lanes with separate result contracts,
-backend ABIs, validation gates, and closure criteria.
+The original objective was to close the remaining fixed-width complex tensor
+matrix work without keeping one umbrella item open across unrelated
+implementation classes. That work was split into three `TENSOR-100H` lanes with
+separate result contracts, backend ABIs, validation gates, and closure criteria;
+all three lanes are now closed.
 
 ## Deployed Planning Agents
 
@@ -31,8 +32,9 @@ Ruflo task lanes:
 
 ## Lane 1: TENSOR-100H-SVD-FACTORS
 
-Close full fixed-width complex `matrix/svd` factor output. This is not closed
-by singular-value support.
+Close full fixed-width complex `matrix/svd` factor output. CPU factor output is
+closed as `TENSOR-100H-SVD-FACTORS-CPU`; Vulkan factor output is closed as
+`TENSOR-100H-SVD-FACTORS-VULKAN`.
 
 Contract:
 
@@ -55,15 +57,21 @@ Contract:
 
 Implementation sequence:
 
-1. CPU first. Add `Complex128`/`Complex64` oracle behavior in
-   `src/lisp/prim_tensor_matrix.c3`.
-2. Use a native complex factor algorithm, not realified `U`/`V`.
+1. Closed 2026-04-22: CPU first. Added `Complex128`/`Complex64` oracle
+   behavior in `src/lisp/prim_tensor_matrix_svd_primitives.c3` and
+   `src/lisp/prim_tensor_matrix_lu_svd_core_b.c3`.
+2. Closed 2026-04-22: Use a native complex factor algorithm, not realified
+   `U`/`V`.
    Recommended CPU path: Hermitian Gram/Jacobi, with optional runtime-loaded
    `LAPACKE_zgesvd` / `LAPACKE_cgesvd` acceleration plus pure fallback.
-3. Extend `prim_matrix_svd` to allocate mixed result dtypes.
-4. Add CPU tests for dtype, shape, reconstruction, tall/wide, rank-deficient,
-   empty-axis, lazy input, and `BigComplex` rejection.
-5. Vulkan second. Add complex SVD helper ABI and shaders:
+   The landed CPU path uses a native complex Hermitian Gram/eigenvector oracle
+   with deterministic phase normalization. Complex64 widens through the
+   Complex128 oracle and narrows at the output boundary.
+3. Closed 2026-04-22: Extend `prim_matrix_svd` to allocate mixed result dtypes.
+4. Closed 2026-04-22: Add CPU tests for dtype, shape, reconstruction,
+   tall/wide, rank-deficient zero, empty-axis, no-LAPACK behavior, and
+   `BigComplex` rejection.
+5. Closed 2026-04-22: Vulkan second. Added complex SVD helper ABI and shaders:
    `csrc/tensor_vulkan_svd_complex128.comp`,
    `csrc/tensor_vulkan_svd_complex64.comp`, generated SPIR-V C blobs,
    helper exports, C3 externs, routing, and tests.
@@ -108,24 +116,52 @@ Decision:
 
 Implementation sequence:
 
-1. Add cuSOLVER dynamic resolution in `csrc/tensor_cuda_helpers.c`.
-2. Add availability probes, disable-for-tests hook, and `gesvd` call counter.
-3. Add generated adapter PTX source, for example
+1. [x] Add cuSOLVER dynamic resolution in `csrc/tensor_cuda_helpers.c`.
+2. [x] Add availability probes, disable-for-tests hook, and `gesvd` call
+   counter.
+   - Closed 2026-04-22: dynamic `libcusolver` loading now resolves
+     `cusolverDnZgesvd`/`cusolverDnCgesvd`, probes handle creation/destruction,
+     exposes `cusolver` / `cusolver-complex-svd` loader capabilities, and keeps
+     operation-specific CUDA complex SVD capability fields false until routing
+     lands.
+3. [ ] Add generated adapter PTX source, for example
    `csrc/tensor_cuda_complex_svd.cu` and
    `csrc/tensor_cuda_complex_svd_ptx.inc`.
-4. Implement CUDA complex singular-values helpers and route
+4. [ ] Implement CUDA complex singular-values helpers and route
    `matrix/singular-values`.
-5. Implement CUDA spectral/nuclear norm helpers. Norms read back only the
+5. [ ] Implement CUDA spectral/nuclear norm helpers. Norms read back only the
    public `Float64` scalar.
-6. Implement CUDA complex `matrix/svd` factor helpers returning CUDA-placed
+6. [ ] Implement CUDA complex `matrix/svd` factor helpers returning CUDA-placed
    `u`, `s`, and `v`.
-7. Add tests for capability reporting, unavailable/fail-closed behavior,
+7. [ ] Add tests for capability reporting, unavailable/fail-closed behavior,
    values, dtype, device placement, lazy CUDA inputs, empty axes, wide inputs,
    reconstruction, call counters, and no CPU/LAPACK fallback.
+
+Active hypothesis:
+
+- cuSOLVER should be treated as an isolated CUDA SVD provider. Loader
+  availability is now observable, but public operations stay disabled until the
+  adapter boundary prevents row/column-major and `VT` orientation errors.
+
+Current approach:
+
+- Implement the shared CUDA adapter PTX before routing any public
+  `matrix/singular-values`, `matrix/norm`, or `matrix/svd` primitive to
+  cuSOLVER. This avoids another case-specific SVD path and keeps the capability
+  contract honest.
+
+Next checkpoint:
+
+- `TENSOR-100H-CUDA-SVD-NORMS-ADAPTERS`: generated PTX plus resolver tests for
+  row-major to cuSOLVER column-major input preparation and `VT` to public `v`
+  conversion.
 
 Validation gate:
 
 - CUDA PTX generation and `ptxas` for adapter kernels.
+  - 2026-04-22 local note: `nvcc` and `ptxas` were not available on `PATH`,
+    so `TENSOR-100H-CUDA-SVD-NORMS-ADAPTERS` could not generate or validate
+    checked-in PTX in that host session.
 - C helper syntax/object compile and exported symbol checks.
 - `./scripts/build_omni_chelpers.sh`
 - `c3c build --obj-out obj`
@@ -171,22 +207,78 @@ Implementation sequence:
 1. Freeze the contract in docs and tests before adding backend claims.
 2. Add shared fixed-width eigen result builders, sorting, phase normalization,
    and residual-oriented helpers.
-3. Add CPU Hermitian `Complex128`/`Complex64` `matrix/eigenvalues` and
-   `matrix/eigenvectors`, using optional `zheev`/`cheev` acceleration plus pure
-   fallback.
-4. Add CPU general fixed-width `matrix/eigenpairs` for real and complex
+3. [x] Add CPU Hermitian `Complex128`/`Complex64` `matrix/eigenvalues` and
+   `matrix/eigenvectors`.
+   - Closed 2026-04-22: CPU Hermitian fixed-width complex eigenvalues and
+     eigenvectors now use an exact Hermitian gate and pure Complex128 Jacobi
+     factorization. Values are component-real (`Float64` for `Complex128`,
+     `Float32` for `Complex64`), vectors preserve input dtype, and Complex64
+     widens/narrows around the Complex128 oracle. Optional `zheev`/`cheev`
+     acceleration remains a future performance path only; it is not required
+     for the shipped CPU contract.
+4. [x] Add CPU general fixed-width `matrix/eigenpairs` for real and complex
    fixed-width inputs. Migrate current `Float64` output from `BigComplex` to
    `Complex128` under the fixed-width contract.
-5. Add operation-specific capability bits:
+   - 2026-04-22 partial closure: existing CPU `Float64`
+     `matrix/eigenpairs` now returns `Complex128` `values` and `vectors` for
+     both LAPACK and pure fallback paths. Float32/Complex128/Complex64 general
+     eigenpair inputs remain open.
+   - 2026-04-22 closure: CPU general `matrix/eigenpairs` now accepts
+     `Float32`, `Complex128`, and `Complex64`; Float32/Complex64 return
+     `Complex64` result tensors and Complex128 returns `Complex128`.
+5. [x] Add operation-specific capability bits:
    `matrix-hermitian-eigen-complex128`,
    `matrix-hermitian-eigen-complex64`,
    `matrix-eigenpairs-complex128`,
    `matrix-eigenpairs-complex64`.
-6. Add Vulkan Hermitian complex eigenvalues/eigenvectors after CPU oracle
+   - 2026-04-22 partial closure: `matrix-hermitian-eigen-complex128` and
+     `matrix-hermitian-eigen-complex64` now report true only on CPU, matching
+     the shipped CPU Hermitian oracle. `matrix-eigenpairs-complex128` and
+     `matrix-eigenpairs-complex64` remain false on every backend until the
+     general fixed-width eigenpair contract ships.
+   - 2026-04-22 closure: CPU `matrix-eigenpairs-complex128` and
+     `matrix-eigenpairs-complex64` now follow LAPACK `zgeev`/`cgeev`
+     availability; CUDA and cuBLAS remain false.
+   - 2026-04-23 closure: Vulkan `matrix-eigenpairs-complex128` and
+     `matrix-eigenpairs-complex64` now report native fixed-width general
+     eigenpair support when Vulkan complex execution is available.
+6. [x] Add Vulkan Hermitian complex eigenvalues/eigenvectors after CPU oracle
    behavior is stable.
-7. Add Vulkan general fixed-width eigenpairs only after the result contract and
-   CPU oracle tests are stable.
+   - Closed 2026-04-22: Vulkan `Complex128`/`Complex64` Hermitian
+     `matrix/eigenvalues` and `matrix/eigenvectors` now use native Jacobi
+     shaders and helper ABIs. Values stay Vulkan-placed and component-real;
+     vectors stay Vulkan-placed and preserve input complex dtype. Non-Hermitian
+     inputs fail closed with `tensor/not-symmetric`.
+7. [x] Add Vulkan general fixed-width eigenpairs after recording the
+   non-Hermitian complex solver boundary.
+   - Closed 2026-04-23: Vulkan `Float64`, `Float32`, `Complex128`, and
+     `Complex64` general `matrix/eigenpairs` now return Vulkan-placed
+     fixed-width complex `values` and `vectors`. Exact 2x2 complex-shift cases
+     use direct analytic handling, and active-submatrix deflation handles the
+     mixed-block 3x3 residuals that blocked final closure.
 8. Keep CUDA eigen false unless a cuSOLVER eigen lane is explicitly opened.
+
+Active hypothesis:
+
+- The fixed-width eigen contract is closed for CPU Float64/Float32 general
+  eigenpairs, CPU Complex128/Complex64 Hermitian and LAPACK-backed general
+  eigenpairs, Vulkan Hermitian complex execution, and native Vulkan general
+  `matrix/eigenpairs` for Float64/Float32/Complex128/Complex64.
+
+Current approach:
+
+- Keep this plan as a closure record. CPU `matrix/eigenpairs`, Vulkan
+  Hermitian `matrix/eigenvalues`/`matrix/eigenvectors`, Vulkan general
+  `matrix/eigenpairs`, residual tests, and operation-specific capability bits
+  are shipped.
+- Treat forced no-LAPACK fallback tests as execution-counter tests, not only
+  capability-probe tests; `dgeev` now has a verified disable gate at the helper
+  execution boundary.
+
+Next checkpoint:
+
+- None currently under this plan. Reopen future work only as a new named
+  measurement- or capability-led item.
 
 Validation gate:
 
@@ -211,16 +303,30 @@ Negative constraints:
 - Do not report eigen capability through broad complex numerical bits alone.
 - Do not include CUDA eigen work unless cuSOLVER eigen support is explicitly
   designed and validated.
+- Do not rely on LAPACK `available()` false alone as proof that pure fallback
+  executed; disabled LAPACK routines must also leave routine-specific counters
+  unchanged or otherwise prove no backend call occurred.
+- Do not use realification as a pure general complex eigensolver; it cannot
+  distinguish a complex eigenvalue from its conjugate for arbitrary complex
+  matrices.
+- Do not treat the shipped Vulkan Hermitian Jacobi kernel as a general complex
+  eigensolver.
 
 ## Execution Order
 
-1. `TENSOR-100H-SVD-FACTORS` CPU oracle.
-2. `TENSOR-100H-SVD-FACTORS` Vulkan complex factor output.
-3. `TENSOR-100H-CUDA-SVD-NORMS` cuSOLVER loader, capabilities, and
-   singular-values/norms.
-4. `TENSOR-100H-CUDA-SVD-NORMS` CUDA factor output.
-5. `TENSOR-100H-COMPLEX-EIGEN` contract freeze and CPU migration.
-6. `TENSOR-100H-COMPLEX-EIGEN` Vulkan Hermitian/general execution.
+1. Closed: `TENSOR-100H-SVD-FACTORS-CPU` CPU oracle.
+2. Closed: `TENSOR-100H-SVD-FACTORS-VULKAN` Vulkan complex factor output.
+3. Closed: `TENSOR-100H-CUDA-SVD-NORMS-LOADER` cuSOLVER loader and capability
+   probes.
+4. Closed: `TENSOR-100H-CUDA-SVD-NORMS-ADAPTERS` CUDA complex SVD layout
+   adapters and checked-in PTX.
+5. Closed: `TENSOR-100H-CUDA-SVD-NORMS-EXEC` public CUDA
+   `matrix/singular-values`, `matrix/norm`, and `matrix/svd` routing.
+6. Closed: `TENSOR-100H-COMPLEX-EIGEN` contract freeze and CPU migration.
+7. Closed: `TENSOR-100H-COMPLEX-EIGEN` Vulkan Hermitian execution.
+8. Closed: `TENSOR-100H-COMPLEX-EIGEN-VULKAN-GENERAL`, including real Vulkan
+   general eigen routes, exact-shift hardening, and active-submatrix
+   deflation.
 
 This order makes CPU oracles explicit before backend claims, keeps CUDA's
 cuSOLVER dependency isolated, and avoids blocking SVD closure on the larger

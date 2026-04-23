@@ -27,7 +27,7 @@ fn Value* boundary_commit_normalize_closure_env(
 
     main::ScopeRegion* replacement_env_scope = main::scope_create(null);
     if (replacement_env_scope == null) {
-        return raise_error(interp, "boundary: failed to allocate normalized closure env scope");
+        return runtime_raise(interp, "runtime/out-of-memory", "boundary: failed to allocate normalized closure env scope");
     }
 
     BoundaryEnvCopyResult copied = boundary_copy_env_to_target_scope_checked(
@@ -39,7 +39,7 @@ fn Value* boundary_commit_normalize_closure_env(
     );
     if (!boundary_env_copy_result_ok(copied) || copied.env == null) {
         main::scope_release(replacement_env_scope);
-        return raise_error(interp, "boundary: failed to normalize closure env scope");
+        return runtime_raise(interp, "boundary/copy-fault", "boundary: failed to normalize closure env scope");
     }
 
     main::ScopeRegion* prior_env_scope = value.closure_val.env_scope;

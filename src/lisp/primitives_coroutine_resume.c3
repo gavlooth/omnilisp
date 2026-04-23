@@ -1,5 +1,6 @@
 module lisp;
 
+
 import main;
 
 fn Value* prim_resume_error_and_cleanup(
@@ -11,7 +12,7 @@ fn Value* prim_resume_error_and_cleanup(
     coroutine_clear_yield_boundary_state(interp);
     interp_clear_resume_value(interp);
     coroutine_ctx_cleanup(coroutine_val, ctx, interp);
-    return raise_error(interp, msg);
+    return runtime_raise(interp, "runtime/evaluation-error", msg);
 }
 
 fn Value* prim_resume_complete(Value* coroutine_val, main::StackCtx* ctx, Interp* interp) {
@@ -30,9 +31,9 @@ fn Value* prim_resume_yield_result(Interp* interp) {
     main::ScopeRegion* yield_scope = interp.yield_scope;
     coroutine_clear_yield_boundary_state(interp);
 
-    if (yielded == null) return raise_error(interp, "resume: missing yielded value");
+    if (yielded == null) return runtime_raise(interp, "runtime/invalid-state", "resume: missing yielded value");
     if (yield_scope == null) {
-        return raise_error(interp, "resume: missing yield-scope provenance");
+        return runtime_raise(interp, "runtime/invalid-state", "resume: missing yield-scope provenance");
     }
     BoundarySession session = boundary_session_begin(interp);
     defer boundary_session_end(interp, &session);
@@ -48,7 +49,7 @@ fn Value* prim_resume_yield_result(Interp* interp) {
         &copy_ctx
     );
     if (!boundary_copy_result_ok(copied)) {
-        return raise_error(interp, boundary_copy_fault_message(copied.fault_code));
+        return runtime_raise(interp, "boundary/copy-fault", (String)boundary_copy_fault_message(copied.fault_code));
     }
     return copied.value;
 }
@@ -59,16 +60,16 @@ fn Value* prim_resume_require_ctx(
     main::StackCtx** ctx_out,
     Interp* interp
 ) {
-    if (args.len < 1) return raise_error(interp, "resume: expected a coroutine argument");
+    if (args.len < 1) return runtime_raise(interp, "type/arity", "resume: expected a coroutine argument");
     Value* coroutine_val = args[0];
     if (coroutine_val == null || coroutine_val.tag != COROUTINE) {
-        return raise_error(interp, "resume: argument must be a coroutine");
+        return runtime_raise(interp, "type/arg-mismatch", "resume: argument must be a coroutine");
     }
 
     main::StackCtx* ctx = coroutine_val.coroutine_val;
-    if (ctx == null) return raise_error(interp, "resume: null coroutine");
+    if (ctx == null) return runtime_raise(interp, "runtime/evaluation-error", "resume: null coroutine");
     if (!coroutine_ctx_matches_interp(ctx, interp)) {
-        return raise_error(interp, "resume: coroutine belongs to a different interpreter");
+        return runtime_raise(interp, "runtime/evaluation-error", "resume: coroutine belongs to a different interpreter");
     }
 
     *coroutine_out = coroutine_val;
@@ -110,7 +111,7 @@ fn Value* prim_resume(Value*[] args, Env* env, Interp* interp) {
         return prim_resume_error_and_cleanup(coroutine_val, ctx, interp, "resume: coroutine already completed");
     }
     if (ctx.status != main::StackCtxStatus.CTX_READY && ctx.status != main::StackCtxStatus.CTX_SUSPENDED) {
-        return raise_error(interp, "resume: coroutine is not resumable");
+        return runtime_raise(interp, "runtime/evaluation-error", "resume: coroutine is not resumable");
     }
 
     Value* resume_val = args.len > 1 ? args[1] : make_nil(interp);
@@ -123,7 +124,7 @@ fn Value* prim_resume(Value*[] args, Env* env, Interp* interp) {
 fn Value* prim_yield_require_context(main::StackCtx** current_out, Interp* interp) {
     main::StackCtx* current = main::g_current_stack_ctx;
     if (current == null) {
-        return raise_error(interp, "yield: not inside a coroutine");
+        return runtime_raise(interp, "runtime/evaluation-error", "yield: not inside a coroutine");
     }
     *current_out = current;
     return null;
@@ -158,7 +159,7 @@ fn Value* prim_yield(Value*[] args, Env* env, Interp* interp) {
 
     if (!prim_yield_suspend_and_restore(current, interp)) {
         coroutine_clear_yield_boundary_state(interp);
-        return raise_error(interp, "stack engine: failed to register suspend scope guard");
+        return runtime_raise(interp, "runtime/invalid-state", "stack engine: failed to register suspend scope guard");
     }
     return prim_yield_resume_result(interp);
 }

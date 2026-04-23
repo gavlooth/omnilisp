@@ -43,7 +43,7 @@ fn Value* tensor_map_try_vulkan_value_checked(TensorVal* source, uint op, Interp
     }
     if ((source.map_left != null && source.map_left.tensor_val != null && source.map_left.tensor_val.dtype != source.dtype) ||
         (source.map_is_binary && source.map_right != null && source.map_right.tensor_val != null && source.map_right.tensor_val.dtype != source.dtype)) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "map: Vulkan currently supports matching Tensor storage dtypes", null);
+        return raise_error_with_payload_names(interp, "tensor", "tensor/dtype-mismatch", "map: Vulkan tensor dtype mismatch", null);
     }
 
     if (source.map_left != null) {
@@ -113,10 +113,10 @@ fn Value* tensor_map_try_vulkan_value_checked(TensorVal* source, uint op, Interp
     if (right_tensor != null && right_tensor.device != TENSOR_DEVICE_VULKAN) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "map: Vulkan operands must remain Vulkan-placed", null);
     }
-    if ((!tensor_dtype_is_vulkan_real(source.dtype) && !tensor_dtype_is_fixed_complex(source.dtype)) || tensor.dtype != source.dtype ||
+    if (tensor.dtype != source.dtype ||
         (left_tensor != null && left_tensor.dtype != source.dtype) ||
         (right_tensor != null && right_tensor.dtype != source.dtype)) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "map: Vulkan currently supports matching Tensor storage dtypes", null);
+        return raise_error_with_payload_names(interp, "tensor", "tensor/dtype-mismatch", "map: Vulkan tensor dtype mismatch", null);
     }
     if (source.dtype == TENSOR_DTYPE_FLOAT32 && mode != 2 && !tensor_double_to_float32(scalar_f64, &scalar_f32)) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "map: Vulkan Float32 scalar operand is not representable", null);

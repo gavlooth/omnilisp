@@ -1,6 +1,7 @@
 module lisp;
 
 
+
 import std::core::mem;
 import std::io;
 import main;
@@ -89,7 +90,7 @@ fn Value* csv_emit_cell(DString* out, Value* cell, CsvEmitOptions* opts, Interp*
         return null;
     }
 
-    return raise_error(interp, "csv-emit: row cells must be string/int/double/symbol/nil");
+    return data_format_raise(interp, "type/arg-mismatch", "csv-emit: row cells must be string/int/double/symbol/nil");
 }
 
 fn Value* csv_emit_row_from_array(DString* out, Value* row, CsvEmitOptions* opts, Interp* interp) {
@@ -112,7 +113,7 @@ fn Value* csv_emit_row_from_list(DString* out, Value* row, CsvEmitOptions* opts,
     }
 
     if (!is_nil(curr)) {
-        return raise_error(interp, "csv-emit: expected each row to be an array or proper list");
+        return data_format_raise(interp, "type/arg-mismatch", "csv-emit: expected each row to be an array or proper list");
     }
     return null;
 }
@@ -121,12 +122,12 @@ fn Value* csv_emit_row(DString* out, Value* row, CsvEmitOptions* opts, Interp* i
     if (row == null || is_nil(row)) return null;
     if (row.tag == ARRAY) return csv_emit_row_from_array(out, row, opts, interp);
     if (is_cons(row)) return csv_emit_row_from_list(out, row, opts, interp);
-    return raise_error(interp, "csv-emit: expected each row to be an array or list");
+    return data_format_raise(interp, "type/arg-mismatch", "csv-emit: expected each row to be an array or list");
 }
 
 fn Value* prim_csv_emit(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || args.len > 2) {
-        return raise_error(interp, "csv-emit: expected 1-2 arguments");
+        return data_format_raise(interp, "type/arity", "csv-emit: expected 1-2 arguments");
     }
 
     CsvEmitOptions opts;
@@ -141,7 +142,7 @@ fn Value* prim_csv_emit(Value*[] args, Env* env, Interp* interp) {
     }
 
     if (opts.strict && opts.quote_char == opts.delimiter) {
-        return raise_error(interp, "csv-emit: quote-char cannot equal delimiter");
+        return data_format_raise(interp, "type/arg-mismatch", "csv-emit: quote-char cannot equal delimiter");
     }
 
     Value* rows_v = args[0];
@@ -170,10 +171,10 @@ fn Value* prim_csv_emit(Value*[] args, Env* env, Interp* interp) {
             curr = cdr(curr);
         }
         if (!is_nil(curr)) {
-            return raise_error(interp, "csv-emit: expected rows to be an array or proper list");
+            return data_format_raise(interp, "type/arg-mismatch", "csv-emit: expected rows to be an array or proper list");
         }
         return make_string(interp, out.str_view());
     }
 
-    return raise_error(interp, "csv-emit: expected rows to be an array or list");
+    return data_format_raise(interp, "type/arg-mismatch", "csv-emit: expected rows to be an array or list");
 }

@@ -344,7 +344,7 @@ fn void run_memory_lifetime_runtime_alloc_groups_iterators_strings_tests(Interp*
         Value* fold_fail =
             !func_run.error.has_error && iterator != null && iterator.tag == ITERATOR
             ? prim_iterator_foldl(fold_args[0:3], null, interp)
-            : raise_error(interp, "setup failed");
+            : runtime_raise(interp, "runtime/evaluation-error", "setup failed");
         g_iterator_force_cons_alloc_fail_nth = saved_force;
 
         bool setup_ok = !func_run.error.has_error && iterator != null && iterator.tag == ITERATOR;
@@ -471,11 +471,11 @@ fn void run_memory_lifetime_runtime_alloc_groups_iterators_strings_tests(Interp*
 
         bool saved_force = g_value_force_make_string_alloc_fail;
         g_value_force_make_string_alloc_fail = true;
-        Value* upcase_fail = setup_ok ? prim_string_upcase(upcase_args[0:1], null, interp) : raise_error(interp, "setup failed");
-        Value* downcase_fail = setup_ok ? prim_string_downcase(downcase_args[0:1], null, interp) : raise_error(interp, "setup failed");
-        Value* to_list_fail = setup_ok ? prim_string_to_list(to_list_args[0:1], null, interp) : raise_error(interp, "setup failed");
-        Value* split_fail = setup_ok ? prim_string_split(split_args[0:2], null, interp) : raise_error(interp, "setup failed");
-        Value* grapheme_fail = setup_ok ? prim_string_graphemes(grapheme_args[0:1], null, interp) : raise_error(interp, "setup failed");
+        Value* upcase_fail = setup_ok ? prim_string_upcase(upcase_args[0:1], null, interp) : runtime_raise(interp, "runtime/evaluation-error", "setup failed");
+        Value* downcase_fail = setup_ok ? prim_string_downcase(downcase_args[0:1], null, interp) : runtime_raise(interp, "runtime/evaluation-error", "setup failed");
+        Value* to_list_fail = setup_ok ? prim_string_to_list(to_list_args[0:1], null, interp) : runtime_raise(interp, "runtime/evaluation-error", "setup failed");
+        Value* split_fail = setup_ok ? prim_string_split(split_args[0:2], null, interp) : runtime_raise(interp, "runtime/evaluation-error", "setup failed");
+        Value* grapheme_fail = setup_ok ? prim_string_graphemes(grapheme_args[0:1], null, interp) : runtime_raise(interp, "runtime/evaluation-error", "setup failed");
         g_value_force_make_string_alloc_fail = saved_force;
 
         bool ok = setup_ok &&
@@ -514,9 +514,9 @@ fn void run_memory_lifetime_runtime_alloc_groups_iterators_strings_tests(Interp*
 
         bool saved_force = g_value_force_make_string_alloc_fail;
         g_value_force_make_string_alloc_fail = true;
-        Value* shell_fail = setup_ok ? prim_shell(shell_args[0:2], null, interp) : raise_error(interp, "setup failed");
-        Value* readdir_fail = setup_ok ? prim_fs_readdir(readdir_args[0:1], null, interp) : raise_error(interp, "setup failed");
-        Value* schema_explain_fail = setup_ok ? prim_schema_explain(schema_explain_args[0:2], null, interp) : raise_error(interp, "setup failed");
+        Value* shell_fail = setup_ok ? prim_shell(shell_args[0:2], null, interp) : runtime_raise(interp, "runtime/evaluation-error", "setup failed");
+        Value* readdir_fail = setup_ok ? prim_fs_readdir(readdir_args[0:1], null, interp) : runtime_raise(interp, "runtime/evaluation-error", "setup failed");
+        Value* schema_explain_fail = setup_ok ? prim_schema_explain(schema_explain_args[0:2], null, interp) : runtime_raise(interp, "runtime/evaluation-error", "setup failed");
         g_value_force_make_string_alloc_fail = saved_force;
 
         bool ok = setup_ok &&
@@ -545,7 +545,7 @@ fn void run_memory_lifetime_runtime_alloc_groups_iterators_strings_tests(Interp*
 
         int saved_force = g_value_force_make_list2_alloc_fail_nth;
         g_value_force_make_list2_alloc_fail_nth = 1;
-        Value* shell_fail = setup_ok ? prim_shell(shell_args[0:2], null, interp) : raise_error(interp, "setup failed");
+        Value* shell_fail = setup_ok ? prim_shell(shell_args[0:2], null, interp) : runtime_raise(interp, "runtime/evaluation-error", "setup failed");
         g_value_force_make_list2_alloc_fail_nth = saved_force;
 
         bool ok = setup_ok &&
@@ -652,7 +652,7 @@ fn void run_memory_lifetime_runtime_alloc_groups_iterators_strings_tests(Interp*
         Value*[2] sort_args = { cmp_run.error.has_error ? null : cmp_run.value, list };
         Value* sort_fail = !cmp_run.error.has_error && cmp_run.value != null
             ? prim_sort_by(sort_args[0:2], null, interp)
-            : raise_error(interp, "setup failed");
+            : runtime_raise(interp, "runtime/evaluation-error", "setup failed");
 
         bool ok = !cmp_run.error.has_error &&
             cmp_run.value != null &&

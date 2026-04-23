@@ -80,7 +80,7 @@ fn Value* runtime_prepare_tco_recycle_env(Env** env_io, Env* saved_env, Interp* 
     if (fresh == null) {
         interp.jit_env = saved_env;
         boundary_assert_interp_scope_chain(interp);
-        return raise_error(interp, "jit: failed to allocate TCO recycle scope");
+        return jit_raise(interp, "runtime/out-of-memory", "jit: failed to allocate TCO recycle scope");
     }
 
     interp.current_scope = fresh;
@@ -96,7 +96,7 @@ fn Value* runtime_prepare_tco_recycle_env(Env** env_io, Env* saved_env, Interp* 
             main::scope_release(fresh);
             interp.jit_env = saved_env;
             boundary_assert_interp_scope_chain(interp);
-            return raise_error(interp, "jit: missing active stack context for call-scope defer");
+            return jit_raise(interp, "runtime/invalid-state", "jit: missing active stack context for call-scope defer");
         }
         bool retargeted = main::stack_ctx_defer_update_arg(
             defer_ctx,
@@ -109,7 +109,7 @@ fn Value* runtime_prepare_tco_recycle_env(Env** env_io, Env* saved_env, Interp* 
             main::scope_release(fresh);
             interp.jit_env = saved_env;
             boundary_assert_interp_scope_chain(interp);
-            return raise_error(interp, "jit: failed to retarget call-scope defer");
+            return jit_raise(interp, "runtime/invalid-state", "jit: failed to retarget call-scope defer");
         }
     }
 
@@ -128,7 +128,7 @@ fn Value* runtime_prepare_tco_recycle_env(Env** env_io, Env* saved_env, Interp* 
         main::scope_release(fresh);
         interp.jit_env = saved_env;
         boundary_assert_interp_scope_chain(interp);
-        return raise_error(interp, "jit: failed to copy TCO recycle env");
+        return jit_raise(interp, "runtime/out-of-memory", "jit: failed to copy TCO recycle env");
     }
     *env_io = copied_env;
     main::scope_release(cs);
@@ -158,7 +158,7 @@ fn Value* runtime_eval_expr(Expr* expr, Env* env, Interp* interp) {
         RuntimeCompiledExpr compiled = runtime_lookup_or_compile_expr(expr, interp);
         if (runtime_compiled_expr_is_null(compiled)) {
             interp.jit_env = saved_env;
-            return raise_error(interp, "jit: failed to compile expression for runtime evaluation");
+            return jit_raise(interp, "runtime/evaluation-error", "jit: failed to compile expression for runtime evaluation");
         }
 
         interp.jit_env = env;

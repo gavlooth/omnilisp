@@ -27,7 +27,7 @@ fn Value* math_int_from_double_or_raise(Interp* interp, double value, char[] op_
     } else {
         msg = "math: result out of Integer range";
     }
-    return raise_error(interp, msg);
+    return math_raise(interp, "type/range-error", msg);
 }
 
 fn bool math_try_double_to_float32(double v, float* out) @inline {
@@ -47,7 +47,7 @@ fn Value* numeric_binary_float32_result(Interp* interp, Value* lhs, Value* rhs, 
         if (try char[] formatted = io::bprintf(&ebuf, "%s: value is out of Float64 range", (ZString)op_name)) {
             msg = formatted;
         }
-        return raise_error(interp, msg);
+        return math_raise(interp, "type/range-error", msg);
     }
 
     double result = 0.0;
@@ -59,10 +59,10 @@ fn Value* numeric_binary_float32_result(Interp* interp, Value* lhs, Value* rhs, 
         case BIG_INTEGER_OP_MUL:
             result = left * right;
         case BIG_INTEGER_OP_DIV:
-            if (right == 0.0) return raise_error(interp, "/: division by zero");
+            if (right == 0.0) return math_raise(interp, "type/div-by-zero", "/: division by zero");
             result = left / right;
         default:
-            return raise_error(interp, "numeric operation: unknown binary op");
+            return math_raise(interp, "type/unsupported", "numeric operation: unknown binary op");
     }
 
     float narrowed = 0.0f;
@@ -72,7 +72,7 @@ fn Value* numeric_binary_float32_result(Interp* interp, Value* lhs, Value* rhs, 
         if (try char[] formatted = io::bprintf(&ebuf, "%s: result out of Float32 range", (ZString)op_name)) {
             msg = formatted;
         }
-        return raise_error(interp, msg);
+        return math_raise(interp, "type/range-error", msg);
     }
     return make_float32(interp, narrowed);
 }
@@ -86,7 +86,7 @@ fn Value* numeric_binary_double_result(Interp* interp, Value* lhs, Value* rhs, i
         if (try char[] formatted = io::bprintf(&ebuf, "%s: BigInteger value is out of Float64 range", (ZString)op_name)) {
             msg = formatted;
         }
-        return raise_error(interp, msg);
+        return math_raise(interp, "type/range-error", msg);
     }
     switch (op) {
         case BIG_INTEGER_OP_ADD:
@@ -96,10 +96,10 @@ fn Value* numeric_binary_double_result(Interp* interp, Value* lhs, Value* rhs, i
         case BIG_INTEGER_OP_MUL:
             return make_double(interp, left * right);
         case BIG_INTEGER_OP_DIV:
-            if (right == 0.0) return raise_error(interp, "/: division by zero");
+            if (right == 0.0) return math_raise(interp, "type/div-by-zero", "/: division by zero");
             return make_double(interp, left / right);
         default:
-            return raise_error(interp, "numeric operation: unknown binary op");
+            return math_raise(interp, "type/unsupported", "numeric operation: unknown binary op");
     }
 }
 
@@ -111,7 +111,7 @@ fn bool numeric_fixed_complex_result_is_complex64(Value* lhs, Value* rhs) @inlin
 
 fn Value* numeric_binary_fixed_complex_result(Interp* interp, Value* lhs, Value* rhs, int op, char[] op_name) {
     if ((is_big_complex(lhs) || is_big_complex(rhs)) && (is_fixed_complex(lhs) || is_fixed_complex(rhs))) {
-        return raise_error(interp, "numeric operation: mixed BigComplex and fixed-width complex requires explicit conversion");
+        return math_raise(interp, "type/arg-mismatch", "numeric operation: mixed BigComplex and fixed-width complex requires explicit conversion");
     }
 
     if (numeric_fixed_complex_result_is_complex64(lhs, rhs)) {
@@ -119,16 +119,16 @@ fn Value* numeric_binary_fixed_complex_result(Interp* interp, Value* lhs, Value*
         Complex64Val right;
         Complex64Val result;
         if (!fixed_complex_value_to_complex64(lhs, &left) || !fixed_complex_value_to_complex64(rhs, &right)) {
-            return raise_error(interp, "numeric operation: value is not representable as Complex64");
+            return math_raise(interp, "type/range-error", "numeric operation: value is not representable as Complex64");
         }
-        if (op == BIG_INTEGER_OP_DIV && complex64_is_zero(right)) return raise_error(interp, "/: division by zero");
+        if (op == BIG_INTEGER_OP_DIV && complex64_is_zero(right)) return math_raise(interp, "type/div-by-zero", "/: division by zero");
         if (!fixed_complex_binary64(left, right, op, &result)) {
             char[128] ebuf;
             char[] msg = "numeric operation: Complex64 result out of range";
             if (try char[] formatted = io::bprintf(&ebuf, "%s: Complex64 result out of range", (ZString)op_name)) {
                 msg = formatted;
             }
-            return raise_error(interp, msg);
+            return math_raise(interp, "type/range-error", msg);
         }
         return make_complex64(interp, result.real, result.imag);
     }
@@ -137,16 +137,16 @@ fn Value* numeric_binary_fixed_complex_result(Interp* interp, Value* lhs, Value*
     Complex128Val right128;
     Complex128Val result128;
     if (!fixed_complex_value_to_complex128(lhs, &left128) || !fixed_complex_value_to_complex128(rhs, &right128)) {
-        return raise_error(interp, "numeric operation: value is not representable as Complex128");
+        return math_raise(interp, "type/range-error", "numeric operation: value is not representable as Complex128");
     }
-    if (op == BIG_INTEGER_OP_DIV && complex128_is_zero(right128)) return raise_error(interp, "/: division by zero");
+    if (op == BIG_INTEGER_OP_DIV && complex128_is_zero(right128)) return math_raise(interp, "type/div-by-zero", "/: division by zero");
     if (!fixed_complex_binary128(left128, right128, op, &result128)) {
         char[128] ebuf;
         char[] msg = "numeric operation: Complex128 result out of range";
         if (try char[] formatted = io::bprintf(&ebuf, "%s: Complex128 result out of range", (ZString)op_name)) {
             msg = formatted;
         }
-        return raise_error(interp, msg);
+        return math_raise(interp, "type/range-error", msg);
     }
     return make_complex128(interp, result128.real, result128.imag);
 }
@@ -269,13 +269,13 @@ fn Value* prim_div(Value*[] args, Env* env, Interp* interp) {
         return numeric_binary_fixed_complex_result(interp, args[0], args[1], BIG_INTEGER_OP_DIV, "/");
     }
     if (is_big_complex(args[0]) || is_big_complex(args[1])) {
-        if (big_complex_value_is_zero(args[1])) return raise_error(interp, "/: division by zero");
+        if (big_complex_value_is_zero(args[1])) return math_raise(interp, "type/div-by-zero", "/: division by zero");
         return big_complex_binary_values(interp, args[0], args[1], BIG_COMPLEX_OP_DIV, "/: failed to allocate BigComplex result");
     }
     if (is_big_float(args[0]) || is_big_float(args[1])) {
         Value* zero = make_int(interp, 0);
         int cmp = 0;
-        if (numeric_values_compare(args[1], zero, &cmp) && cmp == 0) return raise_error(interp, "/: division by zero");
+        if (numeric_values_compare(args[1], zero, &cmp) && cmp == 0) return math_raise(interp, "type/div-by-zero", "/: division by zero");
         return big_float_binary_values(interp, args[0], args[1], BIG_FLOAT_OP_DIV, "/: failed to allocate BigFloat result");
     }
     if (is_double(args[0]) || is_double(args[1])) {
@@ -284,7 +284,7 @@ fn Value* prim_div(Value*[] args, Env* env, Interp* interp) {
     if (is_float32(args[0]) || is_float32(args[1])) {
         return numeric_binary_float32_result(interp, args[0], args[1], BIG_INTEGER_OP_DIV, "/");
     }
-    if (exact_integer_value_is_zero(args[1])) return raise_error(interp, "/: division by zero");
+    if (exact_integer_value_is_zero(args[1])) return math_raise(interp, "type/div-by-zero", "/: division by zero");
     if (is_big_integer(args[0]) || is_big_integer(args[1])) {
         return big_integer_binary_values(interp, args[0], args[1], BIG_INTEGER_OP_DIV, "/: failed to allocate BigInteger result");
     }
@@ -299,7 +299,7 @@ fn Value* prim_mod(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return primitive_arity_raise(interp, "%", "2 arguments", args.len);
     if (!(is_int(args[0]) || is_big_integer(args[0]))) return primitive_arg_type_raise(interp, "%", 0, "integer", args[0]);
     if (!(is_int(args[1]) || is_big_integer(args[1]))) return primitive_arg_type_raise(interp, "%", 1, "integer", args[1]);
-    if (exact_integer_value_is_zero(args[1])) return raise_error(interp, "%: division by zero");
+    if (exact_integer_value_is_zero(args[1])) return math_raise(interp, "type/div-by-zero", "%: division by zero");
     if (is_big_integer(args[0]) || is_big_integer(args[1])) {
         return big_integer_binary_values(interp, args[0], args[1], BIG_INTEGER_OP_MOD, "%: failed to allocate BigInteger result");
     }

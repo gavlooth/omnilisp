@@ -159,7 +159,7 @@ fn Value* tensor_big_complex_component_value(Value* tensor_value, bool imaginary
         }
         void* component = imaginary ? omni_big_complex_imag_part(src_values[i]) : omni_big_complex_real_part(src_values[i]);
         if (component == null) {
-            return raise_error(interp, imaginary ? "imag-part: failed to extract tensor component" : "real-part: failed to extract tensor component");
+            return tensor_raise(interp, "tensor/runtime-error", imaginary ? "imag-part: failed to extract tensor component" : "real-part: failed to extract tensor component");
         }
         if (dst_values[i] != null) omni_big_float_free(dst_values[i]);
         dst_values[i] = component;
@@ -292,7 +292,7 @@ fn Value* tensor_abs_value(Value* tensor_value, Interp* interp) {
                 void* result = omni_big_integer_compare_i64(src_values[i], 0) < 0
                     ? omni_big_integer_neg(src_values[i])
                     : omni_big_integer_clone(src_values[i]);
-                if (result == null) return raise_error(interp, "abs: failed to allocate BigInteger tensor element");
+                if (result == null) return tensor_raise(interp, "tensor/out-of-memory", "abs: failed to allocate BigInteger tensor element");
                 if (dst_values[i] != null) omni_big_integer_free(dst_values[i]);
                 dst_values[i] = result;
             }
@@ -303,7 +303,7 @@ fn Value* tensor_abs_value(Value* tensor_value, Interp* interp) {
             for (usz i = 0; i < source.element_count; i++) {
                 if (src_values[i] == null) return tensor_runtime_raise(interp, "abs: tensor BigFloat element is missing");
                 void* result = omni_big_float_abs(src_values[i]);
-                if (result == null) return raise_error(interp, "abs: failed to allocate BigFloat tensor element");
+                if (result == null) return tensor_raise(interp, "tensor/out-of-memory", "abs: failed to allocate BigFloat tensor element");
                 if (dst_values[i] != null) omni_big_float_free(dst_values[i]);
                 dst_values[i] = result;
             }
@@ -314,7 +314,7 @@ fn Value* tensor_abs_value(Value* tensor_value, Interp* interp) {
             for (usz i = 0; i < source.element_count; i++) {
                 if (src_values[i] == null) return tensor_runtime_raise(interp, "abs: tensor BigComplex element is missing");
                 void* result = omni_big_complex_abs(src_values[i]);
-                if (result == null) return raise_error(interp, "abs: failed to allocate BigComplex tensor magnitude");
+                if (result == null) return tensor_raise(interp, "tensor/out-of-memory", "abs: failed to allocate BigComplex tensor magnitude");
                 if (dst_values[i] != null) omni_big_float_free(dst_values[i]);
                 dst_values[i] = result;
             }
@@ -439,7 +439,7 @@ fn Value* tensor_neg_value(Value* tensor_value, Interp* interp) {
             for (usz i = 0; i < source.element_count; i++) {
                 if (src_values[i] == null) return tensor_runtime_raise(interp, "-: tensor BigInteger element is missing");
                 void* result = omni_big_integer_neg(src_values[i]);
-                if (result == null) return raise_error(interp, "-: failed to allocate BigInteger tensor element");
+                if (result == null) return tensor_raise(interp, "tensor/out-of-memory", "-: failed to allocate BigInteger tensor element");
                 if (dst_values[i] != null) omni_big_integer_free(dst_values[i]);
                 dst_values[i] = result;
             }
@@ -450,7 +450,7 @@ fn Value* tensor_neg_value(Value* tensor_value, Interp* interp) {
             for (usz i = 0; i < source.element_count; i++) {
                 if (src_values[i] == null) return tensor_runtime_raise(interp, "-: tensor BigFloat element is missing");
                 void* result = omni_big_float_neg(src_values[i]);
-                if (result == null) return raise_error(interp, "-: failed to allocate BigFloat tensor element");
+                if (result == null) return tensor_raise(interp, "tensor/out-of-memory", "-: failed to allocate BigFloat tensor element");
                 if (dst_values[i] != null) omni_big_float_free(dst_values[i]);
                 dst_values[i] = result;
             }
@@ -461,7 +461,7 @@ fn Value* tensor_neg_value(Value* tensor_value, Interp* interp) {
             for (usz i = 0; i < source.element_count; i++) {
                 if (src_values[i] == null) return tensor_runtime_raise(interp, "-: tensor BigComplex element is missing");
                 void* result = omni_big_complex_neg(src_values[i]);
-                if (result == null) return raise_error(interp, "-: failed to allocate BigComplex tensor element");
+                if (result == null) return tensor_raise(interp, "tensor/out-of-memory", "-: failed to allocate BigComplex tensor element");
                 if (dst_values[i] != null) omni_big_complex_free(dst_values[i]);
                 dst_values[i] = result;
             }
@@ -521,13 +521,13 @@ fn Value* tensor_apply_double_unary_math_checked(double input, int big_float_op,
                 *out = output;
                 return null;
             case BOOST_MATH_STATUS_INVALID_ARGUMENT:
-                return raise_error(interp, "stats/normal-quantile: expected finite numeric input");
+                return tensor_raise(interp, "tensor/invalid-argument", "stats/normal-quantile: expected finite numeric input");
             case BOOST_MATH_STATUS_DOMAIN_ERROR:
-                return raise_error(interp, "stats/normal-quantile: probability must be between 0 and 1");
+                return tensor_raise(interp, "tensor/invalid-argument", "stats/normal-quantile: probability must be between 0 and 1");
             case BOOST_MATH_STATUS_RANGE_ERROR:
-                return raise_error(interp, "stats/normal-quantile: range error");
+                return tensor_raise(interp, "tensor/range-error", "stats/normal-quantile: range error");
             default:
-                return raise_error(interp, "stats/normal-quantile: evaluation error");
+                return tensor_raise(interp, "tensor/invalid-argument", "stats/normal-quantile: evaluation error");
         }
     }
     *out = tensor_apply_double_unary_math(input, big_float_op);
@@ -615,7 +615,7 @@ fn Value* tensor_unary_math_value(Value* tensor_value, int big_float_op, int big
                 if (err != null) return err;
                 float narrowed = 0.0f;
                 if (!tensor_double_to_float32(result, &narrowed)) {
-                    return raise_error(interp, "math: tensor Float32 result out of supported range");
+                    return tensor_raise(interp, "tensor/invalid-argument", "math: tensor Float32 result out of supported range");
                 }
                 dst_values[i] = narrowed;
             }
@@ -627,7 +627,7 @@ fn Value* tensor_unary_math_value(Value* tensor_value, int big_float_op, int big
                 if (src_values[i] == null) return tensor_runtime_raise(interp, "math: tensor BigInteger element is missing");
                 double input = 0.0;
                 if (omni_big_integer_to_double(src_values[i], &input) == 0) {
-                    return raise_error(interp, "math: BigInteger tensor element out of Float64 range");
+                    return tensor_raise(interp, "tensor/invalid-argument", "math: BigInteger tensor element out of Float64 range");
                 }
                 double result = 0.0;
                 Value* err = tensor_apply_double_unary_math_checked(input, big_float_op, &result, interp);
@@ -642,30 +642,30 @@ fn Value* tensor_unary_math_value(Value* tensor_value, int big_float_op, int big
                 if (src_values[i] == null) return tensor_runtime_raise(interp, "math: tensor BigFloat element is missing");
                 void* result = omni_big_float_unary_math(src_values[i], big_float_op);
                 if (result == null && big_float_op == BIG_FLOAT_MATH_NORMAL_QUANTILE) {
-                    return raise_error(interp, "stats/normal-quantile: probability must be between 0 and 1");
+                    return tensor_raise(interp, "tensor/invalid-argument", "stats/normal-quantile: probability must be between 0 and 1");
                 }
-                if (result == null) return raise_error(interp, "math: failed to evaluate BigFloat tensor element");
+                if (result == null) return tensor_raise(interp, "tensor/invalid-argument", "math: failed to evaluate BigFloat tensor element");
                 if (dst_values[i] != null) omni_big_float_free(dst_values[i]);
                 dst_values[i] = result;
             }
         }
         case TENSOR_DTYPE_BIG_COMPLEX: {
             if (!tensor_unary_math_has_complex_op(big_complex_op)) {
-                return raise_error(interp, "math: tensor dtype is not supported for this operation");
+                return tensor_raise(interp, "tensor/invalid-argument", "math: tensor dtype is not supported for this operation");
             }
             void** src_values = (void**)source.data;
             void** dst_values = (void**)out_value.tensor_val.data;
             for (usz i = 0; i < source.element_count; i++) {
                 if (src_values[i] == null) return tensor_runtime_raise(interp, "math: tensor BigComplex element is missing");
                 void* result = omni_big_complex_unary_math(src_values[i], big_complex_op);
-                if (result == null) return raise_error(interp, "math: failed to evaluate BigComplex tensor element");
+                if (result == null) return tensor_raise(interp, "tensor/invalid-argument", "math: failed to evaluate BigComplex tensor element");
                 if (dst_values[i] != null) omni_big_complex_free(dst_values[i]);
                 dst_values[i] = result;
             }
         }
         case TENSOR_DTYPE_COMPLEX128:
         case TENSOR_DTYPE_COMPLEX64:
-            return raise_error(interp, "math: fixed-width complex Tensor scientific operations are not supported");
+            return tensor_raise(interp, "tensor/invalid-argument", "math: fixed-width complex Tensor scientific operations are not supported");
     }
 
     keep_out = true;

@@ -143,3 +143,143 @@ extern "C" __global__ void omni_cuda_trace_complex64(
     }
     out[0] = sum;
 }
+
+extern "C" __global__ void omni_cuda_svd_input_column_major_complex128(
+    const OmniCudaComplex128* input,
+    unsigned long long rows,
+    unsigned long long cols,
+    unsigned long long element_count,
+    OmniCudaComplex128* out
+) {
+    unsigned long long index =
+        (unsigned long long)blockIdx.x * (unsigned long long)blockDim.x +
+        (unsigned long long)threadIdx.x;
+    if (index >= element_count) return;
+
+    unsigned long long row = index / cols;
+    unsigned long long col = index % cols;
+    out[col * rows + row] = input[index];
+}
+
+extern "C" __global__ void omni_cuda_svd_input_column_major_complex64(
+    const OmniCudaComplex64* input,
+    unsigned long long rows,
+    unsigned long long cols,
+    unsigned long long element_count,
+    OmniCudaComplex64* out
+) {
+    unsigned long long index =
+        (unsigned long long)blockIdx.x * (unsigned long long)blockDim.x +
+        (unsigned long long)threadIdx.x;
+    if (index >= element_count) return;
+
+    unsigned long long row = index / cols;
+    unsigned long long col = index % cols;
+    out[col * rows + row] = input[index];
+}
+
+extern "C" __global__ void omni_cuda_svd_adjoint_input_column_major_complex128(
+    const OmniCudaComplex128* input,
+    unsigned long long rows,
+    unsigned long long cols,
+    unsigned long long element_count,
+    OmniCudaComplex128* out
+) {
+    unsigned long long index =
+        (unsigned long long)blockIdx.x * (unsigned long long)blockDim.x +
+        (unsigned long long)threadIdx.x;
+    if (index >= element_count) return;
+
+    OmniCudaComplex128 value = input[index];
+    value.imag = -value.imag;
+    out[index] = value;
+}
+
+extern "C" __global__ void omni_cuda_svd_adjoint_input_column_major_complex64(
+    const OmniCudaComplex64* input,
+    unsigned long long rows,
+    unsigned long long cols,
+    unsigned long long element_count,
+    OmniCudaComplex64* out
+) {
+    unsigned long long index =
+        (unsigned long long)blockIdx.x * (unsigned long long)blockDim.x +
+        (unsigned long long)threadIdx.x;
+    if (index >= element_count) return;
+
+    OmniCudaComplex64 value = input[index];
+    value.imag = -value.imag;
+    out[index] = value;
+}
+
+extern "C" __global__ void omni_cuda_svd_u_row_major_complex128(
+    const OmniCudaComplex128* input,
+    unsigned long long rows,
+    unsigned long long k,
+    unsigned long long element_count,
+    OmniCudaComplex128* out
+) {
+    unsigned long long index =
+        (unsigned long long)blockIdx.x * (unsigned long long)blockDim.x +
+        (unsigned long long)threadIdx.x;
+    if (index >= element_count) return;
+
+    unsigned long long row = index / k;
+    unsigned long long col = index % k;
+    out[index] = input[col * rows + row];
+}
+
+extern "C" __global__ void omni_cuda_svd_u_row_major_complex64(
+    const OmniCudaComplex64* input,
+    unsigned long long rows,
+    unsigned long long k,
+    unsigned long long element_count,
+    OmniCudaComplex64* out
+) {
+    unsigned long long index =
+        (unsigned long long)blockIdx.x * (unsigned long long)blockDim.x +
+        (unsigned long long)threadIdx.x;
+    if (index >= element_count) return;
+
+    unsigned long long row = index / k;
+    unsigned long long col = index % k;
+    out[index] = input[col * rows + row];
+}
+
+extern "C" __global__ void omni_cuda_svd_v_from_vt_complex128(
+    const OmniCudaComplex128* input,
+    unsigned long long k,
+    unsigned long long cols,
+    unsigned long long element_count,
+    OmniCudaComplex128* out
+) {
+    unsigned long long index =
+        (unsigned long long)blockIdx.x * (unsigned long long)blockDim.x +
+        (unsigned long long)threadIdx.x;
+    if (index >= element_count) return;
+
+    unsigned long long col = index / k;
+    unsigned long long singular = index % k;
+    OmniCudaComplex128 value = input[col * k + singular];
+    value.imag = -value.imag;
+    out[index] = value;
+}
+
+extern "C" __global__ void omni_cuda_svd_v_from_vt_complex64(
+    const OmniCudaComplex64* input,
+    unsigned long long k,
+    unsigned long long cols,
+    unsigned long long element_count,
+    OmniCudaComplex64* out
+) {
+    unsigned long long index =
+        (unsigned long long)blockIdx.x * (unsigned long long)blockDim.x +
+        (unsigned long long)threadIdx.x;
+    if (index >= element_count) return;
+
+    unsigned long long col = index / k;
+    unsigned long long singular = index % k;
+    OmniCudaComplex64 value = input[col * k + singular];
+    value.imag = -value.imag;
+    out[index] = value;
+}

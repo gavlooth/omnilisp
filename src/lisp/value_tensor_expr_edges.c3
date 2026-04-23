@@ -8,7 +8,7 @@ fn Value* tensor_copy_expr_child_to_parent(Value* child, Interp* interp, Boundar
         if (fault_out != null && *fault_out == BOUNDARY_COPY_FAULT_NONE) {
             *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
         }
-        return fault_out != null ? null : raise_error(interp, message);
+        return fault_out != null ? null : tensor_raise(interp, "tensor/copy-fault", message);
     }
     Value* copied = copy_to_parent_with_fault(child, interp, fault_out);
     if (child != null && (copied == null || is_error(copied))) {
@@ -17,24 +17,34 @@ fn Value* tensor_copy_expr_child_to_parent(Value* child, Interp* interp, Boundar
         }
         return fault_out != null
             ? null
-            : (copied == null ? raise_error(interp, message) : copied);
+            : (copied == null ? tensor_raise(interp, "tensor/copy-fault", message) : copied);
     }
     return copied;
+}
+
+fn bool tensor_concrete_has_map_provenance(TensorVal* tensor) @inline {
+    return tensor != null && tensor.kind == TENSOR_PAYLOAD_CONCRETE && tensor.map_func != null;
+}
+
+fn bool tensor_copy_map_expr_edges_to_parent(TensorVal* dst, TensorVal* src, Interp* interp, BoundaryCopyFault* fault_out) {
+    dst.map_func = tensor_copy_expr_child_to_parent(src.map_func, interp, fault_out, "boundary: failed to copy tensor map function");
+    if (src.map_func != null && (dst.map_func == null || is_error(dst.map_func))) return false;
+    dst.map_left = tensor_copy_expr_child_to_parent(src.map_left, interp, fault_out, "boundary: failed to copy tensor map left input");
+    if (src.map_left != null && (dst.map_left == null || is_error(dst.map_left))) return false;
+    dst.map_right = tensor_copy_expr_child_to_parent(src.map_right, interp, fault_out, "boundary: failed to copy tensor map right input");
+    if (src.map_right != null && (dst.map_right == null || is_error(dst.map_right))) return false;
+    return true;
 }
 
 fn bool tensor_copy_expr_edges_to_parent(TensorVal* dst, TensorVal* src, Interp* interp, BoundaryCopyFault* fault_out = null) {
     if (dst == null || src == null) return true;
     switch (src.kind) {
         case TENSOR_PAYLOAD_CONCRETE:
-            return true;
+            return tensor_concrete_has_map_provenance(src)
+                ? tensor_copy_map_expr_edges_to_parent(dst, src, interp, fault_out)
+                : true;
         case TENSOR_PAYLOAD_MAP:
-            dst.map_func = tensor_copy_expr_child_to_parent(src.map_func, interp, fault_out, "boundary: failed to copy tensor map function");
-            if (src.map_func != null && (dst.map_func == null || is_error(dst.map_func))) return false;
-            dst.map_left = tensor_copy_expr_child_to_parent(src.map_left, interp, fault_out, "boundary: failed to copy tensor map left input");
-            if (src.map_left != null && (dst.map_left == null || is_error(dst.map_left))) return false;
-            dst.map_right = tensor_copy_expr_child_to_parent(src.map_right, interp, fault_out, "boundary: failed to copy tensor map right input");
-            if (src.map_right != null && (dst.map_right == null || is_error(dst.map_right))) return false;
-            return true;
+            return tensor_copy_map_expr_edges_to_parent(dst, src, interp, fault_out);
         case TENSOR_PAYLOAD_CONTRACT:
             dst.contract_left = tensor_copy_expr_child_to_parent(src.contract_left, interp, fault_out, "boundary: failed to copy tensor contract left input");
             if (src.contract_left != null && (dst.contract_left == null || is_error(dst.contract_left))) return false;
@@ -63,6 +73,23 @@ fn void tensor_cleanup_materialized_expr_edges(
     if (src == null || dst == null) return;
     switch (src.kind) {
         case TENSOR_PAYLOAD_CONCRETE:
+            if (tensor_concrete_has_map_provenance(src)) {
+                Value* copied_func = dst.map_func;
+                boundary_cleanup_materialized_value(src.map_func, copied_func, target_scope, escape_lane);
+                dst.map_func = null;
+
+                Value* copied_left = dst.map_left;
+                if (copied_left != copied_func) {
+                    boundary_cleanup_materialized_value(src.map_left, copied_left, target_scope, escape_lane);
+                }
+                dst.map_left = null;
+
+                Value* copied_right = dst.map_right;
+                if (copied_right != copied_func && copied_right != copied_left) {
+                    boundary_cleanup_materialized_value(src.map_right, copied_right, target_scope, escape_lane);
+                }
+                dst.map_right = null;
+            }
             return;
         case TENSOR_PAYLOAD_MAP:
             Value* copied_func = dst.map_func;
@@ -115,7 +142,7 @@ fn void boundary_cleanup_materialized_tensor(
 
 fn Value* tensor_promote_expr_child_to_escape(Value* child, Interp* interp, char[] message) {
     if (child != null && tensor_should_force_expr_edge_fail(&g_tensor_force_expr_edge_escape_fail_nth)) {
-        return raise_error(interp, message);
+        return tensor_raise(interp, "tensor/copy-fault", message);
     }
     if (child != null && interp != null && interp.current_scope != null &&
         child.scope_gen == interp.current_scope.escape_generation) {
@@ -123,7 +150,7 @@ fn Value* tensor_promote_expr_child_to_escape(Value* child, Interp* interp, char
     }
     Value* promoted = boundary_promote_to_escape(child, interp);
     if (child != null && (promoted == null || is_error(promoted))) {
-        return promoted == null ? raise_error(interp, message) : promoted;
+        return promoted == null ? tensor_raise(interp, "tensor/copy-fault", message) : promoted;
     }
     return promoted;
 }
@@ -132,6 +159,13 @@ fn bool tensor_promote_expr_edges_to_escape(TensorVal* dst, TensorVal* src, Inte
     if (dst == null || src == null) return true;
     switch (src.kind) {
         case TENSOR_PAYLOAD_CONCRETE:
+            if (!tensor_concrete_has_map_provenance(src)) return true;
+            dst.map_func = tensor_promote_expr_child_to_escape(src.map_func, interp, "boundary: failed to promote tensor map function");
+            if (src.map_func != null && (dst.map_func == null || is_error(dst.map_func))) return false;
+            dst.map_left = tensor_promote_expr_child_to_escape(src.map_left, interp, "boundary: failed to promote tensor map left input");
+            if (src.map_left != null && (dst.map_left == null || is_error(dst.map_left))) return false;
+            dst.map_right = tensor_promote_expr_child_to_escape(src.map_right, interp, "boundary: failed to promote tensor map right input");
+            if (src.map_right != null && (dst.map_right == null || is_error(dst.map_right))) return false;
             return true;
         case TENSOR_PAYLOAD_MAP:
             dst.map_func = tensor_promote_expr_child_to_escape(src.map_func, interp, "boundary: failed to promote tensor map function");

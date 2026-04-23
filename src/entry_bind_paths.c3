@@ -49,7 +49,7 @@ fn bool bind_dep_name_is_safe_output_name_char(char ch) @inline {
 
 fn bool bind_dep_name_is_safe_output_name(char* dep_name) {
     if (dep_name == null || dep_name[0] == 0) return false;
-    for (usz i = 0; dep_name[i] != 0; i++) {
+    for (usz i = 0; i < 256 && dep_name[i] != 0; i++) {
         if (!bind_dep_name_is_safe_output_name_char(dep_name[i])) return false;
     }
     return true;
@@ -68,7 +68,7 @@ fn bool build_bind_module_path(char[] out_path, usz* path_len_out, char* proj_di
         if (olen >= out_path.len - 1) return false;
         out_path[olen++] = ffi_mid[i];
     }
-    for (usz i = 0; dep_name[i] != 0; i++) {
+    for (usz i = 0; i < 256 && dep_name[i] != 0; i++) {
         if (olen >= out_path.len - 1) return false;
         out_path[olen++] = dep_name[i];
     }

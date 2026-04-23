@@ -151,6 +151,8 @@ fn Value* prim_matrix_norm(Value*[] args, Env* env, Interp* interp) {
     }
     Value* vulkan_result = matrix_norm_try_vulkan_value(matrix, kind, interp);
     if (vulkan_result != null) return vulkan_result;
+    Value* cuda_result = matrix_norm_try_cuda_value(matrix, kind, interp);
+    if (cuda_result != null) return cuda_result;
     if (matrix.device != TENSOR_DEVICE_CPU) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "matrix/norm: unsupported Tensor device", null);
     }
@@ -242,17 +244,22 @@ fn Value* matrix_singular_values_try_vulkan_value(TensorVal* matrix, Interp* int
 }
 fn Value* matrix_svd_try_vulkan_value(TensorVal* matrix, Interp* interp) {
     if (matrix == null || matrix.device != TENSOR_DEVICE_VULKAN) return null;
-    if (matrix.dtype != TENSOR_DTYPE_DOUBLE && matrix.dtype != TENSOR_DTYPE_FLOAT32) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "matrix/svd: Vulkan currently supports Float64 or Float32 Tensor storage", null);
+    if (
+        matrix.dtype != TENSOR_DTYPE_DOUBLE &&
+        matrix.dtype != TENSOR_DTYPE_FLOAT32 &&
+        matrix.dtype != TENSOR_DTYPE_COMPLEX128 &&
+        matrix.dtype != TENSOR_DTYPE_COMPLEX64
+    ) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "matrix/svd: Vulkan currently supports Float64, Float32, Complex128, or Complex64 Tensor storage", null);
     }
     if (matrix.rank != 2 || matrix.shape == null) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "matrix/svd: expected a rank-2 Float64 or Float32 Tensor", null);
+        return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "matrix/svd: expected a rank-2 Float64, Float32, Complex128, or Complex64 Tensor", null);
     }
     if (!tensor_has_valid_device_storage(matrix, TENSOR_DEVICE_VULKAN)) {
         return tensor_runtime_raise(interp, "matrix/svd: Vulkan tensor backing storage is missing");
     }
     if (!tensor_dense_row_major(matrix)) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "matrix/svd: Vulkan currently supports dense row-major Float64 or Float32 tensors", null);
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "matrix/svd: Vulkan currently supports dense row-major Float64, Float32, Complex128, or Complex64 tensors", null);
     }
     usz rows = matrix.shape[0];
     usz cols = matrix.shape[1];
@@ -260,17 +267,9 @@ fn Value* matrix_svd_try_vulkan_value(TensorVal* matrix, Interp* interp) {
     void* u_device = null;
     void* s_device = null;
     void* v_device = null;
-    int status = matrix.dtype == TENSOR_DTYPE_DOUBLE
-        ? omni_tensor_backend_vulkan_svd_f64(
-            matrix.device_handle,
-            matrix.byte_len,
-            rows,
-            cols,
-            &u_device,
-            &s_device,
-            &v_device
-        )
-        : omni_tensor_backend_vulkan_svd_f32(
+    int status = OMNI_TENSOR_VULKAN_UNSUPPORTED;
+    if (matrix.dtype == TENSOR_DTYPE_DOUBLE) {
+        status = omni_tensor_backend_vulkan_svd_f64(
             matrix.device_handle,
             matrix.byte_len,
             rows,
@@ -279,6 +278,37 @@ fn Value* matrix_svd_try_vulkan_value(TensorVal* matrix, Interp* interp) {
             &s_device,
             &v_device
         );
+    } else if (matrix.dtype == TENSOR_DTYPE_FLOAT32) {
+        status = omni_tensor_backend_vulkan_svd_f32(
+            matrix.device_handle,
+            matrix.byte_len,
+            rows,
+            cols,
+            &u_device,
+            &s_device,
+            &v_device
+        );
+    } else if (matrix.dtype == TENSOR_DTYPE_COMPLEX128) {
+        status = omni_tensor_backend_vulkan_svd_complex128(
+            matrix.device_handle,
+            matrix.byte_len,
+            rows,
+            cols,
+            &u_device,
+            &s_device,
+            &v_device
+        );
+    } else if (matrix.dtype == TENSOR_DTYPE_COMPLEX64) {
+        status = omni_tensor_backend_vulkan_svd_complex64(
+            matrix.device_handle,
+            matrix.byte_len,
+            rows,
+            cols,
+            &u_device,
+            &s_device,
+            &v_device
+        );
+    }
     if (status != OMNI_TENSOR_VULKAN_SUCCESS) {
         return tensor_vulkan_status_raise(interp, status, "matrix/svd: Vulkan kernel failed");
     }
@@ -310,7 +340,10 @@ fn Value* matrix_svd_try_vulkan_value(TensorVal* matrix, Interp* interp) {
         boundary_cleanup_materialized_value(null, u_value, interp.current_scope);
     }
     usz[1] s_shape_buf = { k };
-    TensorVal* s_tensor = tensor_alloc_payload_base_checked(matrix.dtype, s_shape_buf[0:1], false, false, "matrix/svd: failed to allocate Vulkan singular value tensor metadata");
+    TensorDType s_dtype = matrix.dtype;
+    if (matrix.dtype == TENSOR_DTYPE_COMPLEX128) s_dtype = TENSOR_DTYPE_DOUBLE;
+    if (matrix.dtype == TENSOR_DTYPE_COMPLEX64) s_dtype = TENSOR_DTYPE_FLOAT32;
+    TensorVal* s_tensor = tensor_alloc_payload_base_checked(s_dtype, s_shape_buf[0:1], false, false, "matrix/svd: failed to allocate Vulkan singular value tensor metadata");
     if (s_tensor == null) {
         if (s_device != null) omni_tensor_backend_vulkan_free(s_device);
         if (v_device != null) omni_tensor_backend_vulkan_free(v_device);
@@ -390,39 +423,34 @@ fn Value* matrix_svd_try_vulkan_value(TensorVal* matrix, Interp* interp) {
 }
 fn Value* matrix_eigenvalues_try_vulkan_value(TensorVal* matrix, Interp* interp) {
     if (matrix == null || matrix.device != TENSOR_DEVICE_VULKAN) return null;
-    if (matrix.dtype != TENSOR_DTYPE_DOUBLE) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "matrix/eigenvalues: Vulkan currently supports Float64 Tensor storage", null);
+    if (!matrix_vulkan_hermitian_eigen_supported_dtype(matrix.dtype)) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "matrix/eigenvalues: Vulkan currently supports Float64, Complex128, or Complex64 Tensor storage", null);
     }
     if (matrix.rank != 2 || matrix.shape == null || matrix.shape[0] != matrix.shape[1]) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "matrix/eigenvalues: Vulkan currently supports square dense row-major Float64 tensors", null);
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "matrix/eigenvalues: Vulkan currently supports square dense row-major Float64, Complex128, or Complex64 tensors", null);
     }
     if (!tensor_has_valid_device_storage(matrix, TENSOR_DEVICE_VULKAN)) {
         return tensor_runtime_raise(interp, "matrix/eigenvalues: Vulkan tensor backing storage is missing");
     }
     if (!tensor_dense_row_major(matrix)) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "matrix/eigenvalues: Vulkan currently supports dense row-major Float64 tensors", null);
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "matrix/eigenvalues: Vulkan currently supports dense row-major Float64, Complex128, or Complex64 tensors", null);
     }
     usz n = matrix.shape[0];
     void* values_device = null;
     void* vectors_device = null;
-    int status = omni_tensor_backend_vulkan_symmetric_eigen_f64(
-        matrix.device_handle,
-        matrix.byte_len,
-        n,
-        &values_device,
-        &vectors_device
-    );
+    int status = matrix_vulkan_hermitian_eigen_call(matrix, &values_device, &vectors_device);
     if (vectors_device != null) omni_tensor_backend_vulkan_free(vectors_device);
     if (status == OMNI_TENSOR_VULKAN_NOT_SYMMETRIC) {
         if (values_device != null) omni_tensor_backend_vulkan_free(values_device);
-        return raise_error_with_payload_names(interp, "tensor", "tensor/not-symmetric", "matrix/eigenvalues: input matrix is not symmetric", null);
+        return raise_error_with_payload_names(interp, "tensor", "tensor/not-symmetric", "matrix/eigenvalues: input matrix is not symmetric/Hermitian", null);
     }
     if (status != OMNI_TENSOR_VULKAN_SUCCESS) {
         if (values_device != null) omni_tensor_backend_vulkan_free(values_device);
-        return tensor_vulkan_status_raise(interp, status, "matrix/eigenvalues: Vulkan Float64 symmetric eigen kernel failed");
+        return tensor_vulkan_status_raise(interp, status, "matrix/eigenvalues: Vulkan Hermitian eigen kernel failed");
     }
     usz[1] value_shape_buf = { n };
-    TensorVal* tensor = tensor_alloc_payload_base_checked(TENSOR_DTYPE_DOUBLE, value_shape_buf[0:1], false, false, "matrix/eigenvalues: failed to allocate Vulkan eigenvalue tensor metadata");
+    TensorDType value_dtype = matrix_vulkan_hermitian_eigen_value_dtype(matrix.dtype);
+    TensorVal* tensor = tensor_alloc_payload_base_checked(value_dtype, value_shape_buf[0:1], false, false, "matrix/eigenvalues: failed to allocate Vulkan eigenvalue tensor metadata");
     if (tensor == null) {
         if (values_device != null) omni_tensor_backend_vulkan_free(values_device);
         return tensor_runtime_raise(interp, "matrix/eigenvalues: failed to allocate Vulkan eigenvalue tensor metadata");

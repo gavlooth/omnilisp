@@ -4,9 +4,13 @@ import std::io;
 import std::core::mem;
 import main;
 
+fn Value* collection_raise(Interp* interp, char[] code, char[] message) @inline {
+    return raise_error_with_payload_names(interp, "type", code, message, null);
+}
+
 // Collection primitives: generic ref/push/keys/values + set operations.
 fn Value* ref_type_error(Interp* interp) {
-    return raise_error(interp, "ref: expected array, dict, cons, or string");
+    return collection_raise(interp, "type/arg-mismatch", "ref: expected array, dict, cons, or string");
 }
 
 fn bool ref_try_lookup_collection(Interp* interp, Value* coll, Value* key, Value** out) {
@@ -19,18 +23,18 @@ fn bool ref_try_lookup_collection(Interp* interp, Value* coll, Value* key, Value
             return true;
         }
         if (!is_int(key)) {
-            *out = raise_error(interp, "ref: array requires int index");
+            *out = collection_raise(interp, "type/arg-mismatch", "ref: array requires int index");
             return true;
         }
         if (coll.array_val.length > (usz)long.max) {
-            *out = raise_error(interp, "ref: array too large to index");
+            *out = collection_raise(interp, "type/out-of-bounds", "ref: array too large to index");
             return true;
         }
         long idx = key.int_val;
         long alen = (long)coll.array_val.length;
         if (idx < 0) idx += alen;
         if (idx < 0 || idx >= alen) {
-            *out = raise_error(interp, "ref: array index out of bounds");
+            *out = collection_raise(interp, "type/out-of-bounds", "ref: array index out of bounds");
             return true;
         }
         *out = coll.array_val.items[(usz)idx];
@@ -51,7 +55,7 @@ fn bool ref_try_lookup_collection(Interp* interp, Value* coll, Value* key, Value
     // Cons/list: walk cons chain — supports negative indexing
     if (coll.tag == CONS) {
         if (!is_int(key)) {
-            *out = raise_error(interp, "ref: list requires int index");
+            *out = collection_raise(interp, "type/arg-mismatch", "ref: list requires int index");
             return true;
         }
         long idx = key.int_val;
@@ -62,14 +66,14 @@ fn bool ref_try_lookup_collection(Interp* interp, Value* coll, Value* key, Value
             if (!is_nil(c)) len++;
             idx += len;
             if (idx < 0) {
-                *out = raise_error(interp, "ref: list index out of bounds");
+                *out = collection_raise(interp, "type/out-of-bounds", "ref: list index out of bounds");
                 return true;
             }
         }
         Value* current = coll;
         for (long i = 0; i < idx; i++) {
             if (!is_cons(current)) {
-                *out = raise_error(interp, "ref: list index out of bounds");
+                *out = collection_raise(interp, "type/out-of-bounds", "ref: list index out of bounds");
                 return true;
             }
             current = cdr(current);
@@ -83,27 +87,27 @@ fn bool ref_try_lookup_collection(Interp* interp, Value* coll, Value* key, Value
             *out = current;
             return true;
         }
-        *out = raise_error(interp, "ref: list index out of bounds");
+        *out = collection_raise(interp, "type/out-of-bounds", "ref: list index out of bounds");
         return true;
     }
 
     // String: codepoint-indexed character access. Use string-byte-length for bytes.
     if (coll.tag == STRING) {
         if (!is_int(key)) {
-            *out = raise_error(interp, "ref: string requires int index");
+            *out = collection_raise(interp, "type/arg-mismatch", "ref: string requires int index");
             return true;
         }
         char[] bytes = coll.str_chars[:coll.str_len];
         usz cp_count = utf8_strlen(bytes);
         if (cp_count > (usz)long.max) {
-            *out = raise_error(interp, "ref: string too large to index");
+            *out = collection_raise(interp, "type/out-of-bounds", "ref: string too large to index");
             return true;
         }
         long idx = key.int_val;
         long slen = (long)cp_count;
         if (idx < 0) idx += slen;
         if (idx < 0 || idx >= slen) {
-            *out = raise_error(interp, "ref: string index out of bounds");
+            *out = collection_raise(interp, "type/out-of-bounds", "ref: string index out of bounds");
             return true;
         }
         usz byte_off = utf8_byte_offset(bytes, (usz)idx);
@@ -123,43 +127,43 @@ fn bool ref_try_lookup_collection(Interp* interp, Value* coll, Value* key, Value
 }
 
 fn Value* prim_ref(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return raise_error(interp, "ref: expected collection and key");
+    if (args.len < 2) return collection_raise(interp, "type/arity", "ref: expected collection and key");
     Value* result = null;
     if (ref_try_lookup_collection(interp, args[0], args[1], &result)) return result;
     return ref_type_error(interp);
 }
 
 fn Value* prim_push(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return raise_error(interp, "push!: expected 2 arguments");
-    if (!is_array(args[0])) return raise_error(interp, "push!: expected array");
+    if (args.len < 2) return collection_raise(interp, "type/arity", "push!: expected 2 arguments");
+    if (!is_array(args[0])) return collection_raise(interp, "type/arg-mismatch", "push!: expected array");
     return prim_array_push(args, env, interp);
 }
 
 fn Value* prim_keys(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return raise_error(interp, "keys: expected 1 argument");
-    if (args[0].tag != HASHMAP) return raise_error(interp, "keys: expected dict");
+    if (args.len < 1) return collection_raise(interp, "type/arity", "keys: expected 1 argument");
+    if (args[0].tag != HASHMAP) return collection_raise(interp, "type/arg-mismatch", "keys: expected dict");
     if (args[0].hashmap_val == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "keys: dict backing storage is missing");
     return hashmap_keys_list_canonical(args[0].hashmap_val, interp);
 }
 
 fn Value* prim_values(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return raise_error(interp, "values: expected 1 argument");
-    if (args[0].tag != HASHMAP) return raise_error(interp, "values: expected dict");
+    if (args.len < 1) return collection_raise(interp, "type/arity", "values: expected 1 argument");
+    if (args[0].tag != HASHMAP) return collection_raise(interp, "type/arg-mismatch", "values: expected dict");
     if (args[0].hashmap_val == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "values: dict backing storage is missing");
     return hashmap_values_list_canonical(args[0].hashmap_val, interp);
 }
 
 fn Value* prim_has(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return raise_error(interp, "has?: expected 2 arguments");
-    if (args[0].tag != HASHMAP) return raise_error(interp, "has?: expected dict");
+    if (args.len < 2) return collection_raise(interp, "type/arity", "has?: expected 2 arguments");
+    if (args[0].tag != HASHMAP) return collection_raise(interp, "type/arg-mismatch", "has?: expected dict");
     if (args[0].hashmap_val == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "has?: dict backing storage is missing");
     Value* found = hashmap_get(args[0].hashmap_val, args[1]);
     return found != null ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
 fn Value* prim_remove(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return raise_error(interp, "remove!: expected 2 arguments");
-    if (args[0].tag != HASHMAP) return raise_error(interp, "remove!: expected dict");
+    if (args.len < 2) return collection_raise(interp, "type/arity", "remove!: expected 2 arguments");
+    if (args[0].tag != HASHMAP) return collection_raise(interp, "type/arg-mismatch", "remove!: expected dict");
     if (args[0].hashmap_val == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "remove!: dict backing storage is missing");
     hashmap_remove(args[0].hashmap_val, args[1]);
     return make_void(interp);
@@ -168,10 +172,10 @@ fn Value* prim_remove(Value*[] args, Env* env, Interp* interp) {
 // Generic mutating update surface:
 // (set! collection key value) dispatches by collection type.
 fn Value* prim_set_bang(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 3) return raise_error(interp, "set!: expected collection, key, value");
+    if (args.len < 3) return collection_raise(interp, "type/arity", "set!: expected collection, key, value");
     if (args[0].tag == ARRAY) return prim_array_set(args, env, interp);
     if (args[0].tag == HASHMAP) return prim_dict_set(args, env, interp);
-    return raise_error(interp, "set!: generic form expects array or dict target");
+    return collection_raise(interp, "type/arg-mismatch", "set!: generic form expects array or dict target");
 }
 
 // --- Phase 9: Set primitives ---
@@ -204,14 +208,14 @@ fn Value* prim_set(Value*[] args, Env* env, Interp* interp) {
     Value* true_val = make_symbol(interp, interp.sym_true);
     for (usz i = 0; i < args.len; i++) {
         if (!hashmap_set_checked(map, args[i], true_val, interp)) {
-            return raise_error(interp, "Set: out of memory while growing backing storage");
+            return collection_raise(interp, "type/out-of-memory", "Set: out of memory while growing backing storage");
         }
     }
     return set_val;
 }
 
 fn Value* prim_set_add(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2 || args[0].tag != SET) return raise_error(interp, "set-add: expected set and value");
+    if (args.len < 2 || args[0].tag != SET) return collection_raise(interp, "type/arg-mismatch", "set-add: expected set and value");
     if (args[0].hashmap_val == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "set-add: set backing storage is missing");
     Value* true_val = make_symbol(interp, interp.sym_true);
     if (!hashmap_set(args[0].hashmap_val, args[1], true_val, interp)) {
@@ -225,27 +229,27 @@ fn Value* prim_set_add(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_set_remove(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2 || args[0].tag != SET) return raise_error(interp, "set-remove: expected set and value");
+    if (args.len < 2 || args[0].tag != SET) return collection_raise(interp, "type/arg-mismatch", "set-remove: expected set and value");
     if (args[0].hashmap_val == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "set-remove: set backing storage is missing");
     hashmap_remove(args[0].hashmap_val, args[1]);
     return make_void(interp);
 }
 
 fn Value* prim_set_contains(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2 || args[0].tag != SET) return raise_error(interp, "set-contains?: expected set and value");
+    if (args.len < 2 || args[0].tag != SET) return collection_raise(interp, "type/arg-mismatch", "set-contains?: expected set and value");
     if (args[0].hashmap_val == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "set-contains?: set backing storage is missing");
     Value* v = hashmap_get(args[0].hashmap_val, args[1]);
     return (v != null) ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
 fn Value* prim_set_size(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || args[0].tag != SET) return raise_error(interp, "length: expected set");
+    if (args.len < 1 || args[0].tag != SET) return collection_raise(interp, "type/arg-mismatch", "length: expected set");
     if (args[0].hashmap_val == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "length: set backing storage is missing");
     return make_int(interp, (long)args[0].hashmap_val.count);
 }
 
 fn Value* prim_set_to_list(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || args[0].tag != SET) return raise_error(interp, "List: expected set");
+    if (args.len < 1 || args[0].tag != SET) return collection_raise(interp, "type/arg-mismatch", "List: expected set");
     if (args[0].hashmap_val == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "List: set backing storage is missing");
     return hashmap_keys_list_canonical(args[0].hashmap_val, interp);
 }

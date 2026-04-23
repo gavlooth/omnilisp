@@ -5,12 +5,12 @@ import main;
 
 fn Value* make_tensor_double_uninitialized_checked(Interp* interp, usz[] shape, char[] oom_message) {
     TensorVal* tensor = tensor_alloc_payload_checked(TENSOR_DTYPE_DOUBLE, shape, true, oom_message);
-    if (tensor == null) return raise_error(interp, oom_message);
+    if (tensor == null) return tensor_runtime_raise(interp, oom_message);
 
     Value* v = interp.alloc_value();
     if (v == null) {
         tensor_free_payload(tensor);
-        return raise_error(interp, oom_message);
+        return tensor_runtime_raise(interp, oom_message);
     }
     v.tag = TENSOR;
     v.tensor_val = tensor;
@@ -21,12 +21,12 @@ fn Value* make_tensor_double_uninitialized_checked(Interp* interp, usz[] shape, 
 fn Value* make_tensor_uninitialized_checked(Interp* interp, TensorDType dtype, usz[] shape, char[] oom_message) {
     if (dtype == TENSOR_DTYPE_DOUBLE) return make_tensor_double_uninitialized_checked(interp, shape, oom_message);
     TensorVal* tensor = tensor_alloc_payload_checked(dtype, shape, true, oom_message);
-    if (tensor == null) return raise_error(interp, oom_message);
+    if (tensor == null) return tensor_runtime_raise(interp, oom_message);
 
     Value* v = interp.alloc_value();
     if (v == null) {
         tensor_free_payload(tensor);
-        return raise_error(interp, oom_message);
+        return tensor_runtime_raise(interp, oom_message);
     }
     v.tag = TENSOR;
     v.tensor_val = tensor;
@@ -44,12 +44,12 @@ fn Value* copy_tensor_to_parent(Value* v, Interp* interp, BoundaryCopyFault* fau
     TensorVal* dst = tensor_clone_payload(v.tensor_val);
     if (v.tensor_val != null && dst == null) {
         if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
-        return fault_out != null ? null : raise_error(interp, "boundary: failed to allocate tensor copy");
+        return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate tensor copy");
     }
     if (!tensor_copy_expr_edges_to_parent(dst, v.tensor_val, interp, fault_out)) {
         tensor_cleanup_materialized_expr_edges(v.tensor_val, dst, interp.current_scope);
         tensor_free_payload(dst);
-        return fault_out != null ? null : raise_error(interp, "boundary: failed to copy tensor expression edges");
+        return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to copy tensor expression edges");
     }
 
     Value* result = interp.alloc_value();
@@ -57,7 +57,7 @@ fn Value* copy_tensor_to_parent(Value* v, Interp* interp, BoundaryCopyFault* fau
         tensor_cleanup_materialized_expr_edges(v.tensor_val, dst, interp.current_scope);
         tensor_free_payload(dst);
         if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
-        return fault_out != null ? null : raise_error(interp, "boundary: failed to allocate tensor copy value");
+        return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate tensor copy value");
     }
     result.tag = TENSOR;
     result.tensor_val = dst;
@@ -70,19 +70,19 @@ fn Value* promote_escape_tensor_shared_wrapper(Value* v, Interp* interp, Promoti
 
     TensorVal* dst = tensor_clone_payload(v.tensor_val);
     if (v.tensor_val != null && dst == null) {
-        return raise_error(interp, "boundary: failed to allocate tensor escape copy");
+        return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate tensor escape copy");
     }
     if (!tensor_promote_expr_edges_to_escape(dst, v.tensor_val, interp)) {
         tensor_cleanup_materialized_expr_edges(v.tensor_val, dst, interp.current_scope, true);
         tensor_free_payload(dst);
-        return raise_error(interp, "boundary: failed to promote tensor expression edges");
+        return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to promote tensor expression edges");
     }
 
     Value* result = boundary_alloc_value_in_current_escape(interp);
     if (result == null) {
         tensor_cleanup_materialized_expr_edges(v.tensor_val, dst, interp.current_scope, true);
         tensor_free_payload(dst);
-        return raise_error(interp, "boundary: failed to allocate tensor escape copy value");
+        return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate tensor escape copy value");
     }
     result.tag = TENSOR;
     result.tensor_val = dst;

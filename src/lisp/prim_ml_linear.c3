@@ -202,6 +202,7 @@ fn Value* ml_linear_try_vulkan(Value* input_value, Value* weights_value, Value* 
         true,
         input.dtype,
         result_shape[0:input.rank],
+        false,
         interp
     );
     if (biased != null) return biased;

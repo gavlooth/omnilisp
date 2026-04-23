@@ -2,8 +2,8 @@ module lisp;
 
 fn Value* prim_to_device(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 2) return primitive_arity_raise(interp, "to-device", "2 arguments: tensor device", args.len);
-    if (!is_tensor(args[0])) return raise_error(interp, "to-device: expected Tensor");
-    if (!is_symbol(args[1])) return raise_error(interp, "to-device: device target must be a symbol");
+    if (!is_tensor(args[0])) return tensor_raise(interp, "tensor/invalid-argument", "to-device: expected Tensor");
+    if (!is_symbol(args[1])) return tensor_raise(interp, "tensor/invalid-argument", "to-device: device target must be a symbol");
 
     SymbolId cpu_sym = interp.symbols.intern("cpu");
     SymbolId cuda_sym = interp.symbols.intern("cuda");
@@ -27,15 +27,15 @@ fn Value* prim_to_device(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_rank(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_tensor(args[0])) return raise_error(interp, "rank: expected Tensor");
+    if (args.len < 1 || !is_tensor(args[0])) return tensor_raise(interp, "tensor/invalid-argument", "rank: expected Tensor");
     TensorVal* tensor = args[0].tensor_val;
     if (tensor == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "rank: tensor backing storage is missing");
-    if (tensor.rank > (usz)long.max) return raise_error(interp, "rank: tensor rank is too large");
+    if (tensor.rank > (usz)long.max) return tensor_raise(interp, "tensor/out-of-memory", "rank: tensor rank is too large");
     return make_int(interp, (long)tensor.rank);
 }
 
 fn Value* prim_shape(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_tensor(args[0])) return raise_error(interp, "shape: expected Tensor");
+    if (args.len < 1 || !is_tensor(args[0])) return tensor_raise(interp, "tensor/invalid-argument", "shape: expected Tensor");
     TensorVal* tensor = args[0].tensor_val;
     if (tensor == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "shape: tensor backing storage is missing");
 
@@ -47,7 +47,7 @@ fn Value* prim_shape(Value*[] args, Env* env, Interp* interp) {
 
     for (usz i = 0; i < tensor.rank; i++) {
         if (tensor.shape == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "shape: tensor shape storage is missing");
-        if (tensor.shape[i] > (usz)long.max) return raise_error(interp, "shape: tensor dimension is too large");
+        if (tensor.shape[i] > (usz)long.max) return tensor_raise(interp, "tensor/out-of-memory", "shape: tensor dimension is too large");
         out.array_val.items[i] = make_int(interp, (long)tensor.shape[i]);
     }
     out.array_val.length = tensor.rank;

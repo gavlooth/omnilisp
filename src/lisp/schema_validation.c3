@@ -20,7 +20,7 @@ module lisp;
 // ============================================================
 
 fn Value* prim_validate(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return raise_error(interp, "validate: expected (validate schema value)");
+    if (args.len < 2) return runtime_raise(interp, "type/arg-mismatch", "validate: expected (validate schema value)");
 
     Value* schema = args[0];
     // If schema is a symbol, try looking up as a named schema first

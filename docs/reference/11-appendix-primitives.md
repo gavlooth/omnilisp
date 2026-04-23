@@ -242,9 +242,9 @@ Callable core type symbols also provide constructor/coercion surface here:
 | `stats/normal-cdf` | 1 | Standard normal cumulative distribution function; applies elementwise to supported Tensor inputs |
 | `stats/normal-quantile` | 1 | Standard normal inverse cumulative distribution function; applies elementwise to supported CPU, CUDA, and Vulkan Float32 Tensor inputs |
 | `ml/grad` | 1 | Data-oriented gradient spec evaluator; supports CPU linear MSE, linear-activation MSE, linear softmax cross-entropy, tensor-expression MSE, and tensor-expression softmax cross-entropy gradients, returning metadata-only scope-owned `gradient-tape` dictionaries |
-| `ml/sgd-step` | 3 | Immutable SGD parameter-tree update for CPU Float64/Float32 Tensor leaves: parameters, gradients, learning-rate |
-| `ml/clip-gradients` | 2 | CPU max-norm gradient clipping over dense Float64/Float32 Tensor leaves and all-Vulkan dense row-major `Float32` trees; mixed-device and unsupported-dtype clipping fail-closed before fallback |
-| `ml/optimizer-step` | 4 | Data-oriented optimizer spec step; currently supports CPU Adam/AdamW/RMSProp, CPU/Vulkan dense row-major Float32 SGD, and CUDA dense row-major Float32 map-backed SGD/Adam/AdamW/RMSProp with optional state over explicit parameter/state trees |
+| `ml/sgd-step` | 3 | Immutable SGD parameter-tree update for CPU/Vulkan Float64/Float32 Tensor leaves; CPU leaves auto-migrate when the corresponding tree touches Vulkan: parameters, gradients, learning-rate |
+| `ml/clip-gradients` | 2 | CPU max-norm gradient clipping over dense Float64/Float32 Tensor leaves and Vulkan dense row-major `Float32` trees; CPU Float32 leaves auto-migrate when another leaf is Vulkan-placed, while unsupported dtypes fail closed |
+| `ml/optimizer-step` | 4 | Data-oriented optimizer spec step; currently supports CPU/Vulkan dense row-major Float64/Float32 SGD/Adam/AdamW/RMSProp and CUDA dense row-major Float32 map-backed SGD/Adam/AdamW/RMSProp with optional state over explicit parameter/state trees |
 | `ml/save-optimizer` | 2-3 | Serialize a supported optimizer spec and explicit state Dictionary checkpoint to JSON, or write it to a path and return `Void` |
 | `ml/load-optimizer` | 1 | Load an optimizer checkpoint from JSON or path and return an ordinary `{kind spec state}` Dictionary after envelope/spec/state-container validation |
 | `ml/leaky-relu` | 1-2 | Leaky ReLU activation for Float64/Float32 Tensor inputs with optional non-negative finite negative-slope; preserves dtype and placement |

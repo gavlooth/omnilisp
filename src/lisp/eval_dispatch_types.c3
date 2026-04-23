@@ -4,7 +4,7 @@ import std::io;
 
 fn Value* prim_meta_type_symbol_not_callable(Value*[] args, Env* env, Interp* interp) {
     if (interp == null || interp.last_call_name == INVALID_SYMBOL_ID) {
-        return raise_error(interp, "type symbol is not a callable constructor/coercion surface");
+        return runtime_raise(interp, "runtime/evaluation-error", "type symbol is not a callable constructor/coercion surface");
     }
 
     char[160] buf;
@@ -14,7 +14,7 @@ fn Value* prim_meta_type_symbol_not_callable(Value*[] args, Env* env, Interp* in
             (ZString)interp.symbols.get_name(interp.last_call_name))) {
         msg = formatted;
     }
-    return raise_error(interp, msg);
+    return runtime_raise(interp, "runtime/evaluation-error", msg);
 }
 
 fn MethodTable* alloc_empty_method_table_bootstrap(SymbolId sym, Value* fallback) {

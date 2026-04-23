@@ -629,6 +629,80 @@ Date: 2026-04-21
     `ML-VK-050-VK-MAP-BWD-001`, `ML-VK-040-FUSED-ATTENTION-001`, and
     `ML-VK-060-FUSED-CUDA-001`. Do not reopen closed ML/UI umbrella parents.
 
+## Active CUDA Stateful Optimizer Closure Checkpoint
+
+Date: 2026-04-22
+
+- Active hypothesis:
+  - The open CUDA optimizer residual was not a missing public optimizer
+    contract; it was an execution-regime gap where Adam/AdamW/RMSProp validated
+    CUDA placement but still decomposed state updates into multiple map-backed
+    kernels.
+- Current approach:
+  - Close the residual at the native fused leaf boundary. Keep backend-neutral
+    `ml/optimizer-step` unchanged, keep tree/schema validation in C3, and use
+    native CUDA only after all operands are concrete dense row-major `Float32`
+    CUDA tensors.
+- Implemented checkpoint:
+  - `ML-VK-060-FUSED-CUDA-STATEFUL-001` is closed.
+  - `csrc/tensor_cuda_ml_optimizer.cu` now owns the CUDA optimizer PTX source.
+  - The CUDA optimizer module resolves fused SGD, Adam/AdamW, and RMSProp
+    kernels together.
+  - Adam/AdamW now compute updated parameters plus first- and second-moment
+    state in one native CUDA launch.
+  - RMSProp now computes updated parameters, square-average state, and optional
+    velocity state in one native CUDA launch.
+- Validation path:
+  - CUDA PTX generation and `ptxas` assembly passed.
+  - C helper syntax check, helper-library rebuild, C3 build, file-size gate,
+    direct CUDA optimizer probes, and focused advanced collections passed.
+- Negative-memory constraints:
+  - Do not silently fall back from a resolved native fused optimizer launch or
+    allocation failure to map-backed execution. Map fallback is valid only when
+    the native optimizer module is unavailable.
+  - Do not reintroduce hand-written CUDA optimizer PTX as the source of truth;
+    update `csrc/tensor_cuda_ml_optimizer.cu` and regenerate the PTX include.
+- Next checkpoint:
+  - Continue with the remaining explicit TODO items. The stateful CUDA
+    optimizer residual should not be reopened unless a new failing runtime
+    signal appears.
+
+## Active Vulkan Math Performance Measurement Checkpoint
+
+Date: 2026-04-22
+
+- Active hypothesis:
+  - The open `TENSOR-100F` SVD/eigen performance residuals should not trigger
+    a tiled or staged Jacobi rewrite until in-process measurements show the
+    current serial Jacobi/storage-scratch shape is the dominant cost.
+- Current approach:
+  - Use `scripts/run_vulkan_math_perf_probe.sh` as the reproducible local
+    probe. It measures operations with Omni `time-ms` inside the runtime
+    process and emits `OMNI_BENCH_SUMMARY` lines for 64/65 Vulkan fixtures.
+- Validation path:
+  - `bash -n scripts/run_vulkan_math_perf_probe.sh`
+  - `git diff --check -- scripts/run_vulkan_math_perf_probe.sh`
+  - `scripts/run_vulkan_math_perf_probe.sh`
+- Checkpoint result:
+  - The current default plus opt-in scale probe does not justify an algorithm
+    rewrite. SVD measured 310-615 ms across 64/65 fixtures plus 96/128/192
+    identity and 128 all-ones scale probes. Eigen measured 304-494 ms across
+    64/65 fixtures plus 128 identity/all-ones scale probes.
+  - Staged solve measured 303-326 ms across 65/128/192 identity and
+    `I + ones` probes, so blocked trailing-update LU is not justified by the
+    current data.
+  - The measurement artifact is
+    `docs/plans/vulkan-math-performance-measurements-2026-04-22.md`.
+- Next checkpoint:
+  - Treat the SVD/eigen and LU blocked-update performance residuals as closed
+    for the current measured boundary. Open a new item only if larger repeated
+    measurements at a named size show the current algorithms are the
+    bottleneck.
+- Negative-memory constraints:
+  - Do not use process-per-expression `/usr/bin/time` results as crossover
+    evidence for a rewrite; those timings include runtime startup. Use
+    in-process `time-ms` summaries for the performance decision.
+
 ## Older Vulkan/Math Checkpoint
 
 Use the integrated Tensor plan, `TODO.md`, and
@@ -663,12 +737,14 @@ before changing code.
    no-downcast tests, large-dense SVD robustness, and CPU `Float32`
    factor/SVD surfaces have landed. CUDA `Float32` placement/copyback,
    destination `realize`, eligible cuBLAS contract routing, supported
-   zero-size CUDA contract identity/fill, and CUDA rank-1/rank-1 dot have also
-   landed. CPU fixed-width complex scalar and Tensor storage for
-   `Complex128`/`Complex64` has landed. Remaining stride/view-backed Vulkan
-   coverage, CUDA `map`, CUDA/Vulkan fixed-width complex kernels, and direct
-   Vulkan general `matrix/eigenpairs` still require dedicated contracts and
-   validation before they can leave fail-closed behavior. Do not lower
+   zero-size CUDA contract identity/fill, CUDA rank-1/rank-1 dot, and
+   zero-offset CUDA transpose-view operands for binary `map` have also landed.
+   CPU fixed-width complex scalar and Tensor storage for `Complex128`/
+   `Complex64` has landed. Remaining nonzero-offset/general view-backed
+   Vulkan/CUDA coverage, CUDA unary/scientific view-backed `map`,
+   CUDA/Vulkan fixed-width complex kernels, and direct Vulkan general
+   `matrix/eigenpairs` still require dedicated contracts and validation before
+   they can leave fail-closed behavior. Do not lower
    `BigInteger`, `BigFloat`, or `BigComplex` to Vulkan, and do not treat real
    `float32`/`float64` backend capability bits as complex capability.
 6. Preserve `Tensor`, `map`, `contract`, `matrix/*`, `to-device`, `device`,

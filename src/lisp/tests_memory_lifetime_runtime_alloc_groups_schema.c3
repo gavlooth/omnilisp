@@ -70,7 +70,7 @@ fn void run_memory_lifetime_runtime_alloc_groups_schema_tests(Interp* interp, in
         g_schema_explain_force_cons_alloc_fail_nth = 1;
         dispatch_fail = setup_ok
             ? explain_dispatch_result_from_evaluated_call(interp, make_nil(interp), callee, no_args)
-            : raise_error(interp, "setup failed");
+            : runtime_raise(interp, "runtime/evaluation-error", "setup failed");
 
         if (interp.handler_count >= interp.handler_capacity && !interp.grow_handler_stack()) setup_ok = false;
         if (setup_ok) {
@@ -83,7 +83,7 @@ fn void run_memory_lifetime_runtime_alloc_groups_schema_tests(Interp* interp, in
                 make_int(interp, 1));
             interp.handler_count--;
         } else {
-            effect_fail = raise_error(interp, "setup failed");
+            effect_fail = runtime_raise(interp, "runtime/evaluation-error", "setup failed");
         }
 
         g_schema_explain_force_cons_alloc_fail_nth = saved_cons_fail;

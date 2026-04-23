@@ -510,7 +510,7 @@ fn void run_memory_lifetime_resume_missing_yield_scope_gate_test(Interp* interp,
 
         Value* result = setup_ok
             ? prim_resume_complete(coroutine_val, ctx, interp)
-            : raise_error(interp, "resume: failed to allocate coroutine test state");
+            : runtime_raise(interp, "runtime/out-of-memory", "resume: failed to allocate coroutine test state");
 
         bool ok = setup_ok &&
             result != null &&

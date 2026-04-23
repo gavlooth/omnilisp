@@ -130,28 +130,28 @@ fn OffloadCompletion* ffi_async_offload_callback(OffloadWork work) {
 fn Value* prim_ffi_async_call(Value*[] args, Env* env, Interp* interp) {
     (void)env;
     if (args.len < 1) {
-        return raise_error(interp, "ffi-async-call: expected at least a bound function");
+        return ffi_raise(interp, "type/arg-mismatch", "ffi-async-call: expected at least a bound function");
     }
 
     Value* bound_prim = args[0];
     if (bound_prim == null || bound_prim.tag != PRIMITIVE || bound_prim.prim_val == null
         || bound_prim.prim_val.func != &prim_ffi_bound_call) {
-        return raise_error(interp, "ffi-async-call: expected an FFI-bound function as first argument");
+        return ffi_raise(interp, "type/arg-mismatch", "ffi-async-call: expected an FFI-bound function as first argument");
     }
 
     FfiBoundFn* bound = (FfiBoundFn*)bound_prim.prim_val.user_data;
     if (bound == null || bound.is_unavailable) {
-        return raise_error(interp, "ffi-async-call: bound function is unavailable");
+        return ffi_raise(interp, "ffi/unavailable", "ffi-async-call: bound function is unavailable");
     }
 
     if (Value* err = ffi_resolve_bound_fn(bound, interp)) return err;
     if (bound.fn_ptr == null) {
-        return raise_error(interp, "ffi-async-call: could not resolve symbol");
+        return ffi_raise(interp, "ffi/unavailable", "ffi-async-call: could not resolve symbol");
     }
 
     usz nargs = args.len - 1;
     if (nargs > FFI_ASYNC_MAX_ARGS) {
-        return raise_error(interp, "ffi-async-call: too many arguments (max 8)");
+        return ffi_raise(interp, "type/arity", "ffi-async-call: too many arguments (max 8)");
     }
 
     // Validate arg count (same logic as prim_ffi_bound_call)
@@ -165,7 +165,7 @@ fn Value* prim_ffi_async_call(Value*[] args, Env* env, Interp* interp) {
         } else {
             msg = "ffi: argument count mismatch";
         }
-        return raise_error(interp, msg);
+        return ffi_raise(interp, "ffi/invalid-state", msg);
     }
     if (bound.is_variadic && nargs < expected_min) {
         char[256] ebuf;
@@ -176,12 +176,12 @@ fn Value* prim_ffi_async_call(Value*[] args, Env* env, Interp* interp) {
         } else {
             msg = "ffi: variadic argument count mismatch";
         }
-        return raise_error(interp, msg);
+        return ffi_raise(interp, "ffi/invalid-state", msg);
     }
 
     FfiAsyncCallCtx* ctx = (FfiAsyncCallCtx*)mem::malloc(FfiAsyncCallCtx.sizeof);
     if (ctx == null) {
-        return raise_error(interp, "ffi-async-call: out of memory");
+        return ffi_raise(interp, "ffi/out-of-memory", "ffi-async-call: out of memory");
     }
     *ctx = {};
     ctx.fn_ptr = bound.fn_ptr;

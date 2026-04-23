@@ -1,0 +1,54 @@
+#version 450
+#extension GL_ARB_gpu_shader_fp64 : require
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+layout(std430, binding = 0) readonly buffer ParamsBuffer {
+    double params[];
+};
+
+layout(std430, binding = 1) readonly buffer GradBuffer {
+    double grads[];
+};
+
+layout(std430, binding = 2) buffer OutputParamsBuffer {
+    double output_params[];
+};
+
+layout(std430, binding = 3) buffer OutputFirstBuffer {
+    double output_first[];
+};
+
+layout(std430, binding = 4) buffer OutputSecondBuffer {
+    double output_second[];
+};
+
+layout(push_constant) uniform PushConstants {
+    uint count;
+    double learning_rate;
+    double beta1;
+    double beta2;
+    double epsilon;
+    double weight_decay;
+    double first_correction;
+    double second_correction;
+    uint decoupled_weight_decay;
+} pc;
+
+void main() {
+    uint idx = gl_GlobalInvocationID.x;
+    if (idx >= pc.count) return;
+
+    double param = params[idx];
+    double grad = grads[idx];
+    double moment_grad = pc.decoupled_weight_decay != 0u ? grad : grad + pc.weight_decay * param;
+    double next_first = (1.0 - pc.beta1) * moment_grad;
+    double next_second = (1.0 - pc.beta2) * moment_grad * moment_grad;
+    double first_hat = next_first / pc.first_correction;
+    double second_hat = next_second / pc.second_correction;
+    double decay_update = pc.decoupled_weight_decay != 0u ? pc.learning_rate * pc.weight_decay * param : 0.0;
+
+    output_params[idx] = param - decay_update - pc.learning_rate * first_hat / (sqrt(second_hat) + pc.epsilon);
+    output_first[idx] = next_first;
+    output_second[idx] = next_second;
+}

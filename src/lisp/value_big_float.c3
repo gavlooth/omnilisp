@@ -3,6 +3,10 @@ module lisp;
 import std::io;
 import main;
 
+fn Value* big_float_raise(Interp* interp, String code, char[] message) @inline {
+    return raise_error_with_payload_names(interp, "big-float", code, (String)message, null);
+}
+
 const int BIG_FLOAT_OP_ADD = 1;
 const int BIG_FLOAT_OP_SUB = 2;
 const int BIG_FLOAT_OP_MUL = 3;
@@ -38,11 +42,11 @@ const int BIG_FLOAT_ROUND_ROUND = 3;
 const int BIG_FLOAT_ROUND_TRUNCATE = 4;
 
 fn Value* make_big_float_from_owned_handle(Interp* interp, void* handle, char[] message) {
-    if (handle == null) return raise_error(interp, message);
+    if (handle == null) return big_float_raise(interp, "big-float/invalid-argument", message);
     Value* v = interp.alloc_value();
     if (v == null) {
         omni_big_float_free(handle);
-        return raise_error(interp, "BigFloat: failed to allocate value wrapper");
+        return big_float_raise(interp, "big-float/out-of-memory", "BigFloat: failed to allocate value wrapper");
     }
     v.tag = BIG_FLOAT;
     v.big_float_val = handle;
@@ -85,7 +89,7 @@ fn Value* copy_big_float_to_parent(Value* v, Interp* interp, BoundaryCopyFault* 
         cloned = omni_big_float_clone(v.big_float_val);
         if (cloned == null) {
             if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
-            return fault_out != null ? null : raise_error(interp, "boundary: failed to clone BigFloat payload");
+            return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to clone BigFloat payload");
         }
     }
 
@@ -93,7 +97,7 @@ fn Value* copy_big_float_to_parent(Value* v, Interp* interp, BoundaryCopyFault* 
     if (result == null) {
         if (cloned != null) omni_big_float_free(cloned);
         if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
-        return fault_out != null ? null : raise_error(interp, "boundary: failed to allocate BigFloat copy value");
+        return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate BigFloat copy value");
     }
     result.tag = BIG_FLOAT;
     result.big_float_val = cloned;
@@ -107,13 +111,13 @@ fn Value* promote_escape_big_float(Value* v, Interp* interp, PromotionContext* c
     void* cloned = null;
     if (v.big_float_val != null) {
         cloned = omni_big_float_clone(v.big_float_val);
-        if (cloned == null) return raise_error(interp, "boundary: failed to clone BigFloat escape payload");
+        if (cloned == null) return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to clone BigFloat escape payload");
     }
 
     Value* result = boundary_alloc_value_in_current_escape(interp);
     if (result == null) {
         if (cloned != null) omni_big_float_free(cloned);
-        return raise_error(interp, "boundary: failed to allocate BigFloat escape copy value");
+        return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate BigFloat escape copy value");
     }
     result.tag = BIG_FLOAT;
     result.big_float_val = cloned;
@@ -122,10 +126,10 @@ fn Value* promote_escape_big_float(Value* v, Interp* interp, PromotionContext* c
 }
 
 fn Value* big_float_to_string_value(Value* v, Interp* interp, char[] message) {
-    if (v == null || v.tag != BIG_FLOAT || v.big_float_val == null) return raise_error(interp, message);
+    if (v == null || v.tag != BIG_FLOAT || v.big_float_val == null) return big_float_raise(interp, "big-float/invalid-argument", message);
     usz len = 0;
     char* rendered = omni_big_float_to_string(v.big_float_val, &len);
-    if (rendered == null) return raise_error(interp, message);
+    if (rendered == null) return big_float_raise(interp, "big-float/invalid-argument", message);
     Value* result = make_string(interp, rendered[:len]);
     omni_big_float_string_free(rendered);
     return result;
@@ -170,17 +174,17 @@ fn bool big_float_try_to_double(Value* v, double* out) @inline {
 }
 
 fn Value* big_float_from_value(Interp* interp, Value* v, char[] message) {
-    if (v == null) return raise_error(interp, message);
+    if (v == null) return big_float_raise(interp, "big-float/invalid-argument", message);
     if (v.tag == BIG_FLOAT) return copy_big_float_to_parent(v, interp);
     if (v.tag == INT) return make_big_float_from_i64(interp, v.int_val);
     if (v.tag == DOUBLE) return make_big_float_from_double(interp, v.double_val);
     if (v.tag == FLOAT32) return make_big_float_from_double(interp, (double)v.float32_val);
     if (v.tag == BIG_INTEGER) {
         Value* rendered = big_integer_to_string_value(v, interp, "BigFloat: failed to render BigInteger");
-        if (rendered == null || rendered.tag != STRING) return raise_error(interp, message);
+        if (rendered == null || rendered.tag != STRING) return big_float_raise(interp, "big-float/invalid-argument", message);
         return make_big_float_from_string(interp, rendered.str_chars[:rendered.str_len]);
     }
-    return raise_error(interp, message);
+    return big_float_raise(interp, "big-float/invalid-argument", message);
 }
 
 fn void* big_float_handle_from_value(Value* v) {
@@ -209,11 +213,11 @@ fn void* big_float_handle_from_value(Value* v) {
 
 fn Value* big_float_binary_values(Interp* interp, Value* lhs, Value* rhs, int op, char[] message) {
     void* left = big_float_handle_from_value(lhs);
-    if (left == null) return raise_error(interp, message);
+    if (left == null) return big_float_raise(interp, "big-float/invalid-argument", message);
     defer omni_big_float_free(left);
 
     void* right = big_float_handle_from_value(rhs);
-    if (right == null) return raise_error(interp, message);
+    if (right == null) return big_float_raise(interp, "big-float/invalid-argument", message);
     defer omni_big_float_free(right);
 
     void* result = omni_big_float_binary(left, right, op);
@@ -222,7 +226,7 @@ fn Value* big_float_binary_values(Interp* interp, Value* lhs, Value* rhs, int op
 
 fn Value* big_float_neg_value(Interp* interp, Value* v, char[] message) {
     void* source = big_float_handle_from_value(v);
-    if (source == null) return raise_error(interp, message);
+    if (source == null) return big_float_raise(interp, "big-float/invalid-argument", message);
     defer omni_big_float_free(source);
 
     void* result = omni_big_float_neg(source);
@@ -231,7 +235,7 @@ fn Value* big_float_neg_value(Interp* interp, Value* v, char[] message) {
 
 fn Value* big_float_abs_value(Interp* interp, Value* v, char[] message) {
     void* source = big_float_handle_from_value(v);
-    if (source == null) return raise_error(interp, message);
+    if (source == null) return big_float_raise(interp, "big-float/invalid-argument", message);
     defer omni_big_float_free(source);
 
     void* result = omni_big_float_abs(source);
@@ -240,7 +244,7 @@ fn Value* big_float_abs_value(Interp* interp, Value* v, char[] message) {
 
 fn Value* big_float_unary_math_value(Interp* interp, Value* v, int op, char[] message) {
     void* source = big_float_handle_from_value(v);
-    if (source == null) return raise_error(interp, message);
+    if (source == null) return big_float_raise(interp, "big-float/invalid-argument", message);
     defer omni_big_float_free(source);
 
     void* result = omni_big_float_unary_math(source, op);
@@ -249,11 +253,11 @@ fn Value* big_float_unary_math_value(Interp* interp, Value* v, int op, char[] me
 
 fn Value* big_float_binary_math_values(Interp* interp, Value* lhs, Value* rhs, int op, char[] message) {
     void* left = big_float_handle_from_value(lhs);
-    if (left == null) return raise_error(interp, message);
+    if (left == null) return big_float_raise(interp, "big-float/invalid-argument", message);
     defer omni_big_float_free(left);
 
     void* right = big_float_handle_from_value(rhs);
-    if (right == null) return raise_error(interp, message);
+    if (right == null) return big_float_raise(interp, "big-float/invalid-argument", message);
     defer omni_big_float_free(right);
 
     void* result = omni_big_float_binary_math(left, right, op);
@@ -262,7 +266,7 @@ fn Value* big_float_binary_math_values(Interp* interp, Value* lhs, Value* rhs, i
 
 fn Value* integer_or_big_integer_from_decimal_string(Interp* interp, char[] value, char[] message) {
     Value* big = make_big_integer_from_string(interp, value);
-    if (big == null || big.tag != BIG_INTEGER) return raise_error(interp, message);
+    if (big == null || big.tag != BIG_INTEGER) return big_float_raise(interp, "big-float/invalid-argument", message);
 
     long narrowed = 0;
     if (big_integer_try_to_i64(big, &narrowed)) return make_int(interp, narrowed);
@@ -270,11 +274,11 @@ fn Value* integer_or_big_integer_from_decimal_string(Interp* interp, char[] valu
 }
 
 fn Value* big_float_round_to_integer_value(Interp* interp, Value* v, int op, char[] message) {
-    if (v == null || v.tag != BIG_FLOAT || v.big_float_val == null) return raise_error(interp, message);
+    if (v == null || v.tag != BIG_FLOAT || v.big_float_val == null) return big_float_raise(interp, "big-float/invalid-argument", message);
 
     usz len = 0;
     char* rendered = omni_big_float_round_to_integer_string(v.big_float_val, op, &len);
-    if (rendered == null) return raise_error(interp, message);
+    if (rendered == null) return big_float_raise(interp, "big-float/invalid-argument", message);
     Value* result = integer_or_big_integer_from_decimal_string(interp, rendered[:len], message);
     omni_big_float_string_free(rendered);
     return result;

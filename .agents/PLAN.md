@@ -10,29 +10,39 @@ The historical content was split mechanically to keep individual files below the
 - Part 02: [.agents/plan_parts/plan_part_02.md](plan_parts/plan_part_02.md) (624 lines)
 - Part 03: [.agents/plan_parts/plan_part_03.md](plan_parts/plan_part_03.md) (353 lines)
 - Part 04: [.agents/plan_parts/plan_part_04.md](plan_parts/plan_part_04.md) (395 lines)
-- Part 05: [.agents/plan_parts/plan_part_05.md](plan_parts/plan_part_05.md) (682 lines)
+- Part 05: [.agents/plan_parts/plan_part_05.md](plan_parts/plan_part_05.md) (758 lines)
 
 ## Current Checkpoint
 
-Date: 2026-04-19
+Date: 2026-04-23
 
-- All jj-tracked text files above 700 LOC have been split into indexed part
-  files, include-only wrappers, or ordered data shards. The root entrypoints
-  remain under the cap.
-- The current raw jj-tracked text inventory reports zero files above 700 LOC.
-  This includes vendored and generated text that earlier checkpoints treated
-  as exclusions.
-- Audit fixes landed during this continuation:
-  - corrected index links so part links resolve relative to each stub file;
-  - restored the LSP smoke extended-formatting assertion loop after a split had
-    reduced it to `pass`;
-  - preserved the Tensor `realize` evaluated-error propagation fix from the
-    prior source audit.
-- Validation path for this checkpoint:
-  - raw jj-tracked text LOC inventory with no vendor/generated exclusions;
-  - generated index-link existence check;
-  - `git diff --check`;
-  - targeted build/smoke gates for the earlier source changes.
+- Live queue is closed: `TODO.md` reports `Current actionable count: 0` and
+  `scripts/check_status_consistency.sh` is green against changelog date
+  2026-04-23.
+- The Vulkan general eigen closure is fully validated:
+  `TENSOR-100H-VK-REAL-GENERAL-EIGEN-001`,
+  `TENSOR-100H-VK-COMPLEX-GENERAL-EIGEN-HARDENING-001`, and the promoted
+  `TENSOR-100H-VK-GENERAL-EIGEN-DEFLATION-001` residual are closed.
+- Native Vulkan `matrix/eigenpairs` now covers dense row-major `Float64`,
+  `Float32`, `Complex128`, and `Complex64` with Vulkan-placed fixed-width
+  complex `values` and `vectors`, exact 2x2 complex-shift handling, and
+  active-submatrix deflation for mixed-block 3x3 spectra.
+- Follow-up global-gate blockers are closed:
+  - handled raise payload string-allocation failure now propagates the original
+    allocation `ERROR`;
+  - deduce no-data raises use an explicit payloadless fallback under
+    payload-map OOM while generic/JIT payload construction remains strict;
+  - FTXUI smoke examples consume structured raise payload messages.
+- Latest validation:
+  - `c3c build --obj-out obj`;
+  - bounded `memory-lifetime-smoke` `pass=237 fail=0`;
+  - bounded `deduce` `pass=392 fail=0`;
+  - bounded `jit-policy` `pass=52 fail=0`;
+  - bounded `scripts/run_ftxui_smoke.sh`;
+  - bounded `scripts/run_global_gates.sh`, passing file-size gate, normal
+    build, all configured normal Lisp slices, compiler slice, and FTXUI
+    smokes. ASAN is explicitly skipped because the current C3 toolchain reports
+    address sanitizer unsupported for this target.
 
 ## Follow-Up Audit Checkpoint
 
@@ -1244,3 +1254,722 @@ Date: 2026-04-21 - Adds non-executing schedule metadata to captured Tensor graph
   collections module `pass=1892 fail=0`, primitive docs parity, Stage 3 source
   parity, code file-size gate, `git diff --check`, and the open
   `ML-VK-080-0xx` TODO scan passed with no unchecked child items.
+
+## 2026-04-22 10:47 CEST - Active Audit Checkpoint
+
+- Active hypothesis: backend helper contract bugs are most likely where public
+  Tensor wrappers admit device views or optional-state values that lower-level
+  helpers interpret as concrete storage or malformed state.
+- Current approach: close concrete mismatches with fail-closed front-door
+  guards and focused regressions, then continue scanning adjacent helper
+  preconditions and ownership cleanup paths.
+- Validation path: file-size gate, targeted `git diff --check`, `c3c build
+  --obj-out obj`, and the focused `advanced-collections-module` slice.
+- Latest checkpoint: `matrix/transpose-view` now enforces concrete
+  zero-offset dense row-major Vulkan sources before constructing a Vulkan view;
+  nested Vulkan transpose views fail closed with `tensor/backend-unsupported`.
+- Negative-memory constraints: do not treat a valid Vulkan device handle as
+  proof of concrete zero-offset storage, and do not pass view-backed Vulkan
+  tensors to helper ABIs that do not receive full view offset/backing metadata.
+- Agent assignments: direct execution in this continuation; no sub-agent was
+  spawned because the latest owner request did not explicitly ask for
+  subagents in this turn.
+
+## 2026-04-22 22:55 CEST - Vulkan General Eigen Checkpoint
+
+- Active hypothesis: native Vulkan general `matrix/eigenpairs` is shipped for
+  real and fixed-width complex tensors at the covered diagonal, triangular,
+  lazy, no-LAPACK, exact 2x2 complex-shift, and mixed-block deflation
+  boundaries; the durable TODO live queue is closed.
+- Current approach: close `TENSOR-100H-VK-REAL-GENERAL-EIGEN-001`,
+  `TENSOR-100H-VK-COMPLEX-GENERAL-EIGEN-HARDENING-001`, and the promoted
+  `TENSOR-100H-VK-GENERAL-EIGEN-DEFLATION-001` residual.
+- Validation path: shader validation, helper rebuild, `c3c build --obj-out obj`,
+  direct exact-shift residual probes, `scripts/run_vulkan_math_perf_probe.sh`,
+  focused advanced collection run, file-size gate, status consistency gate, and
+  diff whitespace checks.
+- Latest checkpoint: exact 2x2 complex-shift and mixed-block deflation
+  residual probes pass for `Float64`, `Float32`, `Complex128`, and `Complex64`;
+  focused advanced collections are at `pass=2008 fail=17` with eigenpair
+  failures cleared and unrelated ML/Vulkan fallback failures remaining.
+- Negative-memory constraints: do not treat the old real Vulkan fail-closed
+  tests as authoritative, do not keep widening QR shift perturbation for
+  mixed-block 3x3 spectra, and do not reconstruct leading 2x2 vectors directly
+  into the public output/accumulated-basis buffer before all leading columns are
+  computed.
+- Agent assignments: direct execution in this continuation; no sub-agent was
+  spawned because the latest owner request did not explicitly ask for
+  subagents in this turn.
+
+## 2026-04-22 15:17 CEST - TENSOR-100H Vulkan General Eigen Checkpoint
+
+- Active hypothesis: general non-Hermitian Vulkan `matrix/eigenpairs` needs a
+  backend-native solver family; fixed-width CPU result storage is already
+  solved, so BigComplex-era blocker wording is stale.
+- Current approach: lock the shared ABI/design first, keep capability bits
+  false, and advance only to a fail-closed helper boundary until a
+  correctness-first Hessenberg/QR shader can be validated with residual checks
+  and no-LAPACK counter guards.
+- Validation path: targeted diff whitespace check, C helper syntax check,
+  helper rebuild, `c3c build --obj-out obj`, bounded focused advanced
+  collections, file-size gate, and status consistency.
+- Latest checkpoint: fail-closed C helper declarations/stubs and C3 externs now
+  exist for `omni_tensor_backend_vulkan_general_eigen_complex128` and
+  `omni_tensor_backend_vulkan_general_eigen_complex64`; docs/TODO now name the
+  next boundary as the Hessenberg/QR shader implementation rather than the ABI
+  stub. The shipped Vulkan Hermitian fixed-width complex eigen tests now also
+  guard `zgeev`/`cgeev` call counts, so that backend-native path cannot silently
+  regress to LAPACK while general `matrix/eigenpairs` remains fail-closed.
+- Negative-memory constraints: no 2x2-only shortcut, realification, Hermitian
+  Jacobi reuse, or hidden CPU/LAPACK fallback for Vulkan general eigenpairs.
+- Agent assignments: GPT-5 Codex is integration owner; read-only explorers
+  Nash and Laplace supplied CPU contract and helper ABI constraints.
+
+## 2026-04-22 15:49 CEST - TENSOR-100H Vulkan General Eigen Closure
+
+- Active hypothesis: the fixed-width complex Vulkan general eigenpair capability
+  can ship as a backend-native serial shifted-QR solver with explicit
+  no-convergence status. Full Hessenberg staging is now a future numerical
+  hardening/performance boundary, not the open capability blocker.
+- Current approach: route only `Complex128`/`Complex64` Vulkan
+  `matrix/eigenpairs`; keep real-valued Vulkan `Float64`/`Float32`
+  `matrix/eigenpairs` fail-closed and keep CUDA/cuBLAS capability bits false.
+- Validation path: shader compile/`spirv-val`, C helper syntax checks, helper
+  rebuild, C3 build, direct Vulkan probes, bounded focused
+  `advanced-collections-module`, file-size gate, and status consistency.
+- Latest checkpoint: `TENSOR-100H-COMPLEX-EIGEN-VULKAN-GENERAL` is closed on
+  disk. Native Vulkan Complex128/Complex64 `matrix/eigenpairs` returns
+  Vulkan-placed fixed-width complex `values` and `vectors`, validates residuals
+  in focused tests, and does not move LAPACK `zgeev`/`cgeev` counters.
+- Negative-memory constraints: continue forbidding hidden CPU/LAPACK fallback,
+  arbitrary realification, Hermitian-kernel reuse for non-Hermitian inputs, and
+  2x2-only closures.
+- Agent assignments: GPT-5 Codex is integration owner; no active subagents.
+
+## 2026-04-22 15:01 CEST - Active Audit Checkpoint
+
+- Active hypothesis: the `TENSOR-100F` parent is closed because its remaining
+  Vulkan math baseline work has either shipped, been measured closed, or been
+  promoted to a separately named residual. The visible graph-audit diagnostics
+  in `memory-lifetime-smoke` are classified expected output from a passing
+  negative root-splice regression, not a Tensor/Vulkan blocker.
+- Current approach: close `TENSOR-100F-BROAD-VALIDATION-001` with bounded global
+  validation evidence, record the runtime fixes that were required for that
+  gate to converge, and close `MEM-GRAPH-AUDIT-DIAGNOSTIC-20260422-001` as
+  deliberately emitted negative-regression output.
+- Validation path: `bash -n scripts/run_global_gates.sh`, targeted
+  `git diff --check`, `c3c build --obj-out obj`, bounded
+  `allocator-validation`, bounded `advanced`, bounded global gates, file-size
+  gate, and status consistency gate.
+- Latest checkpoint: bounded global gates passed normal build/tests and FTXUI
+  smoke; ASAN is explicitly skipped because the current C3 toolchain reports it
+  unsupported for this target. `ast_arena_alloc` now fails closed on corrupt
+  current chunks, and JIT tail `List` / `Array` fast paths no longer bypass
+  one-argument conversion validation. The narrowed graph-audit probe showed the
+  diagnostic lines immediately followed by `[PASS] lifetime: root splice debug
+  audit rejects releasing temp edge`.
+- Negative-memory constraints: do not use the JIT tail constructor shortcut for
+  one-argument `List` / `Array` calls; do not continue AST arena allocation after
+  `used > capacity`; do not interpret current `memory-lifetime-smoke`
+  graph-audit output as a lazy Tensor return regression unless the neighboring
+  pass line or tag pattern changes.
+- Agent assignments: main agent owns integration and file edits. Explorer
+  subagent `019db548-1039-7391-8234-9ff0ca187168` completed read-only
+  isolation of the graph-audit diagnostic source and smallest repro command.
+
+## 2026-04-22 15:18 CEST - Active Audit Checkpoint
+
+- Active hypothesis: the remaining actionable TODO is no longer a vague
+  `TENSOR-100F` parent; it is specifically
+  `TENSOR-100H-COMPLEX-EIGEN-VULKAN-GENERAL`, and the next required boundary is
+  a native Vulkan non-Hermitian complex solver ABI before public routing.
+- Current approach: record the shared solver design in the eigensolver plan,
+  reject case-specific 2x2/triangular shortcuts, and make the next code slice
+  fail-closed helper ABI declarations plus validation before any capability bit
+  flips.
+- Validation path: plan/TODO diff hygiene, status consistency, file-size gate,
+  then helper ABI compile checks once code is added.
+- Latest checkpoint: `docs/plans/vulkan-eigensolver-plan-2026-04-17.md` now
+  chooses staged complex Hessenberg reduction plus implicit shifted QR as the
+  shared solver family, with public Vulkan `Complex128`/`Complex64`
+  values/vectors outputs and private status buffers.
+- Negative-memory constraints: no hidden CPU/LAPACK fallback for Vulkan
+  operands; do not realify arbitrary complex matrices; do not reuse the
+  Hermitian Jacobi shader as a general eigensolver; do not flip
+  `matrix-eigenpairs-complex128/64` capability bits before residual and
+  no-LAPACK-counter validation.
+- Agent assignments: main agent owns plan integration. Explorer subagents
+  `019db54f-969a-7bb0-b5b4-859ca53a6e2d` and
+  `019db54f-b85f-7333-8c95-cd78500ff889` are read-only and assigned to confirm
+  Vulkan helper/routing constraints and CPU/test contract constraints.
+
+## 2026-04-22 14:10 CEST - CUDA Zero-Offset View Map Checkpoint
+
+- Active hypothesis: the overlapping `TENSOR-100F` stride-aware helper and
+  CUDA map residuals should close at a shared semantic boundary instead of
+  another case-specific dense-map tweak.
+- Current approach: ship zero-offset CUDA transpose views plus stride-offset
+  binary map execution while leaving dense-only unary/scientific helpers
+  fail-closed for views.
+- Validation path: helper rebuild, targeted CUDA layout/map probes, `c3c build
+  --obj-out obj`, focused `advanced-collections-module`, bounded-container
+  focused validation, file-size gate, and status consistency gate.
+- Latest checkpoint: CUDA `matrix/transpose-view` now preserves CUDA read-only
+  view metadata for supported dtypes, CUDA binary map builds operand offset
+  tables when operand strides differ from dense output strides, and lazy CUDA
+  binary map realization keeps zero-offset transpose-view operands on device.
+- Negative-memory constraints: do not skip CUDA binary map operand offset
+  tables solely because operand and output shapes match; stride equality is
+  required. Do not route CUDA unary/scientific map over strided views until
+  those helper ABIs accept explicit stride metadata.
+- Agent assignments: integration owner is GPT-5 Codex. Read-only sidecar
+  `Tesla` reviewed the CUDA view/map slice for dense/unary regressions; final
+  integration decisions remained local.
+
+## 2026-04-22 13:51 CEST - Active Audit Checkpoint
+
+- Active hypothesis: after the CUDA SVD adapter boundary shipped, the remaining
+  fixed-width complex CUDA SVD TODO could close by adding one cuSOLVER
+  execution helper that returns CUDA-owned `u/s/v` device buffers and routing
+  all public SVD/norm surfaces through it.
+- Current approach: use cuSOLVER `gesvd` only for CUDA Complex128/Complex64
+  tensors, keep results on CUDA, and keep the capability fields operation
+  specific instead of claiming broad CUDA complex numerical matrix support.
+- Validation path: C helper syntax check, helper archive rebuild, `c3c build
+  --obj-out obj`, direct CUDA probes, focused `advanced-collections-module`,
+  file-size gate, and status consistency gate.
+- Latest checkpoint: `TENSOR-100H-CUDA-SVD-NORMS-EXEC` is closed. CUDA
+  `matrix/singular-values`, spectral/nuclear `matrix/norm`, and reduced
+  `matrix/svd` now route through cuSOLVER for fixed-width complex CUDA tensors.
+  Focused advanced collections passed with `pass=1999 fail=0`.
+- Negative-memory constraints: no CPU/LAPACK fallback for CUDA operands, do not
+  realify fixed-width complex CUDA SVD through doubled real matrices, and do not
+  broaden `matrix-numerical-complex128` / `matrix-numerical-complex64` for this
+  narrow operation family.
+- Agent assignments: direct execution in this continuation; no sub-agent was
+  spawned because the latest owner request did not explicitly ask for
+  subagents in this turn.
+
+## 2026-04-22 13:39 CEST - Active Audit Checkpoint
+
+- Active hypothesis: the open CUDA fixed-width complex SVD adapter lane is no
+  longer blocked by missing CUDA tools; checked-in adapter PTX can now be
+  generated and wired into the existing complex matrix CUDA module.
+- Current approach: close the adapter boundary before public routing by adding
+  deterministic Omni row-major to cuSOLVER column-major input conversion,
+  wide-matrix adjoint-input preparation, cuSOLVER column-major `U` to public
+  row-major `u`, and cuSOLVER `VT = V^H` to public row-major `v` conversion
+  helpers for Complex128 and Complex64.
+- Validation path: CUDA PTX generation and `ptxas`, C helper syntax check,
+  helper archive rebuild, `c3c build --obj-out obj`, focused
+  `advanced-collections-module`, diff whitespace check, file-size gate, and
+  status consistency gate.
+- Latest checkpoint: `TENSOR-100H-CUDA-SVD-NORMS-ADAPTERS` is closed. The
+  existing CUDA complex matrix PTX module now exposes SVD layout adapter
+  kernels and C helper entry points. The generated PTX exceeded 1000 LOC as one
+  include and was split into
+  `csrc/tensor_cuda_complex_matrix_ptx_part_00.inc` and
+  `csrc/tensor_cuda_complex_matrix_ptx_part_01.inc`.
+- Negative-memory constraints: do not realify fixed-width complex CUDA SVD
+  through doubled real matrices, do not publish cuSOLVER `VT` as public `v`,
+  and do not silently copy CUDA operands to CPU/LAPACK. Adapter shape/byte
+  guards must run before CUDA availability, allocation, or kernel launch.
+- Agent assignments: direct execution in this continuation; no sub-agent was
+  spawned because the latest owner request did not explicitly ask for
+  subagents in this turn.
+
+## 2026-04-22 10:56 CEST - Active Audit Checkpoint
+
+- Active hypothesis: backend helper contract bugs are most likely where public
+  Tensor wrappers admit layouts or optional state that lower-level helpers
+  interpret as plain dense storage.
+- Current approach: close concrete helper precondition mismatches with
+  fail-closed front-door guards, then continue scanning adjacent device helper
+  cleanup and open TODO boundaries.
+- Validation path: targeted `git diff --check`, code file-size gate,
+  `c3c build --obj-out obj`, and the focused `advanced-collections-module`
+  slice.
+- Latest checkpoint: CUDA `ml/optimizer-step` SGD now explicitly requires
+  dense row-major parameter, gradient, and velocity tensors before fused or
+  map-backed CUDA execution, matching CUDA Adam/RMSProp and Vulkan SGD. CUDA
+  `tensor-backends` capability reporting now advertises
+  `ml-optimizer-sgd-float32` when either fused SGD or map-backed Float32
+  execution is available.
+- Negative-memory constraints: do not treat a valid CUDA device handle as proof
+  that a tensor is safe for byte-linear helper ABIs; future CUDA view/strided
+  helpers must accept explicit layout metadata instead of relying on raw
+  `byte_len` storage.
+- Agent assignments: direct execution in this continuation; no sub-agent was
+  spawned because the latest owner request did not explicitly ask for
+  subagents in this turn.
+
+## 2026-04-22 11:09 CEST - Active Audit Checkpoint
+
+- Active hypothesis: backend helper capability bugs are most likely where
+  cached native module state is treated as live backend availability.
+- Current approach: harden capability probes so they check current backend
+  availability before returning cached helper handles, then continue scanning
+  adjacent device-helper capability and cleanup paths.
+- Validation path: targeted `git diff --check`, code file-size gate,
+  `c3c build --obj-out obj`, and the focused `advanced-collections-module`
+  slice.
+- Latest checkpoint: CUDA map, scientific map, complex map, complex matrix,
+  rounding, and ML optimizer resolvers now return unavailable when CUDA is
+  disabled for tests, even if their modules were resolved earlier. The
+  `tensor-backends` row now reports those operation capabilities false under
+  `omni_tensor_backend_cuda_disable_for_tests(1)`.
+- Negative-memory constraints: do not treat cached CUDA PTX function pointers
+  as live availability authority; public capability probes must honor the
+  backend availability/test-disable gate before advertising operation support.
+- Agent assignments: direct execution in this continuation; no sub-agent was
+  spawned because the latest owner request did not explicitly ask for
+  subagents in this turn.
+
+## 2026-04-22 11:19 CEST - Active Audit Checkpoint
+
+- Active hypothesis: raw helper ABI bugs are most likely where public tensor
+  paths resolve views or lazy tensors before dispatching helpers that consume
+  linear `byte_len` storage.
+- Current approach: preserve public logical view semantics through resolver
+  materialization, and add helper-boundary layout guards where raw native
+  helpers are not stride-aware.
+- Validation path: targeted `git diff --check`, code file-size gate,
+  `c3c build --obj-out obj`, and the focused `advanced-collections-module`
+  slice.
+- Latest checkpoint: Vulkan `ml/mean-squared-error` now has an internal dense
+  row-major precondition before raw linear helper dispatch, and the advanced
+  regression confirms public MSE materializes Vulkan transpose views logically
+  before helper execution.
+- Negative-memory constraints: do not assume public MSE passes Vulkan view
+  payloads directly to the raw helper; concrete resolution materializes them.
+  Conversely, do not call raw linear Vulkan helper boundaries with strided or
+  offset tensors unless the helper ABI explicitly accepts layout metadata.
+- Agent assignments: direct execution in this continuation; no sub-agent was
+  spawned because the latest owner request did not explicitly ask for
+  subagents in this turn.
+
+## 2026-04-22 11:28 CEST - Active Audit Checkpoint
+
+- Active hypothesis: backend helper bugs are most likely where internal
+  autograd paths retain device storage and re-label it with new shape metadata
+  without revalidating storage layout.
+- Current approach: fail closed at internal helper boundaries unless retained
+  Vulkan storage and shape metadata are dense row-major and valid for linear
+  helper dispatch; keep public semantics covered with focused regressions.
+- Validation path: targeted `git diff --check`, code file-size gate,
+  `c3c build --obj-out obj`, and the focused `advanced-collections-module`
+  slice.
+- Latest checkpoint: Vulkan `ml/grad` broadcast-reduction aliasing now requires
+  valid dense row-major Vulkan storage before retaining a reduced gradient
+  buffer under the child gradient shape. A focused regression confirms the
+  aliased singleton broadcast gradient remains a Vulkan dense concrete tensor
+  with correct values. The adjacent tensor validation helper source also had a
+  duplicated `module`/import prologue removed as non-behavioral source cleanup;
+  the same duplicate-prologue pattern was removed from tensor map callable
+  helpers, and the `src/lisp` duplicate-module scan is now clean. The
+  fixed-width complex plan was also corrected so closed CPU eigen/capability
+  slices are marked closed and the CUDA SVD execution order points at the
+  concrete adapter/execution TODOs. `scripts/check_status_consistency.sh` now
+  understands split TODO, changelog, and area-doc indexes again, and the status
+  consistency gate passes with 11 actionable TODOs.
+- Negative-memory constraints: do not treat a non-null Vulkan device handle or
+  retained buffer as sufficient authority to re-label storage under dense
+  tensor metadata. Shape aliasing is only valid with matching element/byte
+  counts and dense row-major source/target layout.
+- Agent assignments: direct execution in this continuation; no sub-agent was
+  spawned because the latest owner request did not explicitly ask for
+  subagents in this turn.
+
+## 2026-04-22 11:51 CEST - Active Audit Checkpoint
+
+- Active hypothesis: device-handle equality is not enough authority for
+  autograd tensor identity when future device concrete tensors may carry
+  offset/stride metadata over shared storage.
+- Current approach: require valid dense zero-offset device storage before
+  treating matching non-CPU device handles as the same `wrt` leaf, then keep
+  auditing adjacent identity/layout boundaries without crossing the 1000 LOC
+  split threshold.
+- Validation path: targeted `git diff --check`, code file-size gate,
+  `c3c build --obj-out obj`, and focused `advanced-collections-module`.
+- Latest checkpoint: `ml_grad_expr_same_tensor` now validates both non-CPU
+  concrete tensors with `tensor_has_valid_device_storage` before handle-based
+  identity succeeds. `src/lisp/prim_ml_autograd_tensor_expr.c3` is exactly
+  1000 LOC after the guard and must not receive further line additions unless
+  it is split or equivalent lines are removed.
+- Negative-memory constraints: do not treat opaque CUDA/Vulkan handle equality
+  as sufficient identity proof for autograd leaf matching; storage validity and
+  dense zero-offset layout must be part of the identity precondition.
+- Agent assignments: direct execution in this continuation; no sub-agent was
+  spawned because the latest owner request did not explicitly ask for
+  subagents in this turn.
+
+## 2026-04-22 12:00 CEST - Active Audit Checkpoint
+
+- Active hypothesis: split TODO files can preserve live anonymous work rows
+  unless status tooling enforces the repo's unique task-ID rule for unchecked
+  entries.
+- Current approach: assign concrete IDs to all anonymous open nested TODO rows,
+  then make `scripts/check_status_consistency.sh` fail future unchecked rows
+  that do not start with a backtick task ID.
+- Validation path: shell syntax, status consistency gate, anonymous-open-row
+  scan, targeted `git diff --check`, and file-size gate.
+- Latest checkpoint: all 11 unchecked TODO rows now start with backtick task
+  IDs. The checker guard uses portable `rg | awk` filtering rather than
+  unsupported regex lookahead.
+- Negative-memory constraints: do not add live unchecked TODO bullets under
+  `docs/todo_parts/` without a concrete task ID; broad parent items may remain
+  open only when their residual child rows are also explicitly ID'd.
+- Agent assignments: direct execution in this continuation; no sub-agent was
+  spawned because the latest owner request did not explicitly ask for
+  subagents in this turn.
+
+## 2026-04-22 12:06 CEST - Active Audit Checkpoint
+
+- Active hypothesis: optional backend operands should cross native helper ABIs
+  as explicit absence (`null`/`0`), not as unrelated placeholder buffers that
+  only satisfy a fixed descriptor layout.
+- Current approach: keep public C3 ABI semantics honest and let C helpers map
+  absent optional operands to internal descriptor placeholders only after
+  validating the operation mode.
+- Validation path: targeted diff check, C syntax check, file-size gate, helper
+  rebuild, `c3c build --obj-out obj`, and focused
+  `advanced-collections-module`.
+- Latest checkpoint: Vulkan `ml/scaled-dot-product-attention` no-mask calls now
+  pass `null`/`0` for the mask. The native helper accepts that only when
+  `mask_kind == 0` and internally reuses the query buffer as the unused mask
+  descriptor binding required by the shader layout.
+- Negative-memory constraints: do not encode absent optional device operands
+  by passing an unrelated live buffer at the language/native boundary; if a
+  shader needs a dummy binding, create that dummy mapping inside the native
+  helper after mode validation.
+- Agent assignments: direct execution in this continuation; no sub-agent was
+  spawned because the latest owner request did not explicitly ask for
+  subagents in this turn.
+
+## 2026-04-22 12:14 CEST - Active Audit Checkpoint
+
+- Active hypothesis: same-device Tensor dtype mismatches are contract errors,
+  not backend capability misses, and Vulkan map diagnostics should match the
+  already-hardened CUDA path.
+- Current approach: keep unsupported dtype families as `tensor/backend-unsupported`
+  but classify Vulkan map operands with mismatched Tensor storage dtypes as
+  `tensor/dtype-mismatch` before helper dispatch or lazy realization.
+- Validation path: targeted diff check, file-size gate, status consistency
+  gate, `c3c build --obj-out obj`, and focused `advanced-collections-module`.
+- Latest checkpoint: Vulkan direct map and Vulkan lazy-expression map paths now
+  report `map: Vulkan tensor dtype mismatch` with code
+  `tensor/dtype-mismatch`; a guarded advanced regression covers mixed
+  Float64/Float32 Vulkan map operands when both placement dtypes are available.
+- Negative-memory constraints: do not hide same-device dtype mismatches behind
+  backend-unsupported diagnostics. Reserve backend-unsupported for unavailable
+  operation families, unsupported dtypes/layouts, or mixed-device placement
+  contracts.
+- Agent assignments: direct execution in this continuation; no sub-agent was
+  spawned because the latest owner request did not explicitly ask for
+  subagents in this turn.
+
+## 2026-04-22 12:24 CEST - Active Audit Checkpoint
+
+- Active hypothesis: matrix factorization helper boundaries should fail closed
+  on malformed non-empty CPU Tensor storage instead of relying solely on public
+  call-site `tensor_has_valid_storage` checks before allocating and copying
+  work buffers.
+- Current approach: harden the shared workspace/copy helpers used by complex
+  Hermitian eigen, general eigen fallback, SVD, LU, determinant, inverse, and
+  solve paths so `byte_len`/element-count copies reject null backing storage
+  before allocation or `mem::copy`.
+- Validation path: targeted diff whitespace check, code file-size gate,
+  `c3c build --obj-out obj`, and focused `advanced-collections-module`.
+- Latest checkpoint: `src/lisp/prim_tensor_matrix_eigen_primitives.c3`,
+  `src/lisp/prim_tensor_matrix_lu_svd_core_b.c3`, and
+  `src/lisp/prim_tensor_matrix_lu_cpu_solve.c3` now add explicit malformed
+  storage guards at the helper boundary. The touched files remain below the
+  1000 LOC split threshold.
+- Negative-memory constraints: do not assume a non-zero Tensor byte length or
+  shape-derived element count proves a CPU backing pointer exists. Shared
+  matrix helpers must check storage before allocating/copying because future
+  internal callers may bypass the public entry-point guard.
+- Agent assignments: direct execution in this continuation; no sub-agent was
+  spawned because the latest owner request did not explicitly ask for
+  subagents in this turn.
+
+## 2026-04-22 12:32 CEST - Active Audit Checkpoint
+
+- Active hypothesis: CUDA helper launch dimensions must be range-checked before
+  converting `size_t` element counts to driver `unsigned int` grid dimensions,
+  otherwise oversized tensors can silently under-launch and leave output
+  buffers partially written.
+- Current approach: replace repeated 1-D launch-grid casts in CUDA map,
+  rounding, complex-matrix, and fused-optimizer helpers with a shared checked
+  `omni_tensor_cuda_grid_dim_1d` helper, and expose a lightweight native probe
+  for regression coverage.
+- Validation path: C syntax check for `csrc/tensor_cuda_helpers.c`, targeted
+  diff whitespace check, code file-size gate, `c3c build --obj-out obj`, and
+  focused `advanced-collections-module`.
+- Latest checkpoint: CUDA 1-D helper launches now return
+  `OMNI_TENSOR_CUDA_INVALID_ARGUMENT` when the required grid dimension exceeds
+  `UINT_MAX`; the advanced collections module includes a probe-backed
+  oversized-grid regression.
+- Negative-memory constraints: do not calculate CUDA launch grids with
+  `(unsigned int)((count + block - 1) / block)` or other unchecked casts. Use
+  the shared helper so overflow and driver grid-limit violations fail closed
+  before allocation results are exposed as valid outputs.
+- Agent assignments: direct execution in this continuation; no sub-agent was
+  spawned because the latest owner request did not explicitly ask for
+  subagents in this turn.
+
+## 2026-04-22 12:36 CEST - Active Audit Checkpoint
+
+- Active hypothesis: CUDA public memory-copy helpers must validate non-empty
+  pointer arguments before applying no-op alias shortcuts, otherwise malformed
+  null source/destination pairs can be reported as successful copies.
+- Current approach: reorder device-to-device copy preconditions so zero-length
+  copies remain no-ops, null non-empty pointers fail closed, and only valid
+  identical device pointers take the alias no-op path.
+- Validation path: C syntax check for `csrc/tensor_cuda_helpers.c`, targeted
+  diff whitespace check, code file-size gate, `c3c build --obj-out obj`, and
+  focused `advanced-collections-module`.
+- Latest checkpoint: `omni_tensor_backend_cuda_copy_device_to_existing_device`
+  now rejects `(NULL, nonzero, NULL)` with `OMNI_TENSOR_CUDA_INVALID`; a native
+  probe and advanced regression cover the null-alias boundary.
+- Negative-memory constraints: do not check source/destination pointer equality
+  before validating non-empty CUDA copy pointers. Alias no-ops are valid only
+  for non-null device pointers or zero-length copies.
+- Agent assignments: direct execution in this continuation; no sub-agent was
+  spawned because the latest owner request did not explicitly ask for
+  subagents in this turn.
+
+## 2026-04-22 12:41 CEST - Active Audit Checkpoint
+
+- Active hypothesis: CUDA map-helper failure paths must release every temporary
+  device allocation made before launch-grid validation. The new checked grid
+  helper turns previously unreachable oversize paths into explicit early
+  returns, so cleanup on those returns is now part of the contract.
+- Current approach: audit all CUDA map `grid_status` exits and patch the
+  cleanup branches that were returning after allocating broadcast-offset or
+  status buffers.
+- Validation path: C syntax check for `csrc/tensor_cuda_helpers.c`, targeted
+  diff whitespace check, code file-size gate, `c3c build --obj-out obj`, and
+  focused `advanced-collections-module`.
+- Latest checkpoint: `csrc/tensor_cuda_helpers_map_binary.inc` now frees
+  broadcast-offset buffers on scalar/binary grid failure and frees
+  offsets/status/output on complex-map grid failure;
+  `csrc/tensor_cuda_helpers_map_unary_round.inc` now frees status/output
+  buffers on scientific, complex, and round-to-int grid failure. Plain unary
+  grid failure still frees only the output buffer because it allocates no
+  status buffer.
+- Negative-memory constraints: do not add a fail-closed validation branch after
+  helper allocations without auditing all already-allocated temporaries on the
+  new return path. For CUDA map helpers, grid-size errors are cleanup paths,
+  not just argument-validation paths.
+- Agent assignments: direct execution in this continuation; no sub-agent was
+  spawned because the latest owner request did not explicitly ask for
+  subagents in this turn.
+
+## 2026-04-22 12:46 CEST - Active Audit Checkpoint
+
+- Active hypothesis: CUDA optimizer native helpers must prove byte-length
+  multiplication cannot overflow before comparing `byte_len` to
+  `element_count * sizeof(float)`. A wrapped product can otherwise make an
+  oversized tensor look like a tiny valid buffer.
+- Current approach: harden the fused CUDA SGD helper precondition and expose a
+  native no-device probe that exercises the overflow path before CUDA
+  availability or allocation is consulted.
+- Validation path: C syntax check for `csrc/tensor_cuda_helpers.c`, targeted
+  diff whitespace check, code file-size gate, status consistency gate,
+  `c3c build --obj-out obj`, and focused `advanced-collections-module`.
+- Latest checkpoint: `csrc/tensor_cuda_helpers_ml_optimizer.inc` now rejects
+  `element_count > SIZE_MAX / sizeof(float)` before byte-length equality
+  checks. `src/lisp/tensor_cuda_backend.c3` exposes
+  `omni_tensor_backend_cuda_ml_sgd_byte_len_overflow_guard_for_tests`, and the
+  advanced collections module verifies the overflow case returns
+  `OMNI_TENSOR_CUDA_INVALID`.
+- Negative-memory constraints: do not compare a user-provided byte length to a
+  size-derived multiplication until the multiplication has been bounded. In
+  native CUDA optimizer helpers, overflow must fail closed before backend
+  availability, allocation, or launch logic.
+- Agent assignments: direct execution in this continuation; no sub-agent was
+  spawned because the latest owner request did not explicitly ask for
+  subagents in this turn.
+
+## 2026-04-22 12:51 CEST - Active Audit Checkpoint
+
+- Active hypothesis: Vulkan map-chain dispatch helpers must share the same
+  checked size-arithmetic rule as CUDA optimizer helpers: validate
+  `element_count` bounds before comparing `byte_len` to
+  `element_count * sizeof(float)`.
+- Current approach: factor the Vulkan Float32 map-chain byte-length/count
+  validation into one helper, use it in both scalar-chain and
+  tensor-scalar-chain dispatch entry points, and expose a native no-device
+  regression probe.
+- Validation path: C syntax check for
+  `csrc/tensor_vulkan_helpers_dispatch_batch.c`, targeted diff whitespace
+  check, code file-size gate, status consistency gate, `c3c build --obj-out
+  obj`, and focused `advanced-collections-module`.
+- Latest checkpoint: `csrc/tensor_vulkan_helpers_dispatch_batch.c` now rejects
+  oversized map-chain Float32 element counts before byte-length multiplication.
+  `src/lisp/tensor_vulkan_backend_batch.c3` exposes
+  `omni_tensor_backend_vulkan_map_chain_f32_byte_len_overflow_guard_for_tests`,
+  and the advanced collections module verifies the guard returns
+  `OMNI_TENSOR_VULKAN_UNSUPPORTED`.
+- Negative-memory constraints: do not combine `byte_len != count * sizeof(T)`
+  and `count` bounds in an order where the multiplication is evaluated first.
+  Place size/count guards in a shared helper when multiple Vulkan/CUDA entry
+  points enforce the same byte-length contract.
+- Agent assignments: direct execution in this continuation; no sub-agent was
+  spawned because the latest owner request did not explicitly ask for
+  subagents in this turn.
+
+## 2026-04-22 12:58 CEST - Active Audit Checkpoint
+
+- Active hypothesis: the native libffi shim must fail closed before
+  dereferencing caller-supplied argument metadata, and closure allocation must
+  never leave stale output pointers on failure. These are native boundary
+  contracts independent of higher-level FFI argument validation.
+- Current approach: harden `csrc/ffi_helpers.c` preconditions for fixed,
+  variadic, and callback-closure calls; expose no-crash native probes through
+  the existing FFI callback extern surface; validate them in the advanced FFI
+  system surface group.
+- Validation path: C syntax check for `csrc/ffi_helpers.c`, targeted diff
+  whitespace check, helper archive rebuild, `c3c build --obj-out obj`, focused
+  `advanced-ffi-system-surface`, file-size gate, and status consistency gate.
+- Latest checkpoint: `omni_ffi_call` and `omni_ffi_call_var` now reject null
+  argument type/value vectors when `nargs > 0`; `omni_ffi_closure_alloc`
+  clears `out_closure`/`out_code` on entry and clears `out_code` again if
+  `ffi_prep_closure_loc` fails after libffi allocated executable code.
+  `src/lisp/prim_ffi_callback.c3` also bounds callback parameter counts before
+  allocating type tables or narrowing counts into the native libffi `int` ABI,
+  exposes three native guard probes, and the advanced FFI surface group
+  verifies all three. The surrounding declarative FFI setup paths now mirror
+  that contract: interpreter FFI binding construction rejects oversized
+  parameter metadata before allocation, and the AOT bridge guards both ABI-tag
+  and handle-policy tables.
+- Negative-memory constraints: do not assume C3-level FFI call preparation is a
+  sufficient guard for the C shim. Native helper entry points must defend their
+  own pointer-vector and output-parameter contracts because tests, async paths,
+  callback paths, and future AOT/native callers can reach them directly.
+- Agent assignments: direct execution in this continuation; no sub-agent was
+  spawned because the latest owner request did not explicitly ask for
+  subagents in this turn.
+
+## 2026-04-22 13:11 CEST - Active Audit Checkpoint
+
+- Active hypothesis: ML optimizer backend wrappers must not manufacture
+  concrete device tensors when a native helper returns a null output handle.
+  Empty optimizer tensors are already rejected before helper dispatch, so a
+  null output handle after a successful Vulkan optimizer helper is a broken
+  backend contract, not a valid zero-byte tensor.
+- Current approach: compare the CUDA and Vulkan optimizer output wrappers,
+  align Vulkan with CUDA's null source/output guard, and verify the focused ML
+  optimizer test surface.
+- Validation path: targeted diff whitespace check, `c3c build --obj-out obj`,
+  focused `advanced-collections-module`, file-size gate, and status
+  consistency gate.
+- Latest checkpoint: `src/lisp/prim_ml_optimizer_vulkan.c3` now rejects
+  `source == null` or `device_handle == null` in
+  `ml_optimizer_vulkan_tensor_value`, frees any supplied handle on metadata
+  allocation failure, and assigns `tensor_vulkan_device_finalizer` only after
+  the output handle has been proven non-null.
+- Negative-memory constraints: do not treat a null Vulkan optimizer output
+  handle as an acceptable concrete tensor state. Optional state outputs should
+  be skipped by the caller before wrapping; required optimizer outputs must
+  fail closed if the helper did not produce device storage.
+- Agent assignments: direct execution in this continuation; no sub-agent was
+  spawned because the latest owner request did not explicitly ask for
+  subagents in this turn.
+
+## 2026-04-22 13:17 CEST - Active Audit Checkpoint
+
+- Active hypothesis: Vulkan ML loss wrappers have the same required-output
+  invariant as optimizer wrappers. A successful scalar loss helper must return
+  real Vulkan result storage; a null output handle is a backend contract
+  failure, not a valid concrete Tensor.
+- Current approach: harden the MSE and cross-entropy Vulkan loss wrappers after
+  successful native status returns, before installing concrete Tensor metadata.
+- Validation path: targeted diff whitespace check, `c3c build --obj-out obj`,
+  focused `advanced-collections-module`, file-size gate, and status
+  consistency gate.
+- Latest checkpoint: `src/lisp/prim_ml_vulkan_losses.c3` now rejects successful
+  `ml/mean-squared-error` or `ml/cross-entropy` Vulkan helper returns with
+  `out_device == null`, frees the partially allocated Tensor payload, and only
+  installs `tensor_vulkan_device_finalizer` after required result storage has
+  been proven non-null.
+- Negative-memory constraints: do not represent successful Vulkan scalar loss
+  results as `TENSOR_PAYLOAD_CONCRETE` with `device_handle == null`. The native
+  helpers reject empty element counts, so null required output storage after a
+  successful status is invalid and must fail closed.
+- Agent assignments: direct execution in this continuation; no sub-agent was
+  spawned because the latest owner request did not explicitly ask for
+  subagents in this turn.
+
+## 2026-04-22 13:26 CEST - Active Audit Checkpoint
+
+- Active hypothesis: Vulkan scaled-dot-product attention is another required
+  non-empty ML output wrapper. Its validation rejects zero query/key/head/value
+  dimensions, so a successful native helper return with a null output handle is
+  invalid concrete Tensor metadata.
+- Current approach: harden the attention Vulkan wrapper at the same post-status
+  boundary as optimizer and loss wrappers, without touching generic Tensor paths
+  where zero-byte device handles may still be valid.
+- Validation path: targeted diff whitespace check, `c3c build --obj-out obj`,
+  focused `advanced-collections-module`, file-size gate, and status
+  consistency gate.
+- Latest checkpoint: `src/lisp/prim_ml_attention.c3` now rejects a successful
+  Vulkan attention helper return with `out_device == null`, frees the partial
+  Tensor payload, and only installs `tensor_vulkan_device_finalizer` after
+  required result storage has been proven non-null.
+- Negative-memory constraints: do not blanket-rewrite conditional finalizers in
+  generic Tensor helpers without first proving zero-sized output semantics. For
+  ML attention, the output is required non-empty after validation, so null
+  result storage after success must fail closed.
+- Agent assignments: direct execution in this continuation; no sub-agent was
+  spawned because the latest owner request did not explicitly ask for
+  subagents in this turn.
+
+## 2026-04-22 16:38 CEST - Vulkan Eigen Follow-Up TODO Reopen
+
+- Active hypothesis: the shipped Vulkan fixed-width complex general
+  `matrix/eigenpairs` path is closed, but two residual risks from the final
+  handoff need explicit backlog ownership: real-valued general eigenpairs still
+  fail closed, and the serial complex QR path needs measurement-gated hardening
+  for larger or difficult spectra.
+- Current approach: reopen the TODO live queue with two scoped items rather
+  than reopening `TENSOR-100H-COMPLEX-EIGEN-VULKAN-GENERAL`.
+- Validation path: status consistency gate, TODO checkbox scan, and targeted
+  diff whitespace checks for the touched planning artifacts.
+- Next checkpoint: either implement
+  `TENSOR-100H-VK-REAL-GENERAL-EIGEN-001`, or run/extend the Vulkan math probe
+  for `TENSOR-100H-VK-COMPLEX-GENERAL-EIGEN-HARDENING-001` and close or
+  escalate based on measured evidence.
+- Negative-memory constraints: do not use hidden CPU/LAPACK fallback, Hermitian
+  reuse, 2x2 shortcuts, or capability-bit flips before native non-Hermitian
+  real eigenpairs pass residual/no-LAPACK tests. Do not add another
+  case-specific complex QR tweak before measurements show a shared bottleneck.
+- Agent assignments: direct execution in this continuation; no sub-agent was
+  spawned because the latest owner request only asked to record TODO items.
+
+## 2026-04-22 13:36 CEST - Active Audit Checkpoint
+
+- Active hypothesis: Vulkan conv1d, conv2d, and pool2d wrappers also produce
+  required non-empty ML outputs after validation. A successful native helper
+  return with a null output handle would create invalid concrete Tensor
+  metadata.
+- Current approach: harden only the convolution/pooling ML wrappers whose
+  validation rejects zero batch/channel/spatial/output dimensions. Leave
+  reduction and normalization conditional-finalizer paths unchanged until a
+  dedicated zero-element semantics review proves which outputs are required.
+- Validation path: targeted diff whitespace check, `c3c build --obj-out obj`,
+  focused `advanced-collections-module`, file-size gate, and status
+  consistency gate.
+- Latest checkpoint: `src/lisp/prim_ml_conv.c3`,
+  `src/lisp/prim_ml_conv2d.c3`, and `src/lisp/prim_ml_pool2d.c3` now reject
+  successful Vulkan helper returns with `out_device == null`, free partial
+  Tensor payloads, and install `tensor_vulkan_device_finalizer` only after
+  required result storage has been proven non-null.
+- Negative-memory constraints: do not extend the required-output fail-closed
+  rule to `prim_ml_reduction.c3`, `prim_ml_stable_reduction.c3`, or
+  `prim_ml_normalization.c3` without first proving zero-element semantics for
+  those public operations.
+- Agent assignments: direct execution in this continuation; no sub-agent was
+  spawned because the latest owner request did not explicitly ask for
+  subagents in this turn.

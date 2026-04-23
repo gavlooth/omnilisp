@@ -16,6 +16,17 @@ long omni_tensor_backend_vulkan_map_tensor_scalar_chain_dispatch_call_count(void
     return g_omni_tensor_vulkan_map_tensor_scalar_chain_dispatch_call_count;
 }
 
+static int omni_tensor_vulkan_map_chain_f32_validate_byte_len(size_t byte_len, size_t element_count) {
+    if (element_count > UINT32_MAX || element_count > SIZE_MAX / sizeof(float)) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
+    if (byte_len != element_count * sizeof(float)) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
+    return OMNI_TENSOR_VULKAN_SUCCESS;
+}
+
+int omni_tensor_backend_vulkan_map_chain_f32_byte_len_overflow_guard_for_tests(void) {
+    size_t overflowing_element_count = SIZE_MAX / sizeof(float) + 2u;
+    return omni_tensor_vulkan_map_chain_f32_validate_byte_len(sizeof(float), overflowing_element_count);
+}
+
 static void omni_tensor_vulkan_cmd_barrier_one_buffer(
     OmniVulkanCommandBuffer command_buffer,
     OmniTensorVulkanBuffer* buffer,
@@ -146,12 +157,14 @@ int omni_tensor_backend_vulkan_map_scalar_chain_f32(
     *out_device_ptr = NULL;
     if (!omni_tensor_backend_vulkan_available()) return OMNI_TENSOR_VULKAN_UNAVAILABLE;
     if (element_count == 0 || byte_len == 0) return OMNI_TENSOR_VULKAN_SUCCESS;
-    if (input_device_ptr == NULL || byte_len != element_count * sizeof(float) || element_count > UINT32_MAX) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
+    if (input_device_ptr == NULL) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
+    int byte_status = omni_tensor_vulkan_map_chain_f32_validate_byte_len(byte_len, element_count);
+    if (byte_status != OMNI_TENSOR_VULKAN_SUCCESS) return byte_status;
     if (op_count < 1 || op_count > UINT32_MAX || scalars == NULL || modes == NULL || ops == NULL) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
     if (op_count > SIZE_MAX / sizeof(OmniTensorVulkanBuffer*) || op_count > SIZE_MAX / sizeof(OmniVulkanDescriptorSet)) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
     if (op_count > UINT32_MAX / 4u) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
     for (size_t i = 0; i < op_count; i++) {
-        if ((modes[i] != 0u && modes[i] != 1u) || ops[i] > 5u) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
+        if ((modes[i] != 0u && modes[i] != 1u) || ops[i] > 7u) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
     }
     if (rank > UINT32_MAX) {
         return OMNI_TENSOR_VULKAN_UNSUPPORTED;
@@ -335,12 +348,14 @@ int omni_tensor_backend_vulkan_map_tensor_scalar_chain_f32(
     *out_device_ptr = NULL;
     if (!omni_tensor_backend_vulkan_available()) return OMNI_TENSOR_VULKAN_UNAVAILABLE;
     if (element_count == 0 || byte_len == 0) return OMNI_TENSOR_VULKAN_SUCCESS;
-    if (left_device_ptr == NULL || right_device_ptr == NULL || byte_len != element_count * sizeof(float) || element_count > UINT32_MAX) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
+    if (left_device_ptr == NULL || right_device_ptr == NULL) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
+    int byte_status = omni_tensor_vulkan_map_chain_f32_validate_byte_len(byte_len, element_count);
+    if (byte_status != OMNI_TENSOR_VULKAN_SUCCESS) return byte_status;
     if (op_count < 2 || op_count > UINT32_MAX || scalars == NULL || modes == NULL || ops == NULL) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
     if (op_count > SIZE_MAX / sizeof(OmniTensorVulkanBuffer*) || op_count > SIZE_MAX / sizeof(OmniVulkanDescriptorSet)) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
     if (op_count > UINT32_MAX / 4u || modes[0] != 2u || ops[0] > 5u) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
     for (size_t i = 1; i < op_count; i++) {
-        if ((modes[i] != 0u && modes[i] != 1u) || ops[i] > 5u) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
+        if ((modes[i] != 0u && modes[i] != 1u) || ops[i] > 7u) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
     }
     if (rank > UINT32_MAX) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
     size_t required = 0;

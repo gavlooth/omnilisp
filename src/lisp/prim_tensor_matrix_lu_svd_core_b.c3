@@ -234,6 +234,414 @@ fn bool matrix_svd_factor(TensorVal* matrix, double* u, double* s_values, double
     }
     return true;
 }
+
+fn Complex128Val matrix_complex128_add(Complex128Val left, Complex128Val right) @inline {
+    Complex128Val out;
+    out.real = left.real + right.real;
+    out.imag = left.imag + right.imag;
+    return out;
+}
+fn Complex128Val matrix_complex128_sub(Complex128Val left, Complex128Val right) @inline {
+    Complex128Val out;
+    out.real = left.real - right.real;
+    out.imag = left.imag - right.imag;
+    return out;
+}
+fn Complex128Val matrix_complex128_mul(Complex128Val left, Complex128Val right) @inline {
+    Complex128Val out;
+    out.real = left.real * right.real - left.imag * right.imag;
+    out.imag = left.real * right.imag + left.imag * right.real;
+    return out;
+}
+fn Complex128Val matrix_complex128_scale(Complex128Val value, double scale) @inline {
+    Complex128Val out;
+    out.real = value.real * scale;
+    out.imag = value.imag * scale;
+    return out;
+}
+fn double matrix_complex128_abs_squared(Complex128Val value) @inline {
+    return value.real * value.real + value.imag * value.imag;
+}
+fn void matrix_complex128_column_orthogonalize_vector(Complex128Val* vector, Complex128Val* basis, usz rows, usz columns, usz col) {
+    if (vector == null || basis == null) return;
+    for (usz prev = 0; prev < col; prev++) {
+        Complex128Val dot;
+        dot.real = 0.0;
+        dot.imag = 0.0;
+        for (usz row = 0; row < rows; row++) {
+            dot = matrix_complex128_add(
+                dot,
+                matrix_complex128_mul(matrix_complex128_conjugate(basis[row * columns + prev]), vector[row])
+            );
+        }
+        for (usz row = 0; row < rows; row++) {
+            vector[row] = matrix_complex128_sub(vector[row], matrix_complex128_mul(basis[row * columns + prev], dot));
+        }
+    }
+}
+fn bool matrix_complex128_normalize_vector(Complex128Val* vector, usz rows) {
+    if (rows == 0) return true;
+    if (vector == null) return false;
+    double norm_squared = 0.0;
+    for (usz row = 0; row < rows; row++) {
+        norm_squared += matrix_complex128_abs_squared(vector[row]);
+    }
+    if (!(norm_squared > 1e-24)) return false;
+    double inv_norm = 1.0 / tensor_c_sqrt(norm_squared);
+    for (usz row = 0; row < rows; row++) {
+        vector[row] = matrix_complex128_scale(vector[row], inv_norm);
+    }
+    return true;
+}
+fn bool matrix_complex128_fill_completion_column(Complex128Val* matrix, usz rows, usz columns, usz col) {
+    if (matrix == null) return rows == 0;
+    Complex128Val* trial = null;
+    if (!matrix_complex128_workspace_zero(rows, &trial)) return false;
+    defer if (trial != null) mem::free(trial);
+    for (usz seed = 0; seed < rows; seed++) {
+        for (usz row = 0; row < rows; row++) {
+            trial[row].real = row == seed ? 1.0 : 0.0;
+            trial[row].imag = 0.0;
+        }
+        matrix_complex128_column_orthogonalize_vector(trial, matrix, rows, columns, col);
+        if (!matrix_complex128_normalize_vector(trial, rows)) continue;
+        for (usz row = 0; row < rows; row++) {
+            matrix[row * columns + col] = trial[row];
+        }
+        return true;
+    }
+    return rows == 0;
+}
+fn bool matrix_complex128_orthonormalize_column(Complex128Val* matrix, usz rows, usz columns, usz col) {
+    if (matrix == null) return rows == 0;
+    Complex128Val* vector = null;
+    if (!matrix_complex128_workspace_zero(rows, &vector)) return false;
+    defer if (vector != null) mem::free(vector);
+    for (usz row = 0; row < rows; row++) {
+        vector[row] = matrix[row * columns + col];
+    }
+    matrix_complex128_column_orthogonalize_vector(vector, matrix, rows, columns, col);
+    if (!matrix_complex128_normalize_vector(vector, rows)) return false;
+    for (usz row = 0; row < rows; row++) {
+        matrix[row * columns + col] = vector[row];
+    }
+    return true;
+}
+fn bool matrix_build_svd_hermitian_complex128(TensorVal* matrix, Complex128Val* gram, bool tall_or_square) {
+    if (matrix == null || matrix.shape == null || matrix.data == null || gram == null) return false;
+    Complex128Val* source = (Complex128Val*)matrix.data;
+    usz rows = matrix.shape[0];
+    usz cols = matrix.shape[1];
+    usz gram_n = tall_or_square ? cols : rows;
+    usz gram_count = 0;
+    if (!tensor_checked_mul_usz(gram_n, gram_n, &gram_count)) return false;
+    for (usz i = 0; i < gram_count; i++) {
+        gram[i].real = 0.0;
+        gram[i].imag = 0.0;
+    }
+    if (tall_or_square) {
+        for (usz left = 0; left < cols; left++) {
+            for (usz right = 0; right < cols; right++) {
+                Complex128Val sum;
+                sum.real = 0.0;
+                sum.imag = 0.0;
+                for (usz row = 0; row < rows; row++) {
+                    sum = matrix_complex128_add(
+                        sum,
+                        matrix_complex128_mul(matrix_complex128_conjugate(source[row * cols + left]), source[row * cols + right])
+                    );
+                }
+                gram[left * gram_n + right] = sum;
+            }
+        }
+    } else {
+        for (usz top = 0; top < rows; top++) {
+            for (usz bottom = 0; bottom < rows; bottom++) {
+                Complex128Val sum;
+                sum.real = 0.0;
+                sum.imag = 0.0;
+                for (usz col = 0; col < cols; col++) {
+                    sum = matrix_complex128_add(
+                        sum,
+                        matrix_complex128_mul(source[top * cols + col], matrix_complex128_conjugate(source[bottom * cols + col]))
+                    );
+                }
+                gram[top * gram_n + bottom] = sum;
+            }
+        }
+    }
+    return true;
+}
+fn void matrix_complex128_hermitian_matvec(Complex128Val* matrix, Complex128Val* vector, Complex128Val* out, usz n) {
+    if (matrix == null || vector == null || out == null) return;
+    for (usz row = 0; row < n; row++) {
+        Complex128Val sum;
+        sum.real = 0.0;
+        sum.imag = 0.0;
+        for (usz col = 0; col < n; col++) {
+            sum = matrix_complex128_add(sum, matrix_complex128_mul(matrix[row * n + col], vector[col]));
+        }
+        out[row] = sum;
+    }
+}
+fn double matrix_complex128_rayleigh_real(Complex128Val* matrix, Complex128Val* vector, Complex128Val* work, usz n) {
+    if (matrix == null || vector == null || work == null) return 0.0;
+    matrix_complex128_hermitian_matvec(matrix, vector, work, n);
+    Complex128Val dot;
+    dot.real = 0.0;
+    dot.imag = 0.0;
+    for (usz i = 0; i < n; i++) {
+        dot = matrix_complex128_add(dot, matrix_complex128_mul(matrix_complex128_conjugate(vector[i]), work[i]));
+    }
+    return dot.real;
+}
+fn bool matrix_complex128_hermitian_power_eigen(
+    Complex128Val* hermitian,
+    double* eigenvalues,
+    Complex128Val* eigenvectors,
+    usz n,
+    usz k
+) {
+    if (hermitian == null || eigenvalues == null || eigenvectors == null) return k == 0;
+    if (k == 0) return true;
+    usz matrix_count = 0;
+    if (!tensor_checked_mul_usz(n, n, &matrix_count)) return false;
+    Complex128Val* work_matrix = null;
+    if (!matrix_complex128_workspace_zero(matrix_count, &work_matrix)) return false;
+    defer if (work_matrix != null) mem::free(work_matrix);
+    for (usz i = 0; i < matrix_count; i++) work_matrix[i] = hermitian[i];
+    Complex128Val* vector = null;
+    if (!matrix_complex128_workspace_zero(n, &vector)) return false;
+    defer if (vector != null) mem::free(vector);
+    Complex128Val* next = null;
+    if (!matrix_complex128_workspace_zero(n, &next)) return false;
+    defer if (next != null) mem::free(next);
+    usz max_iterations = (usz)128;
+    if (n <= (usz.max - (usz)128) / (usz)64) max_iterations = n * (usz)64 + (usz)128;
+    for (usz col = 0; col < k; col++) {
+        usz seed = 0;
+        double best_diagonal = -1.0;
+        for (usz i = 0; i < n; i++) {
+            double diagonal = work_matrix[i * n + i].real;
+            if (diagonal > best_diagonal) {
+                best_diagonal = diagonal;
+                seed = i;
+            }
+        }
+        for (usz row = 0; row < n; row++) {
+            vector[row].real = row == seed ? 1.0 : 0.0;
+            vector[row].imag = 0.0;
+        }
+        matrix_complex128_column_orthogonalize_vector(vector, eigenvectors, n, k, col);
+        if (!matrix_complex128_normalize_vector(vector, n)) {
+            if (!matrix_complex128_fill_completion_column(eigenvectors, n, k, col)) return false;
+            eigenvalues[col] = 0.0;
+            continue;
+        }
+        for (usz iter = 0; iter < max_iterations; iter++) {
+            matrix_complex128_hermitian_matvec(work_matrix, vector, next, n);
+            matrix_complex128_column_orthogonalize_vector(next, eigenvectors, n, k, col);
+            if (!matrix_complex128_normalize_vector(next, n)) break;
+            double diff = 0.0;
+            for (usz row = 0; row < n; row++) {
+                diff += matrix_complex128_abs_squared(matrix_complex128_sub(next[row], vector[row]));
+                vector[row] = next[row];
+            }
+            if (diff <= 1e-20) break;
+        }
+        double eigenvalue = matrix_complex128_rayleigh_real(hermitian, vector, next, n);
+        if (eigenvalue < 0.0 && eigenvalue > -1e-10) eigenvalue = 0.0;
+        if (eigenvalue < 0.0) eigenvalue = 0.0;
+        eigenvalues[col] = eigenvalue;
+        for (usz row = 0; row < n; row++) {
+            eigenvectors[row * k + col] = vector[row];
+        }
+        for (usz row = 0; row < n; row++) {
+            for (usz inner_col = 0; inner_col < n; inner_col++) {
+                Complex128Val outer = matrix_complex128_mul(vector[row], matrix_complex128_conjugate(vector[inner_col]));
+                work_matrix[row * n + inner_col] = matrix_complex128_sub(
+                    work_matrix[row * n + inner_col],
+                    matrix_complex128_scale(outer, eigenvalue)
+                );
+            }
+        }
+    }
+    return true;
+}
+fn void matrix_complex128_sort_eigen_desc(double* eigenvalues, Complex128Val* eigenvectors, usz rows, usz columns) {
+    if (eigenvalues == null || eigenvectors == null) return;
+    for (usz i = 0; i < columns; i++) {
+        usz best = i;
+        for (usz j = i + 1; j < columns; j++) {
+            if (eigenvalues[j] > eigenvalues[best]) best = j;
+        }
+        if (best == i) continue;
+        double tmp_value = eigenvalues[i];
+        eigenvalues[i] = eigenvalues[best];
+        eigenvalues[best] = tmp_value;
+        for (usz row = 0; row < rows; row++) {
+            Complex128Val tmp_vector = eigenvectors[row * columns + i];
+            eigenvectors[row * columns + i] = eigenvectors[row * columns + best];
+            eigenvectors[row * columns + best] = tmp_vector;
+        }
+    }
+}
+fn void matrix_complex128_phase_normalize_pair(
+    Complex128Val* u,
+    Complex128Val* v,
+    usz rows,
+    usz cols,
+    usz columns,
+    usz col,
+    bool use_v_anchor
+) {
+    Complex128Val* anchor_matrix = use_v_anchor ? v : u;
+    usz anchor_rows = use_v_anchor ? cols : rows;
+    usz anchor_index = 0;
+    double anchor_abs = 0.0;
+    for (usz row = 0; row < anchor_rows; row++) {
+        double candidate = matrix_complex128_abs_squared(anchor_matrix[row * columns + col]);
+        if (candidate > anchor_abs) {
+            anchor_abs = candidate;
+            anchor_index = row;
+        }
+    }
+    if (!(anchor_abs > 1e-24)) return;
+    Complex128Val anchor = anchor_matrix[anchor_index * columns + col];
+    double inv_abs = 1.0 / tensor_c_sqrt(anchor_abs);
+    Complex128Val phase = matrix_complex128_scale(matrix_complex128_conjugate(anchor), inv_abs);
+    for (usz row = 0; row < rows; row++) {
+        u[row * columns + col] = matrix_complex128_mul(u[row * columns + col], phase);
+    }
+    for (usz row = 0; row < cols; row++) {
+        v[row * columns + col] = matrix_complex128_mul(v[row * columns + col], phase);
+    }
+}
+fn bool matrix_svd_factor_complex128(TensorVal* matrix, Complex128Val* u, double* s_values, Complex128Val* v, usz k) {
+    if (matrix == null || matrix.shape == null || u == null || s_values == null || v == null) return k == 0;
+    if (matrix.data == null) return k == 0;
+    usz rows = matrix.shape[0];
+    usz cols = matrix.shape[1];
+    bool tall_or_square = rows >= cols;
+    usz gram_n = tall_or_square ? cols : rows;
+    usz gram_count = 0;
+    if (!tensor_checked_mul_usz(gram_n, gram_n, &gram_count)) return false;
+    Complex128Val* gram = null;
+    if (!matrix_complex128_workspace_zero(gram_count, &gram)) return false;
+    defer if (gram != null) mem::free(gram);
+    usz eigenvector_count = 0;
+    if (!tensor_checked_mul_usz(gram_n, k, &eigenvector_count)) return false;
+    Complex128Val* eigenvectors = null;
+    if (!matrix_complex128_workspace_zero(eigenvector_count, &eigenvectors)) return false;
+    defer if (eigenvectors != null) mem::free(eigenvectors);
+    double* eigenvalues = null;
+    if (!matrix_double_workspace_zero(k, &eigenvalues)) return false;
+    defer if (eigenvalues != null) mem::free(eigenvalues);
+    if (!matrix_build_svd_hermitian_complex128(matrix, gram, tall_or_square)) return false;
+    if (!matrix_complex128_hermitian_power_eigen(gram, eigenvalues, eigenvectors, gram_n, k)) return false;
+    matrix_complex128_sort_eigen_desc(eigenvalues, eigenvectors, gram_n, k);
+    double max_singular = 0.0;
+    for (usz i = 0; i < k; i++) {
+        s_values[i] = tensor_c_sqrt(eigenvalues[i]);
+        if (s_values[i] > max_singular) max_singular = s_values[i];
+    }
+    double singular_tolerance = 1e-10 * (max_singular + 1.0);
+    Complex128Val* source = (Complex128Val*)matrix.data;
+    if (tall_or_square) {
+        for (usz row = 0; row < cols; row++) {
+            for (usz col = 0; col < k; col++) v[row * k + col] = eigenvectors[row * k + col];
+        }
+        for (usz col = 0; col < k; col++) {
+            if (s_values[col] > singular_tolerance) {
+                for (usz row = 0; row < rows; row++) {
+                    Complex128Val sum;
+                    sum.real = 0.0;
+                    sum.imag = 0.0;
+                    for (usz source_col = 0; source_col < cols; source_col++) {
+                        sum = matrix_complex128_add(sum, matrix_complex128_mul(source[row * cols + source_col], v[source_col * k + col]));
+                    }
+                    u[row * k + col] = matrix_complex128_scale(sum, 1.0 / s_values[col]);
+                }
+                if (!matrix_complex128_orthonormalize_column(u, rows, k, col)) {
+                    if (!matrix_complex128_fill_completion_column(u, rows, k, col)) return false;
+                }
+            } else if (!matrix_complex128_fill_completion_column(u, rows, k, col)) {
+                return false;
+            }
+            matrix_complex128_phase_normalize_pair(u, v, rows, cols, k, col, true);
+        }
+    } else {
+        for (usz row = 0; row < rows; row++) {
+            for (usz col = 0; col < k; col++) u[row * k + col] = eigenvectors[row * k + col];
+        }
+        for (usz col = 0; col < k; col++) {
+            if (s_values[col] > singular_tolerance) {
+                for (usz source_col = 0; source_col < cols; source_col++) {
+                    Complex128Val sum;
+                    sum.real = 0.0;
+                    sum.imag = 0.0;
+                    for (usz row = 0; row < rows; row++) {
+                        sum = matrix_complex128_add(
+                            sum,
+                            matrix_complex128_mul(matrix_complex128_conjugate(source[row * cols + source_col]), u[row * k + col])
+                        );
+                    }
+                    v[source_col * k + col] = matrix_complex128_scale(sum, 1.0 / s_values[col]);
+                }
+                if (!matrix_complex128_orthonormalize_column(v, cols, k, col)) {
+                    if (!matrix_complex128_fill_completion_column(v, cols, k, col)) return false;
+                }
+            } else if (!matrix_complex128_fill_completion_column(v, cols, k, col)) {
+                return false;
+            }
+            matrix_complex128_phase_normalize_pair(u, v, rows, cols, k, col, false);
+        }
+    }
+    return true;
+}
+fn bool matrix_svd_factor_complex64(TensorVal* matrix, Complex64Val* u, float* s_values, Complex64Val* v, usz k) {
+    if (matrix == null || matrix.shape == null || u == null || s_values == null || v == null) return k == 0;
+    if (matrix.data == null) return k == 0;
+    usz rows = matrix.shape[0];
+    usz cols = matrix.shape[1];
+    usz source_count = 0;
+    if (!tensor_checked_mul_usz(rows, cols, &source_count)) return false;
+    Complex128Val* source_wide = null;
+    if (!matrix_complex128_workspace_zero(source_count, &source_wide)) return false;
+    defer if (source_wide != null) mem::free(source_wide);
+    Complex64Val* source = (Complex64Val*)matrix.data;
+    for (usz i = 0; i < source_count; i++) {
+        source_wide[i].real = (double)source[i].real;
+        source_wide[i].imag = (double)source[i].imag;
+    }
+    usz u_count = 0;
+    if (!tensor_checked_mul_usz(rows, k, &u_count)) return false;
+    usz v_count = 0;
+    if (!tensor_checked_mul_usz(cols, k, &v_count)) return false;
+    Complex128Val* u_wide = null;
+    if (!matrix_complex128_workspace_zero(u_count, &u_wide)) return false;
+    defer if (u_wide != null) mem::free(u_wide);
+    Complex128Val* v_wide = null;
+    if (!matrix_complex128_workspace_zero(v_count, &v_wide)) return false;
+    defer if (v_wide != null) mem::free(v_wide);
+    double* s_wide = null;
+    if (!matrix_double_workspace_zero(k, &s_wide)) return false;
+    defer if (s_wide != null) mem::free(s_wide);
+    TensorVal wide_matrix = *matrix;
+    wide_matrix.dtype = TENSOR_DTYPE_COMPLEX128;
+    wide_matrix.data = source_wide;
+    if (!matrix_svd_factor_complex128(&wide_matrix, u_wide, s_wide, v_wide, k)) return false;
+    for (usz i = 0; i < u_count; i++) {
+        u[i].real = (float)u_wide[i].real;
+        u[i].imag = (float)u_wide[i].imag;
+    }
+    for (usz i = 0; i < v_count; i++) {
+        v[i].real = (float)v_wide[i].real;
+        v[i].imag = (float)v_wide[i].imag;
+    }
+    for (usz i = 0; i < k; i++) s_values[i] = (float)s_wide[i];
+    return true;
+}
 fn bool matrix_is_exact_symmetric(TensorVal* matrix) {
     if (matrix == null || matrix.shape == null || matrix.data == null) return false;
     usz n = matrix.shape[0];
@@ -280,6 +688,7 @@ fn bool matrix_copy_float64_workspace(TensorVal* matrix, double** out_work) {
     *out_work = null;
     if (matrix == null) return false;
     if (matrix.byte_len == 0) return true;
+    if (matrix.data == null) return false;
     double* work = (double*)mem::malloc(matrix.byte_len);
     if (work == null) {
         return false;
@@ -293,6 +702,7 @@ fn bool matrix_copy_float32_workspace(TensorVal* matrix, float** out_work) {
     *out_work = null;
     if (matrix == null || matrix.dtype != TENSOR_DTYPE_FLOAT32) return false;
     if (matrix.byte_len == 0) return true;
+    if (matrix.data == null) return false;
     float* work = (float*)mem::malloc(matrix.byte_len);
     if (work == null) {
         return false;
@@ -313,14 +723,23 @@ fn Value* matrix_transpose_view_value(Value* source_value, TensorVal* matrix, In
             return tensor_runtime_raise(interp, "matrix/transpose-view: tensor backing storage is missing");
         }
     } else if (matrix.device == TENSOR_DEVICE_VULKAN) {
-        if (!tensor_has_valid_device_storage(matrix, TENSOR_DEVICE_VULKAN)) {
+        if (!tensor_has_valid_device_storage(matrix, TENSOR_DEVICE_VULKAN) ||
+            !tensor_concrete_zero_offset_dense_row_major(matrix)) {
             return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "matrix/transpose-view: Vulkan source must be dense row-major concrete storage", null);
         }
         if (!tensor_dtype_is_vulkan_storage(matrix.dtype)) {
             return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "matrix/transpose-view: Vulkan currently supports Float64, Float32, Complex128, and Complex64 Tensor storage", null);
         }
+    } else if (matrix.device == TENSOR_DEVICE_CUDA) {
+        if (!tensor_has_valid_device_storage(matrix, TENSOR_DEVICE_CUDA) ||
+            !tensor_concrete_zero_offset_dense_row_major(matrix)) {
+            return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "matrix/transpose-view: CUDA source must be dense row-major concrete storage", null);
+        }
+        if (!tensor_dtype_is_cuda_storage(matrix.dtype)) {
+            return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "matrix/transpose-view: CUDA currently supports Float64, Float32, Complex128, and Complex64 Tensor storage", null);
+        }
     } else {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "matrix/transpose-view: currently supports CPU or Vulkan Tensor storage", null);
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "matrix/transpose-view: currently supports CPU, CUDA, or Vulkan Tensor storage", null);
     }
     usz[2] result_shape = { matrix.shape[1], matrix.shape[0] };
     TensorVal* tensor = tensor_alloc_payload_base_checked(matrix.dtype, result_shape[0:2], false, false, "matrix/transpose-view: failed to allocate Tensor view metadata");
@@ -334,7 +753,7 @@ fn Value* matrix_transpose_view_value(Value* source_value, TensorVal* matrix, In
     tensor.storage_byte_len = matrix.storage_byte_len;
     tensor.alias_origin = matrix.alias_origin != null ? matrix.alias_origin : (void*)matrix;
     tensor.data = matrix.device == TENSOR_DEVICE_CPU ? matrix.data : null;
-    tensor.device_handle = matrix.device == TENSOR_DEVICE_VULKAN ? matrix.device_handle : null;
+    tensor.device_handle = matrix.device != TENSOR_DEVICE_CPU ? matrix.device_handle : null;
     tensor.device_finalizer = null;
     tensor.view_source = source_value;
     tensor.strides[0] = matrix.strides[1];

@@ -1,0 +1,32 @@
+#version 450
+#extension GL_ARB_gpu_shader_fp64 : require
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+layout(std430, binding = 0) readonly buffer ParamsBuffer {
+    double params[];
+};
+
+layout(std430, binding = 1) readonly buffer GradBuffer {
+    double grads[];
+};
+
+layout(std430, binding = 2) buffer OutputBuffer {
+    double output_params[];
+};
+
+layout(push_constant) uniform PushConstants {
+    uint count;
+    double learning_rate;
+    double momentum;
+    double weight_decay;
+} pc;
+
+void main() {
+    uint idx = gl_GlobalInvocationID.x;
+    if (idx >= pc.count) return;
+
+    double param = params[idx];
+    double effective_grad = grads[idx] + pc.weight_decay * param;
+    output_params[idx] = param - pc.learning_rate * effective_grad;
+}

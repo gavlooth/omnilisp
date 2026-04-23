@@ -37,7 +37,7 @@ fn Value* test_copy_from_releasing_scope(Value* v, Interp* interp, main::ScopeRe
         interp.active_promotion_ctx
     );
     if (!boundary_copy_result_ok(copied)) {
-        return raise_error(interp, boundary_copy_fault_message(copied.fault_code));
+        return boundary_raise(interp, "boundary/copy-fault", (String)boundary_copy_fault_message(copied.fault_code));
     }
     return copied.value;
 }
@@ -46,7 +46,7 @@ fn Value* test_copy_to_parent(Value* v, Interp* interp) {
     BoundaryCopyFault copy_fault = BOUNDARY_COPY_FAULT_NONE;
     Value* copied = copy_to_parent_with_fault(v, interp, &copy_fault);
     if (copy_fault != BOUNDARY_COPY_FAULT_NONE) {
-        return raise_error(interp, boundary_copy_fault_message(copy_fault));
+        return boundary_raise(interp, "boundary/copy-fault", (String)boundary_copy_fault_message(copy_fault));
     }
     return copied;
 }

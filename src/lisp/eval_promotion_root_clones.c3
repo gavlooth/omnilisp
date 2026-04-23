@@ -424,7 +424,7 @@ fn Value* root_store_clone_method_table_to_scope(
         );
         Value* copied_impl = null;
         if (!boundary_copy_result_ok(impl_copy)) {
-            copied_impl = raise_error(interp, boundary_copy_fault_message(impl_copy.fault_code));
+            copied_impl = boundary_raise(interp, "boundary/copy-fault", (String)boundary_copy_fault_message(impl_copy.fault_code));
         } else {
             copied_impl = impl_copy.value;
         }
@@ -444,7 +444,7 @@ fn Value* root_store_clone_method_table_to_scope(
     );
     Value* copied_fallback = null;
     if (!boundary_copy_result_ok(fallback_copy)) {
-        copied_fallback = raise_error(interp, boundary_copy_fault_message(fallback_copy.fault_code));
+        copied_fallback = boundary_raise(interp, "boundary/copy-fault", (String)boundary_copy_fault_message(fallback_copy.fault_code));
     } else {
         copied_fallback = fallback_copy.value;
     }

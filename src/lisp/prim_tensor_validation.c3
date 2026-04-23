@@ -3,11 +3,6 @@ module lisp;
 import std::core::mem;
 import main;
 
-module lisp;
-
-import std::core::mem;
-import main;
-
 extern fn double tensor_c_fabs(double x) @extern("fabs");
 extern fn double tensor_c_sin(double x) @extern("sin");
 extern fn double tensor_c_cos(double x) @extern("cos");
@@ -147,7 +142,7 @@ fn Value* tensor_parse_axis_value(
     if (out_axis == null) return tensor_runtime_raise(interp, "contract: axis parser state is missing");
     *out_axis = 0;
     if (tensor == null) return tensor_runtime_raise(interp, "contract: tensor backing storage is missing");
-    if (tensor.rank > (usz)long.max) return raise_error(interp, "contract: tensor rank is too large");
+    if (tensor.rank > (usz)long.max) return runtime_raise(interp, "runtime/evaluation-error", "contract: tensor rank is too large");
     if (!is_int(axis_value)) {
         return tensor_type_raise(interp, "contract: axes must be integers");
     }

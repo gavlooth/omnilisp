@@ -54,7 +54,7 @@ fn Value* tensor_minmax_value(Value* left_value, Value* right_value, bool is_min
         tensor_minmax_input_dtype(right_value, right_source_tensor, &pre_right_dtype);
         if (pre_left_dtype == TENSOR_DTYPE_BIG_COMPLEX || pre_right_dtype == TENSOR_DTYPE_BIG_COMPLEX ||
             tensor_dtype_is_fixed_complex(pre_left_dtype) || tensor_dtype_is_fixed_complex(pre_right_dtype)) {
-            return raise_error(interp, "minmax: complex numbers are not ordered");
+            return tensor_raise(interp, "tensor/invalid-argument", "minmax: complex numbers are not ordered");
         }
         if ((left_is_tensor && tensor_expr_has_non_vulkan_device(left_value)) ||
             (right_is_tensor && tensor_expr_has_non_vulkan_device(right_value))) {
@@ -104,7 +104,7 @@ fn Value* tensor_minmax_value(Value* left_value, Value* right_value, bool is_min
     tensor_minmax_input_dtype(right_value, right_tensor, &right_dtype);
     if (left_dtype == TENSOR_DTYPE_BIG_COMPLEX || right_dtype == TENSOR_DTYPE_BIG_COMPLEX ||
         tensor_dtype_is_fixed_complex(left_dtype) || tensor_dtype_is_fixed_complex(right_dtype)) {
-        return raise_error(interp, "minmax: complex numbers are not ordered");
+        return tensor_raise(interp, "tensor/invalid-argument", "minmax: complex numbers are not ordered");
     }
     TensorDType result_dtype = tensor_minmax_result_dtype(left_dtype, right_dtype);
 
@@ -272,32 +272,32 @@ fn Value* tensor_minmax_value(Value* left_value, Value* right_value, bool is_min
 
         int cmp = 0;
         if (!numeric_values_compare(left_arg, right_arg, &cmp)) {
-            return raise_error(interp, "minmax: numeric comparison failed");
+            return tensor_raise(interp, "tensor/invalid-argument", "minmax: numeric comparison failed");
         }
         Value* chosen = is_min ? (cmp <= 0 ? left_arg : right_arg) : (cmp >= 0 ? left_arg : right_arg);
-        if (result_dtype == TENSOR_DTYPE_BIG_COMPLEX) return raise_error(interp, "minmax: complex numbers are not ordered");
+        if (result_dtype == TENSOR_DTYPE_BIG_COMPLEX) return tensor_raise(interp, "tensor/invalid-argument", "minmax: complex numbers are not ordered");
 
         if (result_dtype == TENSOR_DTYPE_DOUBLE) {
             double out = 0.0;
             if (!try_numeric_to_double(chosen, &out)) {
-                return raise_error(interp, op_name);
+                return tensor_raise(interp, "tensor/invalid-argument", op_name);
             }
             ((double*)out_tensor.data)[i] = out;
         } else if (result_dtype == TENSOR_DTYPE_FLOAT32) {
             float out = 0.0f;
             if (!tensor_value_to_float32(chosen, &out)) {
-                return raise_error(interp, op_name);
+                return tensor_raise(interp, "tensor/invalid-argument", op_name);
             }
             ((float*)out_tensor.data)[i] = out;
         } else if (result_dtype == TENSOR_DTYPE_BIG_INTEGER) {
             void* handle = big_integer_handle_from_value(chosen);
-            if (handle == null) return raise_error(interp, op_name);
+            if (handle == null) return tensor_raise(interp, "tensor/invalid-argument", op_name);
             void** dst = (void**)out_tensor.data;
             if (dst[i] != null) omni_big_integer_free(dst[i]);
             dst[i] = handle;
         } else if (result_dtype == TENSOR_DTYPE_BIG_FLOAT) {
             void* handle = big_float_handle_from_value(chosen);
-            if (handle == null) return raise_error(interp, op_name);
+            if (handle == null) return tensor_raise(interp, "tensor/invalid-argument", op_name);
             void** dst = (void**)out_tensor.data;
             if (dst[i] != null) omni_big_float_free(dst[i]);
             dst[i] = handle;

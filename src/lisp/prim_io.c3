@@ -19,7 +19,7 @@ fn Value* prim_newline(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_display(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return raise_error(interp, "display: expected argument");
+    if (args.len < 1) return runtime_raise(interp, "type/arity", "display: expected argument");
     return io_console_emit(args[0], true, false, interp);
 }
 

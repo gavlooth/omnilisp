@@ -21,7 +21,7 @@ enum ReplFileReadKind {
 fn usz repl_shared_cstr_len(char* text) @inline {
     usz len = 0;
     if (text == null) return 0;
-    while (text[len] != 0) len++;
+    while (len < 4096 && text[len] != 0) len++;
     return len;
 }
 

@@ -64,6 +64,7 @@ out/
 # src directory:
 !src/ftxui/**/*.hpp
 !src/ftxui/**/*.cpp
+!src/ftxui/**/*_part_*.cpp.inc
 
 # tools directory:
 !tools/**/*.sh

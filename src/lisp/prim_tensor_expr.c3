@@ -375,7 +375,7 @@ fn Value* tensor_ref_value(Value* tensor_value, Value* index_arg, Interp* interp
     for (usz axis = 0; axis < tensor.rank; axis++) {
         Value* index_value = tensor_container_nth(index_arg, axis);
         if (!is_int(index_value)) return tensor_type_raise(interp, "ref: tensor indices must be integers");
-        if (tensor.shape[axis] > (usz)long.max) return raise_error(interp, "ref: tensor dimension is too large to index");
+        if (tensor.shape[axis] > (usz)long.max) return runtime_raise(interp, "runtime/evaluation-error", "ref: tensor dimension is too large to index");
 
         long dim = (long)tensor.shape[axis];
         long idx = index_value.int_val;

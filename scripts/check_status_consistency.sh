@@ -4,7 +4,9 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 todo_file="TODO.md"
+todo_parts_dir="docs/todo_parts"
 changelog_file="memory/CHANGELOG.md"
+changelog_parts_dir="memory/changelog_parts"
 memory_runtime_doc="docs/areas/memory-runtime.md"
 types_dispatch_doc="docs/areas/types-dispatch.md"
 ffi_foreign_runtime_doc="docs/areas/ffi-foreign-runtime.md"
@@ -21,20 +23,56 @@ require_file() {
 
 extract_status() {
   local file="$1"
-  sed -n 's/^Status: `\([^`]*\)`.*/\1/p' "$file" | head -n 1
+  local targets=("$file")
+  local parts_dir="${file%.md}_parts"
+  if [[ -d "$parts_dir" ]]; then
+    targets+=("$parts_dir")
+  fi
+  rg --no-filename '^Status: `' "${targets[@]}" |
+    sed -n 's/^Status: `\([^`]*\)`.*/\1/p' |
+    head -n 1
 }
 
 extract_as_of() {
   local file="$1"
-  sed -n 's/^As of: \([0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]\)$/\1/p' "$file" | head -n 1
+  local targets=("$file")
+  local parts_dir="${file%.md}_parts"
+  if [[ -d "$parts_dir" ]]; then
+    targets+=("$parts_dir")
+  fi
+  rg --no-filename '^As of: [0-9]{4}-[0-9]{2}-[0-9]{2}$' "${targets[@]}" |
+    sed -n 's/^As of: \([0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]\)$/\1/p' |
+    head -n 1
 }
 
 extract_todo_count() {
-  sed -n 's/^Current actionable count: \([0-9][0-9]*\)$/\1/p' "$todo_file" | head -n 1
+  local count
+  count="$(sed -n 's/^Current actionable count: \([0-9][0-9]*\)$/\1/p' "$todo_file" | head -n 1)"
+  if [[ -n "$count" ]]; then
+    echo "$count"
+    return
+  fi
+  if [[ -d "$todo_parts_dir" ]]; then
+    (rg -c '^[[:space:]]*-[[:space:]]+\[[[:space:]]\]' "$todo_parts_dir" || true) | awk -F: '{total += $2} END {print total + 0}'
+  fi
+}
+
+find_unlabeled_open_todos() {
+  if [[ -d "$todo_parts_dir" ]]; then
+    (rg -n '^[[:space:]]*-[[:space:]]+\[[[:space:]]\]' "$todo_parts_dir" || true) |
+      awk '$0 !~ /\][[:space:]]+`/'
+  fi
 }
 
 extract_latest_changelog_date() {
-  rg -n '^## [0-9]{4}-[0-9]{2}-[0-9]{2}$' "$changelog_file" | head -n 1 | awk '{print $2}' || true
+  local targets=("$changelog_file")
+  if [[ -d "$changelog_parts_dir" ]]; then
+    targets+=("$changelog_parts_dir")
+  fi
+  rg --no-filename '^## [0-9]{4}-[0-9]{2}-[0-9]{2}([[:space:]]|$)' "${targets[@]}" |
+    sed -n 's/^## \([0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]\).*/\1/p' |
+    sort -r |
+    head -n 1
 }
 
 compare_dates() {
@@ -63,7 +101,10 @@ require_file "$ffi_foreign_runtime_doc"
 require_file "$validation_status_doc"
 
 todo_count="$(extract_todo_count)"
-[[ -n "$todo_count" ]] || fail "could not parse Current actionable count from $todo_file"
+[[ -n "$todo_count" ]] || fail "could not parse TODO actionable count from $todo_file or $todo_parts_dir"
+unlabeled_open_todos="$(find_unlabeled_open_todos)"
+[[ -z "$unlabeled_open_todos" ]] || fail "unchecked TODO entries must start with a backtick task ID:
+$unlabeled_open_todos"
 
 if [[ "$todo_count" == "0" ]]; then
   if ! grep -Eiq -- '^[[:space:]]*-[[:space:]]*(none currently;|none\.)[[:space:]]*$' "$todo_file"; then
@@ -72,7 +113,7 @@ if [[ "$todo_count" == "0" ]]; then
 fi
 
 latest_changelog_date="$(extract_latest_changelog_date)"
-[[ -n "$latest_changelog_date" ]] || fail "could not parse latest changelog date from $changelog_file"
+[[ -n "$latest_changelog_date" ]] || fail "could not parse latest changelog date from $changelog_file or $changelog_parts_dir"
 
 for doc in "$memory_runtime_doc" "$types_dispatch_doc" "$ffi_foreign_runtime_doc" "$validation_status_doc"; do
   as_of="$(extract_as_of "$doc")"

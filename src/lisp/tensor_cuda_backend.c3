@@ -15,11 +15,21 @@ extern fn int omni_tensor_backend_cublas_available() @extern("omni_tensor_backen
 extern fn int omni_tensor_backend_cublas_float32_available() @extern("omni_tensor_backend_cublas_float32_available");
 extern fn int omni_tensor_backend_cublas_complex_available() @extern("omni_tensor_backend_cublas_complex_available");
 extern fn void omni_tensor_backend_cublas_disable_for_tests(int disabled) @extern("omni_tensor_backend_cublas_disable_for_tests");
+extern fn int omni_tensor_backend_cusolver_available() @extern("omni_tensor_backend_cusolver_available");
+extern fn int omni_tensor_backend_cusolver_complex_svd_available() @extern("omni_tensor_backend_cusolver_complex_svd_available");
+extern fn void omni_tensor_backend_cusolver_disable_for_tests(int disabled) @extern("omni_tensor_backend_cusolver_disable_for_tests");
+extern fn long omni_tensor_backend_cusolver_zgesvd_call_count() @extern("omni_tensor_backend_cusolver_zgesvd_call_count");
+extern fn long omni_tensor_backend_cusolver_cgesvd_call_count() @extern("omni_tensor_backend_cusolver_cgesvd_call_count");
+extern fn int omni_tensor_backend_cuda_grid_dim_oversized_guard_for_tests() @extern("omni_tensor_backend_cuda_grid_dim_oversized_guard_for_tests");
 extern fn int omni_tensor_backend_cuda_map_available() @extern("omni_tensor_backend_cuda_map_available");
 extern fn int omni_tensor_backend_cuda_scientific_map_available() @extern("omni_tensor_backend_cuda_scientific_map_available");
 extern fn int omni_tensor_backend_cuda_complex_map_available() @extern("omni_tensor_backend_cuda_complex_map_available");
 extern fn int omni_tensor_backend_cuda_complex_matrix_available() @extern("omni_tensor_backend_cuda_complex_matrix_available");
 extern fn int omni_tensor_backend_cuda_rounding_i64_available() @extern("omni_tensor_backend_cuda_rounding_i64_available");
+extern fn int omni_tensor_backend_cuda_ml_optimizer_available() @extern("omni_tensor_backend_cuda_ml_optimizer_available");
+extern fn int omni_tensor_backend_cuda_ml_sgd_byte_len_overflow_guard_for_tests() @extern("omni_tensor_backend_cuda_ml_sgd_byte_len_overflow_guard_for_tests");
+extern fn int omni_tensor_backend_cuda_ml_stateful_byte_len_overflow_guard_for_tests() @extern("omni_tensor_backend_cuda_ml_stateful_byte_len_overflow_guard_for_tests");
+extern fn int omni_tensor_backend_cuda_svd_adapter_shape_guard_for_tests() @extern("omni_tensor_backend_cuda_svd_adapter_shape_guard_for_tests");
 extern fn int omni_tensor_backend_cuda_alloc(
     usz byte_len,
     void** out_device_ptr
@@ -44,6 +54,7 @@ extern fn int omni_tensor_backend_cuda_copy_device_to_existing_device(
     usz byte_len,
     void* dest_device_ptr
 ) @extern("omni_tensor_backend_cuda_copy_device_to_existing_device");
+extern fn int omni_tensor_backend_cuda_copy_null_alias_guard_for_tests() @extern("omni_tensor_backend_cuda_copy_null_alias_guard_for_tests");
 extern fn int omni_tensor_backend_cuda_fill_f64(
     void* device_ptr,
     usz element_count,
@@ -92,6 +103,57 @@ extern fn int omni_tensor_backend_cuda_map_f32(
     usz* right_strides,
     void** out_device
 ) @extern("omni_tensor_backend_cuda_map_f32");
+extern fn int omni_tensor_backend_cuda_ml_sgd_f32(
+    void* params_device,
+    void* grads_device,
+    void* velocity_device,
+    usz byte_len,
+    usz element_count,
+    float learning_rate,
+    float momentum,
+    float weight_decay,
+    uint has_velocity,
+    void** out_params_device,
+    void** out_velocity_device
+) @extern("omni_tensor_backend_cuda_ml_sgd_f32");
+extern fn int omni_tensor_backend_cuda_ml_adam_f32(
+    void* params_device,
+    void* grads_device,
+    void* first_device,
+    void* second_device,
+    usz byte_len,
+    usz element_count,
+    float learning_rate,
+    float beta1,
+    float beta2,
+    float epsilon,
+    float weight_decay,
+    float first_correction,
+    float second_correction,
+    uint decoupled_weight_decay,
+    uint has_moments,
+    void** out_params_device,
+    void** out_first_device,
+    void** out_second_device
+) @extern("omni_tensor_backend_cuda_ml_adam_f32");
+extern fn int omni_tensor_backend_cuda_ml_rmsprop_f32(
+    void* params_device,
+    void* grads_device,
+    void* square_device,
+    void* velocity_device,
+    usz byte_len,
+    usz element_count,
+    float learning_rate,
+    float alpha,
+    float epsilon,
+    float momentum,
+    float weight_decay,
+    uint has_square,
+    uint has_velocity,
+    void** out_params_device,
+    void** out_square_device,
+    void** out_velocity_device
+) @extern("omni_tensor_backend_cuda_ml_rmsprop_f32");
 extern fn int omni_tensor_backend_cuda_map_complex128(
     void* left_device,
     void* right_device,
@@ -256,6 +318,80 @@ extern fn int omni_tensor_backend_cuda_trace_complex64(
     float* out_real,
     float* out_imag
 ) @extern("omni_tensor_backend_cuda_trace_complex64");
+extern fn int omni_tensor_backend_cuda_svd_input_column_major_complex128(
+    void* input_device,
+    usz byte_len,
+    usz rows,
+    usz cols,
+    void** out_device
+) @extern("omni_tensor_backend_cuda_svd_input_column_major_complex128");
+extern fn int omni_tensor_backend_cuda_svd_input_column_major_complex64(
+    void* input_device,
+    usz byte_len,
+    usz rows,
+    usz cols,
+    void** out_device
+) @extern("omni_tensor_backend_cuda_svd_input_column_major_complex64");
+extern fn int omni_tensor_backend_cuda_svd_adjoint_input_column_major_complex128(
+    void* input_device,
+    usz byte_len,
+    usz rows,
+    usz cols,
+    void** out_device
+) @extern("omni_tensor_backend_cuda_svd_adjoint_input_column_major_complex128");
+extern fn int omni_tensor_backend_cuda_svd_adjoint_input_column_major_complex64(
+    void* input_device,
+    usz byte_len,
+    usz rows,
+    usz cols,
+    void** out_device
+) @extern("omni_tensor_backend_cuda_svd_adjoint_input_column_major_complex64");
+extern fn int omni_tensor_backend_cuda_svd_u_row_major_complex128(
+    void* input_device,
+    usz byte_len,
+    usz rows,
+    usz k,
+    void** out_device
+) @extern("omni_tensor_backend_cuda_svd_u_row_major_complex128");
+extern fn int omni_tensor_backend_cuda_svd_u_row_major_complex64(
+    void* input_device,
+    usz byte_len,
+    usz rows,
+    usz k,
+    void** out_device
+) @extern("omni_tensor_backend_cuda_svd_u_row_major_complex64");
+extern fn int omni_tensor_backend_cuda_svd_v_from_vt_complex128(
+    void* input_device,
+    usz byte_len,
+    usz k,
+    usz cols,
+    void** out_device
+) @extern("omni_tensor_backend_cuda_svd_v_from_vt_complex128");
+extern fn int omni_tensor_backend_cuda_svd_v_from_vt_complex64(
+    void* input_device,
+    usz byte_len,
+    usz k,
+    usz cols,
+    void** out_device
+) @extern("omni_tensor_backend_cuda_svd_v_from_vt_complex64");
+extern fn int omni_tensor_backend_cuda_svd_complex128(
+    void* input_device,
+    usz byte_len,
+    usz rows,
+    usz cols,
+    void** out_u_device,
+    void** out_s_device,
+    void** out_v_device
+) @extern("omni_tensor_backend_cuda_svd_complex128");
+extern fn int omni_tensor_backend_cuda_svd_complex64(
+    void* input_device,
+    usz byte_len,
+    usz rows,
+    usz cols,
+    void** out_u_device,
+    void** out_s_device,
+    void** out_v_device
+) @extern("omni_tensor_backend_cuda_svd_complex64");
 extern fn void omni_tensor_backend_cuda_free(void* device_ptr) @extern("omni_tensor_backend_cuda_free");
 extern fn int omni_tensor_backend_cublas_dgemm_rowmajor(
     usz m,

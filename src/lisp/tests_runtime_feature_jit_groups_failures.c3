@@ -417,7 +417,7 @@ fn void run_jit_policy_invalid_primitive_state_fails_closed_test(Interp* interp,
         invalid.prim_val = null;
     }
 
-    Value* result = setup_ok ? jit_apply_value_primitive(invalid, arg, interp) : raise_error(interp, "setup failed");
+    Value* result = setup_ok ? jit_apply_value_primitive(invalid, arg, interp) : runtime_raise(interp, "runtime/evaluation-error", "setup failed");
     bool ok = setup_ok &&
         result != null &&
         result.tag == ERROR &&

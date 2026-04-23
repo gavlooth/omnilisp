@@ -30,7 +30,10 @@ fn Value* eval_ffi_lib(Expr* expr, Env* env, Interp* interp) {
     // Evaluate path expression
     Value* path_val = runtime_eval_expr(fl.path_expr, env, interp);
     if (path_val == null || path_val.tag == ERROR) return path_val;
-    if (path_val.tag != STRING) return raise_error(interp, "ffi lib: path must be a string");
+    if (path_val.tag != STRING) return ffi_raise(interp, "ffi/invalid-argument", "ffi lib: path must be a string");
+    if (path_val.str_len == 0 || path_val.str_len >= FFI_DLOPEN_REGISTRY_PATH_CAP) {
+        return ffi_raise(interp, "ffi/invalid-argument", "ffi lib: path must be a non-empty string shorter than 256 bytes");
+    }
 
     // Acquire shared dlopen handle via registry
     (void)dlerror();
@@ -53,7 +56,7 @@ fn Value* eval_ffi_lib(Expr* expr, Env* env, Interp* interp) {
         } else {
             msg = "ffi lib: dlopen failed";
         }
-        return raise_error(interp, msg);
+        return ffi_raise(interp, "ffi/library-load-failed", msg);
     }
 
     // Create FFI handle value and bind in global env
@@ -62,13 +65,13 @@ fn Value* eval_ffi_lib(Expr* expr, Env* env, Interp* interp) {
         // make_ffi_handle may have already released the box (and thus registry ref)
         // via ffi_handle_release; do not call registry_release again to avoid
         // double-decrement. Any remaining refcount is cleaned up at teardown.
-        return raise_error(interp, "ffi lib: out of memory");
+        return ffi_raise(interp, "ffi/out-of-memory", "ffi lib: out of memory");
     }
     if (!env_define_with_barrier_checked(interp.global_env, fl.name, ffi_handle, interp)) {
         FfiHandle* box = ffi_handle.ffi_val;
         ffi_handle.ffi_val = null;
         ffi_handle_release(box);  // releases registry ref via ffi_handle_release_payload
-        return raise_error(interp, "ffi lib: out of memory");
+        return ffi_raise(interp, "ffi/out-of-memory", "ffi lib: out of memory");
     }
     return ffi_handle;
 }
@@ -88,16 +91,16 @@ fn bool ffi_symbol_to_c_symbol_name(Interp* interp, SymbolId sym, char* out_name
 fn Value* ffi_resolve_return_handle_finalizer(FfiBoundFn* bound, FfiHandlePolicy* policy, Interp* interp) {
     if (policy == null || !policy.is_foreign_handle || policy.ownership != FFI_HANDLE_OWNED) return null;
     if (policy.finalizer_symbol == INVALID_SYMBOL_ID) {
-        return raise_error(interp, "ffi λ: owned ForeignHandle return requires a finalizer");
+        return ffi_raise(interp, "ffi/invalid-argument", "ffi λ: owned ForeignHandle return requires a finalizer");
     }
     if (bound == null || bound.lib_handle == null) {
-        return raise_error(interp, "ffi λ: cannot resolve ForeignHandle finalizer without a library handle");
+        return ffi_raise(interp, "ffi/invalid-state", "ffi λ: cannot resolve ForeignHandle finalizer without a library handle");
     }
 
     char[256] finalizer_name;
     usz finalizer_len = 0;
     if (!ffi_symbol_to_c_symbol_name(interp, policy.finalizer_symbol, &finalizer_name, 256, &finalizer_len)) {
-        return raise_error(interp, "ffi λ: invalid ForeignHandle finalizer symbol");
+        return ffi_raise(interp, "ffi/invalid-argument", "ffi λ: invalid ForeignHandle finalizer symbol");
     }
 
     (void)dlerror();
@@ -110,15 +113,15 @@ fn Value* ffi_resolve_return_handle_finalizer(FfiBoundFn* bound, FfiHandlePolicy
         if (dl_err != null && dl_err[0] != 0) {
             if (try msg = io::bprintf(&ebuf, "ffi λ: dlsym failed for ForeignHandle finalizer '%s': %s (errno=%d)",
                 (ZString)finalizer_source_name, (ZString)dl_err, saved_errno)) {
-                return raise_error(interp, msg);
+                return ffi_raise(interp, "ffi/symbol-not-found", msg);
             }
-            return raise_error(interp, "ffi λ: dlsym failed for ForeignHandle finalizer");
+            return ffi_raise(interp, "ffi/symbol-not-found", "ffi λ: dlsym failed for ForeignHandle finalizer");
         }
         if (try msg = io::bprintf(&ebuf, "ffi λ: dlsym failed for ForeignHandle finalizer '%s' (errno=%d)",
             (ZString)finalizer_source_name, saved_errno)) {
-            return raise_error(interp, msg);
+            return ffi_raise(interp, "ffi/symbol-not-found", msg);
         }
-        return raise_error(interp, "ffi λ: dlsym failed for ForeignHandle finalizer");
+        return ffi_raise(interp, "ffi/symbol-not-found", "ffi λ: dlsym failed for ForeignHandle finalizer");
     }
 
     policy.finalizer = (FfiHandleFinalizer)finalizer_ptr;
@@ -142,16 +145,16 @@ fn Value* eval_ffi_fn(Expr* expr, Env* env, Interp* interp) {
         } else {
             msg = "ffi λ: library not found";
         }
-        return raise_error(interp, msg);
+        return ffi_raise(interp, "ffi/library-not-found", msg);
     }
     if (lib_val.ffi_val.lib_handle == null) {
-        return raise_error(interp, "ffi λ: library handle is closed");
+        return ffi_raise(interp, "ffi/invalid-state", "ffi λ: library handle is closed");
     }
 
     // Build FfiBoundFn — dlsym is deferred to first call (lazy resolution)
     FfiBoundFn* bound = (FfiBoundFn*)interp.root_scope.alloc(FfiBoundFn.sizeof);
     if (bound == null) {
-        return raise_error(interp, "ffi λ: out of memory for bound function");
+        return ffi_raise(interp, "ffi/out-of-memory", "ffi λ: out of memory for bound function");
     }
     bound.fn_ptr = null;  // resolved lazily on first call
     bound.lib_handle = lib_val.ffi_val.lib_handle;
@@ -160,11 +163,11 @@ fn Value* eval_ffi_fn(Expr* expr, Env* env, Interp* interp) {
     bound.is_unavailable = false;
     if (lib_val.ffi_val.name_len > 0) {
         if (lib_val.ffi_val.name_len == usz.max) {
-            return raise_error(interp, "ffi λ: library name is too long");
+            return ffi_raise(interp, "ffi/invalid-argument", "ffi λ: library name is too long");
         }
         bound.lib_name = (char*)interp.root_scope.alloc(lib_val.ffi_val.name_len + 1);
         if (bound.lib_name == null) {
-            return raise_error(interp, "ffi λ: out of memory for library name");
+            return ffi_raise(interp, "ffi/out-of-memory", "ffi λ: out of memory for library name");
         }
         for (usz i = 0; i < lib_val.ffi_val.name_len; i++) {
             bound.lib_name[i] = lib_val.ffi_val.lib_name[i];
@@ -176,14 +179,14 @@ fn Value* eval_ffi_fn(Expr* expr, Env* env, Interp* interp) {
         bound.lib_name_len = 0;
     }
     if (ff.c_name == null) {
-        return raise_error(interp, "ffi λ: missing C symbol name");
+        return ffi_raise(interp, "ffi/invalid-argument", "ffi λ: missing C symbol name");
     }
     if (ff.c_name_len == usz.max) {
-        return raise_error(interp, "ffi λ: C symbol name is too long");
+        return ffi_raise(interp, "ffi/invalid-argument", "ffi λ: C symbol name is too long");
     }
     bound.c_name = (char*)interp.root_scope.alloc(ff.c_name_len + 1);
     if (bound.c_name == null) {
-        return raise_error(interp, "ffi λ: out of memory for symbol name");
+        return ffi_raise(interp, "ffi/out-of-memory", "ffi λ: out of memory for symbol name");
     }
     for (usz i = 0; i < ff.c_name_len; i++) {
         bound.c_name[i] = ff.c_name[i];
@@ -198,11 +201,18 @@ fn Value* eval_ffi_fn(Expr* expr, Env* env, Interp* interp) {
     bound.is_variadic = ff.is_variadic;
     bound.runtime_kind = lib_val.ffi_val.runtime_kind;
 
+    if (ff.param_count > (usz)int.max) {
+        return ffi_raise(interp, "ffi/arity", "ffi λ: parameter count exceeds supported arity");
+    }
     if (ff.param_count > 0) {
+        if (ff.param_count > usz.max / FfiTypeTag.sizeof ||
+            ff.param_count > usz.max / FfiHandlePolicy.sizeof) {
+            return ffi_raise(interp, "ffi/invalid-argument", "ffi λ: parameter metadata size overflow");
+        }
         bound.param_types = (FfiTypeTag*)interp.root_scope.alloc(FfiTypeTag.sizeof * ff.param_count);
         bound.param_handle_policies = (FfiHandlePolicy*)interp.root_scope.alloc(FfiHandlePolicy.sizeof * ff.param_count);
         if (bound.param_types == null || bound.param_handle_policies == null) {
-            return raise_error(interp, "ffi λ: out of memory for parameter metadata");
+            return ffi_raise(interp, "ffi/out-of-memory", "ffi λ: out of memory for parameter metadata");
         }
         for (usz i = 0; i < ff.param_count; i++) {
             if (!ffi_type_annotation_to_tag(&ff.param_types[i], interp,
@@ -210,7 +220,7 @@ fn Value* eval_ffi_fn(Expr* expr, Env* env, Interp* interp) {
                 return ffi_unsupported_type_annotation_error(interp, "parameter", &ff.param_types[i]);
             }
             if (bound.param_handle_policies[i].ownership == FFI_HANDLE_OWNED) {
-                return raise_error(interp, "ffi λ: owned ForeignHandle parameter policy is not supported");
+                return ffi_raise(interp, "ffi/unsupported", "ffi λ: owned ForeignHandle parameter policy is not supported");
             }
         }
     }
@@ -233,13 +243,13 @@ fn Value* eval_ffi_fn(Expr* expr, Env* env, Interp* interp) {
         &prim_ffi_bound_call,
         prim_arity);
     if (prim == null) {
-        return raise_error(interp, "ffi λ: out of memory for bound function primitive");
+        return ffi_raise(interp, "ffi/out-of-memory", "ffi λ: out of memory for bound function primitive");
     }
     prim.prim_val.user_data = (void*)bound;
 
     // Bind in global env
     if (!env_define_with_barrier_checked(interp.global_env, ff.fn_name, prim, interp)) {
-        return raise_error(interp, "ffi λ: out of memory while registering bound function");
+        return ffi_raise(interp, "ffi/out-of-memory", "ffi λ: out of memory while registering bound function");
     }
     return prim;
 }

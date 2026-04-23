@@ -60,7 +60,7 @@ fn Value* boundary_build_destination_cons_escape(
         );
         Value* routed_car = null;
         if (!boundary_copy_result_ok(car_copy)) {
-            routed_car = raise_error(interp, boundary_copy_fault_message(car_copy.fault_code));
+            routed_car = boundary_raise(interp, "boundary/copy-fault", (String)boundary_copy_fault_message(car_copy.fault_code));
         } else {
             routed_car = car_copy.value;
         }
@@ -118,7 +118,7 @@ fn Value* boundary_build_destination_cons_escape(
         );
         Value* routed_cdr = null;
         if (!boundary_copy_result_ok(cdr_copy)) {
-            routed_cdr = raise_error(interp, boundary_copy_fault_message(cdr_copy.fault_code));
+            routed_cdr = boundary_raise(interp, "boundary/copy-fault", (String)boundary_copy_fault_message(cdr_copy.fault_code));
         } else {
             routed_cdr = cdr_copy.value;
         }

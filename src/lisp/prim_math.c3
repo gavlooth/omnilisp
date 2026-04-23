@@ -19,7 +19,7 @@ fn bool math_fill_random_bytes(void* buf, usz len) {
 fn Value* prim_random(Value*[] args, Env* env, Interp* interp) {
     ulong buf;
     if (!math_fill_random_bytes(&buf, ulong.sizeof)) {
-        return raise_error(interp, "random: failed to read random bytes");
+        return math_raise(interp, "runtime/evaluation-error", "random: failed to read random bytes");
     }
     // Convert to double in [0, 1): mask to 52 bits, divide by 2^52.
     ulong mantissa = buf & MATH_RANDOM_MANTISSA_MASK;
@@ -33,12 +33,12 @@ fn Value* prim_random_int(Value*[] args, Env* env, Interp* interp) {
     if (args[0].tag == INT) { n = args[0].int_val; }
     else if (args[0].tag == DOUBLE) {
         if (!math_try_double_to_int(args[0].double_val, &n)) {
-            return raise_error(interp, "random-int: expected finite max value in Integer range");
+            return math_raise(interp, "type/range-error", "random-int: expected finite max value in Integer range");
         }
     }
     else if (args[0].tag == FLOAT32) {
         if (!math_try_double_to_int((double)args[0].float32_val, &n)) {
-            return raise_error(interp, "random-int: expected finite max value in Integer range");
+            return math_raise(interp, "type/range-error", "random-int: expected finite max value in Integer range");
         }
     }
     else { return primitive_arg_type_raise(interp, "random-int", 0, "number", args[0]); }
@@ -46,7 +46,7 @@ fn Value* prim_random_int(Value*[] args, Env* env, Interp* interp) {
 
     ulong buf;
     if (!math_fill_random_bytes(&buf, ulong.sizeof)) {
-        return raise_error(interp, "random-int: failed to read random bytes");
+        return runtime_raise(interp, "runtime/evaluation-error", "random-int: failed to read random bytes");
     }
     long result = (long)(buf % (ulong)n);
     return make_int(interp, result);

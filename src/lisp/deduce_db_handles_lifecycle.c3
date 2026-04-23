@@ -3,6 +3,7 @@ module lisp;
 import std::core::mem;
 
 fn Value* deduce_raise(Interp* interp, char[] code, char[] message, Value* data = null) @inline {
+    if (data == null) return raise_error_with_payloadless_fallback_names(interp, "deduce", code, message);
     return raise_error_with_payload_names(interp, "deduce", code, message, data);
 }
 

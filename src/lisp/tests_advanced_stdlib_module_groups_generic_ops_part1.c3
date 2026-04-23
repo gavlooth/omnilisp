@@ -109,6 +109,8 @@ fn void run_advanced_collections_generic_ops_part1(Interp* interp, int* pass, in
         "(let (view (matrix/transpose-view (Tensor Float64 [2 3] [1 2 3 4 5 6])) layout (tensor-layout view)) (and (= (ref layout 'payload) 'view) (= (ref layout 'layout) 'strided) (= (ref layout 'dense-row-major) false) (= (ref (ref layout 'shape) 0) 3) (= (ref (ref layout 'shape) 1) 2) (= (ref (ref layout 'strides) 0) 1) (= (ref (ref layout 'strides) 1) 3) (= (ref layout 'storage-offset) 0) (= (ref layout 'storage-elements) 6) (= (ref layout 'storage-bytes) 48) (= (ref layout 'is-view) true) (= (ref layout 'owns-storage) false) (= (ref layout 'owner) 'view-source) (= (ref layout 'write-policy) 'read-only-view)))", pass, fail);
     test_truthy(interp, "matrix/transpose-view reports Vulkan read-only view metadata when available",
         "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float64) (let (view (matrix/transpose-view (to-device (Tensor Float64 [2 3] [1 2 3 4 5 6]) 'vulkan)) layout (tensor-layout view)) (and (= (ref layout 'device) 'vulkan) (= (ref layout 'payload) 'view) (= (ref layout 'layout) 'strided) (= (ref layout 'dense-row-major) false) (= (ref (ref layout 'shape) 0) 3) (= (ref (ref layout 'shape) 1) 2) (= (ref (ref layout 'strides) 0) 1) (= (ref (ref layout 'strides) 1) 3) (= (ref layout 'is-view) true) (= (ref layout 'owns-storage) false) (= (ref layout 'write-policy) 'read-only-view))) true))", pass, fail);
+    test_truthy(interp, "matrix/transpose-view reports CUDA read-only view metadata when available",
+        "(let (cuda-backend (ref (tensor-backends) 1)) (if (ref cuda-backend 'available) (let (view (matrix/transpose-view (to-device (Tensor Float32 [2 3] [1 2 3 4 5 6]) 'cuda)) layout (tensor-layout view)) (and (= (device view) 'cuda) (= (ref layout 'device) 'cuda) (= (ref layout 'payload) 'view) (= (ref layout 'layout) 'strided) (= (ref layout 'dense-row-major) false) (= (ref (ref layout 'shape) 0) 3) (= (ref (ref layout 'shape) 1) 2) (= (ref (ref layout 'strides) 0) 1) (= (ref (ref layout 'strides) 1) 3) (= (ref layout 'storage-offset) 0) (= (ref layout 'is-view) true) (= (ref layout 'owns-storage) false) (= (ref layout 'write-policy) 'read-only-view))) true))", pass, fail);
     test_truthy(interp, "matrix/transpose-view supports CPU ref and collection conversion order",
         "(let (view (matrix/transpose-view (Tensor Float64 [2 3] [1 2 3 4 5 6])) arr (Array view) lst (List view)) (and (= (ref view [2 1]) 6.0) (= (ref view [-1 -1]) 6.0) (= (ref arr 0) 1.0) (= (ref arr 1) 4.0) (= (ref arr 2) 2.0) (= (ref arr 5) 6.0) (= (ref lst 0) 1.0) (= (ref lst 1) 4.0) (= (ref lst 5) 6.0)))", pass, fail);
     test_truthy(interp, "matrix/transpose-view survives return and closure capture",
@@ -124,12 +126,14 @@ fn void run_advanced_collections_generic_ops_part1(Interp* interp, int* pass, in
         "realize: destination Tensor is immutable", pass, fail);
     test_truthy(interp, "matrix/transpose composes transpose views structurally",
         "(let (view (matrix/transpose (matrix/transpose-view (Tensor Float64 [2 3] [1 2 3 4 5 6]))) layout (tensor-layout view)) (and (= (ref view [1 2]) 6.0) (= (ref layout 'payload) 'view) (= (ref layout 'dense-row-major) true) (= (ref layout 'is-view) true)))", pass, fail);
-    test_truthy(interp, "to-device rejects strided and dense transpose views for CUDA copy",
-        "(and (= (handle (to-device (matrix/transpose-view (Tensor Float64 [2 3] [1 2 3 4 5 6])) 'cuda) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) (= (handle (to-device (matrix/transpose (matrix/transpose-view (Tensor Float64 [2 3] [1 2 3 4 5 6]))) 'cuda) (raise msg (ref msg 'code))) 'tensor/backend-unsupported))", pass, fail);
+    test_truthy(interp, "to-device CUDA materializes CPU transpose views when available",
+        "(let (cuda-backend (ref (tensor-backends) 1)) (if (ref cuda-backend 'available) (let (copied (to-device (matrix/transpose-view (Tensor Float64 [2 3] [1 2 3 4 5 6])) 'cuda) dense-copied (to-device (matrix/transpose (matrix/transpose-view (Tensor Float64 [2 3] [1 2 3 4 5 6]))) 'cuda)) (and (= (device copied) 'cuda) (= (ref (to-device copied 'cpu) [2 1]) 6.0) (= (device dense-copied) 'cuda) (= (ref (to-device dense-copied 'cpu) [1 2]) 6.0))) true))", pass, fail);
     test_truthy(interp, "to-device Vulkan materializes CPU transpose views when available",
         "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float64) (let (copied (to-device (matrix/transpose-view (Tensor Float64 [2 3] [1 2 3 4 5 6])) 'vulkan) dense-copied (to-device (matrix/transpose (matrix/transpose-view (Tensor Float64 [2 3] [1 2 3 4 5 6]))) 'vulkan)) (and (= (device copied) 'vulkan) (= (ref (to-device copied 'cpu) [2 1]) 6.0) (= (device dense-copied) 'vulkan) (= (ref (to-device dense-copied 'cpu) [1 2]) 6.0))) true))", pass, fail);
-    test_truthy(interp, "realize into CUDA destination rejects transpose view source when available",
-        "(let (cuda-backend (ref (tensor-backends) 1)) (if (ref cuda-backend 'available) (= (handle (let (dst (to-device (Tensor Float64 [3 2] 0.0) 'cuda)) (realize (matrix/transpose-view (Tensor Float64 [2 3] [1 2 3 4 5 6])) dst)) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true))", pass, fail);
+    test_truthy(interp, "to-device CUDA rejects Vulkan transpose view sources",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float64) (= (handle (to-device (matrix/transpose-view (to-device (Tensor Float64 [2 3] [1 2 3 4 5 6]) 'vulkan)) 'cuda) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true))", pass, fail);
+    test_truthy(interp, "realize into CUDA destination materializes CPU transpose view source when available",
+        "(let (cuda-backend (ref (tensor-backends) 1)) (if (ref cuda-backend 'available) (let (dst (to-device (Tensor Float64 [3 2] 0.0) 'cuda)) (block (realize (matrix/transpose-view (Tensor Float64 [2 3] [1 2 3 4 5 6])) dst) (and (= (device dst) 'cuda) (= (ref (to-device dst 'cpu) [2 1]) 6.0)))) true))", pass, fail);
     test_truthy(interp, "realize into Vulkan destination materializes transpose view source when available",
         "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float64) (let (dst (to-device (Tensor Float64 [3 2] 0.0) 'vulkan)) (block (realize (matrix/transpose-view (to-device (Tensor Float64 [2 3] [1 2 3 4 5 6]) 'vulkan)) dst) (and (= (device dst) 'vulkan) (= (ref (to-device dst 'cpu) [2 1]) 6.0)))) true))", pass, fail);
     test_truthy(interp, "matrix/transpose-view keeps lazy materialized source alive",
@@ -139,17 +143,80 @@ fn void run_advanced_collections_generic_ops_part1(Interp* interp, int* pass, in
     test_truthy(interp, "tensor-backends cpu available",
         "(= (ref (ref (tensor-backends) 0) 'available) true)", pass, fail);
     test_truthy(interp, "tensor-backends cpu structural complex matrix capability",
-        "(let (cpu-backend (ref (tensor-backends) 0)) (and (= (ref cpu-backend 'matrix-structural-complex128) true) (= (ref cpu-backend 'matrix-structural-complex64) true) (= (ref cpu-backend 'matrix-numerical-complex128) true) (= (ref cpu-backend 'matrix-numerical-complex64) true)))", pass, fail);
+        "(let (cpu-backend (ref (tensor-backends) 0)) (and (= (ref cpu-backend 'matrix-structural-complex128) true) (= (ref cpu-backend 'matrix-structural-complex64) true) (= (ref cpu-backend 'matrix-numerical-complex128) true) (= (ref cpu-backend 'matrix-numerical-complex64) true) (= (ref cpu-backend 'matrix-hermitian-eigen-complex128) true) (= (ref cpu-backend 'matrix-hermitian-eigen-complex64) true)))", pass, fail);
+    test_truthy(interp, "tensor-backends cpu general complex eigenpair capability follows LAPACK",
+        (omni_tensor_backend_lapack_zgeev_available() != 0 && omni_tensor_backend_lapack_cgeev_available() != 0)
+            ? "(let (cpu-backend (ref (tensor-backends) 0)) (and (= (ref cpu-backend 'matrix-eigenpairs-complex128) true) (= (ref cpu-backend 'matrix-eigenpairs-complex64) true)))"
+            : "(let (cpu-backend (ref (tensor-backends) 0)) (and (= (ref cpu-backend 'matrix-eigenpairs-complex128) false) (= (ref cpu-backend 'matrix-eigenpairs-complex64) false)))",
+        pass, fail);
     test_truthy(interp, "tensor-backends cuda unavailable reason",
         "(let (cuda-backend (ref (tensor-backends) 1)) (if (ref cuda-backend 'available) true (= (ref cuda-backend 'reason) 'backend-unavailable)))", pass, fail);
     test_truthy(interp, "tensor-backends cuda Float32 capability entry",
-        "(let (cuda-backend (ref (tensor-backends) 1)) (and (= (ref cuda-backend 'name) 'cuda) (or (= (ref cuda-backend 'float64) true) (= (ref cuda-backend 'float64) false)) (or (= (ref cuda-backend 'float32) true) (= (ref cuda-backend 'float32) false)) (or (= (ref cuda-backend 'complex128) true) (= (ref cuda-backend 'complex128) false)) (or (= (ref cuda-backend 'complex64) true) (= (ref cuda-backend 'complex64) false)) (or (= (ref cuda-backend 'elementwise-map-float64) true) (= (ref cuda-backend 'elementwise-map-float64) false)) (or (= (ref cuda-backend 'elementwise-map-float32) true) (= (ref cuda-backend 'elementwise-map-float32) false)) (or (= (ref cuda-backend 'elementwise-map-complex128) true) (= (ref cuda-backend 'elementwise-map-complex128) false)) (or (= (ref cuda-backend 'elementwise-map-complex64) true) (= (ref cuda-backend 'elementwise-map-complex64) false)) (or (= (ref cuda-backend 'contract-complex128) true) (= (ref cuda-backend 'contract-complex128) false)) (or (= (ref cuda-backend 'contract-complex64) true) (= (ref cuda-backend 'contract-complex64) false)) (or (= (ref cuda-backend 'matrix-structural-complex128) true) (= (ref cuda-backend 'matrix-structural-complex128) false)) (or (= (ref cuda-backend 'matrix-structural-complex64) true) (= (ref cuda-backend 'matrix-structural-complex64) false)) (or (= (ref cuda-backend 'scientific-map-float64) true) (= (ref cuda-backend 'scientific-map-float64) false)) (or (= (ref cuda-backend 'scientific-map-float32) true) (= (ref cuda-backend 'scientific-map-float32) false)) (or (= (ref cuda-backend 'rounding-big-integer) true) (= (ref cuda-backend 'rounding-big-integer) false))))", pass, fail);
+        "(let (cuda-backend (ref (tensor-backends) 1) svd-ready (and (ref cuda-backend 'cusolver-complex-svd) (ref cuda-backend 'matrix-structural-complex128) (ref cuda-backend 'matrix-structural-complex64))) (and (= (ref cuda-backend 'name) 'cuda) (or (= (ref cuda-backend 'float64) true) (= (ref cuda-backend 'float64) false)) (or (= (ref cuda-backend 'float32) true) (= (ref cuda-backend 'float32) false)) (or (= (ref cuda-backend 'complex128) true) (= (ref cuda-backend 'complex128) false)) (or (= (ref cuda-backend 'complex64) true) (= (ref cuda-backend 'complex64) false)) (or (= (ref cuda-backend 'elementwise-map-float64) true) (= (ref cuda-backend 'elementwise-map-float64) false)) (or (= (ref cuda-backend 'elementwise-map-float32) true) (= (ref cuda-backend 'elementwise-map-float32) false)) (or (= (ref cuda-backend 'elementwise-map-complex128) true) (= (ref cuda-backend 'elementwise-map-complex128) false)) (or (= (ref cuda-backend 'elementwise-map-complex64) true) (= (ref cuda-backend 'elementwise-map-complex64) false)) (or (= (ref cuda-backend 'contract-complex128) true) (= (ref cuda-backend 'contract-complex128) false)) (or (= (ref cuda-backend 'contract-complex64) true) (= (ref cuda-backend 'contract-complex64) false)) (or (= (ref cuda-backend 'matrix-structural-complex128) true) (= (ref cuda-backend 'matrix-structural-complex128) false)) (or (= (ref cuda-backend 'matrix-structural-complex64) true) (= (ref cuda-backend 'matrix-structural-complex64) false)) (or (= (ref cuda-backend 'scientific-map-float64) true) (= (ref cuda-backend 'scientific-map-float64) false)) (or (= (ref cuda-backend 'scientific-map-float32) true) (= (ref cuda-backend 'scientific-map-float32) false)) (or (= (ref cuda-backend 'rounding-big-integer) true) (= (ref cuda-backend 'rounding-big-integer) false)) (or (= (ref cuda-backend 'cusolver) true) (= (ref cuda-backend 'cusolver) false)) (or (= (ref cuda-backend 'cusolver-complex-svd) true) (= (ref cuda-backend 'cusolver-complex-svd) false)) (= (ref cuda-backend 'matrix-singular-values-complex128) svd-ready) (= (ref cuda-backend 'matrix-singular-values-complex64) svd-ready) (= (ref cuda-backend 'matrix-svd-complex128) svd-ready) (= (ref cuda-backend 'matrix-svd-complex64) svd-ready) (= (ref cuda-backend 'matrix-hermitian-eigen-complex128) false) (= (ref cuda-backend 'matrix-hermitian-eigen-complex64) false) (= (ref cuda-backend 'matrix-eigenpairs-complex128) false) (= (ref cuda-backend 'matrix-eigenpairs-complex64) false)))", pass, fail);
+    omni_tensor_backend_cuda_disable_for_tests(1);
+    test_truthy(interp, "tensor-backends cuda disable clears cached operation capabilities",
+        "(let (cuda-backend (ref (tensor-backends) 1)) (and (= (ref cuda-backend 'available) false) (= (ref cuda-backend 'elementwise-map-float32) false) (= (ref cuda-backend 'elementwise-map-complex128) false) (= (ref cuda-backend 'matrix-structural-complex128) false) (= (ref cuda-backend 'scientific-map-float32) false) (= (ref cuda-backend 'rounding-big-integer) false) (= (ref cuda-backend 'ml-optimizer-sgd-float32) false)))", pass, fail);
+    omni_tensor_backend_cuda_disable_for_tests(0);
+    omni_tensor_backend_cusolver_disable_for_tests(1);
+    test_truthy(interp, "tensor-backends cuda cuSOLVER disabled keeps operation claims false",
+        "(let (cuda-backend (ref (tensor-backends) 1)) (and (= (ref cuda-backend 'cusolver) false) (= (ref cuda-backend 'cusolver-complex-svd) false) (= (ref cuda-backend 'matrix-singular-values-complex128) false) (= (ref cuda-backend 'matrix-singular-values-complex64) false) (= (ref cuda-backend 'matrix-svd-complex128) false) (= (ref cuda-backend 'matrix-svd-complex64) false)))", pass, fail);
+    omni_tensor_backend_cusolver_disable_for_tests(0);
+    if (omni_tensor_backend_cusolver_zgesvd_call_count() >= 0 &&
+        omni_tensor_backend_cusolver_cgesvd_call_count() >= 0) {
+        emit_pass_literal("[PASS] tensor cuSOLVER gesvd counters start nonnegative");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] tensor cuSOLVER gesvd counters start nonnegative");
+        (*fail)++;
+    }
+    if (omni_tensor_backend_cuda_grid_dim_oversized_guard_for_tests() == OMNI_TENSOR_CUDA_INVALID_ARGUMENT) {
+        emit_pass_literal("[PASS] tensor CUDA launch grid oversized guard");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] tensor CUDA launch grid oversized guard");
+        (*fail)++;
+    }
+    if (omni_tensor_backend_cuda_copy_null_alias_guard_for_tests() == OMNI_TENSOR_CUDA_INVALID) {
+        emit_pass_literal("[PASS] tensor CUDA device copy null alias guard");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] tensor CUDA device copy null alias guard");
+        (*fail)++;
+    }
+    if (omni_tensor_backend_cuda_ml_sgd_byte_len_overflow_guard_for_tests() == OMNI_TENSOR_CUDA_INVALID) {
+        emit_pass_literal("[PASS] tensor CUDA ML SGD byte length overflow guard");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] tensor CUDA ML SGD byte length overflow guard");
+        (*fail)++;
+    }
+    if (omni_tensor_backend_cuda_ml_stateful_byte_len_overflow_guard_for_tests() == OMNI_TENSOR_CUDA_INVALID) {
+        emit_pass_literal("[PASS] tensor CUDA ML stateful optimizer byte length overflow guard");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] tensor CUDA ML stateful optimizer byte length overflow guard");
+        (*fail)++;
+    }
+    if (omni_tensor_backend_cuda_svd_adapter_shape_guard_for_tests() == OMNI_TENSOR_CUDA_SUCCESS) {
+        emit_pass_literal("[PASS] tensor CUDA complex SVD adapter shape guards");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] tensor CUDA complex SVD adapter shape guards");
+        (*fail)++;
+    }
+    if (omni_tensor_backend_vulkan_map_chain_f32_byte_len_overflow_guard_for_tests() == OMNI_TENSOR_VULKAN_UNSUPPORTED) {
+        emit_pass_literal("[PASS] tensor Vulkan map chain byte length overflow guard");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] tensor Vulkan map chain byte length overflow guard");
+        (*fail)++;
+    }
     test_truthy(interp, "tensor-backends cublas Float32 capability entry",
-        "(let (cublas-backend (ref (tensor-backends) 2)) (and (= (ref cublas-backend 'name) 'cublas) (or (= (ref cublas-backend 'float64) true) (= (ref cublas-backend 'float64) false)) (or (= (ref cublas-backend 'float32) true) (= (ref cublas-backend 'float32) false))))", pass, fail);
+        "(let (cublas-backend (ref (tensor-backends) 2)) (and (= (ref cublas-backend 'name) 'cublas) (or (= (ref cublas-backend 'float64) true) (= (ref cublas-backend 'float64) false)) (or (= (ref cublas-backend 'float32) true) (= (ref cublas-backend 'float32) false)) (= (ref cublas-backend 'matrix-hermitian-eigen-complex128) false) (= (ref cublas-backend 'matrix-hermitian-eigen-complex64) false) (= (ref cublas-backend 'matrix-eigenpairs-complex128) false) (= (ref cublas-backend 'matrix-eigenpairs-complex64) false)))", pass, fail);
     test_truthy(interp, "tensor-backends vulkan capability entry",
         "(let (vulkan-backend (ref (tensor-backends) 3)) (and (= (ref vulkan-backend 'name) 'vulkan) (or (= (ref vulkan-backend 'float64) true) (= (ref vulkan-backend 'float64) false))))", pass, fail);
     test_truthy(interp, "tensor-backends vulkan Float32 capability entry",
-        "(let (vulkan-backend (ref (tensor-backends) 3)) (and (= (ref vulkan-backend 'name) 'vulkan) (or (= (ref vulkan-backend 'float32) true) (= (ref vulkan-backend 'float32) false)) (or (= (ref vulkan-backend 'complex128) true) (= (ref vulkan-backend 'complex128) false)) (or (= (ref vulkan-backend 'complex64) true) (= (ref vulkan-backend 'complex64) false)) (or (= (ref vulkan-backend 'elementwise-map-complex128) true) (= (ref vulkan-backend 'elementwise-map-complex128) false)) (or (= (ref vulkan-backend 'elementwise-map-complex64) true) (= (ref vulkan-backend 'elementwise-map-complex64) false)) (or (= (ref vulkan-backend 'contract-complex128) true) (= (ref vulkan-backend 'contract-complex128) false)) (or (= (ref vulkan-backend 'contract-complex64) true) (= (ref vulkan-backend 'contract-complex64) false)) (or (= (ref vulkan-backend 'matrix-structural-complex128) true) (= (ref vulkan-backend 'matrix-structural-complex128) false)) (or (= (ref vulkan-backend 'matrix-structural-complex64) true) (= (ref vulkan-backend 'matrix-structural-complex64) false)) (or (= (ref vulkan-backend 'matrix-numerical-complex128) true) (= (ref vulkan-backend 'matrix-numerical-complex128) false)) (or (= (ref vulkan-backend 'matrix-numerical-complex64) true) (= (ref vulkan-backend 'matrix-numerical-complex64) false))))", pass, fail);
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (and (= (ref vulkan-backend 'name) 'vulkan) (or (= (ref vulkan-backend 'float32) true) (= (ref vulkan-backend 'float32) false)) (or (= (ref vulkan-backend 'complex128) true) (= (ref vulkan-backend 'complex128) false)) (or (= (ref vulkan-backend 'complex64) true) (= (ref vulkan-backend 'complex64) false)) (or (= (ref vulkan-backend 'elementwise-map-complex128) true) (= (ref vulkan-backend 'elementwise-map-complex128) false)) (or (= (ref vulkan-backend 'elementwise-map-complex64) true) (= (ref vulkan-backend 'elementwise-map-complex64) false)) (or (= (ref vulkan-backend 'contract-complex128) true) (= (ref vulkan-backend 'contract-complex128) false)) (or (= (ref vulkan-backend 'contract-complex64) true) (= (ref vulkan-backend 'contract-complex64) false)) (or (= (ref vulkan-backend 'matrix-structural-complex128) true) (= (ref vulkan-backend 'matrix-structural-complex128) false)) (or (= (ref vulkan-backend 'matrix-structural-complex64) true) (= (ref vulkan-backend 'matrix-structural-complex64) false)) (or (= (ref vulkan-backend 'matrix-numerical-complex128) true) (= (ref vulkan-backend 'matrix-numerical-complex128) false)) (or (= (ref vulkan-backend 'matrix-numerical-complex64) true) (= (ref vulkan-backend 'matrix-numerical-complex64) false)) (= (ref vulkan-backend 'matrix-hermitian-eigen-complex128) (ref vulkan-backend 'float64)) (= (ref vulkan-backend 'matrix-hermitian-eigen-complex64) (ref vulkan-backend 'float32)) (= (ref vulkan-backend 'matrix-eigenpairs-complex128) (ref vulkan-backend 'float64)) (= (ref vulkan-backend 'matrix-eigenpairs-complex64) (ref vulkan-backend 'float32))))", pass, fail);
     test_truthy(interp, "tensor-backends vulkan rounding capability is absent or bool",
         "(let (vulkan-backend (ref (tensor-backends) 3)) (and (= (ref vulkan-backend 'name) 'vulkan) (or (= (ref vulkan-backend 'rounding-big-integer) nil) (or (= (ref vulkan-backend 'rounding-big-integer) true) (= (ref vulkan-backend 'rounding-big-integer) false)))))", pass, fail);
     test_eq_double(interp, "to-device cpu realizes lazy tensor",
@@ -284,6 +351,12 @@ fn void run_advanced_collections_generic_ops_part1(Interp* interp, int* pass, in
         "(let (cuda-backend (ref (tensor-backends) 1)) (if (ref cuda-backend 'elementwise-map-float64) (let (dst (to-device (Tensor Float64 [2 3] 0.0) 'cuda)) (block (realize (map + (to-device (Tensor Float64 [2 1] [1 2]) 'cuda) (to-device (Tensor Float64 [1 3] [10 20 30]) 'cuda)) dst) (and (= (device dst) 'cuda) (= (ref (to-device dst 'cpu) [1 2]) 32.0)))) true))", pass, fail);
     test_truthy(interp, "realize lazy Float32 cuda map into cuda destination when map available",
         "(let (cuda-backend (ref (tensor-backends) 1)) (if (ref cuda-backend 'elementwise-map-float32) (let (dst (to-device (Tensor Float32 [1] [0.0]) 'cuda)) (block (realize (map * (to-device (Tensor Float32 [1] [2.5]) 'cuda) 2.0) dst) (and (= (String (dtype dst)) \"Float32\") (= (ref (to-device dst 'cpu) [0]) (Float32 5.0))))) true))", pass, fail);
+    test_truthy(interp, "map cuda transpose-view scalar reads strided operand when available",
+        "(let (cuda-backend (ref (tensor-backends) 1)) (if (ref cuda-backend 'elementwise-map-float32) (let (x (to-device (Tensor Float32 [2 3] [1 2 3 4 5 6]) 'cuda) view (matrix/transpose-view x) out (map + view (Float32 10.0)) cpu (to-device out 'cpu)) (and (= (device out) 'cuda) (= (String (dtype out)) \"Float32\") (= (ref cpu [0 0]) (Float32 11.0)) (= (ref cpu [0 1]) (Float32 14.0)) (= (ref cpu [2 1]) (Float32 16.0)))) true))", pass, fail);
+    test_truthy(interp, "map cuda transpose-view tensor operand reads strided lhs when available",
+        "(let (cuda-backend (ref (tensor-backends) 1)) (if (ref cuda-backend 'elementwise-map-float32) (let (x (to-device (Tensor Float32 [2 3] [1 2 3 4 5 6]) 'cuda) view (matrix/transpose-view x) rhs (to-device (Tensor Float32 [3 2] [10 20 30 40 50 60]) 'cuda) out (map + view rhs) cpu (to-device out 'cpu)) (and (= (device out) 'cuda) (= (String (dtype out)) \"Float32\") (= (ref cpu [0 0]) (Float32 11.0)) (= (ref cpu [1 1]) (Float32 45.0)) (= (ref cpu [2 1]) (Float32 66.0)))) true))", pass, fail);
+    test_truthy(interp, "map cuda chained transpose-view keeps Float64 view on device when available",
+        "(let (cuda-backend (ref (tensor-backends) 1)) (if (ref cuda-backend 'elementwise-map-float64) (let (x (to-device (Tensor Float64 [2 3] [1 2 3 4 5 6]) 'cuda) view (matrix/transpose-view x) out (map * (map + view 3.0) 2.0) cpu (to-device out 'cpu)) (and (= (device out) 'cuda) (= (String (dtype out)) \"Float64\") (= (ref cpu [0 0]) 8.0) (= (ref cpu [0 1]) 14.0) (= (ref cpu [2 1]) 18.0))) true))", pass, fail);
     test_truthy(interp, "realize lazy cuda map into cpu destination still fails closed when map available",
         "(let (cuda-backend (ref (tensor-backends) 1)) (if (ref cuda-backend 'elementwise-map-float64) (= (handle (let (dst (Tensor Float64 [1] 0.0)) (realize (map + (to-device (Tensor Float64 [1] [2.0]) 'cuda) 0.0) dst)) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true))", pass, fail);
     {
@@ -320,6 +393,19 @@ fn void run_advanced_collections_generic_ops_part1(Interp* interp, int* pass, in
             test_error_contains(interp, name,
                 "(map + (to-device (Tensor Float64 [1] [2.0]) 'cuda) (to-device (Tensor Float32 [1] [1.0]) 'cuda))",
                 "map: tensor dtype mismatch", pass, fail);
+        } else {
+            emit_pass(name);
+            (*pass)++;
+        }
+    }
+    {
+        char[] name = "map vulkan mixed Tensor dtype reports dtype mismatch";
+        EvalResult guard = run("(let (vulkan-backend (ref (tensor-backends) 3)) (and (ref vulkan-backend 'float64) (ref vulkan-backend 'float32)))", interp);
+        bool enabled = !guard.error.has_error && !is_nil(guard.value) && !(is_symbol(guard.value) && guard.value.sym_val == interp.sym_false);
+        if (enabled) {
+            test_truthy(interp, name,
+                "(= (handle (map + (to-device (Tensor Float64 [1] [2.0]) 'vulkan) (to-device (Tensor Float32 [1] [1.0]) 'vulkan)) (raise msg (ref msg 'code))) 'tensor/dtype-mismatch)",
+                pass, fail);
         } else {
             emit_pass(name);
             (*pass)++;

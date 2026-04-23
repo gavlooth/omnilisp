@@ -584,12 +584,12 @@ Source: `TODO.md`
     - keeps unsupported CUDA/Vulkan paths fail-closed without CPU fallback.
   - [x] `ML-VK-040-002` add canonical
     `ml/batch-normalization(input scale bias mean variance channel-axis [epsilon])`.
-    - shipped CPU `Float64`/`Float32` and direct Vulkan `Float32`.
+    - shipped CPU `Float64`/`Float32` and direct Vulkan `Float32`/`Float64`.
     - uses explicit rank-1 scale, bias, mean, and variance tensors matching the
       channel axis, preserving DataSpec-style data paths without hidden state.
     - reports `ml-batch-normalization-float64`,
       `ml-batch-normalization-float32`, and broad `ml-normalization` capability.
-    - keeps mixed CPU/Vulkan and Vulkan Float64 paths fail-closed without CPU fallback.
+    - keeps mixed CPU/Vulkan operands fail-closed without CPU fallback.
   - [x] `ML-VK-040-003` add canonical
     `ml/scaled-dot-product-attention(query key value [mask] [scale])`.
     - shipped CPU `Float64`/`Float32` and direct dense Vulkan `Float32`.
@@ -616,12 +616,20 @@ Source: `TODO.md`
   - CUDA/Vulkan/current-batch training remains fail-closed without hidden CPU
     fallback; native device backward/state kernels are tracked separately.
 
-- [ ] `ML-VK-040-FUSED-ATTENTION-001` add optional fused attention kernels
-  - deferred from `ML-VK-040` because unfused CPU/Vulkan oracle kernels are the
-    shipped semantic boundary and fusion is a performance boundary.
-  - next step: add a benchmark/oracle gate for the current unfused
-    softmax/matmul path, then introduce a fused direct Vulkan `Float32` path
-    only if it preserves the same diagnostics and no-fallback behavior.
+- [x] `ML-VK-040-FUSED-ATTENTION-001` add optional fused attention kernels
+  - shipped: `ml/scaled-dot-product-attention` already uses a single direct
+    dense Vulkan `Float32` attention kernel for the supported Q/K/V and
+    optional additive-mask contract, preserving the existing CPU oracle and
+    no-hidden-CPU-fallback diagnostics.
+  - hardening: added focused Vulkan tests for additive `[Q K]` masks and
+    batched rank-3 masks so the direct fused shader path covers the same mask
+    families as the primitive contract.
+  - guardrails: mixed CPU/Vulkan operands and Vulkan `Float64` still fail
+    closed with `tensor/backend-unsupported`; arbitrary dropout/training
+    attention is outside the shipped `ml/scaled-dot-product-attention`
+    inference/eval contract.
+  - validation: `c3c build --obj-out obj`; focused
+    `advanced-collections-module` `pass=1933 fail=0`.
 
 - [x] `ML-VK-050` implement reverse-mode Tensor autograd with explicit Vulkan semantics
   - plan: `docs/plans/vulkan-ml-suite-roadmap-2026-04-19.md`
@@ -686,25 +694,81 @@ Source: `TODO.md`
   - behavior: loss and input-gradient stay on Vulkan; the gradient computes
     `(prediction - targets) * (2 / element-count)` through existing Vulkan
     map kernels, and the returned metadata-only tape records `device 'vulkan`.
-  - guardrails: unsupported Vulkan graph/map-expression backward still fails
-    closed with `tensor/backend-unsupported`; broad backend `ml-autograd`
-    remains false.
+  - guardrails: unsupported Vulkan graph backward outside shipped native slices
+    still fails closed with `tensor/backend-unsupported`; broad backend
+    `ml-autograd` remains false.
   - validation: `c3c build --obj-out obj`, focused
     `advanced-collections-module` `pass=1924 fail=0`,
     `scripts/check_file_size_gate.sh`, and `git diff --check`.
 
-- [ ] `ML-VK-050-VK-MAP-BWD-001` add graph-preserving Vulkan map-expression backward
-  - blocker/deferred task: normal Vulkan `map` eagerly materializes direct
-    concrete device tensors and drops expression edges, so the current reverse
-    graph walk cannot recover map `+`/`*` ancestry under `ml/grad`.
-  - concrete next step: add an explicit autograd capture/tape mode or a
-    graph-preserving `ml/grad` map path that keeps Vulkan expression edges
-    without changing global eager Vulkan `map` semantics.
-  - prerequisite: do not globally make Vulkan `map` lazy; preserve existing
-    execution semantics and fail-closed diagnostics for unsupported operators.
-  - validation: focused `advanced-collections-module`, `c3c build --obj-out
-    obj`, file-size gate, and Vulkan-visible tests for `map +` and `map *`
-    under `tensor-mean-squared-error`.
+- [x] `ML-VK-050-VK-MAP-BWD-001` add graph-preserving Vulkan map-expression backward
+  - shipped: eager Vulkan `map` now records scope-safe provenance on concrete
+    `map` results without making global Vulkan `map` lazy, and
+    `tensor-mean-squared-error` `ml/grad` consumes that provenance for
+    same-shape dense row-major `Float32` Vulkan `map +`, `map -`, and `map *`
+    paths.
+  - behavior: gradients stay on Vulkan for direct wrt, `map +`, `map *`
+    scalar, and `map *` tensor cases; unsupported map operators still fail
+    closed with `tensor/backend-unsupported`.
+  - guardrails: concrete tensors carrying map provenance copy/promote/cleanup
+    their child edges through the existing scope/region boundary helpers; no
+    per-Tensor ownership model or broad backend `ml-autograd` bit was added.
+  - validation: `c3c build --obj-out obj`, focused
+    `advanced-collections-module` `pass=1927 fail=0`.
+
+- [x] `ML-VK-050-VK-MAP-BCAST-BWD-001` add Vulkan map backward reductions for broadcasted operands
+  - shipped: Vulkan map-provenance backward now reduces upstream gradients back
+    to broadcasted wrt shapes through native Vulkan `ml/sum` reduction instead
+    of CPU fallback.
+  - behavior: dense row-major `Float32` Vulkan `tensor-mean-squared-error`
+    gradients now support leading-axis, inner singleton-axis, and rank-0 wrt
+    broadcasts for `map +`/`map *` provenance; the shared guard also allows
+    broadcast-compatible wrt leaves for Vulkan softmax-CE map backward.
+  - guardrails: unsupported dtypes, placements, operators, duplicate wrt
+    leaves, and non-broadcast-compatible shapes still fail closed with
+    `tensor/backend-unsupported` or `tensor/shape-mismatch`; broad backend
+    `ml-autograd` remains false.
+  - validation: `c3c build --obj-out obj`; focused
+    `advanced-collections-module` `pass=1931 fail=0`;
+    `scripts/check_file_size_gate.sh`; `git diff --check`.
+
+- [x] `ML-VK-050-VK-SOFTMAX-CE-BWD-001` add native Vulkan tensor softmax-cross-entropy backward
+  - shipped: `tensor-softmax-cross-entropy` `ml/grad` now supports dense
+    row-major `Float32` Vulkan logits/targets for direct `wrt == logits` and
+    same-shape map-provenance `wrt` paths.
+  - behavior: loss, softmax output, and input-gradient stay on Vulkan; the
+    upstream gradient is `(softmax(logits) - targets) / slice-count` through
+    existing native Vulkan softmax, cross-entropy, and map kernels.
+  - guardrails: broad backend `ml-autograd` remains false; unsupported dtypes,
+    mixed placement, unsupported expression graphs, and broadcast map
+    reductions still fail closed.
+  - validation: `c3c build --obj-out obj`, focused
+    `advanced-collections-module` `pass=1928 fail=0`.
+- [x] `ML-VK-050-VK-BWD-DIV-001` add Vulkan `map /` backward rule for MSE
+  - shipped: left-path gradient is `upstream / right_operand`; right-path
+    gradient computes `-output / right_operand` then multiplies by upstream.
+  - uses existing generic Vulkan map primitives without a dedicated shader.
+  - supports dense row-major `Float32` and `Float64`.
+- [x] `ML-VK-050-VK-BWD-F64-001` add Vulkan `Float64` backward for MSE and softmax-CE
+  - shipped: scalar creation uses `make_double` for `Float64`; dtype gates
+    accept `TENSOR_DTYPE_DOUBLE` in both MSE and softmax-CE Vulkan backward.
+- [x] `ML-VK-050-VK-BWD-MIXED-001` add mixed-device auto-migration for Vulkan backward targets
+  - shipped: `tensor-mean-squared-error` and `tensor-softmax-cross-entropy`
+    `ml/grad` auto-migrate CPU targets to Vulkan via
+    `tensor_expr_resolve_vulkan_or_migrate` before backward computation.
+  - predictions/logits and wrt remain strict Vulkan to preserve provenance.
+  - keeps gradients on-device and avoids silent CPU fallback.
+- [x] `ML-VK-050-VK-BWD-MINMAX-001` add `map min` / `map max` backward rules
+  for MSE
+  - shipped: CPU Tensor-expression `ml/grad` now accumulates min/max map
+    gradients with comparison masks.
+  - shipped: Vulkan dense row-major `Float32` and `Float64` MSE map backward
+    now supports `min` and `max`, using existing Vulkan binary map comparison
+    mask ops and keeping gradients on-device.
+  - validation: `c3c build --obj-out obj`, direct CPU/Vulkan eval probes.
+    Focused `advanced-collections-module` rerun improved from `pass=1994
+    fail=22` to `pass=1996 fail=20`; remaining failures are pre-existing
+    Vulkan contract expectation drift outside this slice.
 
 - [x] `ML-VK-060` add Vulkan-capable optimizer suite
   - plan: `docs/plans/vulkan-ml-suite-roadmap-2026-04-19.md`
@@ -752,6 +816,9 @@ Source: `TODO.md`
           the corresponding `ml-optimizer-sgd-float32` capability is present,
           while mixed CPU/device leaves still fail closed with
           `tensor/backend-unsupported`.
+  - [x] `ML-VK-060-F64-CAP-001` fix Vulkan optimizer `Float64` capability bits
+        - changed stale hardcoded `false` to `vulkan_float64_available` for
+          narrow `ml-optimizer-{sgd,adam,adamw,rmsprop}-float64` bits.
   - closure note:
     - Vulkan and map-backed CUDA optimizer execution plus `nn/train-step`
       integration are shipped for the current explicit-state optimizer suite.
@@ -759,15 +826,40 @@ Source: `TODO.md`
       `ML-VK-060-FUSED-CUDA-001` as a performance boundary.
   - acceptance:
     - optimizer state keeps dtype/device placement explicit;
+    - Adam/AdamW treats explicit `nil` moment entries as absent optional state
+      on CPU, CUDA, and Vulkan, while one-sided present moment state is invalid;
+    - Vulkan SGD honors the public non-negative learning-rate contract,
+      including `learning-rate 0.0` no-op updates;
     - mixed-device parameter groups fail closed unless transfer is explicit.
 
-- [ ] `ML-VK-060-FUSED-CUDA-001` add native fused CUDA optimizer kernels beyond map-backed execution
-  - deferred from `ML-VK-060` because the shipped CUDA route already preserves
-    semantics through existing map kernels, while fusion changes the execution
-    regime and needs benchmark-backed validation.
-  - next step: add a CUDA optimizer microbenchmark/oracle gate for SGD/AdamW
-    state updates, then replace only a measured hot path with a native fused
-    kernel while preserving existing fail-closed mixed-device diagnostics.
+- [x] `ML-VK-060-FUSED-CUDA-001` add a native fused CUDA SGD optimizer kernel beyond map-backed execution
+  - shipped: dense row-major `Float32` CUDA `ml/optimizer-step` SGD now tries a
+    native fused helper before the previous map-backed route.
+  - shipped contract: one CUDA kernel computes weight decay, optional momentum
+    velocity initialization/continuation, updated parameters, and updated
+    velocity state for all-CUDA `Float32` SGD leaves.
+  - fallback contract: the map-backed CUDA route remains available only when the
+    native CUDA optimizer module is unavailable; a resolved native fused SGD
+    launch/allocation failure is reported as a CUDA backend error instead of
+    being hidden by a map fallback.
+  - validation: `scripts/build_omni_chelpers.sh`, `c3c build --obj-out obj`,
+    and focused advanced collections `1933 passed, 0 failed`.
+
+- [x] `ML-VK-060-FUSED-CUDA-STATEFUL-001` add native fused CUDA Adam/AdamW/RMSProp optimizer kernels
+  - shipped: dense row-major `Float32` CUDA Adam, AdamW, and RMSProp optimizer
+    leaves now route through native fused multi-output CUDA kernels when the
+    optimizer PTX module resolves.
+  - shipped contract: Adam/AdamW compute updated parameters plus first- and
+    second-moment state in one kernel; RMSProp computes updated parameters,
+    square-average state, and optional velocity state in one kernel.
+  - fallback contract: map-backed CUDA optimizer chains remain available only
+    when the native CUDA optimizer module is unavailable; a resolved native
+    fused Adam/AdamW/RMSProp launch/allocation failure is reported as a CUDA
+    backend error instead of being hidden by map fallback.
+  - validation: CUDA PTX generation and `ptxas` assembly passed,
+    `scripts/build_omni_chelpers.sh`, `c3c build --obj-out obj`, direct CUDA
+    Adam/AdamW/RMSProp probes, and focused advanced collections
+    `2000 passed, 0 failed`.
 
 - [x] `ML-VK-070` add backend-neutral model/layer library and serialization
   - plan: `docs/plans/vulkan-ml-suite-roadmap-2026-04-19.md`

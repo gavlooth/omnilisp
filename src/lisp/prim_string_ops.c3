@@ -1,5 +1,6 @@
 module lisp;
 
+
 import main;
 
 // =============================================================================
@@ -9,7 +10,7 @@ import main;
 // slice primitives now live in prim_string_transform.c3.
 
 fn Value* prim_string_contains(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2 || args[0].tag != STRING || args[1].tag != STRING) return raise_error(interp, "string-contains?: expected 2 strings");
+    if (args.len < 2 || args[0].tag != STRING || args[1].tag != STRING) return string_raise(interp, "type/arity", "string-contains?: expected 2 strings");
     char[] haystack = args[0].str_chars[:args[0].str_len];
     char[] needle = args[1].str_chars[:args[1].str_len];
     if (needle.len == 0) return make_symbol(interp, interp.sym_true);
@@ -25,7 +26,7 @@ fn Value* prim_string_contains(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_string_index_of(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2 || args[0].tag != STRING || args[1].tag != STRING) return raise_error(interp, "string-index-of: expected 2 strings");
+    if (args.len < 2 || args[0].tag != STRING || args[1].tag != STRING) return string_raise(interp, "type/arity", "string-index-of: expected 2 strings");
     char[] haystack = args[0].str_chars[:args[0].str_len];
     char[] needle = args[1].str_chars[:args[1].str_len];
     if (needle.len == 0) return make_int(interp, 0);
@@ -42,7 +43,7 @@ fn Value* prim_string_index_of(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_string_replace(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 3 || args[0].tag != STRING || args[1].tag != STRING || args[2].tag != STRING) {
-        return raise_error(interp, "string-replace: expected 3 strings");
+        return string_raise(interp, "type/arg-mismatch", "string-replace: expected 3 strings");
     }
     char[] str = args[0].str_chars[:args[0].str_len];
     char[] old = args[1].str_chars[:args[1].str_len];
@@ -76,12 +77,12 @@ fn Value* prim_string_replace(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_char_at(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2 || args[0].tag != STRING || !is_int(args[1])) return raise_error(interp, "char-at: expected string and int");
+    if (args.len < 2 || args[0].tag != STRING || !is_int(args[1])) return string_raise(interp, "type/arg-mismatch", "char-at: expected string and int");
     char[] bytes = args[0].str_chars[:args[0].str_len];
     usz cp_count = utf8_strlen(bytes);
     long idx = args[1].int_val;
     if (idx < 0) idx += (long)cp_count;
-    if (idx < 0 || idx >= (long)cp_count) return raise_error(interp, "char-at: index out of range");
+    if (idx < 0 || idx >= (long)cp_count) return string_raise(interp, "type/arg-mismatch", "char-at: index out of range");
     // Find byte offset of the idx-th codepoint
     usz byte_off = utf8_byte_offset(bytes, (usz)idx);
     usz cplen = utf8_codepoint_len(bytes[byte_off]);
@@ -90,7 +91,7 @@ fn Value* prim_char_at(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_string_repeat(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2 || args[0].tag != STRING || !is_int(args[1])) return raise_error(interp, "string-repeat: expected string and int");
+    if (args.len < 2 || args[0].tag != STRING || !is_int(args[1])) return string_raise(interp, "type/arg-mismatch", "string-repeat: expected string and int");
     long n = args[1].int_val;
     if (n <= 0) return make_string(interp, "");
     StringVal* builder = strval_new(args[0].str_len * (usz)n);
@@ -129,7 +130,7 @@ fn Value* prim_string_byte_length(Value*[] args, Env* env, Interp* interp) {
  */
 fn Value* string_to_list_value(Value* arg, Interp* interp, char[] expected_msg, char[] alloc_msg) {
     if (!is_string(arg)) {
-        return raise_error(interp, expected_msg);
+        return string_raise(interp, "type/arg-mismatch", expected_msg);
     }
 
     char[] bytes = arg.str_chars[:arg.str_len];
@@ -174,7 +175,7 @@ fn Value* string_to_list_value(Value* arg, Interp* interp, char[] expected_msg, 
 }
 
 fn Value* prim_string_to_list(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return raise_error(interp, "string->list: expected 1 argument");
+    if (args.len < 1) return string_raise(interp, "type/arity", "string->list: expected 1 argument");
     return string_to_list_value(args[0], interp,
         "string->list: expected string argument",
         "string->list: failed to allocate result list");
@@ -190,7 +191,7 @@ fn Value* list_to_string_value(Value* arg, Interp* interp, char[] expected_list_
     }
 
     if (!is_cons(arg)) {
-        return raise_error(interp, expected_list_msg);
+        return string_raise(interp, "type/arg-mismatch", expected_list_msg);
     }
 
     DString ds;
@@ -203,12 +204,12 @@ fn Value* list_to_string_value(Value* arg, Interp* interp, char[] expected_list_
         list = list.cons_val.cdr;
 
         if (!is_string(elem)) {
-            return raise_error(interp, expected_elem_msg);
+            return string_raise(interp, "type/arg-mismatch", expected_elem_msg);
         }
         ds.append_string((String)elem.str_chars[:elem.str_len]);
     }
     if (!is_nil(list)) {
-        return raise_error(interp, proper_list_msg);
+        return string_raise(interp, "type/arg-mismatch", proper_list_msg);
     }
 
     return make_string(interp, ds.str_view());
@@ -216,7 +217,7 @@ fn Value* list_to_string_value(Value* arg, Interp* interp, char[] expected_list_
 
 fn Value* prim_list_to_string(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) {
-        return raise_error(interp, "list->string: expected 1 argument");
+        return string_raise(interp, "type/arity", "list->string: expected 1 argument");
     }
     return list_to_string_value(args[0], interp,
         "list->string: expected a list",

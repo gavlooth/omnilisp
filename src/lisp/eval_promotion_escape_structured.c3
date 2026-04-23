@@ -57,7 +57,7 @@ fn Value* promote_escape_array_shared_wrapper(Value* v, Interp* interp, Promotio
     if (src_arr == null) {
         Value* result = boundary_alloc_value_in_current_escape(interp);
         if (result == null) {
-            return raise_error(interp, "boundary: failed to allocate array escape copy");
+            return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate array escape copy");
         }
         result.tag = ARRAY;
         result.array_val = null;
@@ -67,7 +67,7 @@ fn Value* promote_escape_array_shared_wrapper(Value* v, Interp* interp, Promotio
 
     Array* dst_arr = (Array*)mem::malloc(Array.sizeof);
     if (dst_arr == null) {
-        return raise_error(interp, "boundary: failed to allocate array escape copy");
+        return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate array escape copy");
     }
     dst_arr.items = null;
     usz promoted_items = 0;
@@ -85,18 +85,18 @@ fn Value* promote_escape_array_shared_wrapper(Value* v, Interp* interp, Promotio
     dst_arr.capacity = cap;
     dst_arr.length = src_arr.length;
     if (cap > usz.max / Value*.sizeof) {
-        return raise_error(interp, "boundary: failed to allocate array escape copy");
+        return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate array escape copy");
     }
     dst_arr.items = (Value**)mem::malloc(Value*.sizeof * cap);
     if (dst_arr.items == null) {
-        return raise_error(interp, "boundary: failed to allocate array escape copy");
+        return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate array escape copy");
     }
 
     for (usz i = 0; i < src_arr.length; i++) {
         Value* promoted = promote_to_escape(src_arr.items[i], interp);
         if (src_arr.items[i] != null && (promoted == null || is_error(promoted))) {
             return promoted == null
-                ? raise_error(interp, "boundary: failed to promote array item during escape promotion")
+                ? boundary_raise(interp, "boundary/copy-fault", "boundary: failed to promote array item during escape promotion")
                 : promoted;
         }
         dst_arr.items[i] = promoted;
@@ -105,7 +105,7 @@ fn Value* promote_escape_array_shared_wrapper(Value* v, Interp* interp, Promotio
 
     Value* result = boundary_alloc_value_in_current_escape(interp);
     if (result == null) {
-        return raise_error(interp, "boundary: failed to allocate array escape copy");
+        return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate array escape copy");
     }
     result.tag = ARRAY;
     result.array_val = dst_arr;
@@ -121,7 +121,7 @@ fn Value* promote_escape_hashmap_backed_shared_wrapper(Value* v, Interp* interp,
     if (src_map == null) {
         Value* result = boundary_alloc_value_in_current_escape(interp);
         if (result == null) {
-            return raise_error(interp, "boundary: failed to allocate hashmap escape copy");
+            return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate hashmap escape copy");
         }
         result.tag = v.tag;
         result.hashmap_val = null;
@@ -131,7 +131,7 @@ fn Value* promote_escape_hashmap_backed_shared_wrapper(Value* v, Interp* interp,
 
     HashMap* dst_map = (HashMap*)mem::malloc(HashMap.sizeof);
     if (dst_map == null) {
-        return raise_error(interp, "boundary: failed to allocate hashmap escape copy");
+        return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate hashmap escape copy");
     }
     dst_map.capacity = src_map.capacity;
     dst_map.count = src_map.count;
@@ -147,11 +147,11 @@ fn Value* promote_escape_hashmap_backed_shared_wrapper(Value* v, Interp* interp,
 
     if (src_map.capacity > 0) {
         if ((usz)src_map.capacity > usz.max / HashEntry.sizeof) {
-            return raise_error(interp, "boundary: failed to allocate hashmap escape copy");
+            return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate hashmap escape copy");
         }
         dst_map.entries = (HashEntry*)mem::malloc(HashEntry.sizeof * src_map.capacity);
         if (dst_map.entries == null) {
-            return raise_error(interp, "boundary: failed to allocate hashmap escape copy");
+            return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate hashmap escape copy");
         }
 
         for (uint i = 0; i < src_map.capacity; i++) {
@@ -164,14 +164,14 @@ fn Value* promote_escape_hashmap_backed_shared_wrapper(Value* v, Interp* interp,
                 Value* promoted_key = promote_to_escape(src_e.key, interp);
                 if (promoted_key == null || is_error(promoted_key)) {
                     return promoted_key == null
-                        ? raise_error(interp, "boundary: failed to promote hashmap key during escape promotion")
+                        ? boundary_raise(interp, "boundary/copy-fault", "boundary: failed to promote hashmap key during escape promotion")
                         : promoted_key;
                 }
                 dst_e.key = promoted_key;
                 Value* promoted_value = promote_to_escape(src_e.value, interp);
                 if (src_e.value != null && (promoted_value == null || is_error(promoted_value))) {
                     return promoted_value == null
-                        ? raise_error(interp, "boundary: failed to promote hashmap value during escape promotion")
+                        ? boundary_raise(interp, "boundary/copy-fault", "boundary: failed to promote hashmap value during escape promotion")
                         : promoted_value;
                 }
                 dst_e.value = promoted_value;
@@ -181,7 +181,7 @@ fn Value* promote_escape_hashmap_backed_shared_wrapper(Value* v, Interp* interp,
 
     Value* result = boundary_alloc_value_in_current_escape(interp);
     if (result == null) {
-        return raise_error(interp, "boundary: failed to allocate hashmap escape copy");
+        return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate hashmap escape copy");
     }
     result.tag = v.tag;
     result.hashmap_val = dst_map;
@@ -197,7 +197,7 @@ fn Value* promote_escape_method_table_shared_wrapper(Value* v, Interp* interp, P
     if (src_mt == null) {
         Value* result = boundary_alloc_value_in_current_escape(interp);
         if (result == null) {
-            return raise_error(interp, "boundary: failed to allocate method table escape copy");
+            return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate method table escape copy");
         }
         result.tag = METHOD_TABLE;
         result.method_table_val = null;
@@ -207,7 +207,7 @@ fn Value* promote_escape_method_table_shared_wrapper(Value* v, Interp* interp, P
 
     MethodTable* dst_mt = (MethodTable*)mem::malloc(MethodTable.sizeof);
     if (dst_mt == null) {
-        return raise_error(interp, "boundary: failed to allocate method table escape copy");
+        return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate method table escape copy");
     }
     dst_mt.name = src_mt.name;
     dst_mt.entry_count = src_mt.entry_count;
@@ -233,11 +233,11 @@ fn Value* promote_escape_method_table_shared_wrapper(Value* v, Interp* interp, P
 
     if (dst_mt.capacity > 0) {
         if (dst_mt.capacity > usz.max / MethodEntry.sizeof) {
-            return raise_error(interp, "boundary: failed to allocate method table escape copy");
+            return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate method table escape copy");
         }
         dst_mt.entries = (MethodEntry*)mem::malloc(MethodEntry.sizeof * dst_mt.capacity);
         if (dst_mt.entries == null) {
-            return raise_error(interp, "boundary: failed to allocate method table escape copy");
+            return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate method table escape copy");
         }
     }
 
@@ -245,13 +245,13 @@ fn Value* promote_escape_method_table_shared_wrapper(Value* v, Interp* interp, P
         method_signature_init_empty(&dst_mt.entries[i].sig);
         dst_mt.entries[i].implementation = null;
         if (!method_signature_copy_to_heap(&dst_mt.entries[i].sig, &src_mt.entries[i].sig)) {
-            return raise_error(interp, "boundary: failed to copy method signature during escape promotion");
+            return boundary_raise(interp, "boundary/copy-fault", "boundary: failed to copy method signature during escape promotion");
         }
         promoted_entries = i + 1;
         Value* promoted_impl = promote_to_escape(src_mt.entries[i].implementation, interp);
         if (src_mt.entries[i].implementation != null && (promoted_impl == null || is_error(promoted_impl))) {
             return promoted_impl == null
-                ? raise_error(interp, "boundary: failed to promote method implementation during escape promotion")
+                ? boundary_raise(interp, "boundary/copy-fault", "boundary: failed to promote method implementation during escape promotion")
                 : promoted_impl;
         }
         dst_mt.entries[i].implementation = promoted_impl;
@@ -260,7 +260,7 @@ fn Value* promote_escape_method_table_shared_wrapper(Value* v, Interp* interp, P
     Value* promoted_fallback = promote_to_escape(src_mt.fallback, interp);
     if (src_mt.fallback != null && (promoted_fallback == null || is_error(promoted_fallback))) {
         return promoted_fallback == null
-            ? raise_error(interp, "boundary: failed to promote method fallback during escape promotion")
+            ? boundary_raise(interp, "boundary/copy-fault", "boundary: failed to promote method fallback during escape promotion")
             : promoted_fallback;
     }
     dst_mt.fallback = promoted_fallback;
@@ -268,7 +268,7 @@ fn Value* promote_escape_method_table_shared_wrapper(Value* v, Interp* interp, P
 
     Value* result = boundary_alloc_value_in_current_escape(interp);
     if (result == null) {
-        return raise_error(interp, "boundary: failed to allocate method table escape copy");
+        return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate method table escape copy");
     }
     result.tag = METHOD_TABLE;
     result.method_table_val = dst_mt;
@@ -332,7 +332,7 @@ fn Value* promote_escape_cons(Value* v, Interp* interp, PromotionContext* ctx) {
         if (current_old.cons_val.car != null && (promoted_car == null || is_error(promoted_car))) {
             boundary_cleanup_materialized_value(v, head, interp.current_scope, true);
             return promoted_car == null
-                ? raise_error(interp, "boundary: failed to promote cons car during escape promotion")
+                ? boundary_raise(interp, "boundary/copy-fault", "boundary: failed to promote cons car during escape promotion")
                 : promoted_car;
         }
         if (head == null) {
@@ -344,7 +344,7 @@ fn Value* promote_escape_cons(Value* v, Interp* interp, PromotionContext* ctx) {
                     interp.current_scope,
                     true
                 );
-                return raise_error(interp, "boundary: failed to allocate cons escape copy");
+                return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate cons escape copy");
             }
             head.tag = CONS;
             head.cons_val.car = null;
@@ -363,7 +363,7 @@ fn Value* promote_escape_cons(Value* v, Interp* interp, PromotionContext* ctx) {
             Value* next_new = boundary_alloc_value_in_current_escape(interp);
             if (next_new == null) {
                 boundary_cleanup_materialized_value(v, head, interp.current_scope, true);
-                return raise_error(interp, "boundary: failed to allocate cons escape tail");
+                return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate cons escape tail");
             }
             next_new.tag = CONS;
             next_new.cons_val.car = null;
@@ -376,7 +376,7 @@ fn Value* promote_escape_cons(Value* v, Interp* interp, PromotionContext* ctx) {
             if (old_cdr != null && (promoted_cdr == null || is_error(promoted_cdr))) {
                 boundary_cleanup_materialized_value(v, head, interp.current_scope, true);
                 return promoted_cdr == null
-                    ? raise_error(interp, "boundary: failed to promote cons cdr during escape promotion")
+                    ? boundary_raise(interp, "boundary/copy-fault", "boundary: failed to promote cons cdr during escape promotion")
                     : promoted_cdr;
             }
             current_new.cons_val.cdr = promoted_cdr;
@@ -394,7 +394,7 @@ fn Value* promote_escape_closure(Value* v, Interp* interp, PromotionContext* ctx
     Closure* cloned = (Closure*)interp.current_scope.alloc_escape(Closure.sizeof);
     if (cloned == null) {
         promote_escape_abort_budget(ctx);
-        return raise_error(interp, "boundary: failed to allocate closure escape copy");
+        return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate closure escape copy");
     }
     *cloned = *v.closure_val;
     cloned.scope_gen = interp.current_scope.escape_generation;
@@ -406,13 +406,13 @@ fn Value* promote_escape_closure(Value* v, Interp* interp, PromotionContext* ctx
         if (v.closure_val.param_count > usz.max / SymbolId.sizeof) {
             promote_escape_abort_budget(ctx);
             promote_escape_cleanup_partial_closure(cloned);
-            return raise_error(interp, "boundary: failed to allocate closure params during escape promotion");
+            return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate closure params during escape promotion");
         }
         cloned.params = (SymbolId*)interp.current_scope.alloc_escape(SymbolId.sizeof * v.closure_val.param_count);
         if (cloned.params == null) {
             promote_escape_abort_budget(ctx);
             promote_escape_cleanup_partial_closure(cloned);
-            return raise_error(interp, "boundary: failed to allocate closure params during escape promotion");
+            return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate closure params during escape promotion");
         }
         for (usz i = 0; i < v.closure_val.param_count; i++) {
             cloned.params[i] = v.closure_val.params[i];
@@ -425,7 +425,7 @@ fn Value* promote_escape_closure(Value* v, Interp* interp, PromotionContext* ctx
             !method_signature_copy_to_escape(cloned_sig, v.closure_val.type_sig, interp.current_scope)) {
             promote_escape_abort_budget(ctx);
             promote_escape_cleanup_partial_closure(cloned);
-            return raise_error(interp, boundary_copy_fault_message(BOUNDARY_COPY_FAULT_CLOSURE_TYPE_SIG_COPY));
+            return boundary_raise(interp, "boundary/copy-fault", (String)boundary_copy_fault_message(BOUNDARY_COPY_FAULT_CLOSURE_TYPE_SIG_COPY));
         }
         cloned.type_sig = cloned_sig;
     }
@@ -435,7 +435,7 @@ fn Value* promote_escape_closure(Value* v, Interp* interp, PromotionContext* ctx
         if (env_scope == null) {
             promote_escape_abort_budget(ctx);
             promote_escape_cleanup_partial_closure(cloned);
-            return raise_error(interp, "boundary: failed to allocate detached closure env scope");
+            return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate detached closure env scope");
         }
         BoundaryEnvCopyResult copied = boundary_copy_env_to_target_scope_checked(v.closure_val.env, interp, env_scope, 0, ctx);
         if (!boundary_env_copy_result_ok(copied) || copied.env == null) {
@@ -447,7 +447,7 @@ fn Value* promote_escape_closure(Value* v, Interp* interp, PromotionContext* ctx
             }
             main::scope_release(env_scope);
             promote_escape_cleanup_partial_closure(cloned);
-            return raise_error(interp, "boundary: failed to detach closure env during escape promotion");
+            return boundary_raise(interp, "boundary/copy-fault", "boundary: failed to detach closure env during escape promotion");
         }
         cloned.env = copied.env;
         cloned.env_scope = env_scope;
@@ -462,7 +462,7 @@ fn Value* promote_escape_closure(Value* v, Interp* interp, PromotionContext* ctx
     if (result == null) {
         promote_escape_abort_budget(ctx);
         promote_escape_cleanup_partial_closure(cloned);
-        return raise_error(interp, "boundary: failed to allocate closure escape copy");
+        return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate closure escape copy");
     }
     result.tag = CLOSURE;
     result.closure_val = cloned;

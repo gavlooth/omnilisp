@@ -9,8 +9,8 @@ Last condensed: 2026-04-12
 This file is now the sole live backlog.
 The Live Queue lists only still-open work.
 
-Current live parent count: 2
-Explicit deferred subtasks are listed under their active parent items.
+Current live parent count: 0
+Live blocker queue is closed as of 2026-04-22.
 
 Completed backlog snapshots:
 
@@ -22,6 +22,68 @@ Completed backlog snapshots:
 Recently Closed is retained below as a short audit trail.
 
 ## Live Queue
+
+- none currently; live queue closed as of 2026-04-22.
+
+## Recently Closed
+
+- [x] `TENSOR-100H-VK-GENERAL-EIGEN-DEFLATION-001` implement active-submatrix
+  deflation for mixed-block Vulkan general eigen spectra.
+  - classification: Runtime / Targeted.
+  - task: extended the native Vulkan general eigensolver to deflate converged
+    trailing scalar blocks and continue QR on the remaining active leading
+    submatrix, so mixed spectra such as a 2x2 rotation block plus a trailing
+    real scalar no longer fail closed.
+  - shipped: added trailing scalar deflation before the full-matrix QR loop,
+    leading active 2x2 analytic solve through the accumulated basis, scratch
+    output staging to preserve basis columns while reconstructing vectors,
+    regenerated SPIR-V, and added mixed-block residual regressions/probes for
+    `Float64`, `Float32`, `Complex128`, and `Complex64`.
+  - validation: `glslangValidator`/`spirv-val`, `scripts/build_omni_chelpers.sh`,
+    `c3c build --obj-out obj`, and direct mixed-block residual probes for all
+    four Vulkan general eigen dtypes returned `true`.
+  - negative-memory closure: the previous shift-perturbation-only approach is
+    still invalidated; active-submatrix deflation is the shipped fix.
+  - references: `docs/plans/vulkan-eigensolver-plan-2026-04-17.md`,
+    `csrc/tensor_vulkan_general_eigen_complex128.comp`,
+    `csrc/tensor_vulkan_general_eigen_f64.comp`.
+
+- [x] `TENSOR-100H-VK-REAL-GENERAL-EIGEN-001` implement native Vulkan
+  real-valued general `matrix/eigenpairs` for dense row-major `Float64` and
+  `Float32`.
+  - classification: Runtime / Targeted.
+  - shipped: added checked-in real general Vulkan shaders/SPIR-V for `Float64`
+    and `Float32`, helper ABI declarations/build-manifest wiring, public
+    `matrix/eigenpairs` routing to backend-native complex-valued output tensors,
+    availability bits, real diagonal/lazy/no-LAPACK tests, and exact 2x2
+    complex-shift residual coverage.
+  - validation: `glslangValidator`/`spirv-val` during SPIR-V regeneration,
+    `scripts/build_omni_chelpers.sh`, `c3c build --obj-out obj`, direct
+    Float64/Float32 exact-shift residual probes, and focused advanced
+    collections improved to `pass=2004 fail=17` with only unrelated ML/Vulkan
+    contract failures remaining.
+  - references: `docs/plans/vulkan-eigensolver-plan-2026-04-17.md`,
+    `src/lisp/prim_tensor_matrix_eigen_primitives.c3`,
+    `csrc/tensor_vulkan_helpers_matrix_ops_eigen_complex.c`.
+- [x] `TENSOR-100H-VK-COMPLEX-GENERAL-EIGEN-HARDENING-001` measure and harden
+  the shipped Vulkan fixed-width complex general eigensolver for larger or
+  difficult spectra.
+  - classification: Runtime / Targeted.
+  - shipped: added shift regularization plus direct 2x2 analytic eigenpair
+    handling for exact complex-shift cases in `Complex128`/`Complex64` shaders,
+    added exact-shift residual tests, and extended
+    `scripts/run_vulkan_math_perf_probe.sh` with named general eigenpair
+    fixtures for real and complex Vulkan routes.
+  - validation: direct `Complex128`/`Complex64` exact-shift residual probes,
+    `scripts/run_vulkan_math_perf_probe.sh` completed the new general
+    eigenpair fixtures, and focused advanced collections no longer report
+    eigenpair failures.
+  - promoted residual: `TENSOR-100H-VK-GENERAL-EIGEN-DEFLATION-001` tracks the
+    separately discovered active-submatrix deflation gap.
+  - references: `docs/plans/vulkan-eigensolver-plan-2026-04-17.md`,
+  `scripts/run_vulkan_math_perf_probe.sh`,
+    `csrc/tensor_vulkan_general_eigen_complex128.comp`,
+    `csrc/tensor_vulkan_general_eigen_complex64.comp`.
 
 - [x] `OWNERSHIP-HARDENING-001` codify and harden the completed
   TEMP/ESCAPE ownership model
@@ -164,7 +226,7 @@ Recently Closed is retained below as a short audit trail.
       telemetry wave.
   - validation: `git diff --check -- docs/ARCHITECTURE.md docs/C3_STYLE.md
     docs/todo_parts/todo_part_01.md TODO.md`; no runtime semantics changed.
-- [ ] `TENSOR-100F` continue the Vulkan math library baseline
+- [x] `TENSOR-100F` continue the Vulkan math library baseline
   - objective: grow the current correctness-first Vulkan backend into an
     Omni-owned portable math library while preserving the existing
     backend-neutral public surface.
@@ -225,7 +287,22 @@ Recently Closed is retained below as a short audit trail.
     6. add stride-aware GPU dispatch only after a specific view-aware helper
        ABI and validation plan exists; `matrix/transpose-view` alone is a
        CPU-readable view contract, not GPU view execution.
-  - deferred TODOs that remain open under this parent:
+  - closed 2026-04-22: all `TENSOR-100F` Vulkan math baseline slices are now
+    either shipped, measured closed, or promoted to a separately named residual.
+    The only remaining backend-native complex eigensolver work is tracked as
+    `TENSOR-100H-COMPLEX-EIGEN-VULKAN-GENERAL`, not as another open
+    `TENSOR-100F` child.
+  - closure validation:
+    - `scripts/run_validation_container.sh scripts/run_global_gates.sh` passed
+      the file-size gate, normal build, normal lisp slices, compiler slice,
+      and FTXUI smokes.
+    - ASAN build was explicitly skipped by the global gate because the current
+      C3 toolchain reports `Address sanitizer is only supported on Linux,
+      FreeBSD, NetBSD, Darwin and Windows.`
+    - The broad run surfaced and fixed `ast_arena_alloc` corrupt-current-chunk
+      fail-closed behavior and JIT one-argument `List` / `Array` constructor
+      shortcut semantics before this parent was closed.
+  - historical and promoted TODOs tracked from this parent:
     - [x] Split the largest Vulkan helper file top-down through the
       loader/context/buffer lifecycle boundary.
       - closed: `csrc/tensor_vulkan_helpers.c` now includes shared private
@@ -271,24 +348,20 @@ Recently Closed is retained below as a short audit trail.
       - unresolved validation signal: focused bounded-container
         `advanced-collections-module` still fails `1580/1` on
         `realize propagates single-arg source errors`.
-    - [ ] Continue largest-first source splitting from
+    - [x] Continue largest-first source splitting from
       `src/lisp/prim_tensor_matrix.c3`.
-      - blocker/defer reason: after the Tensor `map` split, current source
-        line counts put `src/lisp/prim_tensor_matrix.c3` at about 8.2k LOC,
-        ahead of `csrc/tensor_vulkan_helpers.c` at about 7.3k LOC,
-        `src/lisp/prim_tensor.c3` at about 6.8k LOC, and
-        `csrc/tensor_cuda_helpers.c` at about 6.8k LOC.
-      - concrete next step: inspect `src/lisp/prim_tensor_matrix.c3` top-down
-        and split the largest coherent matrix primitive/helper family without
-        changing runtime semantics.
-      - prerequisite state: preserve current Tensor public surface decisions
-        in `.agents/PLAN.md`, avoid reviving stale `linalg/matmul` direction,
-        and keep new C3 sources wired through the repo's existing build/module
-        conventions.
-      - validation: `c3c build --obj-out obj`; `git diff --check`;
-        bounded-container `basic`; focused Tensor validation for the touched
-        primitive family. Keep tracking the current `realize` failure as an
-        unresolved pre-existing signal unless the next split touches it.
+      - closed 2026-04-22 as a stale residual: the matrix primitive family has
+        already been split into `src/lisp/prim_tensor_matrix*.c3` files and no
+        current matrix split target exceeds the 1000 LOC owner gate.
+      - current measured counts: `src/lisp/prim_tensor_matrix.c3` is 173 LOC,
+        `src/lisp/prim_tensor_matrix_lu_tensor_ops.c3` is 665 LOC, and
+        `csrc/tensor_vulkan_helpers.c` is 265 LOC.
+      - preserved contract: no runtime semantics changed; the remaining
+        `TENSOR-100F` open items are runtime/performance Vulkan math work, not
+        source-splitting work.
+      - validation: repository code-file count scan and
+        `scripts/check_file_size_gate.sh` show no tracked code files above the
+        1000 LOC gate.
     - [x] Harden Vulkan `map` preflight ordering before additional callable
       broadening.
       - closed: Vulkan public `map` lowering and lazy map realization now
@@ -336,50 +409,62 @@ Recently Closed is retained below as a short audit trail.
         `pass=68 fail=0`; bounded-container focused
         `advanced-collections-module` `pass=1335 fail=0`; stack suite
         `pass=23 fail=0`; targeted `git diff --check`.
-    - [ ] Measure and optimize the storage-backed large-`k` Vulkan
+    - [x] `TENSOR-100F-VK-SVD-LARGE-K-PERF-001` measure and optimize the storage-backed large-`k` Vulkan
       `matrix/singular-values` / `matrix/svd` path with tiled or
       multi-dispatch execution if runtime measurements justify it.
-      - blocker/defer reason: the semantic `k > 64` cap removal now uses
+      - closed 2026-04-22: the semantic `k > 64` cap removal now uses
         hidden storage-buffer Gram scratch behind the public Vulkan outputs,
-        but it intentionally preserves the existing correctness-first serial
-        Jacobi execution shape.
-      - next step: collect runtime measurements for representative `65+`
-        dense, diagonal, and rank-deficient inputs; only then design a tiled
-        Gram build or staged Jacobi helper that keeps `Float64` semantics,
-        Vulkan result placement, and no hidden LAPACK/CPU fallback.
+        and current in-process measurements do not justify replacing the
+        existing correctness-first serial Jacobi execution shape.
+      - measurement checkpoint 2026-04-22:
+        `docs/plans/vulkan-math-performance-measurements-2026-04-22.md`
+        records the checked-in probe script and current host results. The
+        default plus scale probe covers 64/65 fixtures, 96/128/192 `Float64`
+        identity SVD, and 128x128 all-ones SVD; measured operation times stayed
+        in the 310-615 ms range.
+      - future reopen rule: open a new item, not this closed residual, if
+        repeated measurements at a named larger size show the serial
+        Jacobi/storage-scratch shape is the bottleneck. Any new rewrite must
+        preserve `Float64`/`Float32` semantics, Vulkan result placement, and no
+        hidden LAPACK/CPU fallback.
       - validation: shader compile/`spirv-val`, helper rebuild,
         `c3c build --obj-out obj`, reconstruction/value checks,
         no-`LAPACKE_dgesvd` counter checks, focused host plus
         bounded-container advanced collections tests.
-    - [ ] Measure and optimize the storage-backed large-`n` Vulkan symmetric
+    - [x] `TENSOR-100F-VK-EIGEN-LARGE-N-PERF-001` measure and optimize the storage-backed large-`n` Vulkan symmetric
       `matrix/eigenvalues` / `matrix/eigenvectors` path with tiled or staged
       execution if runtime measurements justify it.
-      - blocker/defer reason: the semantic `n > 64` cap removal now uses
+      - closed 2026-04-22: the semantic `n > 64` cap removal now uses
         storage-buffer scratch behind the public Vulkan outputs, but it keeps
-        the correctness-first Jacobi iteration shape and remains bounded by
-        helper resource limits, 32-bit shader index guards, and the Jacobi
-        iteration guard.
-      - next step: collect runtime measurements for representative `65+`
-        dense symmetric, diagonal, repeated-value, and near-degenerate inputs;
-        only then design a tiled scratch layout or staged Jacobi helper that
-        preserves `tensor/not-symmetric`, `tensor/no-convergence`, Vulkan
-        output placement, and no hidden `LAPACKE_dsyev` fallback.
+        the correctness-first Jacobi iteration shape because current
+        in-process measurements do not justify a tiled or staged rewrite.
+      - measurement checkpoint 2026-04-22:
+        `docs/plans/vulkan-math-performance-measurements-2026-04-22.md`
+        records the checked-in probe script and current host results. The
+        default plus scale probe covers 64/65 fixtures and 128x128 `Float64`
+        identity/all-ones eigenvalues; measured operation times stayed in the
+        304-494 ms range.
+      - future reopen rule: open a new item, not this closed residual, if
+        repeated measurements at a named larger size show the current serial
+        Jacobi/storage-scratch shape is the dominant cost. Any new rewrite must
+        preserve `tensor/not-symmetric`, `tensor/no-convergence`, Vulkan output
+        placement, and no hidden `LAPACKE_dsyev` fallback.
       - validation: shader compile/`spirv-val`, helper rebuild,
         `c3c build --obj-out obj`, residual/vector-placement checks,
         no-`LAPACKE_dsyev` counter checks, focused host plus
         bounded-container advanced collections tests.
-    - [ ] Add direct Vulkan general `matrix/eigenpairs`.
-      - blocker/defer reason: the public `matrix/eigenpairs` result contract
-        is still pointer-backed `BigComplex`, which must not be lowered into
-        fixed-width Vulkan buffers or host-built behind a Vulkan claim.
-      - next step: choose whether the public Vulkan-ready eigenpairs contract
-        returns native `Complex128`/`Complex64` tensors or an explicitly
-        approved replacement result contract; then implement a real Vulkan
-        Hessenberg/QR or real-Schur lane.
-      - validation: fixed-width complex CPU dtype/oracle coverage must stay
-        green, then Vulkan shader compile/`spirv-val`, helper rebuild,
-        residual checks, no-`LAPACKE_dgeev` counter checks, and focused host
-        plus bounded-container tests.
+    - [x] Retire stale direct Vulkan general `matrix/eigenpairs` umbrella.
+      - closed/superseded: fixed-width `matrix/eigenpairs` now returns
+        `Complex128` or `Complex64` result tensors on CPU, so the old
+        pointer-backed `BigComplex` blocker no longer describes the active
+        contract.
+      - remaining work is tracked by
+        `TENSOR-100H-COMPLEX-EIGEN-VULKAN-GENERAL`, which requires a
+        backend-native non-Hermitian complex eigensolver and still forbids
+        hidden CPU/LAPACK fallback.
+      - validation: focused Vulkan fixed-complex fail-closed tests now assert
+        `zgeev`/`cgeev` counters are unchanged for Vulkan `Complex128` /
+        `Complex64` `matrix/eigenpairs`.
     - [x] Make Vulkan `Float32` large-dense SVD robust beyond the previous
       dense all-ones / rank-deficient `65x65` failure.
       - closed: scale-aware eigenvalue tolerance plus orthonormal completion
@@ -617,23 +702,201 @@ Recently Closed is retained below as a short audit trail.
         targeted diff hygiene passed. Review follow-up added a native guard for
         fixed-complex realified Jacobi iteration-count overflow and covered
         non-diagonal lazy, wide, zero-size, and guard paths.
-    - [ ] `TENSOR-100H-SVD-FACTORS` add full fixed-width complex
+    - [x] `TENSOR-100H-SVD-FACTORS-CPU` add CPU fixed-width complex
       `matrix/svd` factor output.
-      - blocker/defer reason: fixed-complex singular values are landed, but
-        full SVD remains a separate result contract because `u` and `v` must
-        preserve `Complex128`/`Complex64` while `s` must be component-width
-        real. Realification is valid for singular values only; it is not a
-        reliable source of complex SVD factors because duplicated real
-        singular subspaces can rotate arbitrarily.
-      - next step: land CPU `Complex128`/`Complex64` oracle behavior first,
-        then Vulkan dense row-major zero-offset execution. Use Hermitian
-        Gram/Jacobi or optional complex LAPACK for CPU; use native complex
-        Hermitian Gram/Jacobi shaders for Vulkan. Do not include CUDA in this
-        lane.
-      - validation: complex factor reconstruction via `U * diag(S) * V^H`,
-        dtype/shape/device checks, rank-deficient and empty-axis cases,
-        no-hidden-fallback tests, shader/helper validation where applicable,
-        focused host and bounded-container advanced tests, docs parity, Stage
-        3 source parity, and `git diff --check`.
-    - [ ] `TENSOR-100H-CUDA-SVD-NORMS` add CUDA fixed-width complex
+      - closed: CPU `matrix/svd` accepts `Complex128` and `Complex64`.
+        `Complex128` returns Complex128 `u`/`v` and Float64 `s`; `Complex64`
+        returns Complex64 `u`/`v` and Float32 `s`. The implementation uses a
+        native complex Hermitian Gram/eigenvector path for public factors
+        rather than realified `U`/`V`; Complex64 is computed through the
+        Complex128 oracle and narrowed at the output boundary.
+      - validation: `c3c build --obj-out obj`; focused host
+        `advanced-collections-module` passed `1937/0`; code-file LOC gate was
+        checked before the test run.
+    - [x] `TENSOR-100H-SVD-FACTORS-VULKAN` add Vulkan fixed-width complex
+      `matrix/svd` factor output.
+      - closed: Vulkan dense row-major fixed-width complex `matrix/svd` now
+        has native Complex128/Complex64 factor shaders and helper ABI wiring.
+        Complex inputs return complex `u`/`v` tensors on Vulkan and component
+        real `s` tensors (`Float64`/`Float32`) without CPU/LAPACK fallback.
+      - validation: `glslangValidator` shader compilation and `spirv-val`
+        validation via generated SPIR-V refresh; `c3c build --obj-out obj`;
+        focused host
+        `advanced-collections-module` passed `1941/0`; build-config parity,
+        code-file LOC gate, and `git diff --check` passed.
+    - [x] `TENSOR-100H-CUDA-SVD-NORMS-LOADER` add runtime-loaded CUDA
+      cuSOLVER SVD discovery.
+      - closed: CUDA now has dynamic cuSOLVER DN resolution for
+        `cusolverDnZgesvd` and `cusolverDnCgesvd`, availability probes,
+        a disable-for-tests hook, and `gesvd` call counters. `tensor-backends`
+        exposes `cusolver` and `cusolver-complex-svd` loader booleans plus
+        operation-specific `matrix-singular-values-complex128`,
+        `matrix-singular-values-complex64`, `matrix-svd-complex128`, and
+        `matrix-svd-complex64` fields.
+      - shipped contract: operation-specific CUDA complex SVD fields remain
+        `false` until the layout adapters and execution routes land; the
+        loader does not make cuSOLVER a link-time dependency and does not
+        claim broad CUDA complex numerical matrix support.
+      - validation: `c3c build --obj-out obj`; focused host
+        `advanced-collections-module` passed `1943/0`.
+    - [x] `TENSOR-100H-CUDA-SVD-NORMS-ADAPTERS` add CUDA complex SVD layout
+      adapters and generated PTX.
+      - closed: the existing CUDA complex matrix PTX module now includes
+        row-major Omni to column-major cuSOLVER input adapters, wide-matrix
+        adjoint-input preparation, cuSOLVER column-major `U` to public
+        row-major `u`, and cuSOLVER `VT = V^H` to public row-major `v`
+        conversion kernels for Complex128 and Complex64.
+      - shipped contract: helper entry points validate shape products and
+        byte lengths before CUDA availability, allocation, or launch. The
+        generated PTX is split into
+        `csrc/tensor_cuda_complex_matrix_ptx_part_00.inc` and
+        `csrc/tensor_cuda_complex_matrix_ptx_part_01.inc` to stay under the
+        1000 LOC gate.
+      - validation: `/usr/local/cuda-13.0/bin/nvcc --ptx -arch=compute_75`,
+        `/usr/local/cuda-13.0/bin/ptxas -arch=sm_75`,
+        `cc -fsyntax-only -I csrc csrc/tensor_cuda_helpers.c`,
+        `scripts/build_omni_chelpers.sh`, `c3c build --obj-out obj`, focused
+        host `advanced-collections-module` passed `1994/0`, and
+        `scripts/check_file_size_gate.sh` passed.
+      - negative-memory constraint: do not realify fixed-width complex CUDA
+        SVD through doubled real matrices, do not return cuSOLVER `VT` as
+        public `v`, and do not silently copy CUDA operands to CPU/LAPACK.
+    - [x] `TENSOR-100H-CUDA-SVD-NORMS-EXEC` route CUDA fixed-width complex
       `matrix/singular-values`, spectral/nuclear `matrix/norm`, and
+      `matrix/svd`.
+      - closed: CUDA Complex128/Complex64 tensors now route
+        `matrix/singular-values`, spectral/nuclear `matrix/norm`, and
+        reduced-factor `matrix/svd` through cuSOLVER `gesvd` with the shipped
+        adapter ABI.
+      - shipped contract: CUDA results remain on CUDA as real singular-value
+        tensors plus Complex128/Complex64 `u`/`v` factor tensors. Wide inputs
+        use the adjoint-input path and map cuSOLVER factors back to public
+        Omni row-major `u`/`v`; empty axes return zero-length CUDA result
+        tensors without allocation.
+      - validation: `cc -fsyntax-only -I csrc csrc/tensor_cuda_helpers.c`,
+        `scripts/build_omni_chelpers.sh`, `c3c build --obj-out obj`, focused
+        host `advanced-collections-module` passed `1999/0`,
+        `scripts/check_file_size_gate.sh`, and targeted direct CUDA probes.
+      - negative-memory constraint: no CPU/LAPACK fallback for CUDA operands
+        and no broad `matrix-numerical-complex128` /
+        `matrix-numerical-complex64` claim for this narrow family.
+    - [x] `TENSOR-100H-COMPLEX-EIGEN-F64-EIGENPAIRS` migrate CPU Float64
+      `matrix/eigenpairs` result tensors to fixed-width complex.
+      - closed: CPU `Float64` `matrix/eigenpairs` now returns `Complex128`
+        `values` and `vectors` tensors for both LAPACK and pure fallback
+        paths, replacing the previous `BigComplex` hidden result type for this
+        fixed-width contract slice.
+      - shipped contract: existing public name and Float64 input acceptance are
+        unchanged; BigComplex remains a separate high-precision family, not the
+        backend-neutral result dtype for Float64 eigenpairs.
+      - validation: `c3c build --obj-out obj`; focused host
+        `advanced-collections-module` passed `1943/0`.
+    - [x] `TENSOR-100H-COMPLEX-EIGEN-HERMITIAN-CPU` add CPU Hermitian
+      `Complex128`/`Complex64` `matrix/eigenvalues` and `matrix/eigenvectors`.
+      - closed: CPU `matrix/eigenvalues` now accepts exact-Hermitian
+        `Complex128` and `Complex64` tensors and returns component-real value
+        tensors (`Float64` / `Float32`).
+      - closed: CPU `matrix/eigenvectors` now returns `{ values, vectors }`
+        where values are component-real and vectors preserve `Complex128` or
+        `Complex64` input dtype.
+      - shipped contract: the correctness path uses an exact Hermitian gate and
+        pure Complex128 Jacobi factorization with deterministic phase
+        normalization, widening/narrowing `Complex64` around the oracle.
+      - validation: `c3c build --obj-out obj`; focused host
+        `advanced-collections-module` passed `1948/0`.
+      - prerequisites: fixed-width eigen result builder helpers from
+        `TENSOR-100H-COMPLEX-EIGEN-F64-EIGENPAIRS`.
+      - negative-memory constraint: do not reintroduce BigComplex as the hidden
+        backend-neutral output dtype for fixed-width CPU/GPU eigen contracts.
+      - negative-memory constraint: do not reuse the SVD Hermitian power helper
+        for general Hermitian eigenvalues because it clamps negative
+        eigenvalues for Gram-matrix semantics.
+    - [x] `TENSOR-100H-COMPLEX-EIGEN-HERMITIAN-CAPS` expose narrow Hermitian
+      complex eigen capability fields.
+      - closed: `tensor-backends` now reports
+        `matrix-hermitian-eigen-complex128` and
+        `matrix-hermitian-eigen-complex64` true only on CPU, matching the
+        shipped Hermitian CPU oracle.
+      - shipped contract at closure time: `matrix-eigenpairs-complex128` and
+        `matrix-eigenpairs-complex64` remained false on every backend until the
+        general fixed-width eigenpair contract shipped.
+      - validation: `c3c build --obj-out obj`; focused host
+        `advanced-collections-module` passed `1948/0`.
+      - negative-memory constraint: broad `matrix-numerical-complex128` /
+        `matrix-numerical-complex64` fields must not imply complex eigenpair
+        support.
+    - [x] `TENSOR-100H-LAPACK-DGEEV-DISABLE-GATE` make the `dgeev` disable
+      hook govern execution, not only capability reporting.
+      - closed: `omni_tensor_backend_lapack_dgeev` now returns unavailable when
+        the test-only disable hook or `OMNI_TENSOR_DISABLE_LAPACK_DGEEV` marks
+        `dgeev` disabled.
+      - shipped contract: the forced pure `matrix/eigenpairs` fallback test now
+        asserts the `dgeev` call counter is unchanged while disabled, so the
+        no-LAPACK path cannot falsely pass by calling LAPACK anyway.
+      - validation: `c3c build --obj-out obj`; focused host
+        `advanced-collections-module` passed `1948/0`.
+      - negative-memory constraint: do not treat backend `available()` probes as
+        sufficient fallback verification unless execution counters or equivalent
+        side effects prove the disabled routine was not called.
+    - [x] `TENSOR-100H-COMPLEX-EIGEN-GENERAL-CPU` add CPU general
+      fixed-width `matrix/eigenpairs` for Float32, Complex128, and Complex64.
+      - closed: CPU `matrix/eigenpairs` now accepts square `Float32`,
+        `Complex128`, and `Complex64` tensors in addition to `Float64`.
+      - shipped contract: `Float32` and `Complex64` return `Complex64`
+        `values`/`vectors`; `Float64` and `Complex128` return `Complex128`
+        `values`/`vectors`.
+      - shipped contract: Float32 routes through LAPACK `sgeev` when available
+        and through the widened pure real fallback when disabled/unavailable;
+        Complex128/Complex64 route through LAPACK `zgeev`/`cgeev` and fail
+        closed with `tensor/backend-unavailable` when those complex general
+        LAPACK entrypoints are disabled/unavailable.
+      - validation: `c3c build --obj-out obj`; focused host
+        `advanced-collections-module` passed `1969/0`.
+      - negative-memory constraint: keep CUDA eigen false unless a separate
+        cuSOLVER eigen lane is opened.
+      - negative-memory constraint: do not use realification as a pure general
+        complex eigensolver because it cannot distinguish a complex eigenvalue
+        from its conjugate for arbitrary complex matrices.
+    - [x] `TENSOR-100H-COMPLEX-EIGEN-VULKAN-HERMITIAN` add backend-native
+      Vulkan Hermitian fixed-width complex `matrix/eigenvalues` and
+      `matrix/eigenvectors`.
+      - closed: Vulkan `Complex128`/`Complex64` Hermitian tensors now route
+        through native Jacobi shaders and helper ABIs.
+      - shipped contract: `matrix/eigenvalues` returns Vulkan-placed
+        component-real `Float64`/`Float32` value tensors; `matrix/eigenvectors`
+        returns Vulkan-placed values plus `Complex128`/`Complex64` vector
+        tensors.
+      - shipped contract: non-Hermitian Vulkan complex inputs fail closed with
+        `tensor/not-symmetric`; no CPU/LAPACK fallback is used.
+      - validation: shader compile plus `spirv-val`;
+        `./scripts/build_omni_chelpers.sh`; `c3c build --obj-out obj`;
+        focused host `advanced-collections-module` passed `1975/0`;
+        `scripts/check_file_size_gate.sh`.
+    - [x] `TENSOR-100H-COMPLEX-EIGEN-VULKAN-GENERAL` add backend-native Vulkan
+      general fixed-width complex `matrix/eigenpairs`.
+      - closed 2026-04-22: Vulkan `Complex128` and `Complex64` general
+        `matrix/eigenpairs` now route through backend-native serial shifted-QR
+        shaders with private scratch/status buffers and no CPU/LAPACK fallback.
+      - shipped contract: public results are Vulkan-placed fixed-width complex
+        `values` `[n]` and `vectors` `[n n]`; output columns are sorted by the
+        existing magnitude/real/imag ordering and phase-normalized by the
+        largest component.
+      - shipped contract: real-valued Vulkan `Float64`/`Float32`
+        `matrix/eigenpairs` remain fail-closed; this item only closes the
+        fixed-width complex TENSOR-100H lane.
+      - design checkpoint 2026-04-22: `docs/plans/vulkan-eigensolver-plan-2026-04-17.md`
+        now records the chosen shared solver boundary: staged complex
+        Hessenberg reduction plus implicit shifted QR, with private status
+        buffer, public Vulkan `Complex128`/`Complex64` values/vectors outputs,
+        no public status sentinels, and no hidden CPU/LAPACK fallback.
+      - implementation checkpoint 2026-04-22: the shipped first native solver is
+        a serial shifted-QR implementation over dense row-major device buffers
+        with explicit no-convergence status. Full Hessenberg staging remains a
+        future performance/numerical-hardening optimization, not an open
+        capability blocker.
+      - validation: shader compile plus `spirv-val`; helper rebuild; `c3c build
+        --obj-out obj`; direct Complex128/Complex64 Vulkan triangular probes;
+        bounded focused `advanced-collections-module` passed.
+      - negative-memory constraint: no hidden CPU/LAPACK fallback for Vulkan
+        operands; do not realify arbitrary complex matrices because that loses
+        eigenvalue/eigenvector pairing semantics.

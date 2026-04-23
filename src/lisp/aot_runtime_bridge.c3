@@ -70,7 +70,7 @@ fn lisp::Value* index(lisp::Value* collection, lisp::Value* idx) {
     lisp::SymbolId ref_sym = (lisp::SymbolId)0;
     if (!aot_intern_checked(interp, "ref", &ref_sym)) return aot_make_error_best_effort(interp, "aot index: invalid or uninternable ref symbol");
     lisp::Value* ref_fn = interp.global_env.lookup(ref_sym);
-    if (ref_fn == null) return lisp::raise_error(interp, "ref: primitive not found");
+    if (ref_fn == null) return lisp::raise_error_with_payload_names(interp, "runtime", "runtime/evaluation-error", "ref: primitive not found", null);
     lisp::Value* args = lisp::make_nil(interp);
     args = lisp::make_cons(interp, idx, args);
     args = lisp::make_cons(interp, collection, args);

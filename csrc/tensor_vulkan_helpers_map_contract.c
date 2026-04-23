@@ -306,7 +306,7 @@ int omni_tensor_backend_vulkan_map_f64(
     if (!omni_tensor_backend_vulkan_float64_available()) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
     if (element_count == 0 || byte_len == 0) return OMNI_TENSOR_VULKAN_SUCCESS;
     if (element_count > UINT32_MAX || byte_len != element_count * sizeof(double)) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
-    if (mode > 2u || op > 5u) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
+    if (mode > 2u || op > 7u) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
     if (out_rank > UINT32_MAX || left_rank > UINT32_MAX || right_rank > UINT32_MAX) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
     if (out_rank > 0 && (out_shape == NULL || out_strides == NULL)) return OMNI_TENSOR_VULKAN_INVALID;
     if (left_rank > 0 && (left_shape == NULL || left_strides == NULL)) return OMNI_TENSOR_VULKAN_INVALID;

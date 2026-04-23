@@ -226,6 +226,7 @@ fn bool matrix_solve_gaussian_elimination_complex64(Complex64Val* coefficients, 
 fn Value* matrix_solve_complex128_cpu_value(TensorVal* coefficients, TensorVal* rhs, usz n, usz rhs_cols, usz[] result_shape, Interp* interp) {
     Complex128Val* coefficient_work = null;
     if (coefficients.byte_len > 0) {
+        if (coefficients.data == null) return tensor_runtime_raise(interp, "matrix/solve: coefficient tensor backing storage is missing");
         coefficient_work = (Complex128Val*)mem::malloc(coefficients.byte_len);
         if (coefficient_work == null) {
             return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "matrix/solve: failed to allocate Complex128 coefficient workspace", null);
@@ -244,6 +245,7 @@ fn Value* matrix_solve_complex128_cpu_value(TensorVal* coefficients, TensorVal* 
     }
     Complex128Val* rhs_work = null;
     if (rhs_work_bytes > 0) {
+        if (rhs.data == null) return tensor_runtime_raise(interp, "matrix/solve: right-hand tensor backing storage is missing");
         rhs_work = (Complex128Val*)mem::malloc(rhs_work_bytes);
         if (rhs_work == null) {
             return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "matrix/solve: failed to allocate Complex128 right-hand workspace", null);
@@ -273,6 +275,7 @@ fn Value* matrix_solve_complex128_cpu_value(TensorVal* coefficients, TensorVal* 
 fn Value* matrix_solve_complex64_cpu_value(TensorVal* coefficients, TensorVal* rhs, usz n, usz rhs_cols, usz[] result_shape, Interp* interp) {
     Complex64Val* coefficient_work = null;
     if (coefficients.byte_len > 0) {
+        if (coefficients.data == null) return tensor_runtime_raise(interp, "matrix/solve: coefficient tensor backing storage is missing");
         coefficient_work = (Complex64Val*)mem::malloc(coefficients.byte_len);
         if (coefficient_work == null) {
             return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "matrix/solve: failed to allocate Complex64 coefficient workspace", null);
@@ -291,6 +294,7 @@ fn Value* matrix_solve_complex64_cpu_value(TensorVal* coefficients, TensorVal* r
     }
     Complex64Val* rhs_work = null;
     if (rhs_work_bytes > 0) {
+        if (rhs.data == null) return tensor_runtime_raise(interp, "matrix/solve: right-hand tensor backing storage is missing");
         rhs_work = (Complex64Val*)mem::malloc(rhs_work_bytes);
         if (rhs_work == null) {
             return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "matrix/solve: failed to allocate Complex64 right-hand workspace", null);
@@ -320,6 +324,7 @@ fn Value* matrix_solve_complex64_cpu_value(TensorVal* coefficients, TensorVal* r
 fn Value* matrix_inverse_complex128_cpu_value(TensorVal* matrix, usz n, usz[] result_shape, Interp* interp) {
     Complex128Val* coefficient_work = null;
     if (matrix.byte_len > 0) {
+        if (matrix.data == null) return tensor_runtime_raise(interp, "matrix/inverse: tensor backing storage is missing");
         coefficient_work = (Complex128Val*)mem::malloc(matrix.byte_len);
         if (coefficient_work == null) {
             return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "matrix/inverse: failed to allocate Complex128 coefficient workspace", null);
@@ -364,6 +369,7 @@ fn Value* matrix_inverse_complex128_cpu_value(TensorVal* matrix, usz n, usz[] re
 fn Value* matrix_inverse_complex64_cpu_value(TensorVal* matrix, usz n, usz[] result_shape, Interp* interp) {
     Complex64Val* coefficient_work = null;
     if (matrix.byte_len > 0) {
+        if (matrix.data == null) return tensor_runtime_raise(interp, "matrix/inverse: tensor backing storage is missing");
         coefficient_work = (Complex64Val*)mem::malloc(matrix.byte_len);
         if (coefficient_work == null) {
             return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "matrix/inverse: failed to allocate Complex64 coefficient workspace", null);
@@ -476,6 +482,7 @@ fn bool matrix_alloc_pivot_work(usz n, usz** out_pivots) {
 fn Value* matrix_lu_complex128_cpu_value(TensorVal* matrix, usz n, Interp* interp) {
     Complex128Val* lu_work = null;
     if (matrix.byte_len > 0) {
+        if (matrix.data == null) return tensor_runtime_raise(interp, "matrix/lu: tensor backing storage is missing");
         lu_work = (Complex128Val*)mem::malloc(matrix.byte_len);
         if (lu_work == null) {
             return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "matrix/lu: failed to allocate Complex128 factor workspace", null);
@@ -500,6 +507,7 @@ fn Value* matrix_lu_complex128_cpu_value(TensorVal* matrix, usz n, Interp* inter
 fn Value* matrix_lu_complex64_cpu_value(TensorVal* matrix, usz n, Interp* interp) {
     Complex64Val* lu_work = null;
     if (matrix.byte_len > 0) {
+        if (matrix.data == null) return tensor_runtime_raise(interp, "matrix/lu: tensor backing storage is missing");
         lu_work = (Complex64Val*)mem::malloc(matrix.byte_len);
         if (lu_work == null) {
             return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "matrix/lu: failed to allocate Complex64 factor workspace", null);
@@ -524,6 +532,7 @@ fn Value* matrix_lu_complex64_cpu_value(TensorVal* matrix, usz n, Interp* interp
 fn Value* matrix_determinant_complex128_cpu_value(TensorVal* matrix, usz n, Interp* interp) {
     Complex128Val* lu_work = null;
     if (matrix.byte_len > 0) {
+        if (matrix.data == null) return tensor_runtime_raise(interp, "matrix/determinant: tensor backing storage is missing");
         lu_work = (Complex128Val*)mem::malloc(matrix.byte_len);
         if (lu_work == null) {
             return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "matrix/determinant: failed to allocate Complex128 factor workspace", null);
@@ -559,6 +568,7 @@ fn Value* matrix_determinant_complex128_cpu_value(TensorVal* matrix, usz n, Inte
 fn Value* matrix_determinant_complex64_cpu_value(TensorVal* matrix, usz n, Interp* interp) {
     Complex64Val* lu_work = null;
     if (matrix.byte_len > 0) {
+        if (matrix.data == null) return tensor_runtime_raise(interp, "matrix/determinant: tensor backing storage is missing");
         lu_work = (Complex64Val*)mem::malloc(matrix.byte_len);
         if (lu_work == null) {
             return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "matrix/determinant: failed to allocate Complex64 factor workspace", null);

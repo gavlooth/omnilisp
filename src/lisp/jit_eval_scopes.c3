@@ -10,7 +10,7 @@ fn Value* jit_eval_in_single_scope(Expr* body, Env* call_env, Interp* interp) {
     main::ScopeRegion* saved_scope = null;
     main::ScopeRegion* call_scope = boundary_push_child_scope(interp, &saved_scope);
     if (call_scope == null) {
-        return raise_error(interp, "jit: failed to allocate call scope");
+        return jit_raise(interp, "runtime/out-of-memory", "jit: failed to allocate call scope");
     }
     boundary_assert_interp_scope_chain(interp);
 
@@ -22,7 +22,7 @@ fn Value* jit_eval_in_single_scope(Expr* body, Env* call_env, Interp* interp) {
         registered_defer = main::stack_ctx_defer(current_ctx, &ops, (void*)call_scope);
         if (!registered_defer) {
             boundary_pop_child_scope(interp, saved_scope, call_scope);
-            return raise_error(interp, "jit: failed to register call-scope cleanup");
+            return jit_raise(interp, "runtime/out-of-memory", "jit: failed to register call-scope cleanup");
         }
     }
 
@@ -35,7 +35,7 @@ fn Value* jit_eval_in_single_scope(Expr* body, Env* call_env, Interp* interp) {
     if (registered_defer && !pop_scope_guard_defer(current_ctx)) {
         interp.current_scope = saved_scope;
         boundary_assert_interp_scope_chain(interp);
-        return raise_error(interp, "jit: call-scope defer stack mismatch");
+        return jit_raise(interp, "runtime/invalid-state", "jit: call-scope defer stack mismatch");
     }
     if (jit_tco_scope_trace_enabled()) {
         jit_trace_after_pop_defer("after-pop-defer", active_scope, saved_scope, call_scope);
@@ -68,7 +68,7 @@ fn Value* jit_eval_in_call_scope(Expr* body, Env* call_env, Interp* interp, bool
     // Unified one-scope lane model: TEMP recycles, ESCAPE splices.
     main::ScopeRegion* call_scope = boundary_push_child_scope(interp, &saved_scope);
     if (call_scope == null) {
-        return raise_error(interp, "jit: failed to allocate call scope");
+        return jit_raise(interp, "runtime/out-of-memory", "jit: failed to allocate call scope");
     }
     boundary_assert_interp_scope_chain(interp);
 
@@ -87,7 +87,7 @@ fn Value* jit_eval_in_call_scope(Expr* body, Env* call_env, Interp* interp, bool
         if (!registered_defer) {
             boundary_pop_child_scope(interp, saved_scope, call_scope);
             jit_restore_call_scope_state(interp, saved_state);
-            return raise_error(interp, "jit: failed to register call-scope cleanup");
+            return jit_raise(interp, "runtime/out-of-memory", "jit: failed to register call-scope cleanup");
         }
     }
 
@@ -103,7 +103,7 @@ fn Value* jit_eval_in_call_scope(Expr* body, Env* call_env, Interp* interp, bool
     main::ScopeRegion* active_scope = interp.current_scope;
     if (registered_defer && !pop_scope_guard_defer(current_ctx)) {
         jit_restore_call_scope_state(interp, saved_state);
-        return raise_error(interp, "jit: call-scope defer stack mismatch");
+        return jit_raise(interp, "runtime/invalid-state", "jit: call-scope defer stack mismatch");
     }
     if (jit_tco_scope_trace_enabled()) {
         jit_trace_after_pop_defer("call-after-pop-defer", active_scope, saved_scope, call_scope);

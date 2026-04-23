@@ -102,6 +102,22 @@ build_bearssl() {
 }
 
 # ============================================================
+# LMDB
+# ============================================================
+build_lmdb() {
+    echo "=== Building LMDB ==="
+    cd "$SRC_DIR"
+    if [ ! -d lmdb ]; then
+        git clone --depth 1 https://git.openldap.org/openldap/openldap.git lmdb
+    fi
+    cd lmdb/libraries/liblmdb
+    make clean 2>/dev/null || true
+    make -j"$NPROC" liblmdb.a
+    cp liblmdb.a "$LIB_DIR/"
+    echo "  -> $LIB_DIR/liblmdb.a"
+}
+
+# ============================================================
 # Build all
 # ============================================================
 echo "Building static libraries in $LIB_DIR"
@@ -112,6 +128,7 @@ build_libdeflate
 build_yyjson
 build_libuv
 build_bearssl
+build_lmdb
 
 echo ""
 echo "=== All static libraries built ==="

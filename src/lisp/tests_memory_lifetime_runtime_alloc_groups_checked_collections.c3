@@ -19,7 +19,7 @@ fn void run_memory_lifetime_runtime_alloc_groups_checked_collections_tests(Inter
         Value*[2] push_args = { array_value, make_int(interp, 2) };
         bool saved_grow_fail = g_array_push_force_grow_alloc_fail;
         g_array_push_force_grow_alloc_fail = true;
-        Value* push_fail = setup_ok ? prim_array_push(push_args[0:2], null, interp) : raise_error(interp, "setup failed");
+        Value* push_fail = setup_ok ? prim_array_push(push_args[0:2], null, interp) : runtime_raise(interp, "runtime/evaluation-error", "setup failed");
         g_array_push_force_grow_alloc_fail = saved_grow_fail;
 
         bool ok = setup_ok &&
@@ -333,8 +333,8 @@ fn void run_memory_lifetime_runtime_alloc_groups_checked_collections_tests(Inter
 
         bool saved_grow_fail = g_hashmap_force_grow_entries_alloc_fail;
         g_hashmap_force_grow_entries_alloc_fail = true;
-        Value* dict_set_fail = setup_ok ? prim_dict_set(dict_set_args[0:3], null, interp) : raise_error(interp, "setup failed");
-        Value* set_add_fail = setup_ok ? prim_set_add(set_add_args[0:2], null, interp) : raise_error(interp, "setup failed");
+        Value* dict_set_fail = setup_ok ? prim_dict_set(dict_set_args[0:3], null, interp) : runtime_raise(interp, "runtime/evaluation-error", "setup failed");
+        Value* set_add_fail = setup_ok ? prim_set_add(set_add_args[0:2], null, interp) : runtime_raise(interp, "runtime/evaluation-error", "setup failed");
         g_hashmap_force_grow_entries_alloc_fail = saved_grow_fail;
 
         Value* dict_lookup = setup_ok ? hashmap_get(dict_value.hashmap_val, make_int(interp, 4)) : null;

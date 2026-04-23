@@ -22,7 +22,7 @@ fn Value* root_store_direct_promote_to_scope(
         &copy_ctx
     );
     if (!boundary_copy_result_ok(copy_result)) {
-        return raise_error(interp, boundary_copy_fault_message(copy_result.fault_code));
+        return boundary_raise(interp, "boundary/copy-fault", (String)boundary_copy_fault_message(copy_result.fault_code));
     }
     return copy_result.value;
 }
@@ -43,23 +43,23 @@ fn Value* root_store_route_to_scope(
                 target_scope,
                 releasing_scope
             );
-            if (cloned == null) return raise_error(interp, "root-store: failed to clone primitive payload");
+            if (cloned == null) return boundary_raise(interp, "boundary/copy-fault", "root-store: failed to clone primitive payload");
             return cloned;
         }
         case ARRAY: {
             Value* cloned = root_store_clone_array_to_scope(v, interp, target_scope, releasing_scope);
-            if (cloned == null) return raise_error(interp, "root-store: failed to clone array payload");
+            if (cloned == null) return boundary_raise(interp, "boundary/copy-fault", "root-store: failed to clone array payload");
             return cloned;
         }
         case TENSOR: {
             Value* cloned = root_store_clone_tensor_to_scope(v, interp, target_scope, releasing_scope);
-            if (cloned == null) return raise_error(interp, "root-store: failed to clone tensor payload");
+            if (cloned == null) return boundary_raise(interp, "boundary/copy-fault", "root-store: failed to clone tensor payload");
             return cloned;
         }
         case HASHMAP:
         case SET: {
             Value* cloned = root_store_clone_hashmap_to_scope(v, interp, target_scope, releasing_scope);
-            if (cloned == null) return raise_error(interp, "root-store: failed to clone hashmap payload");
+            if (cloned == null) return runtime_raise(interp, "runtime/evaluation-error", "root-store: failed to clone hashmap payload");
             return cloned;
         }
         case METHOD_TABLE: {
@@ -69,7 +69,7 @@ fn Value* root_store_route_to_scope(
                 target_scope,
                 releasing_scope
             );
-            if (cloned == null) return raise_error(interp, "root-store: failed to clone method-table payload");
+            if (cloned == null) return runtime_raise(interp, "runtime/evaluation-error", "root-store: failed to clone method-table payload");
             return cloned;
         }
         case NIL:
@@ -103,7 +103,7 @@ fn Value* root_store_route_to_scope(
                 releasing_scope
             );
             if (promoted != null) return promoted;
-            return raise_error(interp, "root-store: destination promotion returned null");
+            return runtime_raise(interp, "runtime/evaluation-error", "root-store: destination promotion returned null");
         }
     }
 }

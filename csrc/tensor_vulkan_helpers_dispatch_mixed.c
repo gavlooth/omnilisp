@@ -160,11 +160,11 @@ int omni_tensor_backend_vulkan_map_view_tensor_scalar_chain_f32(
     if (element_count == 0 || view_byte_len == 0 || right_byte_len == 0) return OMNI_TENSOR_VULKAN_SUCCESS;
     if (view_device_ptr == NULL || right_device_ptr == NULL || element_count > UINT32_MAX || element_count > SIZE_MAX / sizeof(float)) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
     size_t output_byte_len = element_count * sizeof(float);
-    if (first_op > 5u || scalar_op_count < 1 || scalar_op_count > UINT32_MAX || scalars == NULL || modes == NULL || ops == NULL) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
+    if (first_op > 7u || scalar_op_count < 1 || scalar_op_count > UINT32_MAX || scalars == NULL || modes == NULL || ops == NULL) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
     if (scalar_op_count + 1u < scalar_op_count || scalar_op_count + 1u > UINT32_MAX / 4u) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
     if (rank == 0 || rank > UINT32_MAX || shape == NULL || view_strides == NULL || right_strides == NULL) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
     for (size_t i = 0; i < scalar_op_count; i++) {
-        if ((modes[i] != 0u && modes[i] != 1u) || ops[i] > 5u) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
+        if ((modes[i] != 0u && modes[i] != 1u) || ops[i] > 7u) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
     }
 
     size_t* dense_strides = (size_t*)calloc(rank, sizeof(size_t));

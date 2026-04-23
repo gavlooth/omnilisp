@@ -108,7 +108,7 @@ fn Value* json_pointer_lookup(Value* value, char[] token, Interp* interp) {
     if (value.tag == HASHMAP) {
         HashMap* map = value.hashmap_val;
         Value* key_v = make_string(interp, token);
-        if (key_v == null) return raise_error(interp, "json-get: failed to allocate pointer token");
+        if (key_v == null) return runtime_raise(interp, "runtime/out-of-memory", "json-get: failed to allocate pointer token");
         if (key_v.tag == ERROR) return key_v;
         Value* by_string = hashmap_get(map, key_v);
         if (by_string != null) return by_string;
@@ -170,5 +170,5 @@ fn Value* parse_bool_option_value(
     } else {
         msg = "json-emit: option must be a boolean (true/false)";
     }
-    return raise_error(interp, msg);
+    return runtime_raise(interp, "runtime/evaluation-error", msg);
 }

@@ -36,6 +36,9 @@ if [[ "${OMNI_IN_VALIDATION_CONTAINER:-0}" != "1" ]]; then
   if [[ -d /usr/include/uv && "$validation_extra" != *"/usr/include/uv,dst=/usr/include/uv"* ]]; then
     validation_extra="${validation_extra} --mount type=bind,src=/usr/include/uv,dst=/usr/include/uv,readonly"
   fi
+  if [[ -d /usr/include/boost && "$validation_extra" != *"/usr/include/boost,dst=/usr/include/boost"* ]]; then
+    validation_extra="${validation_extra} --mount type=bind,src=/usr/include/boost,dst=/usr/include/boost,readonly"
+  fi
   if [[ -f /usr/include/ffi.h && "$validation_extra" != *"/usr/include/ffi.h"* ]]; then
     validation_extra="${validation_extra} --mount type=bind,src=/usr/include/ffi.h,dst=/usr/include/ffi.h,readonly"
   fi

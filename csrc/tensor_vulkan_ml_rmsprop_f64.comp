@@ -1,0 +1,61 @@
+#version 450
+#extension GL_ARB_gpu_shader_fp64 : require
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+layout(std430, binding = 0) readonly buffer ParamsBuffer {
+    double params[];
+};
+
+layout(std430, binding = 1) readonly buffer GradBuffer {
+    double grads[];
+};
+
+layout(std430, binding = 2) readonly buffer SquareBuffer {
+    double square_average[];
+};
+
+layout(std430, binding = 3) readonly buffer VelocityBuffer {
+    double velocity[];
+};
+
+layout(std430, binding = 4) buffer OutputParamsBuffer {
+    double output_params[];
+};
+
+layout(std430, binding = 5) buffer OutputSquareBuffer {
+    double output_square[];
+};
+
+layout(std430, binding = 6) buffer OutputVelocityBuffer {
+    double output_velocity[];
+};
+
+layout(push_constant) uniform PushConstants {
+    uint count;
+    double learning_rate;
+    double alpha;
+    double epsilon;
+    double momentum;
+    double weight_decay;
+    uint has_square;
+    uint has_velocity;
+} pc;
+
+void main() {
+    uint idx = gl_GlobalInvocationID.x;
+    if (idx >= pc.count) return;
+
+    double param = params[idx];
+    double effective_grad = grads[idx] + pc.weight_decay * param;
+    double old_square = pc.has_square != 0u ? square_average[idx] : 0.0;
+    double next_square = pc.alpha * old_square + (1.0 - pc.alpha) * effective_grad * effective_grad;
+    double scaled_update = pc.learning_rate * effective_grad / (sqrt(next_square) + pc.epsilon);
+
+    double old_velocity = pc.has_velocity != 0u ? velocity[idx] : 0.0;
+    double next_velocity = pc.momentum > 0.0 ? pc.momentum * old_velocity + scaled_update : 0.0;
+
+    output_params[idx] = param - (pc.momentum > 0.0 ? next_velocity : scaled_update);
+    output_square[idx] = next_square;
+    output_velocity[idx] = next_velocity;
+}

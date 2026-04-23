@@ -8,7 +8,7 @@ split gate applies to code files only.
 
 ## Parts
 
-- Part 01: [docs/todo_parts/todo_part_01.md](docs/todo_parts/todo_part_01.md) (639 lines)
+- Part 01: [docs/todo_parts/todo_part_01.md](docs/todo_parts/todo_part_01.md) (892 lines)
 - Part 02: [docs/todo_parts/todo_part_02.md](docs/todo_parts/todo_part_02.md) (624 lines)
 - Part 03: [docs/todo_parts/todo_part_03.md](docs/todo_parts/todo_part_03.md) (322 lines)
 - Part 04: [docs/todo_parts/todo_part_04.md](docs/todo_parts/todo_part_04.md) (432 lines)
@@ -23,3 +23,11 @@ split gate applies to code files only.
 - Part 13: [docs/todo_parts/todo_part_13.md](docs/todo_parts/todo_part_13.md) (325 lines)
 - Part 14: [docs/todo_parts/todo_part_14.md](docs/todo_parts/todo_part_14.md) (1823 lines)
 - Part 15: [docs/todo_parts/todo_part_15.md](docs/todo_parts/todo_part_15.md) (608 lines)
+
+## Live Queue
+
+- none currently;
+
+Live queue closed as of 2026-04-22. See
+[Part 01](docs/todo_parts/todo_part_01.md) for the recently closed Vulkan
+general eigen deflation item.

@@ -13,7 +13,7 @@ fn Value* constructor_arity_error(TypeInfo* ti, usz got, Interp* interp) {
     } else {
         msg = "type constructor arity mismatch";
     }
-    return raise_error(interp, msg);
+    return runtime_raise(interp, "type/arg-mismatch", msg);
 }
 
 fn bool is_type_param_annotation(TypeInfo* ti, SymbolId annotation_sym) {
@@ -44,7 +44,7 @@ fn Value* validate_constructor_fields(Value*[] args, TypeInfo* ti, Interp* inter
             } else {
                 emsg = "type error: constructor field type mismatch";
             }
-            return raise_error(interp, emsg);
+            return runtime_raise(interp, "type/arg-mismatch", emsg);
         }
     }
     return null;
@@ -101,7 +101,7 @@ fn Value* validate_instance_constraints(Instance* inst, TypeInfo* ti, Interp* in
                         } else {
                             emsg = "type constraint violated";
                         }
-                        return raise_error(interp, emsg);
+                        return runtime_raise(interp, "type/arg-mismatch", emsg);
                     }
                 }
                 break;

@@ -14,7 +14,7 @@ fn bool mem_telemetry_enabled() {
 
 fn usz cstr_len(char* s) @inline {
     usz n = 0;
-    while (s[n] != 0) n++;
+    while (n < 65536 && s[n] != 0) n++;
     return n;
 }
 

@@ -24,6 +24,9 @@ fn Value* ml_mean_squared_error_eval_vulkan(
         !tensor_has_valid_device_storage(targets, TENSOR_DEVICE_VULKAN)) {
         return tensor_runtime_raise(interp, "ml/mean-squared-error: Vulkan tensor backing storage is missing");
     }
+    if (!tensor_dense_row_major(predictions) || !tensor_dense_row_major(targets)) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/mean-squared-error: Vulkan currently supports dense row-major tensors", null);
+    }
 
     usz[1] scalar_shape = { 0 };
     TensorVal* tensor = tensor_alloc_payload_base_checked(predictions.dtype, scalar_shape[0:0], false, false, "ml/mean-squared-error: failed to allocate Vulkan result tensor metadata");
@@ -53,8 +56,12 @@ fn Value* ml_mean_squared_error_eval_vulkan(
         tensor_free_payload(tensor);
         return ml_mean_squared_error_vulkan_status_raise(interp, status);
     }
+    if (out_device == null) {
+        tensor_free_payload(tensor);
+        return tensor_runtime_raise(interp, "ml/mean-squared-error: Vulkan loss kernel did not return result storage");
+    }
     tensor.device_handle = out_device;
-    tensor.device_finalizer = out_device != null ? &tensor_vulkan_device_finalizer : null;
+    tensor.device_finalizer = &tensor_vulkan_device_finalizer;
 
     Value* result = interp.alloc_value();
     if (result == null) {
@@ -115,8 +122,12 @@ fn Value* ml_cross_entropy_eval_vulkan(
         tensor_free_payload(tensor);
         return ml_cross_entropy_vulkan_status_raise(interp, status);
     }
+    if (out_device == null) {
+        tensor_free_payload(tensor);
+        return tensor_runtime_raise(interp, "ml/cross-entropy: Vulkan loss kernel did not return result storage");
+    }
     tensor.device_handle = out_device;
-    tensor.device_finalizer = out_device != null ? &tensor_vulkan_device_finalizer : null;
+    tensor.device_finalizer = &tensor_vulkan_device_finalizer;
 
     Value* result = interp.alloc_value();
     if (result == null) {

@@ -178,12 +178,12 @@ fn Value* prim_realize(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_tensor_p(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return raise_error(interp, "tensor?: expected 1 argument");
+    if (args.len < 1) return tensor_raise(interp, "tensor/invalid-argument", "tensor?: expected 1 argument");
     return is_tensor(args[0]) ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
 fn Value* prim_dtype(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_tensor(args[0])) return raise_error(interp, "dtype: expected Tensor");
+    if (args.len < 1 || !is_tensor(args[0])) return tensor_raise(interp, "tensor/invalid-argument", "dtype: expected Tensor");
     TensorVal* tensor = args[0].tensor_val;
     if (tensor == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "dtype: tensor backing storage is missing");
     return make_symbol(interp, tensor_dtype_symbol(tensor.dtype, interp));
@@ -202,14 +202,14 @@ fn SymbolId tensor_device_symbol(TensorDeviceKind device, Interp* interp) {
 
 fn Value* prim_device(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) return primitive_arity_raise(interp, "device", "1 argument: tensor", args.len);
-    if (!is_tensor(args[0])) return raise_error(interp, "device: expected Tensor");
+    if (!is_tensor(args[0])) return tensor_raise(interp, "tensor/invalid-argument", "device: expected Tensor");
     TensorVal* tensor = args[0].tensor_val;
     if (tensor == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "device: tensor backing storage is missing");
     return make_symbol(interp, tensor_device_symbol(tensor.device, interp));
 }
 
 fn Value* tensor_usz_metadata_value(Interp* interp, usz value, char[] label) {
-    if (value > (usz)long.max) return raise_error(interp, label);
+    if (value > (usz)long.max) return tensor_raise(interp, "tensor/invalid-argument", label);
     return make_int(interp, (long)value);
 }
 
@@ -231,7 +231,7 @@ fn Value* tensor_metadata_usz_array(Interp* interp, usz* values, usz count, char
 fn Value* tensor_layout_set_field(Interp* interp, Value* out, char[] key_name, Value* value) {
     if (value == null || value.tag == ERROR) return value;
     if (!hashmap_set_checked(out.hashmap_val, make_symbol(interp, interp.symbols.intern(key_name)), value, interp)) {
-        return raise_error(interp, "tensor-layout: out of memory while building result");
+        return tensor_raise(interp, "tensor/out-of-memory", "tensor-layout: out of memory while building result");
     }
     return null;
 }

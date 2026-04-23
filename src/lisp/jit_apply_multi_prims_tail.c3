@@ -1,5 +1,6 @@
 module lisp;
 
+
 import std::io;
 
 tlocal long g_jit_tail_multi_trace_counter = 0;
@@ -35,20 +36,20 @@ fn Value* jit_apply_multi_args_tail_variadic(Interp* interp, Value* func, Value*
         } else {
             msg = "variadic lambda arity mismatch";
         }
-        return raise_error(interp, msg);
+        return jit_raise(interp, "runtime/evaluation-error", msg);
     }
     Value* type_err = jit_check_closure_typed_prefix_args(interp, func.closure_val, arg_list, arg_count);
     if (type_err != null) return type_err;
     Env* new_env = func.closure_val.env;
     Value* curr = arg_list;
     for (usz i = 0; i < pc; i++) {
-        if (curr == null || curr.tag != CONS) return raise_error(interp, "arg list too short");
+        if (curr == null || curr.tag != CONS) return jit_raise(interp, "runtime/evaluation-error", "arg list too short");
         new_env = jit_env_extend(interp, new_env, func.closure_val.params[i], curr.cons_val.car);
-        if (new_env == null) return raise_error(interp, "out of memory while binding argument");
+        if (new_env == null) return jit_raise(interp, "runtime/out-of-memory", "out of memory while binding argument");
         curr = curr.cons_val.cdr;
     }
     new_env = jit_env_extend(interp, new_env, func.closure_val.rest_param, curr);
-    if (new_env == null) return raise_error(interp, "out of memory while binding argument");
+    if (new_env == null) return jit_raise(interp, "runtime/out-of-memory", "out of memory while binding argument");
     return jit_set_tco_bounce(interp, func.closure_val.body, new_env);
 }
 
@@ -57,17 +58,17 @@ fn Value* jit_apply_multi_args_tail_closure_multi(Interp* interp, Value* func, V
     if (arg_count < pc) {
         char[128] buf;
         usz len = format_arity_error(&buf, pc, arg_count);
-        return raise_error(interp, buf[:len]);
+        return raise_error_with_payload_names(interp, "type", "type/arity", (String)buf[:len], null);
     }
     Value* type_err = jit_check_closure_typed_prefix_args(interp, func.closure_val, arg_list, arg_count);
     if (type_err != null) return type_err;
     Env* call_env = make_env(interp, func.closure_val.env);
-    if (call_env == null) return raise_error(interp, "out of memory while binding argument");
+    if (call_env == null) return jit_raise(interp, "runtime/out-of-memory", "out of memory while binding argument");
     Value* curr = arg_list;
     for (usz i = 0; i < pc; i++) {
-        if (curr == null || curr.tag != CONS) return raise_error(interp, "arg list too short");
+        if (curr == null || curr.tag != CONS) return jit_raise(interp, "runtime/evaluation-error", "arg list too short");
         Value* bind_err = env_define_with_barrier_result(call_env, func.closure_val.params[i], curr.cons_val.car, interp);
-        if (bind_err != null) return raise_error(interp, "out of memory while binding argument");
+        if (bind_err != null) return jit_raise(interp, "runtime/out-of-memory", "out of memory while binding argument");
         curr = curr.cons_val.cdr;
     }
     if (jit_tail_multi_trace_enabled() && arg_count == pc && pc == 2) {
@@ -104,7 +105,7 @@ fn Value* jit_apply_multi_args_tail_closure_multi(Interp* interp, Value* func, V
 
 fn Value* jit_apply_multi_args_tail_method_table(Interp* interp, Value* func, Value* arg_list, usz arg_count) {
     Value** args = jit_alloc_multi_arg_buffer(interp, arg_count);
-    if (arg_count > 0 && args == null) return raise_error(interp, "out of memory while preparing call arguments");
+    if (arg_count > 0 && args == null) return jit_raise(interp, "runtime/out-of-memory", "out of memory while preparing call arguments");
     Value* curr = arg_list;
     usz actual_count = 0;
     for (usz i = 0; i < arg_count; i++) {
@@ -113,7 +114,7 @@ fn Value* jit_apply_multi_args_tail_method_table(Interp* interp, Value* func, Va
         args[actual_count++] = arg;
         curr = curr.cons_val.cdr;
     }
-    if (actual_count < arg_count) return raise_error(interp, "arg list too short");
+    if (actual_count < arg_count) return jit_raise(interp, "runtime/evaluation-error", "arg list too short");
     MethodTable* mt = func.method_table_val;
     Value* resolved = find_best_method(mt, args[:actual_count], interp);
     if (resolved != null && resolved.tag == ERROR) return resolved;
@@ -148,11 +149,11 @@ fn Value* jit_apply_multi_args_tail(Interp* interp, Value* func, Value* arg_list
 }
 
 fn Value* jit_env_lookup_local(Interp* interp, uint sym_id, Env* env) {
-    if (env == null) return raise_error(interp, "jit: missing mutable local binding");
+    if (env == null) return jit_raise(interp, "type/arg-mismatch", "jit: missing mutable local binding");
     SymbolId name = (SymbolId)sym_id;
     Value* v = env.lookup(name);
     if (v != null) return v;
-    return raise_error(interp, "jit: missing mutable local binding");
+    return jit_raise(interp, "type/arg-mismatch", "jit: missing mutable local binding");
 }
 
 fn Env* jit_env_reparent(Env* env, Env* new_parent) {
@@ -163,37 +164,37 @@ fn Env* jit_env_reparent(Env* env, Env* new_parent) {
 
 fn Value* jit_prim_add(Interp* interp, Value* a, Value* b) {
     if (a != null && b != null) return numeric_add2(interp, a, b);
-    return raise_error(interp, "+: expected numbers");
+    return jit_raise(interp, "type/arg-mismatch", "+: expected numbers");
 }
 
 fn Value* jit_prim_sub(Interp* interp, Value* a, Value* b) {
     if (a != null && b != null) return numeric_sub2(interp, a, b);
-    return raise_error(interp, "-: expected numbers");
+    return jit_raise(interp, "type/arg-mismatch", "-: expected numbers");
 }
 
 fn Value* jit_prim_mul(Interp* interp, Value* a, Value* b) {
     if (a != null && b != null) return numeric_mul2(interp, a, b);
-    return raise_error(interp, "*: expected numbers");
+    return jit_raise(interp, "type/arg-mismatch", "*: expected numbers");
 }
 
 fn Value* jit_prim_lt(Interp* interp, Value* a, Value* b) {
     if (a != null && b != null && is_numeric_value(a) && is_numeric_value(b)) {
         int cmp = 0;
-        if (is_big_complex(a) || is_big_complex(b)) return raise_error(interp, "<: complex numbers are not ordered");
-        if (!numeric_values_compare(a, b, &cmp)) return raise_error(interp, "<: BigInteger value is out of Float64 range");
+        if (is_big_complex(a) || is_big_complex(b)) return jit_raise(interp, "runtime/evaluation-error", "<: complex numbers are not ordered");
+        if (!numeric_values_compare(a, b, &cmp)) return jit_raise(interp, "runtime/evaluation-error", "<: BigInteger value is out of Float64 range");
         return numeric_compare_bool_result(interp, cmp, NUMERIC_COMPARE_LT);
     }
-    return raise_error(interp, "<: expected numbers");
+    return jit_raise(interp, "type/arg-mismatch", "<: expected numbers");
 }
 
 fn Value* jit_prim_gt(Interp* interp, Value* a, Value* b) {
     if (a != null && b != null && is_numeric_value(a) && is_numeric_value(b)) {
         int cmp = 0;
-        if (is_big_complex(a) || is_big_complex(b)) return raise_error(interp, ">: complex numbers are not ordered");
-        if (!numeric_values_compare(a, b, &cmp)) return raise_error(interp, ">: BigInteger value is out of Float64 range");
+        if (is_big_complex(a) || is_big_complex(b)) return jit_raise(interp, "runtime/evaluation-error", ">: complex numbers are not ordered");
+        if (!numeric_values_compare(a, b, &cmp)) return jit_raise(interp, "runtime/evaluation-error", ">: BigInteger value is out of Float64 range");
         return numeric_compare_bool_result(interp, cmp, NUMERIC_COMPARE_GT);
     }
-    return raise_error(interp, ">: expected numbers");
+    return jit_raise(interp, "type/arg-mismatch", ">: expected numbers");
 }
 
 fn Value* jit_prim_eq(Interp* interp, Value* a, Value* b) {

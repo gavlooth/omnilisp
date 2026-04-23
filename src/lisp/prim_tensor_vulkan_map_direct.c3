@@ -11,6 +11,7 @@ fn Value* tensor_map_try_vulkan_direct_checked(
     bool is_binary,
     TensorDType dtype,
     usz[] result_shape,
+    Value* provenance_func,
     uint op,
     Interp* interp
 ) {
@@ -35,7 +36,7 @@ fn Value* tensor_map_try_vulkan_direct_checked(
     }
     if ((left_source_tensor != null && left_source_tensor.dtype != dtype) ||
         (is_binary && right_source_tensor != null && right_source_tensor.dtype != dtype)) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "map: Vulkan currently supports matching Tensor storage dtypes", null);
+        return raise_error_with_payload_names(interp, "tensor", "tensor/dtype-mismatch", "map: Vulkan tensor dtype mismatch", null);
     }
 
     if (left_source_tensor != null) {
@@ -128,10 +129,10 @@ fn Value* tensor_map_try_vulkan_direct_checked(
     if (right_tensor != null && right_tensor.device != TENSOR_DEVICE_VULKAN) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "map: Vulkan operands must remain Vulkan-placed", null);
     }
-    if ((!tensor_dtype_is_vulkan_real(dtype) && !tensor_dtype_is_fixed_complex(dtype)) || tensor.dtype != dtype ||
+    if (tensor.dtype != dtype ||
         (left_tensor != null && left_tensor.dtype != dtype) ||
         (right_tensor != null && right_tensor.dtype != dtype)) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "map: Vulkan currently supports matching Tensor storage dtypes", null);
+        return raise_error_with_payload_names(interp, "tensor", "tensor/dtype-mismatch", "map: Vulkan tensor dtype mismatch", null);
     }
     if (!tensor_map_operand_matches_shape(tensor, result_shape)) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "map: Vulkan result shape mismatch", null);
@@ -250,6 +251,38 @@ fn Value* tensor_map_try_vulkan_direct_checked(
     }
     result_tensor.device_handle = out_device;
     result_tensor.device_finalizer = out_device != null ? &tensor_vulkan_device_finalizer : null;
+    if (provenance_func != null) {
+        result_tensor.map_func = provenance_func;
+        result_tensor.map_left = left_source_tensor != null ? left_source : null;
+        result_tensor.map_right = is_binary && right_source_tensor != null ? right_source : null;
+        result_tensor.map_is_binary = is_binary;
+        if (left_source_tensor == null) {
+            switch (dtype) {
+                case TENSOR_DTYPE_DOUBLE:
+                    result_tensor.map_left_scalar = scalar_f64;
+                case TENSOR_DTYPE_FLOAT32:
+                    result_tensor.map_left_scalar = (double)scalar_f32;
+                case TENSOR_DTYPE_COMPLEX128:
+                    result_tensor.map_left_complex128_scalar = scalar_complex128;
+                case TENSOR_DTYPE_COMPLEX64:
+                    result_tensor.map_left_complex64_scalar = scalar_complex64;
+                default:
+            }
+        }
+        if (is_binary && right_source_tensor == null) {
+            switch (dtype) {
+                case TENSOR_DTYPE_DOUBLE:
+                    result_tensor.map_right_scalar = scalar_f64;
+                case TENSOR_DTYPE_FLOAT32:
+                    result_tensor.map_right_scalar = (double)scalar_f32;
+                case TENSOR_DTYPE_COMPLEX128:
+                    result_tensor.map_right_complex128_scalar = scalar_complex128;
+                case TENSOR_DTYPE_COMPLEX64:
+                    result_tensor.map_right_complex64_scalar = scalar_complex64;
+                default:
+            }
+        }
+    }
 
     Value* result = interp.alloc_value();
     if (result == null) {

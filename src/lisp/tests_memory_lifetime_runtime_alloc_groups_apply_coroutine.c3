@@ -32,8 +32,8 @@ fn void run_memory_lifetime_runtime_alloc_groups_apply_coroutine_tests(Interp* i
             invalid_iter.iterator_val = make_nil(interp);
         }
         Value*[1] args = { invalid_iter };
-        Value* ctor_err = setup_ok ? prim_ctor_iterator(args[0:1], null, interp) : raise_error(interp, "setup failed");
-        Value* next_err = setup_ok ? prim_next(args[0:1], null, interp) : raise_error(interp, "setup failed");
+        Value* ctor_err = setup_ok ? prim_ctor_iterator(args[0:1], null, interp) : runtime_raise(interp, "runtime/evaluation-error", "setup failed");
+        Value* next_err = setup_ok ? prim_next(args[0:1], null, interp) : runtime_raise(interp, "runtime/evaluation-error", "setup failed");
 
         bool ok = setup_ok &&
             runtime_alloc_error_matches(ctor_err, "Iterator: expected valid iterator") &&

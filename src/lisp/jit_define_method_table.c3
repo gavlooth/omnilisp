@@ -131,11 +131,11 @@ fn MethodTable* jit_new_method_table(SymbolId name, Value* impl, Value* fallback
 }
 
 fn Value* jit_eval_define_typed_callable(Interp* interp, SymbolId name, Value* stored_val, MethodSignature* sig) {
-    if (stored_val == null || sig == null) return raise_error(interp, "jit: failed to promote typed method implementation");
+    if (stored_val == null || sig == null) return jit_raise(interp, "runtime/out-of-memory", "jit: failed to promote typed method implementation");
     Value* existing = interp.global_env.lookup(name);
     if (existing != null && existing.tag == METHOD_TABLE) {
         if (!jit_method_table_append_entry_with_sig(existing.method_table_val, sig, stored_val)) {
-            return raise_error(interp, "jit: failed to extend method table");
+            return jit_raise(interp, "runtime/out-of-memory", "jit: failed to extend method table");
         }
         return existing;
     }
@@ -144,11 +144,11 @@ fn Value* jit_eval_define_typed_callable(Interp* interp, SymbolId name, Value* s
         fallback = existing;
     }
     MethodTable* mt = jit_new_method_table_with_sig(name, sig, stored_val, fallback);
-    if (mt == null) return raise_error(interp, "jit: failed to allocate method table");
+    if (mt == null) return jit_raise(interp, "runtime/out-of-memory", "jit: failed to allocate method table");
     Value* mt_val = jit_make_method_table_value(interp, mt);
-    if (mt_val == null) return raise_error(interp, "jit: failed to allocate method table value");
+    if (mt_val == null) return jit_raise(interp, "runtime/out-of-memory", "jit: failed to allocate method table value");
     if (env_define_with_barrier_result(interp.global_env, name, mt_val, interp) != null) {
-        return raise_error(interp, "jit: failed to publish method table");
+        return jit_raise(interp, "runtime/out-of-memory", "jit: failed to publish method table");
     }
     return mt_val;
 }
@@ -168,7 +168,7 @@ fn Value* jit_eval_define(Interp* interp, SymbolId name, Value* value) {
         interp,
         COPY_SITE_JIT_EVAL_DEFINE
     );
-    if (stored_val == null) return raise_error(interp, "jit: failed to promote defined value");
+    if (stored_val == null) return runtime_raise(interp, "runtime/evaluation-error", "jit: failed to promote defined value");
     if (stored_val != null && stored_val.tag == ERROR) return stored_val;
 
     // Check for typed closure → method table dispatch
@@ -190,7 +190,7 @@ fn Value* jit_eval_define(Interp* interp, SymbolId name, Value* value) {
 
     // Normal (untyped) define
     if (env_define_with_barrier_result(interp.global_env, name, stored_val, interp) != null) {
-        return raise_error(interp, "jit: failed to define binding");
+        return runtime_raise(interp, "runtime/evaluation-error", "jit: failed to define binding");
     }
     return stored_val;
 }

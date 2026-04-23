@@ -100,7 +100,7 @@ fn lisp::Value* apply_multi_once(lisp::Value* func, lisp::Value* arg_list, long 
             lisp::Value* curr = arg_list;
             for (long i = 0; i < argc; i++) {
                 if (curr == null || curr.tag != lisp::ValueTag.CONS) {
-                    return lisp::raise_error(active_interp, "arg list too short");
+                    return lisp::raise_error_with_payload_names(active_interp, "type", "type/arity", "arg list too short", null);
                 }
                 result = invoke(result, curr.cons_val.car);
                 if (result != null && result.tag == lisp::ValueTag.ERROR) return result;

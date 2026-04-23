@@ -3,11 +3,6 @@ module lisp;
 import std::core::mem;
 import main;
 
-module lisp;
-
-import std::core::mem;
-import main;
-
 fn Value* tensor_map_dtype_raise(Interp* interp) @inline {
     return raise_error_with_payload_names(interp, "tensor", "tensor/dtype-mismatch", "map: function result dtype mismatch", null);
 }

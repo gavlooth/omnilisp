@@ -368,9 +368,9 @@ fn bool process_bind_dependency(char[] proj_dir, usz proj_dir_len, lisp::Libclan
     }
 
     usz dep_name_len = 0;
-    while (dep_name[dep_name_len] != 0) dep_name_len++;
+    while (dep_name_len < 256 && dep_name[dep_name_len] != 0) dep_name_len++;
     usz dep_lib_len = 0;
-    while (dep_lib[dep_lib_len] != 0) dep_lib_len++;
+    while (dep_lib_len < 512 && dep_lib[dep_lib_len] != 0) dep_lib_len++;
 
     bool raw_existed = lisp::bindgen_output_file_exists(raw_out_path[:raw_olen]);
     bool facade_existed = lisp::bindgen_output_file_exists(facade_out_path[:facade_olen]);

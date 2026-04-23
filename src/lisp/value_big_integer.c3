@@ -1,5 +1,10 @@
 module lisp;
 
+fn Value* big_integer_raise(Interp* interp, String code, char[] message) @inline {
+    return raise_error_with_payload_names(interp, "big-integer", code, (String)message, null);
+}
+
+
 import std::io;
 import main;
 
@@ -16,11 +21,11 @@ const int BIG_INTEGER_OP_BIT_XOR = 10;
 const long BIG_INTEGER_MAX_SHIFT_BITS = 1048576;
 
 fn Value* make_big_integer_from_owned_handle(Interp* interp, void* handle, char[] message) {
-    if (handle == null) return raise_error(interp, message);
+    if (handle == null) return big_integer_raise(interp, "big-integer/invalid-argument", message);
     Value* v = interp.alloc_value();
     if (v == null) {
         omni_big_integer_free(handle);
-        return raise_error(interp, "BigInteger: failed to allocate value wrapper");
+        return big_integer_raise(interp, "big-integer/out-of-memory", "BigInteger: failed to allocate value wrapper");
     }
     v.tag = BIG_INTEGER;
     v.big_integer_val = handle;
@@ -56,7 +61,7 @@ fn Value* copy_big_integer_to_parent(Value* v, Interp* interp, BoundaryCopyFault
         cloned = omni_big_integer_clone(v.big_integer_val);
         if (cloned == null) {
             if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
-            return fault_out != null ? null : raise_error(interp, "boundary: failed to clone BigInteger payload");
+            return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to clone BigInteger payload");
         }
     }
 
@@ -64,7 +69,7 @@ fn Value* copy_big_integer_to_parent(Value* v, Interp* interp, BoundaryCopyFault
     if (result == null) {
         if (cloned != null) omni_big_integer_free(cloned);
         if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
-        return fault_out != null ? null : raise_error(interp, "boundary: failed to allocate BigInteger copy value");
+        return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate BigInteger copy value");
     }
     result.tag = BIG_INTEGER;
     result.big_integer_val = cloned;
@@ -78,13 +83,13 @@ fn Value* promote_escape_big_integer(Value* v, Interp* interp, PromotionContext*
     void* cloned = null;
     if (v.big_integer_val != null) {
         cloned = omni_big_integer_clone(v.big_integer_val);
-        if (cloned == null) return raise_error(interp, "boundary: failed to clone BigInteger escape payload");
+        if (cloned == null) return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to clone BigInteger escape payload");
     }
 
     Value* result = boundary_alloc_value_in_current_escape(interp);
     if (result == null) {
         if (cloned != null) omni_big_integer_free(cloned);
-        return raise_error(interp, "boundary: failed to allocate BigInteger escape copy value");
+        return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate BigInteger escape copy value");
     }
     result.tag = BIG_INTEGER;
     result.big_integer_val = cloned;
@@ -94,11 +99,11 @@ fn Value* promote_escape_big_integer(Value* v, Interp* interp, PromotionContext*
 
 fn Value* big_integer_to_string_value(Value* v, Interp* interp, char[] message) {
     if (v == null || v.tag != BIG_INTEGER || v.big_integer_val == null) {
-        return raise_error(interp, message);
+        return big_integer_raise(interp, "big-integer/invalid-argument", message);
     }
     usz len = 0;
     char* rendered = omni_big_integer_to_string(v.big_integer_val, &len);
-    if (rendered == null) return raise_error(interp, message);
+    if (rendered == null) return big_integer_raise(interp, "big-integer/invalid-argument", message);
     Value* result = make_string(interp, rendered[:len]);
     omni_big_integer_string_free(rendered);
     return result;
@@ -188,7 +193,7 @@ fn void* big_integer_binary_handle(Value* lhs, Value* rhs, int op) {
 }
 
 fn Value* make_integer_or_big_integer_from_owned_handle(Interp* interp, void* handle, bool prefer_integer, char[] message) {
-    if (handle == null) return raise_error(interp, message);
+    if (handle == null) return big_integer_raise(interp, "big-integer/invalid-argument", message);
     if (prefer_integer) {
         long narrowed = 0;
         if (omni_big_integer_to_i64(handle, &narrowed) != 0) {

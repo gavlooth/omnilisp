@@ -66,9 +66,10 @@ fn JitTailConstructorKind jit_tail_constructor_kind(Expr* expr, Interp* interp, 
     SymbolId fn_name = expr.call.func.var_expr.name;
     if (jit_locals_shadow_symbol(locals, fn_name)) return JIT_TAIL_CTOR_NONE;
     if (jit_symbol_matches_global_primitive(interp, fn_name, "cons")) return JIT_TAIL_CTOR_CONS;
-    if (jit_symbol_matches_global_primitive(interp, fn_name, "List") ||
-        jit_symbol_matches_global_primitive(interp, fn_name, "list")) return JIT_TAIL_CTOR_LIST;
-    if (jit_symbol_matches_global_primitive(interp, fn_name, "Array")) return JIT_TAIL_CTOR_ARRAY;
+    if (expr.call.arg_count != 1 &&
+        (jit_symbol_matches_global_primitive(interp, fn_name, "List") ||
+        jit_symbol_matches_global_primitive(interp, fn_name, "list"))) return JIT_TAIL_CTOR_LIST;
+    if (expr.call.arg_count != 1 && jit_symbol_matches_global_primitive(interp, fn_name, "Array")) return JIT_TAIL_CTOR_ARRAY;
     return JIT_TAIL_CTOR_NONE;
 }
 
@@ -93,6 +94,7 @@ fn void? jit_compile_tail_list_escape(void* s, Expr* expr, Interp* interp, JitLo
     int* arg_slots = argc > 0
         ? (int*)mem::malloc(int.sizeof * argc)
         : null;
+    if (argc > 0 && arg_slots == null) return (void)fault;
     defer if (arg_slots != null) mem::free(arg_slots);
     for (usz i = 0; i < argc; i++) {
         arg_slots[i] = _jit_allocai(s, 8);
@@ -116,6 +118,7 @@ fn void? jit_compile_tail_array_escape(void* s, Expr* expr, Interp* interp, JitL
     int* arg_slots = argc > 0
         ? (int*)mem::malloc(int.sizeof * argc)
         : null;
+    if (argc > 0 && arg_slots == null) return (void)fault;
     defer if (arg_slots != null) mem::free(arg_slots);
     for (usz i = 0; i < argc; i++) {
         arg_slots[i] = _jit_allocai(s, 8);
@@ -278,6 +281,7 @@ fn void? jit_compile_multi_arg_many(void* s, Expr* expr, Interp* interp, JitLoca
     int* arg_slots = argc > 0
         ? (int*)mem::malloc(int.sizeof * argc)
         : null;
+    if (argc > 0 && arg_slots == null) return (void)fault;
     defer if (arg_slots != null) mem::free(arg_slots);
     for (usz i = 0; i < argc; i++) {
         arg_slots[i] = _jit_allocai(s, 8);

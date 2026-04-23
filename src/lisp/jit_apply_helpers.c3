@@ -1,5 +1,10 @@
 module lisp;
 
+fn Value* jit_raise(Interp* interp, String code, char[] message) @inline {
+    return raise_error_with_payload_names(interp, "runtime", code, (String)message, null);
+}
+
+
 import std::core::mem;
 import std::io;
 import std::collections::list;
@@ -45,7 +50,7 @@ fn Value* jit_make_nil_escape(Interp* interp) {
     interp = jit_resolve_interp(interp);
     if (interp == null) return null;
     Value* v = boundary_alloc_value_in_current_escape(interp);
-    if (v == null) return raise_error(interp, "jit: failed to allocate escape nil");
+    if (v == null) return jit_raise(interp, "runtime/out-of-memory", "jit: failed to allocate escape nil");
     v.tag = NIL;
     g_jit_escape_allocation_stats.nil_calls++;
     return v;
@@ -74,7 +79,7 @@ fn Value* jit_cons_escape(Interp* interp, Value* car, Value* cdr) {
     if (v == null) {
         boundary_cleanup_materialized_value(car, promoted_car, interp.current_scope, true);
         boundary_cleanup_materialized_value(cdr, promoted_cdr, interp.current_scope, true);
-        return raise_error(interp, "jit: failed to allocate escape cons");
+        return jit_raise(interp, "runtime/out-of-memory", "jit: failed to allocate escape cons");
     }
     v.tag = CONS;
     v.cons_val.car = promoted_car;
@@ -87,24 +92,24 @@ fn Value* jit_make_array_escape(Interp* interp, usz capacity) {
     interp = jit_resolve_interp(interp);
     if (interp == null) return null;
     Array* arr = (Array*)mem::malloc(Array.sizeof);
-    if (arr == null) return raise_error(interp, "jit: failed to allocate escape array");
+    if (arr == null) return jit_raise(interp, "runtime/out-of-memory", "jit: failed to allocate escape array");
     arr.capacity = capacity < 4 ? 4 : capacity;
     arr.length = 0;
     if (arr.capacity > usz.max / Value*.sizeof) {
         mem::free(arr);
-        return raise_error(interp, "jit: failed to allocate escape array");
+        return jit_raise(interp, "runtime/out-of-memory", "jit: failed to allocate escape array");
     }
     arr.items = (Value**)mem::malloc(Value*.sizeof * arr.capacity);
     if (arr.items == null) {
         mem::free(arr);
-        return raise_error(interp, "jit: failed to allocate escape array");
+        return jit_raise(interp, "runtime/out-of-memory", "jit: failed to allocate escape array");
     }
 
     Value* v = boundary_alloc_value_in_current_escape(interp, true);
     if (v == null) {
         mem::free(arr.items);
         mem::free(arr);
-        return raise_error(interp, "jit: failed to allocate escape array");
+        return jit_raise(interp, "runtime/out-of-memory", "jit: failed to allocate escape array");
     }
     v.tag = ARRAY;
     v.array_val = arr;
@@ -115,12 +120,12 @@ fn Value* jit_make_array_escape(Interp* interp, usz capacity) {
 fn Value* jit_make_string_escape(Interp* interp, char* chars, usz len) {
     interp = jit_resolve_interp(interp);
     if (interp == null) return null;
-    if (chars == null) return raise_error(interp, "jit: failed to allocate escape string");
-    if (len == usz.max) return raise_error(interp, "jit: failed to allocate escape string");
+    if (chars == null) return jit_raise(interp, "runtime/out-of-memory", "jit: failed to allocate escape string");
+    if (len == usz.max) return jit_raise(interp, "runtime/out-of-memory", "jit: failed to allocate escape string");
     usz cap = len + 1;
     if (cap < 32) cap = 32;
     char* owned = (char*)mem::malloc(cap);
-    if (owned == null) return raise_error(interp, "jit: failed to allocate escape string");
+    if (owned == null) return jit_raise(interp, "runtime/out-of-memory", "jit: failed to allocate escape string");
     for (usz i = 0; i < len; i++) {
         owned[i] = chars[i];
     }
@@ -129,7 +134,7 @@ fn Value* jit_make_string_escape(Interp* interp, char* chars, usz len) {
     Value* v = boundary_alloc_value_in_current_escape(interp, true);
     if (v == null) {
         mem::free(owned);
-        return raise_error(interp, "jit: failed to allocate escape string");
+        return jit_raise(interp, "runtime/out-of-memory", "jit: failed to allocate escape string");
     }
     v.tag = STRING;
     v.str_chars = owned;
@@ -143,7 +148,7 @@ fn Value* jit_make_string_literal_escape(Interp* interp, Value* literal) {
     interp = jit_resolve_interp(interp);
     if (interp == null) return null;
     if (literal == null || literal.tag != STRING || literal.str_chars == null) {
-        return raise_error(interp, "jit: expected string literal for escape allocation");
+        return jit_raise(interp, "type/arg-mismatch", "jit: expected string literal for escape allocation");
     }
     return jit_make_string_escape(interp, literal.str_chars, literal.str_len);
 }
@@ -151,13 +156,13 @@ fn Value* jit_make_string_literal_escape(Interp* interp, Value* literal) {
 fn Value* jit_array_escape_set(Interp* interp, Value* array, long index, Value* value) {
     interp = jit_resolve_interp(interp);
     if (interp == null) return null;
-    if (array == null) return raise_error(interp, "jit: missing escape array");
+    if (array == null) return jit_raise(interp, "type/arg-mismatch", "jit: missing escape array");
     if (array.tag == ERROR) return array;
     if (array.tag != ARRAY || array.array_val == null) {
-        return raise_error(interp, "jit: invalid escape array");
+        return jit_raise(interp, "type/arg-mismatch", "jit: invalid escape array");
     }
     if (index < 0 || (usz)index >= array.array_val.capacity) {
-        return raise_error(interp, "jit: escape array index out of bounds");
+        return jit_raise(interp, "runtime/evaluation-error", "jit: escape array index out of bounds");
     }
 
     Value* promoted =
@@ -185,9 +190,9 @@ fn Value* jit_lookup_global(Interp* interp, uint sym_id) {
     char[256] ebuf;
     if (try char[] msg = io::bprintf(&ebuf, "unbound variable '%s'",
         (ZString)interp.symbols.get_name(name))) {
-        return raise_error(interp, msg);
+        return jit_raise(interp, "runtime/evaluation-error", msg);
     }
-    return raise_error(interp, "unbound variable");
+    return jit_raise(interp, "runtime/evaluation-error", "unbound variable");
 }
 
 fn usz format_arity_error(char[] buf, usz expected, usz got) {
@@ -217,15 +222,15 @@ fn Value* jit_apply_non_callable_error(Value* func, Interp* interp) {
         if (try char[] msg = io::bprintf(&ebuf, "'%s' is %s, not a function",
             (ZString)interp.symbols.get_name(interp.last_call_name),
             (ZString)type_name)) {
-            return raise_error(interp, msg);
+            return jit_raise(interp, "runtime/evaluation-error", msg);
         }
-        return raise_error(interp, "called value is not a function");
+        return jit_raise(interp, "type/arg-mismatch", "called value is not a function");
     }
     if (try char[] msg = io::bprintf(&ebuf, "called value is %s, not a function",
         (ZString)type_name)) {
-        return raise_error(interp, msg);
+        return jit_raise(interp, "runtime/evaluation-error", msg);
     }
-    return raise_error(interp, "called value is not a function");
+    return jit_raise(interp, "type/arg-mismatch", "called value is not a function");
 }
 
 fn Value* jit_apply_value_closure(Value* func, Value* arg, Interp* interp) {
@@ -264,7 +269,7 @@ fn Value* jit_apply_value_closure(Value* func, Value* arg, Interp* interp) {
             Value* rest_list = make_list1_or_error(interp, arg, "out of memory while binding variadic rest arguments");
             if (rest_list == null || rest_list.tag == ERROR) return rest_list;
             new_env = jit_env_extend(interp, new_env, closure.rest_param, rest_list);
-            if (new_env == null) return raise_error(interp, "out of memory while binding argument");
+            if (new_env == null) return jit_raise(interp, "runtime/out-of-memory", "out of memory while binding argument");
             Value* result = jit_eval_in_single_scope(closure.body, new_env, interp);
             if (zeroarg_closure_trace_enabled()) {
                 io::printfn("OMNI_CLOSURE_TRACE exit param_count=%d body_tag=%d", (int)closure.param_count, (int)closure.body.tag);
@@ -276,28 +281,28 @@ fn Value* jit_apply_value_closure(Value* func, Value* arg, Interp* interp) {
             Value* type_err = check_lambda_call_boundary(closure, typed_args[:1], 1, interp);
             if (type_err != null) return type_err;
             new_env = jit_env_extend(interp, new_env, closure.params[0], arg);
-            if (new_env == null) return raise_error(interp, "out of memory while binding argument");
+            if (new_env == null) return jit_raise(interp, "runtime/out-of-memory", "out of memory while binding argument");
             new_env = jit_env_extend(interp, new_env, closure.rest_param, make_nil(interp));
-            if (new_env == null) return raise_error(interp, "out of memory while binding argument");
+            if (new_env == null) return jit_raise(interp, "runtime/out-of-memory", "out of memory while binding argument");
             Value* result = jit_eval_in_single_scope(closure.body, new_env, interp);
             if (zeroarg_closure_trace_enabled()) {
                 io::printfn("OMNI_CLOSURE_TRACE exit param_count=%d body_tag=%d", (int)closure.param_count, (int)closure.body.tag);
             }
             return result;
         }
-        return raise_error(interp, "too few arguments for variadic lambda");
+        return jit_raise(interp, "runtime/evaluation-error", "too few arguments for variadic lambda");
     }
     if (closure.param_count > 1) {
         char[128] buf;
         usz len = format_arity_error(&buf, closure.param_count, 1);
-        return raise_error(interp, buf[:len]);
+        return raise_error_with_payload_names(interp, "type", "type/arity", (String)buf[:len], null);
     }
     Value*[1] typed_args = { arg };
     Value* type_err = check_lambda_call_boundary(closure, typed_args[:1], 1, interp);
     if (type_err != null) return type_err;
     assert(closure.env != null, "jit_apply_value_closure: env is null");
     Env* new_env = jit_env_extend(interp, closure.env, closure.param, arg);
-    if (new_env == null) return raise_error(interp, "out of memory while binding argument");
+    if (new_env == null) return jit_raise(interp, "runtime/out-of-memory", "out of memory while binding argument");
     Value* result = jit_eval_in_single_scope(closure.body, new_env, interp);
     if (zeroarg_closure_trace_enabled()) {
         io::printfn("OMNI_CLOSURE_TRACE exit param_count=%d body_tag=%d", (int)closure.param_count, (int)closure.body.tag);
@@ -321,7 +326,7 @@ fn Value* jit_apply_value_method_table(Value* func, Value* arg, Interp* interp) 
 
 fn Value* jit_apply_value_primitive(Value* func, Value* arg, Interp* interp) {
     if (func == null || func.tag != PRIMITIVE || func.prim_val == null || func.prim_val.func == null) {
-        return raise_error(interp, "invalid primitive application state");
+        return jit_raise(interp, "type/arg-mismatch", "invalid primitive application state");
     }
     int arity = func.prim_val.arity;
     // IMPORTANT: keep primitive apply on Value* return path.

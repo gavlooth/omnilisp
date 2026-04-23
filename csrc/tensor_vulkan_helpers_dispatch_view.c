@@ -177,7 +177,7 @@ int omni_tensor_backend_vulkan_map_view_scalar_chain_f32(
     if (op_count > SIZE_MAX / sizeof(OmniTensorVulkanBuffer*) || op_count > SIZE_MAX / sizeof(OmniVulkanDescriptorSet)) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
     if (op_count > UINT32_MAX / 4u || rank > UINT32_MAX || rank == 0 || shape == NULL || view_strides == NULL) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
     for (size_t i = 0; i < op_count; i++) {
-        if ((modes[i] != 0u && modes[i] != 1u) || ops[i] > 5u) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
+        if ((modes[i] != 0u && modes[i] != 1u) || ops[i] > 7u) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
     }
     size_t input_required = 0;
     int status = omni_tensor_vulkan_dense_required_elements(rank, shape, view_strides, &input_required);

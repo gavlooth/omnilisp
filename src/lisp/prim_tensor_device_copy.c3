@@ -61,8 +61,12 @@ fn Value* tensor_copy_cpu_to_cuda_value(Value* source_value, Interp* interp) {
     if (!is_tensor(source_value) || source_value.tensor_val == null) return tensor_type_raise(interp, "to-device: expected Tensor");
     TensorVal* source_meta = source_value.tensor_val;
     if (!tensor_has_valid_metadata(source_meta)) return tensor_runtime_raise(interp, "to-device: source tensor metadata is missing");
-    if (source_meta.kind == TENSOR_PAYLOAD_VIEW || source_meta.is_view || !tensor_dense_row_major(source_meta)) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "to-device: source Tensor views are not eligible for CUDA copy", null);
+    bool source_is_view = source_meta.kind == TENSOR_PAYLOAD_VIEW || source_meta.is_view;
+    if (source_is_view && source_meta.device != TENSOR_DEVICE_CPU) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "to-device: CUDA copy currently supports CPU-backed view materialization", null);
+    }
+    if (!source_is_view && !tensor_dense_row_major(source_meta)) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "to-device: source Tensor must be dense row-major for CUDA copy", null);
     }
 
     Value* realized = tensor_realize_to_value(source_value, interp);

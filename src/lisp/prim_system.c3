@@ -15,12 +15,12 @@ extern fn void c_exit(int status) @extern("_exit");
  */
 fn Value* prim_shell(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_string(args[0])) {
-        return raise_error(interp, "shell: expected string command");
+        return runtime_raise(interp, "type/arg-mismatch", "shell: expected string command");
     }
 
     void* fp = c_popen((ZString)args[0].str_chars, "r");
     if (fp == null) {
-        return raise_error(interp, "shell: popen failed");
+        return runtime_raise(interp, "runtime/evaluation-error", "shell: popen failed");
     }
 
     // Read output into buffer
@@ -54,7 +54,7 @@ fn Value* prim_shell(Value*[] args, Env* env, Interp* interp) {
  */
 fn Value* prim_getenv(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_string(args[0])) {
-        return raise_error(interp, "getenv: expected string");
+        return runtime_raise(interp, "type/arg-mismatch", "getenv: expected string");
     }
     char* val = c_getenv((ZString)args[0].str_chars);
     if (val == null) return make_nil(interp);
@@ -91,7 +91,7 @@ fn Value* prim_exit(Value*[] args, Env* env, Interp* interp) {
     int code = 0;
     if (args.len >= 1 && args[0].tag == INT) {
         if (args[0].int_val < 0 || args[0].int_val > 255) {
-            return raise_error(interp, "exit: code must be between 0 and 255");
+            return runtime_raise(interp, "type/range-error", "exit: code must be between 0 and 255");
         }
         code = (int)args[0].int_val;
     }
@@ -104,12 +104,12 @@ fn Value* prim_exit(Value*[] args, Env* env, Interp* interp) {
  * secs can be int or double (fractional seconds supported)
  */
 fn Value* prim_sleep(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return raise_error(interp, "sleep: expected number of seconds");
+    if (args.len < 1) return runtime_raise(interp, "type/arg-mismatch", "sleep: expected number of seconds");
     double secs;
     if (args[0].tag == INT) { secs = (double)args[0].int_val; }
     else if (args[0].tag == DOUBLE) { secs = args[0].double_val; }
     else if (args[0].tag == FLOAT32) { secs = (double)args[0].float32_val; }
-    else { return raise_error(interp, "sleep: expected number"); }
+    else { return runtime_raise(interp, "type/arg-mismatch", "sleep: expected number"); }
     uint usec = (uint)(secs * 1000000.0);
     c_usleep(usec);
     return make_void(interp);

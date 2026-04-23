@@ -22,6 +22,14 @@ extern fn double c_ceil(double x) @extern("ceil");
 extern fn double c_round(double x) @extern("round");
 extern fn double c_fabs(double x) @extern("fabs");
 
+fn Value* math_raise(Interp* interp, char[] code, char[] message) @inline {
+    return raise_error_with_payload_names(interp, "type", code, message, null);
+}
+
+fn Value* math_runtime_raise(Interp* interp, char[] message) @inline {
+    return raise_error_with_payload_names(interp, "runtime", "runtime/evaluation-error", message, null);
+}
+
 fn bool math_arg_to_double(Value* value, double* out) @inline {
     return is_numeric_value(value) && try_numeric_to_double(value, out);
 }
@@ -36,7 +44,7 @@ fn Value* prim_math_lgamma(Value*[] args, Env* env, Interp* interp) {
 
     double input = 0.0;
     if (!try_numeric_to_double(args[0], &input)) {
-        return raise_error(interp, "math/lgamma: value out of Float64 range");
+        return math_raise(interp, "type/range-error", "math/lgamma: value out of Float64 range");
     }
 
     double output = 0.0;
@@ -45,13 +53,13 @@ fn Value* prim_math_lgamma(Value*[] args, Env* env, Interp* interp) {
         case BOOST_MATH_STATUS_OK:
             return make_double(interp, output);
         case BOOST_MATH_STATUS_INVALID_ARGUMENT:
-            return raise_error(interp, "math/lgamma: expected finite numeric input");
+            return math_raise(interp, "type/arg-mismatch", "math/lgamma: expected finite numeric input");
         case BOOST_MATH_STATUS_DOMAIN_ERROR:
-            return raise_error(interp, "math/lgamma: domain error");
+            return math_raise(interp, "type/domain-error", "math/lgamma: domain error");
         case BOOST_MATH_STATUS_RANGE_ERROR:
-            return raise_error(interp, "math/lgamma: range error");
+            return math_raise(interp, "type/range-error", "math/lgamma: range error");
         default:
-            return raise_error(interp, "math/lgamma: evaluation error");
+            return math_runtime_raise(interp, "math/lgamma: evaluation error");
     }
 }
 
@@ -66,7 +74,7 @@ fn Value* prim_math_erf(Value*[] args, Env* env, Interp* interp) {
 
     double input = 0.0;
     if (!try_numeric_to_double(args[0], &input)) {
-        return raise_error(interp, "math/erf: value out of Float64 range");
+        return math_raise(interp, "type/range-error", "math/erf: value out of Float64 range");
     }
 
     double output = 0.0;
@@ -75,13 +83,13 @@ fn Value* prim_math_erf(Value*[] args, Env* env, Interp* interp) {
         case BOOST_MATH_STATUS_OK:
             return make_double(interp, output);
         case BOOST_MATH_STATUS_INVALID_ARGUMENT:
-            return raise_error(interp, "math/erf: expected finite numeric input");
+            return math_raise(interp, "type/arg-mismatch", "math/erf: expected finite numeric input");
         case BOOST_MATH_STATUS_DOMAIN_ERROR:
-            return raise_error(interp, "math/erf: domain error");
+            return math_raise(interp, "type/domain-error", "math/erf: domain error");
         case BOOST_MATH_STATUS_RANGE_ERROR:
-            return raise_error(interp, "math/erf: range error");
+            return math_raise(interp, "type/range-error", "math/erf: range error");
         default:
-            return raise_error(interp, "math/erf: evaluation error");
+            return math_runtime_raise(interp, "math/erf: evaluation error");
     }
 }
 
@@ -96,7 +104,7 @@ fn Value* prim_math_erfc(Value*[] args, Env* env, Interp* interp) {
 
     double input = 0.0;
     if (!try_numeric_to_double(args[0], &input)) {
-        return raise_error(interp, "math/erfc: value out of Float64 range");
+        return math_raise(interp, "type/range-error", "math/erfc: value out of Float64 range");
     }
 
     double output = 0.0;
@@ -105,13 +113,13 @@ fn Value* prim_math_erfc(Value*[] args, Env* env, Interp* interp) {
         case BOOST_MATH_STATUS_OK:
             return make_double(interp, output);
         case BOOST_MATH_STATUS_INVALID_ARGUMENT:
-            return raise_error(interp, "math/erfc: expected finite numeric input");
+            return math_raise(interp, "type/arg-mismatch", "math/erfc: expected finite numeric input");
         case BOOST_MATH_STATUS_DOMAIN_ERROR:
-            return raise_error(interp, "math/erfc: domain error");
+            return math_raise(interp, "type/domain-error", "math/erfc: domain error");
         case BOOST_MATH_STATUS_RANGE_ERROR:
-            return raise_error(interp, "math/erfc: range error");
+            return math_raise(interp, "type/range-error", "math/erfc: range error");
         default:
-            return raise_error(interp, "math/erfc: evaluation error");
+            return math_runtime_raise(interp, "math/erfc: evaluation error");
     }
 }
 
@@ -126,7 +134,7 @@ fn Value* prim_stats_normal_cdf(Value*[] args, Env* env, Interp* interp) {
 
     double input = 0.0;
     if (!try_numeric_to_double(args[0], &input)) {
-        return raise_error(interp, "stats/normal-cdf: value out of Float64 range");
+        return math_raise(interp, "type/range-error", "stats/normal-cdf: value out of Float64 range");
     }
 
     double output = 0.0;
@@ -135,13 +143,13 @@ fn Value* prim_stats_normal_cdf(Value*[] args, Env* env, Interp* interp) {
         case BOOST_MATH_STATUS_OK:
             return make_double(interp, output);
         case BOOST_MATH_STATUS_INVALID_ARGUMENT:
-            return raise_error(interp, "stats/normal-cdf: expected finite numeric input");
+            return math_raise(interp, "type/arg-mismatch", "stats/normal-cdf: expected finite numeric input");
         case BOOST_MATH_STATUS_DOMAIN_ERROR:
-            return raise_error(interp, "stats/normal-cdf: domain error");
+            return math_raise(interp, "type/domain-error", "stats/normal-cdf: domain error");
         case BOOST_MATH_STATUS_RANGE_ERROR:
-            return raise_error(interp, "stats/normal-cdf: range error");
+            return math_raise(interp, "type/range-error", "stats/normal-cdf: range error");
         default:
-            return raise_error(interp, "stats/normal-cdf: evaluation error");
+            return math_runtime_raise(interp, "stats/normal-cdf: evaluation error");
     }
 }
 
@@ -156,7 +164,7 @@ fn Value* prim_stats_normal_quantile(Value*[] args, Env* env, Interp* interp) {
 
     double probability = 0.0;
     if (!try_numeric_to_double(args[0], &probability)) {
-        return raise_error(interp, "stats/normal-quantile: probability out of Float64 range");
+        return math_raise(interp, "type/range-error", "stats/normal-quantile: probability out of Float64 range");
     }
 
     double output = 0.0;
@@ -165,13 +173,13 @@ fn Value* prim_stats_normal_quantile(Value*[] args, Env* env, Interp* interp) {
         case BOOST_MATH_STATUS_OK:
             return make_double(interp, output);
         case BOOST_MATH_STATUS_INVALID_ARGUMENT:
-            return raise_error(interp, "stats/normal-quantile: expected finite numeric input");
+            return math_raise(interp, "type/arg-mismatch", "stats/normal-quantile: expected finite numeric input");
         case BOOST_MATH_STATUS_DOMAIN_ERROR:
-            return raise_error(interp, "stats/normal-quantile: probability must be between 0 and 1");
+            return math_raise(interp, "type/domain-error", "stats/normal-quantile: probability must be between 0 and 1");
         case BOOST_MATH_STATUS_RANGE_ERROR:
-            return raise_error(interp, "stats/normal-quantile: range error");
+            return math_raise(interp, "type/range-error", "stats/normal-quantile: range error");
         default:
-            return raise_error(interp, "stats/normal-quantile: evaluation error");
+            return math_runtime_raise(interp, "stats/normal-quantile: evaluation error");
     }
 }
 
@@ -305,7 +313,7 @@ fn Value* prim_atan2(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return primitive_arity_raise(interp, "atan2", "2 arguments", args.len);
     if (is_tensor(args[0]) || is_tensor(args[1])) return tensor_atan2_value(args[0], args[1], interp);
     if (is_big_complex(args[0]) || is_big_complex(args[1])) {
-        return raise_error(interp, "atan2: complex numbers are not supported");
+        return math_raise(interp, "type/unsupported", "atan2: complex numbers are not supported");
     }
     if (is_big_float(args[0]) || is_big_float(args[1])) {
         if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "atan2", 0, "number", args[0]);
@@ -494,17 +502,17 @@ fn Value* prim_min(Value*[] args, Env* env, Interp* interp) {
     if (is_tensor(args[0]) || is_tensor(args[1])) return tensor_minmax_value(args[0], args[1], true, "min", interp);
     if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "min", 0, "number", args[0]);
     if (!is_numeric_value(args[1])) return primitive_arg_type_raise(interp, "min", 1, "number", args[1]);
-    if (is_big_complex(args[0]) || is_big_complex(args[1]) || is_fixed_complex(args[0]) || is_fixed_complex(args[1])) return raise_error(interp, "min: complex numbers are not ordered");
+    if (is_big_complex(args[0]) || is_big_complex(args[1]) || is_fixed_complex(args[0]) || is_fixed_complex(args[1])) return math_raise(interp, "type/unsupported", "min: complex numbers are not ordered");
     if (is_big_float(args[0]) || is_big_float(args[1])) {
         int cmp = 0;
-        if (!numeric_values_compare(args[0], args[1], &cmp)) return raise_error(interp, "min: numeric comparison failed");
+        if (!numeric_values_compare(args[0], args[1], &cmp)) return math_runtime_raise(interp, "min: numeric comparison failed");
         return cmp <= 0 ? args[0] : args[1];
     }
     if (is_double(args[0]) || is_double(args[1])) {
         double a = 0.0;
         double b = 0.0;
         if (!try_numeric_to_double(args[0], &a) || !try_numeric_to_double(args[1], &b)) {
-            return raise_error(interp, "min: BigInteger value is out of Float64 range");
+            return math_raise(interp, "type/range-error", "min: BigInteger value is out of Float64 range");
         }
         return make_double(interp, a < b ? a : b);
     }
@@ -512,12 +520,12 @@ fn Value* prim_min(Value*[] args, Env* env, Interp* interp) {
         double a = 0.0;
         double b = 0.0;
         if (!try_numeric_to_double(args[0], &a) || !try_numeric_to_double(args[1], &b)) {
-            return raise_error(interp, "min: BigInteger value is out of Float64 range");
+            return math_raise(interp, "type/range-error", "min: BigInteger value is out of Float64 range");
         }
         return make_float32(interp, (float)(a < b ? a : b));
     }
     int cmp = 0;
-    if (!numeric_values_compare(args[0], args[1], &cmp)) return raise_error(interp, "min: numeric comparison failed");
+    if (!numeric_values_compare(args[0], args[1], &cmp)) return math_runtime_raise(interp, "min: numeric comparison failed");
     if (args[0].tag == BIG_INTEGER || args[1].tag == BIG_INTEGER) return cmp <= 0 ? args[0] : args[1];
     return make_int(interp, args[0].int_val < args[1].int_val ? args[0].int_val : args[1].int_val);
 }
@@ -527,17 +535,17 @@ fn Value* prim_max(Value*[] args, Env* env, Interp* interp) {
     if (is_tensor(args[0]) || is_tensor(args[1])) return tensor_minmax_value(args[0], args[1], false, "max", interp);
     if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "max", 0, "number", args[0]);
     if (!is_numeric_value(args[1])) return primitive_arg_type_raise(interp, "max", 1, "number", args[1]);
-    if (is_big_complex(args[0]) || is_big_complex(args[1]) || is_fixed_complex(args[0]) || is_fixed_complex(args[1])) return raise_error(interp, "max: complex numbers are not ordered");
+    if (is_big_complex(args[0]) || is_big_complex(args[1]) || is_fixed_complex(args[0]) || is_fixed_complex(args[1])) return math_raise(interp, "type/unsupported", "max: complex numbers are not ordered");
     if (is_big_float(args[0]) || is_big_float(args[1])) {
         int cmp = 0;
-        if (!numeric_values_compare(args[0], args[1], &cmp)) return raise_error(interp, "max: numeric comparison failed");
+        if (!numeric_values_compare(args[0], args[1], &cmp)) return math_runtime_raise(interp, "max: numeric comparison failed");
         return cmp >= 0 ? args[0] : args[1];
     }
     if (is_double(args[0]) || is_double(args[1])) {
         double a = 0.0;
         double b = 0.0;
         if (!try_numeric_to_double(args[0], &a) || !try_numeric_to_double(args[1], &b)) {
-            return raise_error(interp, "max: BigInteger value is out of Float64 range");
+            return math_raise(interp, "type/range-error", "max: BigInteger value is out of Float64 range");
         }
         return make_double(interp, a > b ? a : b);
     }
@@ -545,12 +553,12 @@ fn Value* prim_max(Value*[] args, Env* env, Interp* interp) {
         double a = 0.0;
         double b = 0.0;
         if (!try_numeric_to_double(args[0], &a) || !try_numeric_to_double(args[1], &b)) {
-            return raise_error(interp, "max: BigInteger value is out of Float64 range");
+            return math_raise(interp, "type/range-error", "max: BigInteger value is out of Float64 range");
         }
         return make_float32(interp, (float)(a > b ? a : b));
     }
     int cmp = 0;
-    if (!numeric_values_compare(args[0], args[1], &cmp)) return raise_error(interp, "max: numeric comparison failed");
+    if (!numeric_values_compare(args[0], args[1], &cmp)) return math_runtime_raise(interp, "max: numeric comparison failed");
     if (args[0].tag == BIG_INTEGER || args[1].tag == BIG_INTEGER) return cmp >= 0 ? args[0] : args[1];
     return make_int(interp, args[0].int_val > args[1].int_val ? args[0].int_val : args[1].int_val);
 }
@@ -665,9 +673,9 @@ fn Value* prim_lshift(Value*[] args, Env* env, Interp* interp) {
     if (!is_exact_integer_value(args[0])) return primitive_arg_type_raise(interp, "lshift", 0, "integer", args[0]);
     if (!is_exact_integer_value(args[1])) return primitive_arg_type_raise(interp, "lshift", 1, "integer", args[1]);
     long shift = 0;
-    if (!exact_integer_value_to_i64(args[1], &shift)) return raise_error(interp, "lshift: shift count out of range");
+    if (!exact_integer_value_to_i64(args[1], &shift)) return math_raise(interp, "type/range-error", "lshift: shift count out of range");
     if (shift < 0) return make_int(interp, 0);
-    if (shift > BIG_INTEGER_MAX_SHIFT_BITS) return raise_error(interp, "lshift: shift count out of range");
+    if (shift > BIG_INTEGER_MAX_SHIFT_BITS) return math_raise(interp, "type/range-error", "lshift: shift count out of range");
     return big_integer_shift_value(
         interp, args[0], (ulong)shift, true, args[0].tag == INT, "lshift: failed to allocate BigInteger result");
 }
@@ -677,9 +685,9 @@ fn Value* prim_rshift(Value*[] args, Env* env, Interp* interp) {
     if (!is_exact_integer_value(args[0])) return primitive_arg_type_raise(interp, "rshift", 0, "integer", args[0]);
     if (!is_exact_integer_value(args[1])) return primitive_arg_type_raise(interp, "rshift", 1, "integer", args[1]);
     long shift = 0;
-    if (!exact_integer_value_to_i64(args[1], &shift)) return raise_error(interp, "rshift: shift count out of range");
+    if (!exact_integer_value_to_i64(args[1], &shift)) return math_raise(interp, "type/range-error", "rshift: shift count out of range");
     if (shift < 0) return make_int(interp, 0);
-    if (shift > BIG_INTEGER_MAX_SHIFT_BITS) return raise_error(interp, "rshift: shift count out of range");
+    if (shift > BIG_INTEGER_MAX_SHIFT_BITS) return math_raise(interp, "type/range-error", "rshift: shift count out of range");
     return big_integer_shift_value(
         interp, args[0], (ulong)shift, false, args[0].tag == INT, "rshift: failed to allocate BigInteger result");
 }

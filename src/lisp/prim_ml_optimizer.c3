@@ -13,6 +13,18 @@ fn Value* ml_optimizer_shape_mismatch(Interp* interp, char[] message) @inline {
     return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", message, null);
 }
 
+fn bool ml_optimizer_state_present(Value* value) @inline {
+    return value != null && !is_nil(value);
+}
+
+fn Value* ml_optimizer_validate_adam_moments(Value* first, Value* second, Interp* interp, bool* out_has_moments) {
+    bool first_present = ml_optimizer_state_present(first);
+    bool second_present = ml_optimizer_state_present(second);
+    if (first_present != second_present) return ml_optimizer_invalid(interp, "ml/optimizer-step: Adam state must provide both first-moment and second-moment");
+    if (out_has_moments != null) *out_has_moments = first_present;
+    return null;
+}
+
 fn Value* ml_optimizer_resolve_cpu(Value* value, TensorVal** out_tensor, Value** out_value, Interp* interp, char[] label) {
     if (ml_grad_touches_vulkan(value)) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/optimizer-step: mixed or unsupported Vulkan optimizer contract", null);
@@ -214,7 +226,9 @@ fn Value* ml_adam_step_tensor(Value* params_arg, Value* grads_arg, Value* first_
     err = ml_optimizer_resolve_cpu(grads_arg, &grads, &grads_value, interp, "ml/optimizer-step: gradient tensor backing storage is missing");
     if (err != null) return err;
     defer if (grads_value != null && grads_value != grads_arg) boundary_cleanup_materialized_value(null, grads_value, interp.current_scope);
-    bool has_moments = first_arg != null && second_arg != null;
+    bool has_moments = false;
+    err = ml_optimizer_validate_adam_moments(first_arg, second_arg, interp, &has_moments);
+    if (err != null) return err;
     if (has_moments) {
         if (!is_tensor(first_arg) || !is_tensor(second_arg)) return ml_optimizer_invalid(interp, "ml/optimizer-step: Adam moment leaves must be tensors");
         err = ml_optimizer_resolve_cpu(first_arg, &first, &first_value, interp, "ml/optimizer-step: first-moment tensor backing storage is missing");
@@ -295,7 +309,9 @@ fn Value* ml_adam_step_tensor(Value* params_arg, Value* grads_arg, Value* first_
 
 fn Value* ml_adam_step_array(Value* params, Value* grads, Value* first, Value* second, double learning_rate, double beta1, double beta2, double epsilon, double weight_decay, bool decoupled_weight_decay, long next_step, Interp* interp, Value** out_params, Value** out_first, Value** out_second) {
     if (grads == null || grads.tag != ARRAY || grads.array_val == null) return ml_optimizer_invalid(interp, "ml/optimizer-step: parameter and gradient trees must have matching structure");
-    bool has_moments = first != null && second != null;
+    bool has_moments = false;
+    Value* err = ml_optimizer_validate_adam_moments(first, second, interp, &has_moments);
+    if (err != null) return err;
     if (has_moments && (first.tag != ARRAY || first.array_val == null || second.tag != ARRAY || second.array_val == null)) return ml_optimizer_invalid(interp, "ml/optimizer-step: Adam moment trees must match the parameter tree");
     if (params.array_val.length != grads.array_val.length || (has_moments && (params.array_val.length != first.array_val.length || params.array_val.length != second.array_val.length))) return ml_optimizer_shape_mismatch(interp, "ml/optimizer-step: array optimizer trees must have the same length");
     Value* updated = make_array_checked(interp, params.array_val.length, "ml/optimizer-step: out of memory");
@@ -306,7 +322,7 @@ fn Value* ml_adam_step_array(Value* params, Value* grads, Value* first, Value* s
         Value* child_params = null;
         Value* child_first = null;
         Value* child_second = null;
-        Value* err = ml_adam_step_tree(params.array_val.items[i], grads.array_val.items[i], has_moments ? first.array_val.items[i] : null, has_moments ? second.array_val.items[i] : null, learning_rate, beta1, beta2, epsilon, weight_decay, decoupled_weight_decay, next_step, interp, &child_params, &child_first, &child_second);
+        err = ml_adam_step_tree(params.array_val.items[i], grads.array_val.items[i], has_moments ? first.array_val.items[i] : null, has_moments ? second.array_val.items[i] : null, learning_rate, beta1, beta2, epsilon, weight_decay, decoupled_weight_decay, next_step, interp, &child_params, &child_first, &child_second);
         if (err != null) return err;
         updated.array_val.items[i] = child_params;
         next_first.array_val.items[i] = child_first;
@@ -323,7 +339,9 @@ fn Value* ml_adam_step_array(Value* params, Value* grads, Value* first, Value* s
 
 fn Value* ml_adam_step_dict(Value* params, Value* grads, Value* first, Value* second, double learning_rate, double beta1, double beta2, double epsilon, double weight_decay, bool decoupled_weight_decay, long next_step, Interp* interp, Value** out_params, Value** out_first, Value** out_second) {
     if (grads == null || grads.tag != HASHMAP || grads.hashmap_val == null) return ml_optimizer_invalid(interp, "ml/optimizer-step: parameter and gradient trees must have matching structure");
-    bool has_moments = first != null && second != null;
+    bool has_moments = false;
+    Value* err = ml_optimizer_validate_adam_moments(first, second, interp, &has_moments);
+    if (err != null) return err;
     if (has_moments && (first.tag != HASHMAP || first.hashmap_val == null || second.tag != HASHMAP || second.hashmap_val == null)) return ml_optimizer_invalid(interp, "ml/optimizer-step: Adam moment trees must match the parameter tree");
     if (params.hashmap_val.count != grads.hashmap_val.count || (has_moments && (params.hashmap_val.count != first.hashmap_val.count || params.hashmap_val.count != second.hashmap_val.count))) return ml_optimizer_shape_mismatch(interp, "ml/optimizer-step: dictionary optimizer trees must have the same keys");
     Value* updated = nn_make_dict(interp, params.hashmap_val.count == 0 ? 2 : params.hashmap_val.count * 2);
@@ -340,7 +358,7 @@ fn Value* ml_adam_step_dict(Value* params, Value* grads, Value* first, Value* se
         Value* child_params = null;
         Value* child_first = null;
         Value* child_second = null;
-        Value* err = ml_adam_step_tree(entry.value, grad_leaf, first_leaf, second_leaf, learning_rate, beta1, beta2, epsilon, weight_decay, decoupled_weight_decay, next_step, interp, &child_params, &child_first, &child_second);
+        err = ml_adam_step_tree(entry.value, grad_leaf, first_leaf, second_leaf, learning_rate, beta1, beta2, epsilon, weight_decay, decoupled_weight_decay, next_step, interp, &child_params, &child_first, &child_second);
         if (err != null) return err;
         if (!hashmap_set_checked(updated.hashmap_val, entry.key, child_params, interp) ||
             !hashmap_set_checked(next_first.hashmap_val, entry.key, child_first, interp) ||
@@ -662,7 +680,9 @@ fn Value* prim_ml_optimizer_step(Value*[] args, Env* env, Interp* interp) {
     }
     Value* first = nn_dict_get(args[3], interp, "first-moment");
     Value* second = nn_dict_get(args[3], interp, "second-moment");
-    if ((first == null) != (second == null)) return ml_optimizer_invalid(interp, "ml/optimizer-step: Adam state must provide both first-moment and second-moment");
+    bool has_moments = false;
+    err = ml_optimizer_validate_adam_moments(first, second, interp, &has_moments);
+    if (err != null) return err;
     long current_step = 0;
     Value* step_value = nn_dict_get(args[3], interp, "step");
     if (step_value != null) {
@@ -673,7 +693,7 @@ fn Value* prim_ml_optimizer_step(Value*[] args, Env* env, Interp* interp) {
     Value* updated_params = null;
     Value* next_first = null;
     Value* next_second = null;
-    err = ml_adam_step_tree(args[1], effective_grads, first, second, learning_rate, beta1, beta2, epsilon, weight_decay, is_adamw, next_step, interp, &updated_params, &next_first, &next_second);
+    err = ml_adam_step_tree(args[1], effective_grads, has_moments ? first : null, has_moments ? second : null, learning_rate, beta1, beta2, epsilon, weight_decay, is_adamw, next_step, interp, &updated_params, &next_first, &next_second);
     if (err != null) return err;
     Value* next_state = nn_make_dict(interp, 8);
     if (next_state == null || next_state.tag == ERROR) return next_state;

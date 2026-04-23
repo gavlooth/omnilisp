@@ -59,7 +59,7 @@ fn Value* format_dispatch_error(MethodTable* mt, Value*[] args, Interp* interp) 
             msg = "no matching method";
         }
     }
-    return raise_error(interp, msg);
+    return runtime_raise(interp, "runtime/evaluation-error", msg);
 }
 
 /**
@@ -112,7 +112,7 @@ fn Value* format_match_error(Value* scrutinee, Expr* expr, Interp* interp) {
                     } else {
                         msg = "no pattern matched: missing union variants";
                     }
-                    return raise_error(interp, msg);
+                    return runtime_raise(interp, "runtime/evaluation-error", msg);
                 }
             }
         }
@@ -125,5 +125,5 @@ fn Value* format_match_error(Value* scrutinee, Expr* expr, Interp* interp) {
     } else {
         msg = "no pattern matched";
     }
-    return raise_error(interp, msg);
+    return runtime_raise(interp, "runtime/evaluation-error", msg);
 }

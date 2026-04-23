@@ -1,5 +1,10 @@
 module lisp;
 
+fn Value* big_complex_raise(Interp* interp, String code, char[] message) @inline {
+    return raise_error_with_payload_names(interp, "big-complex", code, (String)message, null);
+}
+
+
 import std::io;
 import main;
 
@@ -25,11 +30,11 @@ const int BIG_COMPLEX_MATH_TANH = 13;
 const int BIG_COMPLEX_MATH_POW = 1;
 
 fn Value* make_big_complex_from_owned_handle(Interp* interp, void* handle, char[] message) {
-    if (handle == null) return raise_error(interp, message);
+    if (handle == null) return big_complex_raise(interp, "big-complex/invalid-argument", message);
     Value* v = interp.alloc_value();
     if (v == null) {
         omni_big_complex_free(handle);
-        return raise_error(interp, "BigComplex: failed to allocate value wrapper");
+        return big_complex_raise(interp, "big-complex/out-of-memory", "BigComplex: failed to allocate value wrapper");
     }
     v.tag = BIG_COMPLEX;
     v.big_complex_val = handle;
@@ -72,7 +77,7 @@ fn Value* copy_big_complex_to_parent(Value* v, Interp* interp, BoundaryCopyFault
         cloned = omni_big_complex_clone(v.big_complex_val);
         if (cloned == null) {
             if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
-            return fault_out != null ? null : raise_error(interp, "boundary: failed to clone BigComplex payload");
+            return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to clone BigComplex payload");
         }
     }
 
@@ -80,7 +85,7 @@ fn Value* copy_big_complex_to_parent(Value* v, Interp* interp, BoundaryCopyFault
     if (result == null) {
         if (cloned != null) omni_big_complex_free(cloned);
         if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
-        return fault_out != null ? null : raise_error(interp, "boundary: failed to allocate BigComplex copy value");
+        return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate BigComplex copy value");
     }
     result.tag = BIG_COMPLEX;
     result.big_complex_val = cloned;
@@ -94,13 +99,13 @@ fn Value* promote_escape_big_complex(Value* v, Interp* interp, PromotionContext*
     void* cloned = null;
     if (v.big_complex_val != null) {
         cloned = omni_big_complex_clone(v.big_complex_val);
-        if (cloned == null) return raise_error(interp, "boundary: failed to clone BigComplex escape payload");
+        if (cloned == null) return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to clone BigComplex escape payload");
     }
 
     Value* result = boundary_alloc_value_in_current_escape(interp);
     if (result == null) {
         if (cloned != null) omni_big_complex_free(cloned);
-        return raise_error(interp, "boundary: failed to allocate BigComplex escape copy value");
+        return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate BigComplex escape copy value");
     }
     result.tag = BIG_COMPLEX;
     result.big_complex_val = cloned;
@@ -109,10 +114,10 @@ fn Value* promote_escape_big_complex(Value* v, Interp* interp, PromotionContext*
 }
 
 fn Value* big_complex_to_string_value(Value* v, Interp* interp, char[] message) {
-    if (v == null || v.tag != BIG_COMPLEX || v.big_complex_val == null) return raise_error(interp, message);
+    if (v == null || v.tag != BIG_COMPLEX || v.big_complex_val == null) return big_complex_raise(interp, "big-complex/invalid-argument", message);
     usz len = 0;
     char* rendered = omni_big_complex_to_string(v.big_complex_val, &len);
-    if (rendered == null) return raise_error(interp, message);
+    if (rendered == null) return big_complex_raise(interp, "big-complex/invalid-argument", message);
     Value* result = make_string(interp, rendered[:len]);
     omni_big_complex_string_free(rendered);
     return result;
@@ -174,7 +179,7 @@ fn void* big_complex_handle_from_value(Value* v) {
 }
 
 fn Value* big_complex_from_value(Interp* interp, Value* v, char[] message) {
-    if (v == null) return raise_error(interp, message);
+    if (v == null) return big_complex_raise(interp, "big-complex/invalid-argument", message);
     if (v.tag == BIG_COMPLEX) return copy_big_complex_to_parent(v, interp);
     void* handle = big_complex_handle_from_value(v);
     return make_big_complex_from_owned_handle(interp, handle, message);
@@ -182,11 +187,11 @@ fn Value* big_complex_from_value(Interp* interp, Value* v, char[] message) {
 
 fn Value* big_complex_from_parts(Interp* interp, Value* real_value, Value* imag_value, char[] message) {
     void* real = big_float_handle_from_value(real_value);
-    if (real == null) return raise_error(interp, message);
+    if (real == null) return big_complex_raise(interp, "big-complex/invalid-argument", message);
     defer omni_big_float_free(real);
 
     void* imag = big_float_handle_from_value(imag_value);
-    if (imag == null) return raise_error(interp, message);
+    if (imag == null) return big_complex_raise(interp, "big-complex/invalid-argument", message);
     defer omni_big_float_free(imag);
 
     void* result = omni_big_complex_from_big_float_parts(real, imag);
@@ -195,11 +200,11 @@ fn Value* big_complex_from_parts(Interp* interp, Value* real_value, Value* imag_
 
 fn Value* big_complex_binary_values(Interp* interp, Value* lhs, Value* rhs, int op, char[] message) {
     void* left = big_complex_handle_from_value(lhs);
-    if (left == null) return raise_error(interp, message);
+    if (left == null) return big_complex_raise(interp, "big-complex/invalid-argument", message);
     defer omni_big_complex_free(left);
 
     void* right = big_complex_handle_from_value(rhs);
-    if (right == null) return raise_error(interp, message);
+    if (right == null) return big_complex_raise(interp, "big-complex/invalid-argument", message);
     defer omni_big_complex_free(right);
 
     void* result = omni_big_complex_binary(left, right, op);
@@ -208,7 +213,7 @@ fn Value* big_complex_binary_values(Interp* interp, Value* lhs, Value* rhs, int 
 
 fn Value* big_complex_neg_value(Interp* interp, Value* v, char[] message) {
     void* source = big_complex_handle_from_value(v);
-    if (source == null) return raise_error(interp, message);
+    if (source == null) return big_complex_raise(interp, "big-complex/invalid-argument", message);
     defer omni_big_complex_free(source);
 
     void* result = omni_big_complex_neg(source);
@@ -217,7 +222,7 @@ fn Value* big_complex_neg_value(Interp* interp, Value* v, char[] message) {
 
 fn Value* big_complex_unary_math_value(Interp* interp, Value* v, int op, char[] message) {
     void* source = big_complex_handle_from_value(v);
-    if (source == null) return raise_error(interp, message);
+    if (source == null) return big_complex_raise(interp, "big-complex/invalid-argument", message);
     defer omni_big_complex_free(source);
 
     void* result = omni_big_complex_unary_math(source, op);
@@ -226,11 +231,11 @@ fn Value* big_complex_unary_math_value(Interp* interp, Value* v, int op, char[] 
 
 fn Value* big_complex_binary_math_values(Interp* interp, Value* lhs, Value* rhs, int op, char[] message) {
     void* left = big_complex_handle_from_value(lhs);
-    if (left == null) return raise_error(interp, message);
+    if (left == null) return big_complex_raise(interp, "big-complex/invalid-argument", message);
     defer omni_big_complex_free(left);
 
     void* right = big_complex_handle_from_value(rhs);
-    if (right == null) return raise_error(interp, message);
+    if (right == null) return big_complex_raise(interp, "big-complex/invalid-argument", message);
     defer omni_big_complex_free(right);
 
     void* result = omni_big_complex_binary_math(left, right, op);
@@ -239,7 +244,7 @@ fn Value* big_complex_binary_math_values(Interp* interp, Value* lhs, Value* rhs,
 
 fn Value* big_complex_abs_value(Interp* interp, Value* v, char[] message) {
     void* source = big_complex_handle_from_value(v);
-    if (source == null) return raise_error(interp, message);
+    if (source == null) return big_complex_raise(interp, "big-complex/invalid-argument", message);
     defer omni_big_complex_free(source);
 
     void* result = omni_big_complex_abs(source);
@@ -247,7 +252,7 @@ fn Value* big_complex_abs_value(Interp* interp, Value* v, char[] message) {
 }
 
 fn Value* big_complex_real_part_value(Interp* interp, Value* v, char[] message) {
-    if (v == null) return raise_error(interp, message);
+    if (v == null) return big_complex_raise(interp, "big-complex/invalid-argument", message);
     if (v.tag != BIG_COMPLEX) return v;
 
     void* result = omni_big_complex_real_part(v.big_complex_val);
@@ -255,7 +260,7 @@ fn Value* big_complex_real_part_value(Interp* interp, Value* v, char[] message) 
 }
 
 fn Value* big_complex_imag_part_value(Interp* interp, Value* v, char[] message) {
-    if (v == null) return raise_error(interp, message);
+    if (v == null) return big_complex_raise(interp, "big-complex/invalid-argument", message);
     if (v.tag != BIG_COMPLEX) return make_int(interp, 0);
 
     void* result = omni_big_complex_imag_part(v.big_complex_val);
@@ -263,7 +268,7 @@ fn Value* big_complex_imag_part_value(Interp* interp, Value* v, char[] message) 
 }
 
 fn Value* big_complex_conjugate_value(Interp* interp, Value* v, char[] message) {
-    if (v == null) return raise_error(interp, message);
+    if (v == null) return big_complex_raise(interp, "big-complex/invalid-argument", message);
     if (v.tag != BIG_COMPLEX) return v;
 
     void* result = omni_big_complex_conjugate(v.big_complex_val);

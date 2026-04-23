@@ -342,7 +342,7 @@ fn void run_memory_lifetime_runtime_alloc_groups_core_tests(Interp* interp, int*
         g_value_force_make_cons_or_error_alloc_fail_nth = 1;
         Value* variadic_fail = prim_list(variadic_args[0:2], null, interp);
         g_value_force_make_cons_or_error_alloc_fail_nth = 1;
-        Value* array_fail = setup_ok ? prim_list(array_args[0:1], null, interp) : raise_error(interp, "setup failed");
+        Value* array_fail = setup_ok ? prim_list(array_args[0:1], null, interp) : runtime_raise(interp, "runtime/evaluation-error", "setup failed");
         g_value_force_make_cons_or_error_alloc_fail_nth = saved_force;
 
         bool ok = setup_ok &&
@@ -368,7 +368,7 @@ fn void run_memory_lifetime_runtime_alloc_groups_core_tests(Interp* interp, int*
         bool setup_ok = map != null && map.tag == HASHMAP && map.hashmap_val != null;
         bool saved_force = g_value_force_make_string_alloc_fail;
         g_value_force_make_string_alloc_fail = true;
-        Value* lookup_fail = setup_ok ? json_pointer_lookup(map, "missing", interp) : raise_error(interp, "setup failed");
+        Value* lookup_fail = setup_ok ? json_pointer_lookup(map, "missing", interp) : runtime_raise(interp, "runtime/evaluation-error", "setup failed");
         g_value_force_make_string_alloc_fail = saved_force;
 
         bool ok = setup_ok &&

@@ -1,7 +1,8 @@
 module main;
 
-const String[230] AOT_RUNTIME_LISP_SOURCES_PART3 = {
+const String[233] AOT_RUNTIME_LISP_SOURCES_PART3 = {
     "src/lisp/prim_ffi_async.c3",
+    "src/lisp/prim_ffi_callback.c3",
     "src/lisp/prim_math_arithmetic.c3",
     "src/lisp/prim_math_core.c3",
     "src/lisp/prim_ml_activation.c3",
@@ -10,6 +11,8 @@ const String[230] AOT_RUNTIME_LISP_SOURCES_PART3 = {
     "src/lisp/prim_ml_conv2d.c3",
     "src/lisp/prim_ml_autograd.c3",
     "src/lisp/prim_ml_autograd_tensor_expr.c3",
+    "src/lisp/prim_ml_autograd_tensor_expr_losses.c3",
+    "src/lisp/prim_ml_autograd_vulkan_broadcast.c3",
     "src/lisp/prim_ml_gradient_clip.c3",
     "src/lisp/prim_ml_gradient_clip_vulkan.c3",
     "src/lisp/prim_ml_optimizer.c3",

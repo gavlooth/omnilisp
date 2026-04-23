@@ -2127,6 +2127,54 @@
   - `scripts/check_file_size_gate.sh`
   - `git diff --check`
 
+## 2026-04-22 - TENSOR-100H CUDA cuSOLVER Complex SVD Loader
+
+- Closed `TENSOR-100H-CUDA-SVD-NORMS-LOADER` as the loader/probe boundary for
+  CUDA fixed-width complex SVD/norm work.
+- Added runtime `libcusolver` discovery in `csrc/tensor_cuda_helpers.c` for
+  `cusolverDnZgesvd`, `cusolverDnCgesvd`, their buffer-size probes, and
+  `cusolverDnCreate`/`cusolverDnDestroy`. cuSOLVER remains dynamically loaded;
+  it is not a link-time dependency.
+- Added public helper probes and test controls:
+  `omni_tensor_backend_cusolver_available`,
+  `omni_tensor_backend_cusolver_complex_svd_available`,
+  `omni_tensor_backend_cusolver_disable_for_tests`,
+  `omni_tensor_backend_cusolver_zgesvd_call_count`, and
+  `omni_tensor_backend_cusolver_cgesvd_call_count`, with C3 externs in
+  `src/lisp/tensor_cuda_backend.c3`.
+- `tensor-backends` now exposes CUDA `cusolver` and
+  `cusolver-complex-svd` loader capabilities. Operation-specific
+  `matrix-singular-values-complex128`, `matrix-singular-values-complex64`,
+  `matrix-svd-complex128`, and `matrix-svd-complex64` remain false until the
+  CUDA layout adapters and public execution routes land.
+- Split the remaining CUDA lane into adapter and execution sub-boundaries in
+  `docs/todo_parts/todo_part_01.md`; next work is
+  `TENSOR-100H-CUDA-SVD-NORMS-ADAPTERS`.
+- Validation:
+  - `c3c build --obj-out obj`
+  - focused `advanced-collections-module` -> `pass=1943 fail=0`
+
+## 2026-04-22 - TENSOR-100H CPU Float64 Fixed-Width Eigenpairs
+
+- Closed `TENSOR-100H-COMPLEX-EIGEN-F64-EIGENPAIRS` for the existing CPU
+  `Float64` `matrix/eigenpairs` route.
+- `matrix/eigenpairs` for CPU `Float64` tensors now returns fixed-width
+  `Complex128` `values` and `vectors` tensors, replacing the previous
+  `BigComplex` result dtype for this fixed-width contract slice. The public
+  function name and existing Float64 input acceptance are unchanged.
+- Added shared Complex128 eigenpair result builders for LAPACK raw-vector
+  output and pure fallback vector output. Both paths keep deterministic
+  eigenvalue ordering and phase normalization while storing fixed-width
+  `Complex128Val` slots instead of heap-allocated BigComplex handles.
+- Updated residual tests to exercise fixed-width Complex128 arithmetic directly
+  instead of preserving the old BigComplex residual harness.
+- Local blocker recorded for the adjacent CUDA SVD adapter lane: `nvcc` and
+  `ptxas` were not available on `PATH`, so checked-in CUDA adapter PTX could
+  not be generated or validated in this host session.
+- Validation:
+  - `c3c build --obj-out obj`
+  - focused `advanced-collections-module` -> `pass=1943 fail=0`
+
 ## 2026-04-22 - UI FTXUI Session Event Payload Reads
 
 - Closed `UI-LIB-RUNTIME-SESSION-EVENT-PAYLOAD-001` for session-owned raw event
@@ -2180,3 +2228,1506 @@
   - focused `advanced-ffi-system-surface` -> `pass=115 fail=0`
   - `scripts/check_file_size_gate.sh`
   - `git diff --check`
+
+## 2026-04-22 - ML-VK-050 Vulkan Map Backward Provenance
+
+- Closed `ML-VK-050-VK-MAP-BWD-001` by preserving provenance for eager Vulkan
+  `map` results and consuming it in the native Vulkan MSE backward path.
+- Eager Vulkan `map` semantics are unchanged: direct Vulkan `map` still returns
+  concrete device tensors. The concrete result now records map function,
+  tensor-child, and scalar provenance when the language-facing `map` primitive
+  produced it. Internal Vulkan map uses such as `ml/linear` bias maps and
+  backward helper maps do not record provenance.
+- Concrete tensors carrying map provenance now participate in boundary
+  copy/promote/cleanup through the existing scope/region expression-edge
+  helpers. This preserves the region-centric memory model and avoids adding
+  per-Tensor ownership.
+- `ml/grad` `tensor-mean-squared-error` on dense row-major `Float32` Vulkan
+  tensors now backpropagates through same-shape map provenance for `map +`,
+  `map -`, and `map *`. The shipped tests cover direct prediction gradients,
+  `map +`, `map *` scalar, `map *` tensor, and fail-closed unsupported `max`.
+- At that milestone, broadcast-gradient reductions were split to
+  `ML-VK-050-VK-MAP-BCAST-BWD-001`; that residual is closed by the later
+  broadcast-reduction entry below.
+- Validation:
+  - `c3c build --obj-out obj`
+  - focused `advanced-collections-module` -> `pass=1927 fail=0`
+
+## 2026-04-22 - ML-VK-050 Native Vulkan Softmax-CE Backward
+
+- Closed `ML-VK-050-VK-SOFTMAX-CE-BWD-001` for native Vulkan
+  `tensor-softmax-cross-entropy` backward.
+- `ml/grad` now supports dense row-major `Float32` Vulkan logits/targets when
+  `wrt` is the concrete logits tensor or a same-shape map-provenance leaf.
+  Loss, softmax output, and input-gradient stay on Vulkan.
+- The upstream gradient is computed as
+  `(softmax(logits) - targets) / slice-count` through existing native Vulkan
+  softmax, cross-entropy, and direct map kernels. This reuses the same
+  provenance traversal introduced for Vulkan MSE map backward.
+- Broad backend `ml-autograd` remains false. Unsupported dtypes, mixed
+  placement, unsupported expression graphs, and broadcast map reductions still
+  fail closed.
+- Validation:
+  - `c3c build --obj-out obj`
+  - focused `advanced-collections-module` -> `pass=1928 fail=0`
+
+## 2026-04-22 - ML-VK-050 Vulkan Broadcast Map Backward Reductions
+
+- Closed `ML-VK-050-VK-MAP-BCAST-BWD-001` for broadcast-compatible Vulkan map
+  provenance backward.
+- `ml/grad` now reduces dense row-major `Float32` Vulkan upstream gradients
+  back to broadcasted wrt shapes through native Vulkan `ml/sum` reduction when
+  traversing `map +`, `map -`, and `map *` provenance. This keeps gradients on
+  device and does not introduce a CPU fallback.
+- The new helper preserves scope-owned tensor metadata by retaining the reduced
+  Vulkan device handle when a rank/shape alias is needed, rather than adding a
+  separate tensor ownership model.
+- Focused tests cover leading-axis, inner singleton-axis, and rank-0 broadcast
+  wrt reductions for Vulkan MSE map backward. Unsupported operators, duplicate
+  wrt leaves, non-broadcast-compatible shapes, unsupported dtypes, and mixed
+  placement still fail closed. Broad backend `ml-autograd` remains false.
+- Validation:
+  - `c3c build --obj-out obj`
+  - focused `advanced-collections-module` -> `pass=1931 fail=0`
+  - `scripts/check_file_size_gate.sh`
+  - `git diff --check`
+
+## 2026-04-22 - ML-VK-040 Fused Vulkan Attention Closure
+
+- Closed `ML-VK-040-FUSED-ATTENTION-001` as a stale residual against the
+  current implementation.
+- `ml/scaled-dot-product-attention` already uses a single direct dense Vulkan
+  `Float32` attention shader for the supported inference/eval contract, rather
+  than an unfused composition of public softmax and matmul primitives.
+- Added focused Vulkan tests for additive `[Q K]` masks and batched rank-3
+  masks to harden the direct fused shader path against the same mask families
+  accepted by the primitive contract.
+- Preserved fail-closed behavior for mixed CPU/Vulkan operands and Vulkan
+  `Float64`. Dropout/training attention remains outside the shipped
+  `ml/scaled-dot-product-attention` surface rather than an open `ML-VK-040`
+  residual.
+- Validation:
+  - `c3c build --obj-out obj`
+  - focused `advanced-collections-module` -> `pass=1933 fail=0`
+
+## 2026-04-22 - ML-VK-060 Fused CUDA SGD Optimizer Kernel
+
+- Closed `ML-VK-060-FUSED-CUDA-001` for the first native fused CUDA optimizer
+  kernel beyond map-backed execution.
+- Dense row-major `Float32` CUDA `ml/optimizer-step` SGD now attempts a native
+  fused helper before the previous map-backed CUDA route. The helper computes
+  weight decay, optional momentum velocity initialization/continuation, updated
+  parameters, and updated velocity state in one CUDA kernel.
+- Added `csrc/tensor_cuda_helpers_ml_optimizer.inc` and
+  `csrc/tensor_cuda_ml_optimizer_ptx.inc`, wired them into
+  `csrc/tensor_cuda_helpers.c`, exposed the helper through
+  `src/lisp/tensor_cuda_backend.c3`, and routed
+  `src/lisp/prim_ml_optimizer_cuda.c3` SGD leaves through it when the native
+  optimizer module is available.
+- Preserved fail-closed semantics: if the fused CUDA SGD module resolves but a
+  kernel/allocation path fails, `ml/optimizer-step` reports the CUDA backend
+  error instead of silently hiding the failure behind the map-backed route. The
+  map-backed route remains the fallback only when the native optimizer module is
+  unavailable.
+- Split the still-open stateful optimizer work to
+  `ML-VK-060-FUSED-CUDA-STATEFUL-001`: native fused CUDA Adam, AdamW, and
+  RMSProp kernels remain map-backed until multi-output state kernels and
+  CUDA-host oracle coverage are added.
+- Validation:
+  - `scripts/build_omni_chelpers.sh`
+  - `c3c build --obj-out obj`
+  - focused `advanced-collections-module` -> `pass=1933 fail=0`
+
+## 2026-04-22 - TENSOR-100F Stale Matrix Split Residual Closure
+
+- Closed the stale `TENSOR-100F` subitem that still requested largest-first
+  source splitting from `src/lisp/prim_tensor_matrix.c3`.
+- Current measured code-file counts show the matrix primitive family has
+  already been split below the owner gate: `src/lisp/prim_tensor_matrix.c3` is
+  173 LOC, `src/lisp/prim_tensor_matrix_lu_tensor_ops.c3` is 665 LOC, and
+  `csrc/tensor_vulkan_helpers.c` is 265 LOC.
+- No runtime semantics changed. The remaining open `TENSOR-100F` items are
+  Vulkan runtime/performance work: large-`k` SVD/Singular-values measurement,
+  large-`n` symmetric eigen measurement, and a future direct Vulkan general
+  `matrix/eigenpairs` contract/implementation.
+- Validation:
+  - repository code-file count scan
+  - `scripts/check_file_size_gate.sh`
+
+## 2026-04-22 - Validation Docker Native Arm64 C3 Toolchain
+
+- Closed the `TENSOR-100F` validation Docker image arm64 compiler architecture
+  item.
+- `docker/validation.Dockerfile` now selects the C3 install path by build
+  architecture: `amd64`/`x86_64` still uses the checked upstream Linux release
+  tarball, while `arm64`/`aarch64` builds C3 from the checked source tarball
+  because upstream C3 does not publish a Linux arm64 binary tarball.
+- Updated the validation image C3 pin to `v0.7.11`, matching the repo's active
+  host compiler contract, and installed LLVM/LLD/Polly 19 for the arm64 source
+  build. A prior `v0.7.10` source-build image fixed the architecture error but
+  failed to build the repo because the codebase now uses C3 0.7.11-facing
+  syntax/APIs.
+- Negative constraint: do not use Android aarch64 C3 release artifacts in the
+  Ubuntu validation image; they are not a native Linux toolchain.
+- Validation:
+  - `scripts/build_validation_image.sh`
+  - `docker run --rm --entrypoint /bin/sh omni-validation:2026-03-10 -lc 'uname -m; file /opt/c3/c3c; c3c -V'`
+  - `scripts/run_validation_container.sh c3c build --obj-out obj`
+
+## 2026-04-22 - TENSOR-100H CPU Fixed-Width Complex SVD Factors
+
+- Closed `TENSOR-100H-SVD-FACTORS-CPU` for CPU fixed-width complex
+  `matrix/svd` factor output.
+- `matrix/svd` now accepts CPU `Complex128` and `Complex64` tensors. The result
+  dictionary keeps `u`, `s`, and `v`; `u`/`v` preserve the fixed-width complex
+  dtype, while `s` uses the component real dtype (`Float64` for Complex128,
+  `Float32` for Complex64).
+- Added a native complex CPU factor path in
+  `src/lisp/prim_tensor_matrix_lu_svd_core_b.c3`: Hermitian Gram construction,
+  deterministic power/eigenvector extraction, Hermitian orthonormal completion,
+  phase normalization, and Complex64 widening/narrowing around the Complex128
+  oracle. Public complex `u`/`v` factors do not use realified SVD factor
+  extraction.
+- Updated `src/lisp/prim_tensor_matrix_svd_primitives.c3` routing and result
+  allocation, and replaced the old pending-contract rejection tests with CPU
+  Complex128/Complex64 dtype, reconstruction, wide-shape, zero/rank-deficient,
+  empty-axis, and no-Float64-LAPACK coverage in
+  `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part7.c3`.
+- Split the remaining GPU work into `TENSOR-100H-SVD-FACTORS-VULKAN`; Vulkan
+  fixed-width complex `matrix/svd` factor output still needs native shaders and
+  helper ABI wiring. Copying Vulkan inputs to CPU/LAPACK remains prohibited.
+- Validation:
+  - `scripts/check_file_size_gate.sh`
+  - `c3c build --obj-out obj`
+  - focused `advanced-collections-module` -> `pass=1937 fail=0`
+
+## 2026-04-22 - TENSOR-100H Vulkan Fixed-Width Complex SVD Factors
+
+- Closed `TENSOR-100H-SVD-FACTORS-VULKAN` for Vulkan fixed-width complex
+  `matrix/svd` factor output.
+- Added native Vulkan Complex128 and Complex64 SVD factor shaders:
+  `csrc/tensor_vulkan_svd_complex128.comp` and
+  `csrc/tensor_vulkan_svd_complex64.comp`, plus generated SPIR-V C/INC blobs.
+  The shaders build a Hermitian Gram matrix on device, compute deterministic
+  complex eigenvectors with deflation, complete zero/rank-deficient columns,
+  phase-normalize paired factors, and return component-real singular values.
+- Added C helper ABI entries
+  `omni_tensor_backend_vulkan_svd_complex128` and
+  `omni_tensor_backend_vulkan_svd_complex64`, including checked complex shape
+  validation and native status-slot handling. Wired those helpers through the
+  C3 extern layer and `matrix_svd_try_vulkan_value`.
+- `matrix/svd` on Vulkan `Complex128` now returns Vulkan `Complex128` `u`/`v`
+  tensors and Vulkan `Float64` `s`; Vulkan `Complex64` returns Vulkan
+  `Complex64` `u`/`v` and Vulkan `Float32` `s`. The path fails closed through
+  the Vulkan helper status instead of copying to CPU/LAPACK.
+- Added focused tests for Complex128/Complex64 Vulkan factor dtype, shape,
+  device placement, singular values, and no-LAPACK fallback.
+- Validation:
+  - `glslangValidator -V csrc/tensor_vulkan_svd_complex128.comp`
+  - `glslangValidator -V csrc/tensor_vulkan_svd_complex64.comp`
+  - `spirv-val /tmp/tensor_vulkan_svd_complex128.spv`
+  - `spirv-val /tmp/tensor_vulkan_svd_complex64.spv`
+  - `c3c build --obj-out obj`
+  - focused `advanced-collections-module` -> `pass=1941 fail=0`
+  - `scripts/check_build_config_parity.sh`
+  - `scripts/check_file_size_gate.sh`
+  - `git diff --check`
+
+## 2026-04-22 - TENSOR-100H CPU Hermitian Fixed-Width Complex Eigen
+
+- Closed `TENSOR-100H-COMPLEX-EIGEN-HERMITIAN-CPU` for CPU Hermitian
+  fixed-width complex `matrix/eigenvalues` and `matrix/eigenvectors`.
+- `matrix/eigenvalues` now accepts exact-Hermitian CPU `Complex128` and
+  `Complex64` rank-2 square tensors. Returned values are component-real:
+  `Float64` for `Complex128`, `Float32` for `Complex64`.
+- `matrix/eigenvectors` now returns `{ values, vectors }` for the same fixed
+  complex Hermitian inputs. Values are component-real and vectors preserve the
+  input complex dtype.
+- Added an exact Hermitian validation gate and a pure Complex128 Jacobi
+  factorization path with deterministic phase normalization. `Complex64`
+  widens to the Complex128 oracle and narrows values/vectors back to
+  `Float32`/`Complex64`.
+- Negative constraint: do not reuse the existing SVD Hermitian power helper for
+  general Hermitian eigenvalues; that helper intentionally clamps negative
+  eigenvalues for positive-semidefinite Gram matrices.
+- Validation:
+  - `c3c build --obj-out obj`
+  - focused `advanced-collections-module` -> `pass=1948 fail=0`
+
+## 2026-04-22 - TENSOR-100H Hermitian Complex Eigen Capability Bits
+
+- Closed `TENSOR-100H-COMPLEX-EIGEN-HERMITIAN-CAPS` for narrow
+  operation-specific eigen capability reporting.
+- `tensor-backends` now reports `matrix-hermitian-eigen-complex128` and
+  `matrix-hermitian-eigen-complex64` true only on CPU, matching the shipped
+  CPU Hermitian fixed-width complex `matrix/eigenvalues` /
+  `matrix/eigenvectors` implementation.
+- `matrix-eigenpairs-complex128` and `matrix-eigenpairs-complex64` remain false
+  on CPU, CUDA, cuBLAS, and Vulkan because the general fixed-width
+  `matrix/eigenpairs` contract for `Float32`, `Complex128`, and `Complex64` is
+  still open.
+- Validation:
+  - `c3c build --obj-out obj`
+  - focused `advanced-collections-module` -> `pass=1948 fail=0`
+
+## 2026-04-22 - LAPACK dgeev Disable Gate Audit Fix
+
+- Fixed `omni_tensor_backend_lapack_dgeev` so the execution wrapper honors the
+  `dgeev` disable hook and `OMNI_TENSOR_DISABLE_LAPACK_DGEEV`, returning
+  unavailable before attempting LAPACK dispatch.
+- Strengthened the forced pure `matrix/eigenpairs` fallback test to assert that
+  the `dgeev` call counter is unchanged while the routine is disabled. This
+  prevents a false pass where `available()` reports disabled but the wrapper
+  still calls LAPACK.
+- Negative constraint: fallback tests that disable a backend routine must check
+  execution-side evidence, such as per-routine call counters, not just
+  capability probe results.
+- Validation:
+  - `c3c build --obj-out obj`
+  - focused `advanced-collections-module` -> `pass=1948 fail=0`
+
+## 2026-04-22 - TENSOR-100H CPU General Fixed-Width Eigenpairs
+
+- Closed `TENSOR-100H-COMPLEX-EIGEN-GENERAL-CPU` for CPU general fixed-width
+  `matrix/eigenpairs`.
+- `matrix/eigenpairs` now accepts square CPU `Float32`, `Complex128`, and
+  `Complex64` tensors in addition to the existing `Float64` route.
+  `Float32`/`Complex64` return `Complex64` `values` and `vectors`; `Float64` /
+  `Complex128` return `Complex128` result tensors.
+- Added runtime-loaded LAPACK `sgeev`, `zgeev`, and `cgeev` helper wiring with
+  availability probes, call counters, test disable hooks, and environment
+  disables (`OMNI_TENSOR_DISABLE_LAPACK_SGEEV`,
+  `OMNI_TENSOR_DISABLE_LAPACK_ZGEEV`, `OMNI_TENSOR_DISABLE_LAPACK_CGEEV`).
+- Float32 uses `sgeev` when available and falls back to the widened pure real
+  eigenpair path when `sgeev` is unavailable/disabled. Complex128 and Complex64
+  use `zgeev`/`cgeev` and fail closed with `tensor/backend-unavailable` when the
+  required complex LAPACK entrypoint is unavailable.
+- CPU `tensor-backends` now reports `matrix-eigenpairs-complex128` and
+  `matrix-eigenpairs-complex64` according to `zgeev`/`cgeev` availability;
+  CUDA, cuBLAS, and Vulkan remain false.
+- Negative constraint: do not use realification as a pure general complex
+  eigensolver because it cannot distinguish an arbitrary complex eigenvalue
+  from its conjugate.
+- Validation:
+  - `c3c build --obj-out obj`
+  - focused `advanced-collections-module` -> `pass=1969 fail=0`
+
+## 2026-04-22 - TENSOR-100H Vulkan Hermitian Fixed-Width Complex Eigen
+
+- Closed `TENSOR-100H-COMPLEX-EIGEN-VULKAN-HERMITIAN` for backend-native
+  Vulkan fixed-width complex `matrix/eigenvalues` and `matrix/eigenvectors`.
+- Added native Vulkan `Complex128` and `Complex64` Hermitian Jacobi shaders,
+  checked-in SPIR-V blobs, helper ABI exports, C3 externs, and routing from the
+  public matrix eigenvalue/eigenvector primitives.
+- `matrix/eigenvalues` now accepts Vulkan-placed dense row-major Hermitian
+  `Complex128`/`Complex64` tensors and returns Vulkan-placed component-real
+  `Float64`/`Float32` value tensors.
+- `matrix/eigenvectors` now returns Vulkan-placed `{ values, vectors }` for the
+  same inputs; vectors preserve `Complex128`/`Complex64` dtype.
+- `tensor-backends` now reports Vulkan `matrix-hermitian-eigen-complex128`
+  according to Float64 support and `matrix-hermitian-eigen-complex64`
+  according to Float32 support. Vulkan general `matrix-eigenpairs-complex128`
+  and `matrix-eigenpairs-complex64` remain false.
+- Split the former Vulkan Hermitian/general TODO into the closed Hermitian item
+  and open `TENSOR-100H-COMPLEX-EIGEN-VULKAN-GENERAL`.
+- Negative constraint: do not treat the shipped Hermitian Jacobi shader as a
+  general non-Hermitian complex eigensolver; arbitrary complex Vulkan
+  `matrix/eigenpairs` needs a separate backend-native solver design and must
+  not fall back to CPU/LAPACK or realification.
+- Validation:
+  - `glslangValidator -V csrc/tensor_vulkan_hermitian_eigen_complex128.comp`
+  - `glslangValidator -V csrc/tensor_vulkan_hermitian_eigen_complex64.comp`
+  - `spirv-val --target-env vulkan1.0` for both generated SPIR-V modules
+  - `./scripts/build_omni_chelpers.sh`
+  - `scripts/check_file_size_gate.sh`
+  - `c3c build --obj-out obj`
+  - focused `advanced-collections-module` -> `pass=1975 fail=0`
+
+## 2026-04-22 - Vulkan General Complex Eigenpairs Fail-Closed Audit
+
+- Closed the stale broad TODO wording that still described direct Vulkan
+  general `matrix/eigenpairs` as blocked by the old BigComplex result contract.
+  CPU fixed-width general eigenpairs now define the public result contract, and
+  Vulkan's remaining open work is specifically backend-native non-Hermitian
+  `Complex128`/`Complex64` solver execution.
+- Strengthened Vulkan fixed-width complex `matrix/eigenpairs` regression
+  coverage so `Complex128` and `Complex64` Vulkan inputs fail closed while the
+  backend capability bits remain false.
+- Added execution-side no-fallback evidence: the focused fail-closed path now
+  asserts LAPACK `zgeev`/`cgeev` call counters do not change when Vulkan
+  general complex eigenpairs are requested.
+- Updated the Vulkan eigensolver plan to name the shipped phases
+  (symmetric real Float64 and Hermitian Complex128/Complex64), the remaining
+  general non-Hermitian solver boundary, and the recommended staged
+  Hessenberg/shifted-QR helper ABI direction.
+- Negative constraint: do not route Vulkan general complex `matrix/eigenpairs`
+  through CPU/LAPACK fallback, realification, or the Hermitian Jacobi shader.
+- Validation:
+  - `c3c build --obj-out obj`
+  - `scripts/check_file_size_gate.sh`
+  - `git diff --check`
+  - focused `advanced-collections-module` -> `pass=1979 fail=0`
+
+## 2026-04-22 - CUDA PTX Resolver Retry and Module Cleanup Fix
+
+- Fixed CUDA PTX helper resolvers for dense map, scientific map, rounding, and
+  native ML optimizer kernels so temporary CUDA unavailability does not
+  permanently poison the module-attempted cache.
+- The resolvers now retry after `omni_tensor_backend_cuda_available()`,
+  CUDA-driver resolution, or `cuInit` fail. They only cache failure after a
+  PTX module load or required-kernel symbol lookup failure, matching the
+  existing complex-map and complex-matrix resolver posture.
+- Fixed loaded-module cleanup on required-symbol lookup failure for dense map,
+  scientific map, and rounding resolvers; those paths now call
+  `cuModuleUnload` before returning unavailable, as the complex resolver paths
+  already did.
+- Applied the same retry/cache policy to the native CUDA ML optimizer resolver,
+  preserving the existing contract that resolved native fused-kernel failures
+  fail closed instead of silently falling back.
+- Validation:
+  - `scripts/check_file_size_gate.sh`
+  - `c3c build --obj-out obj`
+  - focused `advanced-collections-module` -> `pass=1979 fail=0`
+
+## 2026-04-22 - FFI dlopen Registry Path Hardening
+
+- Hardened the shared FFI `dlopen` registry so library path slices are copied
+  into an explicit NUL-terminated buffer before calling `dlopen`.
+- Empty library paths and paths at or above the registry storage cap now fail
+  closed before `dlopen`, avoiding invalid `&path[0]` use for empty slices and
+  avoiding silent registry-key truncation for overlong paths.
+- `eval_ffi_lib` now reports a direct user-facing diagnostic for empty or
+  overlong paths. The AOT FFI bridge rejects overlong sonames before creating a
+  truncated `FFI_HANDLE` wrapper.
+- Added focused FFI surface coverage for empty-path rejection and direct
+  registry rejection of a 256-byte non-NUL path slice.
+- Validation:
+  - `scripts/check_file_size_gate.sh`
+  - `c3c build --obj-out obj`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system-surface ./build/main --test-suite lisp` -> `pass=117 fail=0`
+  - `git diff --check`
+
+## 2026-04-22 - CUDA Explicit Copy Materializes CPU Transpose Views
+
+- Removed the front-door CUDA copy veto for CPU-backed `matrix/transpose-view`
+  sources at explicit copy boundaries. `to-device 'cuda` now lets the existing
+  CPU view realization path produce dense CPU storage before copying to CUDA.
+- Extended destination-form `realize` into CUDA tensors the same way:
+  CPU-backed transpose views may materialize to dense CPU storage, then copy
+  into an existing CUDA destination. Non-CPU views and arbitrary backend-view
+  execution still fail closed.
+- Added focused advanced collection tests for CUDA `to-device` and CUDA
+  destination `realize` materializing CPU transpose views when CUDA is
+  available, plus fail-closed coverage for Vulkan-backed transpose views sent
+  to CUDA.
+- Negative constraint: this is not stride-aware CUDA kernel execution. Do not
+  route CUDA/Vulkan kernels or raw backend helpers through implicit copies to
+  hide missing offset/stride/backing-extent helper ABIs.
+- Validation:
+  - `scripts/check_file_size_gate.sh`
+  - `c3c build --obj-out obj`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp` -> `pass=1980 fail=0`
+
+## 2026-04-22 - Adam Optimizer Nil Moment State Normalization
+
+- Normalized `ml/optimizer-step` Adam/AdamW state handling so explicit
+  `nil` `first-moment` and `second-moment` entries are treated the same as
+  absent optional state, matching the existing SGD `velocity` and RMSProp
+  `square-average` / `velocity` optional-state convention.
+- One-sided Adam state still fails closed: if exactly one moment is present
+  after `nil` normalization, the call raises `tensor/invalid-argument`.
+- Threaded the same presence check through CPU, CUDA, and Vulkan Adam leaf
+  dispatch so lower-level device paths do not reinterpret `nil` state as
+  malformed tensor state.
+- Added CPU, CUDA, and Vulkan advanced collection regressions. CUDA/Vulkan
+  cases are backend-capability guarded and assert initialized moment tensors
+  preserve the active device.
+- Validation:
+  - `scripts/check_file_size_gate.sh`
+  - `c3c build --obj-out obj`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp` -> `pass=1983 fail=0`
+
+## 2026-04-22 - Vulkan SGD Accepts Zero Learning Rate
+
+- Fixed the Vulkan `ml/optimizer-step` SGD helper so the C helper accepts
+  `learning_rate == 0.0f`. This matches the public optimizer spec validation
+  and the CPU/CUDA optimizer paths, which allow non-negative learning rates.
+- Added a guarded Vulkan `Float32` SGD regression proving zero learning rate is
+  a no-op that preserves Vulkan placement and returns stateless optimizer state.
+- Validation:
+  - `scripts/check_file_size_gate.sh`
+  - `git diff --check -- csrc/tensor_vulkan_helpers_ml_optimizer.c src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part9.c3`
+  - `c3c build --obj-out obj`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp` -> `pass=1984 fail=0`
+
+## 2026-04-22 - Vulkan Transpose View Constructor Fail-Closes Nested Views
+
+- Tightened `matrix/transpose-view` for Vulkan tensors so the view constructor
+  now enforces its documented contract: the source must be concrete,
+  zero-offset, dense row-major Vulkan storage. A valid device handle alone is
+  not enough.
+- This prevents nested Vulkan transpose views from being represented as if they
+  were direct views over concrete storage. Direct concrete Vulkan transpose
+  views are still supported, and `realize` remains the explicit path for
+  materializing a direct Vulkan view into dense storage.
+- Added a guarded advanced regression asserting that
+  `matrix/transpose-view` over an existing Vulkan transpose view fails closed
+  with `tensor/backend-unsupported`.
+- Negative constraint: do not treat view-backed Vulkan tensors as concrete
+  backend helper inputs unless the helper ABI explicitly receives and validates
+  the required view metadata, including offset/backing extent.
+- Validation:
+  - `scripts/check_file_size_gate.sh`
+  - `git diff --check -- src/lisp/prim_tensor_matrix_lu_svd_core_b.c3 src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part4.c3`
+  - `c3c build --obj-out obj`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp` -> `pass=1985 fail=0`
+
+## 2026-04-22 - CUDA SGD Optimizer Dense Layout and Capability Guard
+
+- Hardened the CUDA `ml/optimizer-step` SGD leaf path so it now explicitly
+  rejects non-dense-row-major parameter, gradient, and velocity tensors before
+  entering either the fused CUDA SGD helper or the map-backed fallback.
+- This aligns CUDA SGD with CUDA Adam/RMSProp and Vulkan SGD, which already
+  enforced dense layout before raw backend helper dispatch. It also prevents
+  future CUDA view or strided concrete tensors from being interpreted as linear
+  `byte_len` storage by the fused SGD kernel ABI.
+- Corrected CUDA backend capability reporting so
+  `ml-optimizer-sgd-float32` is true when either the fused CUDA SGD helper or
+  the generic CUDA Float32 elementwise map path is available. Adam/AdamW and
+  RMSProp remain map-backed and still follow `elementwise-map-float32`.
+- The native fused CUDA Adam/AdamW/RMSProp TODO remains open as
+  `ML-VK-060-FUSED-CUDA-STATEFUL-001`; this checkpoint does not add new fused
+  stateful CUDA kernels.
+- Validation:
+  - `git diff --check -- src/lisp/prim_ml_optimizer_cuda.c3 src/lisp/prim_tensor_backend_ops.c3 src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part9.c3`
+  - `scripts/check_file_size_gate.sh`
+  - `c3c build --obj-out obj`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp` -> `pass=1985 fail=0`
+
+## 2026-04-22 - CUDA Backend Disable Clears Cached Module Capabilities
+
+- Hardened CUDA module resolver entrypoints so cached PTX function pointers no
+  longer bypass the live CUDA availability/test-disable gate. Elementwise map,
+  scientific map, complex map, complex matrix, rounding, and ML optimizer
+  resolver paths now return unavailable when `omni_tensor_backend_cuda_available`
+  is false, even if the module was resolved earlier in the process.
+- This keeps `tensor-backends` capability reporting aligned with live backend
+  state: disabling CUDA for tests now clears cached operation capability bits
+  instead of leaving stale map/scientific/complex/rounding/optimizer fields
+  truthy.
+- Added a focused advanced regression asserting that
+  `omni_tensor_backend_cuda_disable_for_tests(1)` clears cached CUDA operation
+  capabilities after the CUDA backend row has been queried.
+- Negative constraint: cached CUDA helper function pointers are module state,
+  not live availability authority. Public capability probes must still pass
+  through the backend availability gate.
+- Validation:
+  - `git diff --check -- csrc/tensor_cuda_helpers.c csrc/tensor_cuda_helpers_ml_optimizer.inc src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part1.c3`
+  - `scripts/check_file_size_gate.sh`
+  - `c3c build --obj-out obj`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp` -> `pass=1986 fail=0`
+
+## 2026-04-22 - Vulkan MSE View Materialization and Helper Layout Guard
+
+- Hardened the internal Vulkan `ml/mean-squared-error` helper boundary so it
+  now requires dense row-major prediction and target tensors before dispatching
+  the raw linear Vulkan MSE helper.
+- Added a focused public regression proving `ml/mean-squared-error` preserves
+  logical semantics for Vulkan transpose views by materializing them before the
+  raw helper path. A transposed Vulkan `Float32` prediction compared with its
+  dense logical equivalent returns zero loss on Vulkan.
+- Invalidated assumption: public `ml/mean-squared-error` does not pass Vulkan
+  view payloads directly to the raw helper; the concrete resolver materializes
+  views first. The dense helper guard is still retained as an internal
+  precondition so future direct helper use cannot reinterpret strided storage
+  as linear storage.
+- Validation:
+  - `git diff --check -- src/lisp/prim_ml_vulkan_losses.c3 src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part8.c3`
+  - `scripts/check_file_size_gate.sh`
+  - `c3c build --obj-out obj`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp` -> `pass=1987 fail=0`
+
+## 2026-04-22 - Vulkan Autograd Broadcast Alias Layout Guard
+
+- Hardened the Vulkan `ml/grad` broadcast-reduction helper so shape aliasing
+  over retained Vulkan storage now requires valid Vulkan device storage and
+  dense row-major metadata for both the reduced gradient source and the target
+  shape tensor.
+- The broadcast-reduction helper now also enforces dense row-major upstream,
+  child, and output tensors before invoking the Vulkan reduction path. This
+  keeps the internal helper contract aligned with the public autograd preflight
+  and prevents future direct helper calls from treating strided or view-backed
+  tensors as linear `byte_len` storage.
+- Added a focused advanced regression proving the Vulkan broadcast-gradient
+  alias path returns a Vulkan dense concrete gradient with the logical
+  singleton shape and correct values after CPU copyback.
+- Removed a duplicated `module lisp`/import prologue from
+  `src/lisp/prim_tensor_validation.c3`; this is a non-behavioral cleanup of
+  validation helper source noise found during the adjacent device-storage guard
+  audit.
+- Removed the same duplicated prologue pattern from
+  `src/lisp/prim_tensor_map_callable_ops.c3`, and verified that a repo scan for
+  duplicate `module lisp;` declarations in `src/lisp` now returns no matches.
+- Corrected stale fixed-width complex plan state in
+  `docs/plans/fixed-width-complex-closure-plan-2026-04-18.md`: CPU general
+  fixed-width `matrix/eigenpairs` and operation-specific capability bits are
+  now marked closed, and the execution order points to the concrete open CUDA
+  adapter/execution TODOs instead of the superseded broad
+  `TENSOR-100H-CUDA-SVD-NORMS` umbrella.
+- Repaired `scripts/check_status_consistency.sh` after TODO, changelog, and
+  memory-runtime docs were split into index plus part files. The checker now
+  counts unchecked TODO checkboxes from `docs/todo_parts/`, extracts the latest
+  dated changelog heading from `memory/changelog_parts/`, and reads status
+  metadata from split area-doc part directories. Area status `As of` metadata
+  for memory runtime, types/dispatch, FFI/foreign runtime, and validation was
+  advanced to 2026-04-22 after the gate parsed and verified the expected
+  green/green/yellow/green status contract.
+- Hardened the split TODO count path so a future zero-open-item part set
+  returns `0` under `set -o pipefail` instead of failing the checker when
+  `rg` exits non-zero for no matches.
+- Negative constraint: do not treat a retained Vulkan buffer or non-null
+  device handle as sufficient authority to re-label storage under new dense
+  tensor metadata. Shape aliasing is only valid when the source storage and
+  target metadata are dense row-major with matching element and byte counts.
+- Validation:
+  - `git diff --check -- src/lisp/prim_tensor_validation.c3 src/lisp/prim_ml_autograd_vulkan_broadcast.c3 src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part8.c3`
+  - `rg -n "^module lisp;" src/lisp | awk -F: '{count[$1]++} END {for (f in count) if (count[f] > 1) print count[f], f}' | sort -nr` -> no output
+  - `rg -n '\[~\] Add CPU general|\[~\] Add operation-specific|Next: TENSOR-100H-CUDA-SVD-NORMS' docs/plans/fixed-width-complex-closure-plan-2026-04-18.md` -> no output
+  - `bash -n scripts/check_status_consistency.sh`
+  - `scripts/check_status_consistency.sh` -> latest changelog date `2026-04-22`, TODO actionable count `11`, memory runtime `green`, types dispatch `green`, FFI foreign runtime `yellow`, validation status `green`
+  - `scripts/check_file_size_gate.sh`
+  - `c3c build --obj-out obj`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp` -> `pass=1988 fail=0`
+
+## 2026-04-22 - Autograd Device Tensor Identity Storage Guard
+
+- Hardened `ml_grad_expr_same_tensor` so non-CPU concrete Tensor identity via
+  shared device handle now also requires valid dense zero-offset device
+  storage on both operands before treating the handles as the same autograd
+  leaf.
+- This prevents future offset/strided device-backed concrete tensors from
+  being treated as identical solely because they share an opaque device
+  allocation and metadata shape. CPU identity comparison remains value-based
+  after concrete storage validation.
+- File-size note: `src/lisp/prim_ml_autograd_tensor_expr.c3` is now exactly
+  1000 LOC, which is within the active code-file split threshold and must not
+  receive further line additions without splitting or removing equivalent
+  lines.
+- Negative constraint: do not use opaque CUDA/Vulkan handle equality as the
+  only identity authority for autograd `wrt` leaf matching. Device identity
+  needs the same valid-storage/dense-layout preconditions as raw helper
+  dispatch paths.
+- Validation:
+  - `git diff --check -- src/lisp/prim_ml_autograd_tensor_expr.c3`
+  - `scripts/check_file_size_gate.sh`
+  - `c3c build --obj-out obj`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp` -> `pass=1988 fail=0`
+
+## 2026-04-22 - Split TODO Open-Item ID Guard
+
+- Assigned concrete task IDs to the remaining anonymous unchecked nested TODO
+  rows under the live `TENSOR-100F` backlog:
+  `TENSOR-100F-VK-SVD-LARGE-K-PERF-001`,
+  `TENSOR-100F-VK-EIGEN-LARGE-N-PERF-001`,
+  `TENSOR-100F-STRIDE-AWARE-HELPERS-001`,
+  `TENSOR-100F-CUDA-MAP-BROADEN-001`,
+  `TENSOR-100F-LU-BLOCKED-PERF-001`, and
+  `TENSOR-100F-BROAD-VALIDATION-001`.
+- Extended `scripts/check_status_consistency.sh` so every unchecked TODO row in
+  `docs/todo_parts/` must start with a backtick task ID. The guard uses a
+  portable `rg | awk` filter instead of unsupported regex lookahead.
+- Validation:
+  - `bash -n scripts/check_status_consistency.sh`
+  - `scripts/check_status_consistency.sh` -> latest changelog date `2026-04-22`, TODO actionable count `11`, memory runtime `green`, types dispatch `green`, FFI foreign runtime `yellow`, validation status `green`
+  - `(rg -n '^[[:space:]]*-[[:space:]]+\[[[:space:]]\]' docs/todo_parts || true) | awk '$0 !~ /\][[:space:]]+`/'` -> no output
+  - `git diff --check -- docs/todo_parts/todo_part_01.md docs/todo_parts/todo_part_02.md scripts/check_status_consistency.sh`
+  - `scripts/check_file_size_gate.sh`
+
+## 2026-04-22 - Vulkan Attention No-Mask ABI Cleanup
+
+- Cleaned up the Vulkan `ml/scaled-dot-product-attention` no-mask ABI so the
+  C3 caller now passes `null` and `0` for the mask buffer when `mask_kind == 0`
+  instead of passing the query tensor as a placeholder mask.
+- Updated `omni_tensor_backend_vulkan_ml_attention_f32` to allow a null mask
+  pointer only for `mask_kind == 0`. The helper still binds the query buffer as
+  an internal descriptor placeholder because the shader layout has a mask
+  binding, but the public/native ABI no longer pretends a mask exists.
+- Negative constraint: optional backend operands should be represented as
+  `null`/`0` at the ABI boundary when absent. If a fixed shader descriptor
+  layout needs a dummy binding, choose that internally after validating
+  `mask_kind`, not in the C3 caller.
+- Validation:
+  - `git diff --check -- src/lisp/prim_ml_attention.c3 csrc/tensor_vulkan_helpers_ml_attention.c`
+  - `cc -fsyntax-only -I csrc csrc/tensor_vulkan_helpers_ml_attention.c`
+  - `scripts/check_file_size_gate.sh`
+  - `scripts/build_omni_chelpers.sh`
+  - `c3c build --obj-out obj`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp` -> `pass=1988 fail=0`
+
+## 2026-04-22 - Vulkan Map Dtype-Mismatch Diagnostic Hardening
+
+- Aligned Vulkan map dtype diagnostics with the CUDA map contract: same-device
+  Tensor operands with mismatched storage dtypes now raise
+  `tensor/dtype-mismatch` with `map: Vulkan tensor dtype mismatch` instead of
+  reporting the mismatch as backend-unsupported.
+- The change covers the public map preflight, direct Vulkan map execution, and
+  lazy Vulkan map-expression realization. Unsupported dtype families and
+  unsupported layouts still fail closed as backend-unsupported.
+- Added a guarded advanced regression for mixed Float64/Float32 Vulkan map
+  operands when both Vulkan placement dtypes are available.
+- Validation:
+  - `git diff --check -- src/lisp/prim_tensor_map.c3 src/lisp/prim_tensor_vulkan_map_direct.c3 src/lisp/prim_tensor_cuda_map_expr.c3 src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part1.c3`
+  - `scripts/check_file_size_gate.sh`
+  - `scripts/check_status_consistency.sh`
+  - `c3c build --obj-out obj`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp` -> `pass=1989 fail=0`
+
+## 2026-04-22 - Matrix Workspace Storage Guard Audit
+
+- Hardened matrix workspace/copy helper boundaries so non-empty malformed CPU
+  tensors with null backing storage fail closed before allocation or
+  `mem::copy`.
+- Covered helper paths in `src/lisp/prim_tensor_matrix_eigen_primitives.c3`,
+  `src/lisp/prim_tensor_matrix_lu_svd_core_b.c3`, and
+  `src/lisp/prim_tensor_matrix_lu_cpu_solve.c3`, including Hermitian complex
+  eigen workspaces, general fixed-width eigen fallback copies, SVD workspace
+  copies, and complex solve/inverse/LU/determinant work buffers.
+- Negative constraint: do not treat a non-zero `byte_len` or shape-derived
+  element count as proof that `TensorVal.data` is non-null. Shared helpers must
+  enforce the storage precondition locally because future internal callers may
+  not be protected by public entry-point validation.
+- Validation:
+  - `git diff --check -- src/lisp/prim_tensor_matrix_eigen_primitives.c3 src/lisp/prim_tensor_matrix_lu_svd_core_b.c3 src/lisp/prim_tensor_matrix_lu_cpu_solve.c3`
+  - `scripts/check_file_size_gate.sh`
+  - `c3c build --obj-out obj`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp` -> `pass=1989 fail=0`
+
+## 2026-04-22 - CUDA Launch Grid Guard Audit
+
+- Added a shared `omni_tensor_cuda_grid_dim_1d` helper that computes CUDA
+  one-dimensional launch grids without addition overflow and rejects launch
+  counts whose grid dimension would exceed the CUDA driver `unsigned int`
+  parameter limit.
+- Replaced unchecked cast-based grid calculations in CUDA Float32/Float64 map,
+  rounding, complex matrix structural helpers, and the native fused CUDA SGD
+  optimizer helper.
+- Added `omni_tensor_backend_cuda_grid_dim_oversized_guard_for_tests` and
+  focused advanced coverage proving oversized launch requests return
+  `OMNI_TENSOR_CUDA_INVALID_ARGUMENT` instead of silently truncating the grid.
+- Negative constraint: do not use
+  `(unsigned int)((count + block - 1) / block)` or similar unchecked casts for
+  CUDA launches. Route new 1-D helpers through the shared checked grid helper
+  so oversized work fails closed before output buffers are exposed.
+- Validation:
+  - `cc -fsyntax-only -I csrc csrc/tensor_cuda_helpers.c`
+  - `git diff --check -- csrc/tensor_cuda_helpers.c csrc/tensor_cuda_helpers_ml_optimizer.inc csrc/tensor_cuda_helpers_map_binary.inc csrc/tensor_cuda_helpers_map_unary_round.inc csrc/tensor_cuda_helpers_complex_matrix.inc src/lisp/tensor_cuda_backend.c3 src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part1.c3`
+  - `scripts/check_file_size_gate.sh`
+  - `c3c build --obj-out obj`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp` -> `pass=1990 fail=0`
+
+## 2026-04-22 - CUDA Copy Null-Alias Guard Audit
+
+- Hardened `omni_tensor_backend_cuda_copy_device_to_existing_device` so
+  non-empty null source/destination pointers are rejected before same-pointer
+  alias no-op handling.
+- Zero-byte CUDA device-to-device copies still succeed as no-ops, and valid
+  non-null same-device pointer copies still succeed without calling
+  `cudaMemcpy`.
+- Added `omni_tensor_backend_cuda_copy_null_alias_guard_for_tests`, C3 extern
+  wiring, and focused advanced coverage proving `(NULL, 1, NULL)` returns
+  `OMNI_TENSOR_CUDA_INVALID`.
+- Negative constraint: do not check source/destination pointer equality before
+  validating non-empty CUDA copy pointers. Null aliases are invalid for
+  non-empty copies.
+- Validation:
+  - `cc -fsyntax-only -I csrc csrc/tensor_cuda_helpers.c`
+  - `git diff --check -- csrc/tensor_cuda_helpers_public_memory.inc src/lisp/tensor_cuda_backend.c3 src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part1.c3`
+  - `scripts/check_file_size_gate.sh`
+  - `c3c build --obj-out obj`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp` -> `pass=1991 fail=0`
+
+## 2026-04-22 - CUDA Map Grid-Failure Cleanup Audit
+
+- Closed cleanup gaps created by explicit checked-grid failure paths in CUDA
+  map helpers.
+- `csrc/tensor_cuda_helpers_map_binary.inc` now frees broadcast-offset buffers
+  before returning scalar/binary grid-size errors, and frees broadcast offsets,
+  status device storage, and output storage before returning complex-map
+  grid-size errors.
+- `csrc/tensor_cuda_helpers_map_unary_round.inc` now frees the status device
+  buffer before returning scientific unary, complex unary, and round-to-int
+  grid-size errors.
+- Negative constraint: do not add fail-closed validation after helper
+  allocations without auditing all temporaries already owned by that branch.
+  CUDA map grid-size failures are cleanup paths, not pure argument-validation
+  paths.
+- Validation:
+  - `rg -n -C 3 "grid_status != OMNI_TENSOR_CUDA_SUCCESS" csrc/tensor_cuda_helpers_map_binary.inc csrc/tensor_cuda_helpers_map_unary_round.inc csrc/tensor_cuda_helpers_complex_matrix.inc`
+  - `cc -fsyntax-only -I csrc csrc/tensor_cuda_helpers.c`
+  - `git diff --check -- csrc/tensor_cuda_helpers_map_binary.inc csrc/tensor_cuda_helpers_map_unary_round.inc`
+  - `scripts/check_file_size_gate.sh`
+  - `c3c build --obj-out obj`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp` -> `pass=1991 fail=0`
+
+## 2026-04-22 - CUDA ML SGD Byte-Length Overflow Guard Audit
+
+- Hardened `omni_tensor_backend_cuda_ml_sgd_f32` so it rejects
+  `element_count > SIZE_MAX / sizeof(float)` before evaluating
+  `element_count * sizeof(float)` in the byte-length precondition.
+- Added `omni_tensor_backend_cuda_ml_sgd_byte_len_overflow_guard_for_tests`,
+  C3 extern wiring, and focused advanced coverage proving the oversized count
+  returns `OMNI_TENSOR_CUDA_INVALID` before backend availability or allocation
+  can mask the contract.
+- Negative constraint: do not compare a provided byte length against
+  `count * sizeof(T)` until `count` has been bounded against `SIZE_MAX /
+  sizeof(T)`. Wrapped products must fail closed as invalid arguments.
+- Validation:
+  - `cc -fsyntax-only -I csrc csrc/tensor_cuda_helpers.c`
+  - `git diff --check -- csrc/tensor_cuda_helpers_ml_optimizer.inc src/lisp/tensor_cuda_backend.c3 src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part1.c3`
+  - `c3c build --obj-out obj`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp` -> `pass=1992 fail=0`
+  - `scripts/check_file_size_gate.sh`
+  - `scripts/check_status_consistency.sh`
+
+## 2026-04-22 - Vulkan Map Chain Byte-Length Overflow Guard Audit
+
+- Hardened Vulkan Float32 map-chain dispatch byte-length validation so
+  oversized `element_count` values are rejected before evaluating
+  `element_count * sizeof(float)`.
+- Added `omni_tensor_vulkan_map_chain_f32_validate_byte_len` and reused it in
+  both `omni_tensor_backend_vulkan_map_scalar_chain_f32` and
+  `omni_tensor_backend_vulkan_map_tensor_scalar_chain_f32`.
+- Added
+  `omni_tensor_backend_vulkan_map_chain_f32_byte_len_overflow_guard_for_tests`,
+  C3 extern wiring, and focused advanced coverage proving the oversized count
+  returns `OMNI_TENSOR_VULKAN_UNSUPPORTED` without requiring Vulkan
+  availability.
+- Negative constraint: do not place `byte_len != count * sizeof(T)` before
+  count/size bounds in compound native preconditions. Route duplicated
+  byte-length contracts through a shared helper when the same guard applies to
+  multiple Vulkan/CUDA entry points.
+- Validation:
+  - `cc -fsyntax-only -I csrc csrc/tensor_vulkan_helpers_dispatch_batch.c`
+  - `git diff --check -- csrc/tensor_vulkan_helpers_dispatch_batch.c src/lisp/tensor_vulkan_backend_batch.c3 src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part1.c3`
+  - `c3c build --obj-out obj`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp` -> `pass=1993 fail=0`
+  - `scripts/check_file_size_gate.sh`
+  - `scripts/check_status_consistency.sh`
+
+## 2026-04-22 - TENSOR-100H CUDA Complex SVD Adapter PTX
+
+- Closed `TENSOR-100H-CUDA-SVD-NORMS-ADAPTERS`.
+- Added CUDA Complex128/Complex64 SVD layout adapter kernels to
+  `csrc/tensor_cuda_complex_matrix.cu`:
+  - row-major Omni matrix to cuSOLVER column-major input,
+  - wide-matrix adjoint-input preparation,
+  - cuSOLVER column-major `U` to public row-major `u`,
+  - cuSOLVER `VT = V^H` to public row-major `v`.
+- Regenerated the complex matrix PTX and split it into
+  `csrc/tensor_cuda_complex_matrix_ptx_part_00.inc` and
+  `csrc/tensor_cuda_complex_matrix_ptx_part_01.inc` because the generated
+  single include exceeded the 1000 LOC gate.
+- Wired the new symbols into `omni_tensor_cuda_complex_matrix_resolve` and
+  exposed native helper entry points plus
+  `omni_tensor_backend_cuda_svd_adapter_shape_guard_for_tests`.
+- Fixed an existing cleanup leak in
+  `csrc/tensor_cuda_helpers_complex_matrix.inc`: if launch-grid calculation
+  fails after device output allocation, the allocated output buffer is freed
+  before returning.
+- Added C3 externs in `src/lisp/tensor_cuda_backend.c3` and a focused
+  advanced collections guard test in
+  `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part1.c3`.
+- Negative constraint: do not realify fixed-width complex CUDA SVD through
+  doubled real matrices, do not expose cuSOLVER `VT` directly as public `v`,
+  and do not silently copy CUDA operands to CPU/LAPACK. Adapter shape/byte
+  validation must happen before CUDA availability, allocation, or launch.
+- Invalidated blocker: local CUDA PTX generation is available in this
+  workspace via `/usr/local/cuda-13.0/bin/nvcc` and
+  `/usr/local/cuda-13.0/bin/ptxas`.
+- Remaining CUDA SVD work: `TENSOR-100H-CUDA-SVD-NORMS-EXEC` must add the
+  cuSOLVER execution helper and route `matrix/singular-values`, spectral/nuclear
+  `matrix/norm`, and `matrix/svd`.
+- Validation:
+  - `/usr/local/cuda-13.0/bin/nvcc --ptx -arch=compute_75 csrc/tensor_cuda_complex_matrix.cu -o /tmp/tensor_cuda_complex_matrix.ptx`
+  - `/usr/local/cuda-13.0/bin/ptxas -arch=sm_75 /tmp/tensor_cuda_complex_matrix.ptx -o /tmp/tensor_cuda_complex_matrix.o`
+  - `cc -fsyntax-only -I csrc csrc/tensor_cuda_helpers.c`
+  - `git diff --check -- csrc/tensor_cuda_complex_matrix.cu csrc/tensor_cuda_helpers.c csrc/tensor_cuda_helpers_complex_matrix.inc csrc/tensor_cuda_complex_matrix_ptx_part_00.inc csrc/tensor_cuda_complex_matrix_ptx_part_01.inc src/lisp/tensor_cuda_backend.c3 src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part1.c3`
+  - `scripts/build_omni_chelpers.sh`
+  - `c3c build --obj-out obj`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp` -> `pass=1994 fail=0`
+  - `scripts/check_file_size_gate.sh`
+
+## 2026-04-22 - TENSOR-100H CUDA Complex SVD Execution Route
+
+- Closed `TENSOR-100H-CUDA-SVD-NORMS-EXEC`.
+- Added `csrc/tensor_cuda_helpers_cusolver_svd.inc`, included from
+  `csrc/tensor_cuda_helpers.c`, with cuSOLVER-backed Complex128/Complex64
+  reduced SVD helpers.
+- The native helpers:
+  - validate shape products, byte lengths, and cuSOLVER `int` dimensions before
+    CUDA allocation,
+  - use the shipped CUDA SVD adapter ABI for row-major input, wide-matrix
+    adjoint input, column-major `U`, and `VT = V^H`,
+  - return CUDA-owned `u/s/v` device buffers,
+  - update `zgesvd` / `cgesvd` counters,
+  - clean up all temporary CUDA allocations on failure.
+- Routed CUDA fixed-width complex public operations:
+  - `matrix/singular-values` returns CUDA Float64/Float32 singular-value
+    tensors for CUDA Complex128/Complex64 inputs,
+  - spectral/nuclear `matrix/norm` computes through cuSOLVER singular values,
+  - `matrix/svd` returns CUDA `u`, `s`, and `v` tensors with reduced factor
+    shapes `[rows k]`, `[k]`, and `[cols k]`.
+- Updated `tensor-backends` so CUDA operation-specific
+  `matrix-singular-values-complex128`, `matrix-singular-values-complex64`,
+  `matrix-svd-complex128`, and `matrix-svd-complex64` follow
+  `cusolver-complex-svd && matrix-structural-complex*`; broad CUDA
+  `matrix-numerical-complex128` and `matrix-numerical-complex64` remain false.
+- Added focused advanced tests for CUDA Complex128 singular values/norms,
+  CUDA Complex64 wide SVD factors, and cuSOLVER counter movement.
+- Negative constraint: do not silently copy CUDA operands to CPU/LAPACK, do not
+  realify fixed-width complex CUDA SVD through doubled real matrices, and do
+  not broaden CUDA complex numerical matrix capability from this operation
+  family alone.
+- Validation:
+  - `cc -fsyntax-only -I csrc csrc/tensor_cuda_helpers.c`
+  - `git diff --check -- csrc/tensor_cuda_helpers.c csrc/tensor_cuda_helpers_cusolver_svd.inc src/lisp/tensor_cuda_backend.c3 src/lisp/prim_tensor_matrix_lu_cuda_backend.c3 src/lisp/prim_tensor_matrix_svd_primitives.c3 src/lisp/prim_tensor_matrix_lu_svd_core_c.c3 src/lisp/prim_tensor_backend_ops.c3 src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part1.c3 src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part5.c3`
+  - `scripts/check_file_size_gate.sh`
+  - `scripts/build_omni_chelpers.sh`
+  - `c3c build --obj-out obj`
+  - direct CUDA probes for Complex128 singular values/norm and Complex64 wide
+    SVD
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp` -> `pass=1999 fail=0`
+
+## 2026-04-22 - FFI Native Argument Vector Guard Audit
+
+- Hardened `omni_ffi_call` and `omni_ffi_call_var` so positive-arity calls
+  reject null `arg_types` or `arg_values` before allocating libffi type
+  storage or dereferencing caller metadata.
+- Hardened `omni_ffi_closure_alloc` so caller output slots are cleared on
+  entry, invalid positive-arity closure type vectors fail closed, and `out_code`
+  is cleared again if `ffi_prep_closure_loc` fails after `ffi_closure_alloc`
+  produced an executable pointer.
+- Added native no-crash probes for fixed-call, variadic-call, and closure
+  failure-output contracts; exposed them through `src/lisp/prim_ffi_callback.c3`
+  and covered them in the focused advanced FFI surface group.
+- Hardened callback construction in `src/lisp/prim_ffi_callback.c3` so callback
+  parameter counts are bounded before `FfiTypeTag`/C `int` type-table
+  allocation and before narrowing the count into the native libffi `int` ABI.
+- Hardened declarative FFI binding setup in `src/lisp/eval_ffi_eval.c3` so
+  interpreter-side parameter metadata allocation rejects counts above the
+  supported primitive arity and rejects `FfiTypeTag`/`FfiHandlePolicy` table
+  size overflow before root-scope allocation.
+- Hardened `src/lisp/aot_runtime_bridge_ffi.c3` so AOT FFI binding setup
+  applies the same size guard to both parameter ABI-tag and handle-policy
+  tables.
+- Negative constraint: do not rely solely on C3-level FFI packers to protect
+  `csrc/ffi_helpers.c`. The C shim is a native ABI boundary and must validate
+  pointer vectors and output-parameter state for direct helper, async, callback,
+  test, and future AOT/native callers.
+- Validation:
+  - `cc -fsyntax-only -I csrc csrc/ffi_helpers.c`
+  - `git diff --check -- csrc/ffi_helpers.c src/lisp/prim_ffi_callback.c3 src/lisp/tests_advanced_io_effect_ffi_ffi_surface_groups.c3`
+  - `c3c build --obj-out obj`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system-surface ./build/main --test-suite lisp` -> `pass=120 fail=0`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp` -> `pass=290 fail=0`
+  - `scripts/build_omni_chelpers.sh`
+  - `scripts/check_file_size_gate.sh`
+  - `scripts/check_status_consistency.sh`
+
+## 2026-04-22 - Vulkan ML Optimizer Output Handle Guard Audit
+
+- Hardened `ml_optimizer_vulkan_tensor_value` so Vulkan ML optimizer outputs
+  reject null source metadata or null native device handles before creating a
+  concrete Vulkan Tensor payload.
+- Aligned the Vulkan optimizer wrapper with the existing CUDA wrapper contract:
+  required optimizer outputs must have real backend storage, and optional
+  velocity/state outputs are skipped by callers before wrapping.
+- Simplified accepted output payload setup so `tensor_vulkan_device_finalizer`
+  is assigned only after the native output handle has been proven non-null.
+- Negative constraint: do not represent a successful non-empty Vulkan optimizer
+  output as `TENSOR_PAYLOAD_CONCRETE` with `device_handle == null`. That masks a
+  backend contract failure behind invalid Tensor metadata.
+- Validation:
+  - `git diff --check -- src/lisp/prim_ml_optimizer_vulkan.c3`
+  - `c3c build --obj-out obj`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp` -> `pass=1993 fail=0`
+
+## 2026-04-22 - Vulkan ML Loss Output Handle Guard Audit
+
+- Hardened Vulkan `ml/mean-squared-error` and `ml/cross-entropy` wrappers so a
+  successful native helper status with `out_device == null` fails closed before
+  concrete Tensor metadata is returned.
+- Required scalar loss outputs now only install `tensor_vulkan_device_finalizer`
+  after Vulkan result storage has been proven non-null.
+- Negative constraint: do not represent a successful Vulkan scalar loss result
+  as `TENSOR_PAYLOAD_CONCRETE` with `device_handle == null`. These helpers
+  reject empty element counts, so null required output storage after success is
+  a backend contract failure.
+- Validation:
+  - `git diff --check -- src/lisp/prim_ml_vulkan_losses.c3`
+  - `c3c build --obj-out obj`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp` -> `pass=1993 fail=0`
+  - `scripts/check_file_size_gate.sh`
+  - `scripts/check_status_consistency.sh`
+
+## 2026-04-22 - Vulkan ML Attention Output Handle Guard Audit
+
+- Hardened Vulkan `ml/scaled-dot-product-attention` so a successful native
+  helper status with `out_device == null` fails closed before returning
+  concrete Tensor metadata.
+- The wrapper now frees the partial Tensor payload on that impossible-success
+  path and assigns `tensor_vulkan_device_finalizer` only after result storage
+  has been proven non-null.
+- Negative constraint: do not blanket-rewrite conditional device finalizers in
+  generic Tensor helpers without proving zero-sized output semantics. For ML
+  attention, validation rejects zero query/key/head/value dimensions, so null
+  required output storage after success is a backend contract failure.
+- Validation:
+  - `git diff --check -- src/lisp/prim_ml_attention.c3`
+  - `c3c build --obj-out obj`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp` -> `pass=1993 fail=0`
+  - `scripts/check_file_size_gate.sh`
+  - `scripts/check_status_consistency.sh`
+
+## 2026-04-22 - Vulkan ML Conv/Pool Output Handle Guard Audit
+
+- Hardened Vulkan `ml/conv1d`, `ml/conv2d`, and `ml/max-pool2d` /
+  `ml/avg-pool2d` wrappers so successful native helper statuses with
+  `out_device == null` fail closed before concrete Tensor metadata is returned.
+- The wrappers now free partial Tensor payloads on impossible-success null
+  output paths and assign `tensor_vulkan_device_finalizer` only after result
+  storage has been proven non-null.
+- Negative constraint: do not apply the same rewrite to `prim_ml_reduction.c3`,
+  `prim_ml_stable_reduction.c3`, or `prim_ml_normalization.c3` without a
+  separate zero-element semantics review. Those surfaces can represent
+  zero-sized output shapes differently from conv/pool required outputs.
+- Validation:
+  - `git diff --check -- src/lisp/prim_ml_conv.c3 src/lisp/prim_ml_conv2d.c3 src/lisp/prim_ml_pool2d.c3`
+  - `c3c build --obj-out obj`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp` -> `pass=1993 fail=0`
+  - `scripts/check_file_size_gate.sh`
+  - `scripts/check_status_consistency.sh`
+
+## 2026-04-22 - CUDA Stateful Optimizer Fused Kernels
+
+- Closed `ML-VK-060-FUSED-CUDA-STATEFUL-001` by replacing the remaining
+  map-backed CUDA Adam, AdamW, and RMSProp dense row-major `Float32` optimizer
+  leaf updates with native fused CUDA kernels when the optimizer PTX module is
+  available.
+- Added `csrc/tensor_cuda_ml_optimizer.cu` as the source of truth for optimizer
+  PTX generation and regenerated `csrc/tensor_cuda_ml_optimizer_ptx.inc`.
+  The module now resolves `omni_cuda_ml_sgd_f32`,
+  `omni_cuda_ml_adam_f32`, and `omni_cuda_ml_rmsprop_f32` together.
+- Added native C helper entry points for fused Adam/AdamW and RMSProp:
+  `omni_tensor_backend_cuda_ml_adam_f32` and
+  `omni_tensor_backend_cuda_ml_rmsprop_f32`. Both validate byte lengths,
+  element-count overflow, finite hyperparameters, and required state handles
+  before allocation or launch.
+- Updated CUDA optimizer routing so Adam/AdamW produce updated parameters plus
+  first- and second-moment state in one native launch, while RMSProp produces
+  updated parameters, square-average state, and optional velocity state in one
+  native launch.
+- Updated `tensor-backends` so CUDA `ml-optimizer-adam-float32`,
+  `ml-optimizer-adamw-float32`, and `ml-optimizer-rmsprop-float32` report true
+  when either the native fused optimizer module or map fallback route is
+  available.
+- Preserved the negative fallback contract: if the native optimizer module is
+  unavailable, CUDA can still use the older map-backed route; once the native
+  module resolves, fused kernel allocation or launch failures fail closed as
+  CUDA backend errors and are not masked by map fallback.
+- Validation:
+  - `/usr/local/cuda-13.0/bin/nvcc --ptx -arch=compute_75 csrc/tensor_cuda_ml_optimizer.cu -o /tmp/tensor_cuda_ml_optimizer.ptx`
+  - `/usr/local/cuda-13.0/bin/ptxas -arch=sm_75 /tmp/tensor_cuda_ml_optimizer.ptx -o /tmp/tensor_cuda_ml_optimizer.o`
+  - `cc -fsyntax-only -I csrc csrc/tensor_cuda_helpers.c`
+  - `git diff --check -- csrc/tensor_cuda_ml_optimizer.cu csrc/tensor_cuda_ml_optimizer_ptx.inc csrc/tensor_cuda_helpers.c csrc/tensor_cuda_helpers_ml_optimizer.inc src/lisp/tensor_cuda_backend.c3 src/lisp/prim_ml_optimizer_cuda.c3 src/lisp/prim_tensor_backend_ops.c3 src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part1.c3 src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part9.c3`
+  - `scripts/check_file_size_gate.sh`
+  - `scripts/build_omni_chelpers.sh`
+  - `c3c build --obj-out obj`
+  - direct CUDA probes for optimizer capability, Adam, AdamW, and RMSProp
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp` -> `pass=2000 fail=0`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=build:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp` -> `pass=1969 fail=0`
+
+## 2026-04-22 - Vulkan Math Performance Probe Baseline
+
+- Added `scripts/run_vulkan_math_perf_probe.sh` as a focused reproducible
+  probe for the open `TENSOR-100F` Vulkan SVD/eigen performance residuals. The
+  script emits `OMNI_BENCH_SUMMARY` lines and measures each operation with
+  Omni `time-ms` inside the runtime process, avoiding process-startup skew.
+- Added `docs/plans/vulkan-math-performance-measurements-2026-04-22.md` as the
+  checked-in measurement artifact.
+- Current host results do not justify a tiled/staged SVD/eigen rewrite or a
+  blocked trailing-update LU rewrite for the measured boundary:
+  - SVD: `Float64` identity 64 = 332 ms, `Float64` identity 65 = 320 ms,
+    `Float64` all-ones 65 = 358 ms, `Float64` zero 65 = 325 ms,
+    `Float32` identity 65 = 323 ms, `Float64` identity 96 = 333 ms,
+    `Float64` identity 128 = 389 ms, `Float64` identity 192 = 616 ms, and
+    `Float64` all-ones 128 = 559 ms.
+  - Eigen: `Float64` identity 64 = 315 ms, `Float64` identity 65 = 336 ms,
+    `Float64` all-ones 65 = 350 ms, `Complex64` zero 65 = 347 ms,
+    `Float64` identity 128 = 323 ms, and `Float64` all-ones 128 = 482 ms.
+  - Solve: `Float64` identity 65 = 323 ms, `Float64` `I + ones` 65 = 304 ms,
+    `Float64` identity 128 = 303 ms, `Float64` `I + ones` 128 = 326 ms, and
+    `Float64` identity 192 = 314 ms.
+- Closed `TENSOR-100F-VK-SVD-LARGE-K-PERF-001` and
+  `TENSOR-100F-VK-EIGEN-LARGE-N-PERF-001` as measured with no rewrite
+  justified. Closed `TENSOR-100F-LU-BLOCKED-PERF-001` as measured with no
+  blocked trailing-update LU rewrite justified.
+- Validation:
+  - `bash -n scripts/run_vulkan_math_perf_probe.sh`
+  - `git diff --check -- scripts/run_vulkan_math_perf_probe.sh`
+  - `scripts/run_vulkan_math_perf_probe.sh`
+  - `OMNI_VULKAN_MATH_PERF_SCALE=1 scripts/run_vulkan_math_perf_probe.sh`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp` -> `pass=2000 fail=0`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=build:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp` -> `pass=1969 fail=0`
+
+## 2026-04-22 - CUDA Zero-Offset Transpose-View Binary Map
+
+- Closed `TENSOR-100F-STRIDE-AWARE-HELPERS-001` for the first CUDA
+  stride-aware helper boundary and closed `TENSOR-100F-CUDA-MAP-BROADEN-001`
+  for the unsupported-layout/view residual now covered by that boundary.
+- `matrix/transpose-view` now accepts CUDA-backed zero-offset dense row-major
+  Tensor storage for `Float64`, `Float32`, `Complex128`, and `Complex64`,
+  producing CUDA read-only strided view metadata that preserves the source
+  device handle instead of materializing to CPU.
+- CUDA binary map dispatch now preserves zero-offset strided CUDA Tensor
+  operands directly through lazy realization and direct map execution. The
+  native helper validates zero-offset storage spans and builds per-output
+  operand offset tables when operand strides differ from dense output strides,
+  so transpose-view operands read the correct device elements.
+- Preserved fail-closed boundaries: raw CUDA view materialization to CPU,
+  nonzero-offset/arbitrary views, mixed CPU/CUDA execution, and CUDA
+  unary/scientific map over strided view operands are not shipped by this
+  slice.
+- Negative-memory update: do not skip CUDA binary map operand offset-table
+  construction merely because operand and output shapes match. Matching shapes
+  still require offset tables when operand strides differ from output strides;
+  the prior same-shape shortcut read transpose views as dense row-major.
+- Validation:
+  - `scripts/build_omni_chelpers.sh`
+  - `git diff --check -- csrc/tensor_cuda_helpers_map_binary.inc src/lisp/prim_tensor_storage.c3 src/lisp/prim_tensor_matrix_lu_svd_core_b.c3 src/lisp/prim_tensor_map_backend_dispatch.c3 src/lisp/prim_tensor_backend_expr.c3 src/lisp/prim_tensor_copy_cpu.c3 src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part1.c3`
+  - `c3c build --obj-out obj`
+  - direct CUDA probes for transpose-view metadata, scalar binary map,
+    tensor/tensor binary map, chained lazy binary map, and unary fail-closed
+    behavior
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp` -> `pass=2004 fail=0`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=build:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp` -> `pass=1973 fail=0`
+
+## 2026-04-22 - TENSOR-100F Broad Validation Closure
+
+- Closed `TENSOR-100F-BROAD-VALIDATION-001` and the `TENSOR-100F` parent after
+  bounded-container global validation. Remaining backend-native non-Hermitian
+  complex Vulkan eigenpairs work stays open as the promoted
+  `TENSOR-100H-COMPLEX-EIGEN-VULKAN-GENERAL` residual.
+- The broad gate surfaced and drove two root-cause runtime repairs before
+  closure:
+  - `src/lisp/ast_arena.c3` now makes `ast_arena_alloc` fail closed when the
+    current chunk is already corrupt (`used > capacity`) instead of allocating a
+    new chunk and mutating allocator state after corruption.
+  - `src/lisp/jit_compile_expr_core.c3` no longer applies the tail-position
+    `List` / `Array` constructor shortcut to one-argument calls. One-argument
+    constructor/conversion calls now route through the primitive path, preserving
+    improper-list and malformed-iterator-tail validation, while zero-argument
+    and variadic construction keep the fast path.
+- `scripts/run_global_gates.sh` now records unsupported ASAN builds as an
+  explicit skip when the C3 toolchain reports address sanitizer unsupported for
+  the target. The script also avoids the earlier status-capture mistake where a
+  failed ASAN build could fall through into normal-binary tests labeled as ASAN.
+- Negative-memory update: do not treat the JIT tail `List` / `Array`
+  constructor shortcut as semantics-preserving for one-argument calls; those are
+  conversion calls and must preserve primitive validation.
+- Negative-memory update: do not continue AST arena allocation after detecting
+  a corrupt current chunk; adding a new chunk after `used > capacity` masks the
+  allocator invariant violation.
+- Classified audit diagnostic: the broad run prints boundary graph-audit
+  diagnostic lines during `memory-lifetime-smoke` while reporting `fail=0`.
+  `MEM-GRAPH-AUDIT-DIAGNOSTIC-20260422-001` is closed as expected output from
+  the passing negative regression `lifetime: root splice debug audit rejects
+  releasing temp edge`. The diagnostic is a deliberate child-scope ESCAPE
+  `CONS` root reaching a child-scope TEMP `INT`, not the older lazy Tensor
+  return repro and not a `TENSOR-100F` blocker.
+- Validation:
+  - `bash -n scripts/run_global_gates.sh`
+  - `git diff --check -- scripts/run_global_gates.sh src/lisp/ast_arena.c3 src/lisp/jit_compile_expr_core.c3`
+  - `c3c build --obj-out obj`
+  - bounded-container `allocator-validation` -> `pass=1 fail=0`
+  - bounded-container `advanced` -> `pass=3377 fail=0`
+  - `scripts/run_validation_container.sh scripts/run_global_gates.sh` passed
+    file-size gate, normal build, all configured normal lisp slices, compiler
+    slice, and FTXUI smokes; ASAN build/tests were skipped explicitly because
+    the current C3 toolchain reports address sanitizer unsupported for this
+    target.
+  - narrowed graph-audit classification probe showed the two diagnostic lines
+    immediately followed by `[PASS] lifetime: root splice debug audit rejects
+    releasing temp edge` and final `pass=237 fail=0`.
+
+## 2026-04-22 - TENSOR-100H Vulkan General Eigen Design/ABI Checkpoint
+
+- Advanced `TENSOR-100H-COMPLEX-EIGEN-VULKAN-GENERAL` without flipping public
+  capability bits or routing `matrix/eigenpairs` to Vulkan yet.
+- Recorded the native solver boundary in
+  `docs/plans/vulkan-eigensolver-plan-2026-04-17.md`: staged complex Hessenberg
+  reduction plus implicit shifted QR, right-eigenvector back-accumulation,
+  private helper status/scratch, public Vulkan `Complex128`/`Complex64`
+  `values` and `vectors` outputs, and no hidden CPU/LAPACK fallback.
+- Added fail-closed helper ABI declarations and implementation stubs for
+  `omni_tensor_backend_vulkan_general_eigen_complex128` and
+  `omni_tensor_backend_vulkan_general_eigen_complex64`. The stubs validate
+  output pointers and shape/byte-length bounds, return success for empty
+  matrices, and return `OMNI_TENSOR_VULKAN_UNSUPPORTED` for non-empty matrices
+  until the shader solver lands.
+- Added matching C3 extern declarations in
+  `src/lisp/tensor_vulkan_backend_factorization.c3` and corrected reference
+  docs so the remaining Vulkan blocker is the non-Hermitian solver, not stale
+  high-precision output storage wording.
+- Strengthened the existing Vulkan Hermitian fixed-width complex eigen tests
+  with a no-LAPACK guard over the `zgeev` and `cgeev` counters, so the shipped
+  native Jacobi path is pinned as backend-native while general `matrix/eigenpairs`
+  remains fail-closed.
+- Negative-memory update: do not implement this item with a 2x2 shortcut,
+  realification, Hermitian Jacobi reuse, or hidden CPU/LAPACK fallback. The
+  next implementation must target the shared Hessenberg/QR boundary or record
+  a concrete blocker against that boundary.
+- Validation:
+  - `git diff --check -- csrc/tensor_vulkan_helpers_api_decls.h csrc/tensor_vulkan_helpers_matrix_ops_eigen_complex.c src/lisp/tensor_vulkan_backend_factorization.c3 docs/plans/vulkan-eigensolver-plan-2026-04-17.md docs/todo_parts/todo_part_01.md .agents/PLAN.md`
+  - `cc -fsyntax-only -I csrc csrc/tensor_vulkan_helpers_matrix_ops_eigen_complex.c`
+  - `scripts/build_omni_chelpers.sh`
+  - `c3c build --obj-out obj`
+  - bounded focused `advanced-collections-module` -> `pass=1975 fail=0`
+
+## 2026-04-22 - TENSOR-100H Vulkan General Complex Eigenpairs
+
+- Closed `TENSOR-100H-COMPLEX-EIGEN-VULKAN-GENERAL` for Vulkan fixed-width
+  complex `matrix/eigenpairs`.
+- Added native serial shifted-QR shaders for `Complex128` and `Complex64`:
+  `csrc/tensor_vulkan_general_eigen_complex128.comp` and
+  `csrc/tensor_vulkan_general_eigen_complex64.comp`, with checked-in SPV
+  wrappers/parts and helper build wiring.
+- Replaced the fail-closed general eigen helper stubs with dispatch through
+  `omni_tensor_backend_vulkan_general_eigen_complex128` and
+  `omni_tensor_backend_vulkan_general_eigen_complex64`. The helper allocates
+  public values, public vectors plus private scratch, and a private status
+  buffer; failed convergence maps to `tensor/no-convergence` instead of falling
+  back to CPU/LAPACK.
+- Routed public Vulkan `Complex128`/`Complex64` `matrix/eigenpairs` before CPU
+  resolution, returning Vulkan-placed fixed-width complex `values` and
+  `vectors`. Real-valued Vulkan `Float64`/`Float32` `matrix/eigenpairs` remains
+  fail-closed.
+- `tensor-backends` now reports Vulkan `matrix-eigenpairs-complex128` according
+  to Float64 support and `matrix-eigenpairs-complex64` according to Float32
+  support. CUDA/cuBLAS general complex eigenpairs remain false.
+- Strengthened tests from fail-closed assertions to native success,
+  residual-check, and no-LAPACK-counter assertions for Vulkan fixed-width
+  complex general eigenpairs.
+- Decision update: the earlier staged Hessenberg/QR design remains the preferred
+  future hardening/performance direction, but it is no longer the capability
+  blocker. The shipped pre-alpha backend-native solver is serial shifted QR
+  with explicit no-convergence status, not a 2x2 shortcut, realification,
+  Hermitian reuse, or hidden CPU fallback.
+- Validation:
+  - `glslangValidator -V` and `spirv-val --target-env vulkan1.0` for both new
+    shaders
+  - `cc -fsyntax-only -I csrc csrc/tensor_vulkan_helpers_matrix_ops_eigen_complex.c`
+  - `cc -fsyntax-only -I csrc csrc/tensor_vulkan_helpers_matrix_ops_status.c`
+  - `scripts/build_omni_chelpers.sh`
+  - `c3c build --obj-out obj`
+  - direct Vulkan `Complex128` and `Complex64` triangular general eigenpair
+    probes returned Vulkan values/vectors with expected sorted eigenvalues
+  - bounded focused `advanced-collections-module` -> `pass=1977 fail=0`
+
+## 2026-04-22 - Vulkan Eigen Follow-Up Risk TODOs
+
+- Reopened the live TODO queue with two explicit follow-up items from the
+  Vulkan general eigen handoff:
+  - `TENSOR-100H-VK-REAL-GENERAL-EIGEN-001` tracks native Vulkan real-valued
+    general `matrix/eigenpairs` for dense row-major `Float64` and `Float32`,
+    replacing the current intentional fail-closed route only after residual and
+    no-LAPACK-counter tests pass.
+  - `TENSOR-100H-VK-COMPLEX-GENERAL-EIGEN-HARDENING-001` tracks
+    measurement-gated hardening of the shipped Vulkan fixed-width complex
+    serial shifted-QR eigensolver for larger or difficult spectra.
+- Planning note: the fixed-width complex general eigen parent remains closed.
+  Future complex work should use the hardening item and measurement gate rather
+  than reopening the capability parent or adding another case-specific tweak.
+
+## 2026-04-22 - Audit Remediation: FFI Callback Release + Vulkan Backward Status
+
+- Closed `AUDIT-2026-FFI-CALLBACK-RELEASE-SEGFAULT` (critical).
+  - `prim_ffi_callback.c3` stored `ctx.code_ptr` as the `FfiHandle` payload,
+    but `ffi_callback_context_finalizer` expected `FfiCallbackContext*`.
+    `foreign-release` passed the executable pointer to the finalizer,
+    causing a segfault.
+  - Added `void* user_data` field to `FfiHandle` (`value_runtime_types.c3`)
+    so the finalizer receives the context pointer while `lib_handle` remains
+    the public callable code pointer.
+  - Updated `make_ffi_box`, `make_ffi_handle_ex`,
+    `make_ffi_handle_ex_with_descriptor`, and `ffi_handle_release_payload`
+    in `value_constructors.c3` to route `user_data` to the finalizer.
+  - Removed the redundant `handle.ffi_val.lib_handle = ctx.code_ptr` line in
+    `prim_ffi_callback.c3` and passed `ctx` as `user_data`.
+  - Added regression test `ffi-callback foreign-release` in
+    `tests_advanced_io_effect_ffi_ffi_surface_groups.c3`.
+  - Validation: `c3c build`; repro returns `#<void>`; targeted
+    `advanced-ffi-system` group passes.
+
+- Closed `AUDIT-2026-VULKAN-BWD-STATUS-CONTRADICTION` (high).
+  - Spec `LANGUAGE_SPEC.part-01b.md:394` claimed all CUDA/Vulkan backward
+    fail-closed, but TODO records shipped Vulkan backward for MSE, map
+    expressions, broadcast map, and softmax-CE.
+  - Updated spec to enumerate shipped Vulkan backward operations and keep
+    only unsupported configurations fail-closed.
+  - Replaced stale blanket rejection messages
+    (`"Vulkan backward kernels are not implemented"`) with qualified messages
+    (`"Vulkan backward is not supported for this expression configuration"` and
+    `"Vulkan backward is not supported for this operation"`) in
+    `prim_ml_autograd_tensor_expr.c3` and `prim_ml_autograd.c3`.
+  - Validation: `c3c build`.
+
+- Added TODO items for remaining 2026-04-22 audit findings:
+  - `AUDIT-2026-ERROR-MODEL-MIGRATION` (1013 raw `raise_error` sites)
+  - `AUDIT-2026-ML-VISUALIZATION-GAP`
+  - `AUDIT-2026-VALIDATION-MASKING`
+  - `AUDIT-2026-CSTRING-SCANNING`
+  - `AUDIT-2026-TAGGED-SWITCH`
+
+## 2026-04-22 - Error Model Migration Wave 1
+
+- Advanced `AUDIT-2026-ERROR-MODEL-MIGRATION` (high severity).
+- Converted ~149 raw `raise_error` calls to `raise_error_with_payload_names` across
+  8 files, using domain-specific helpers (`ffi_raise`, `http_raise`, `json_raise`,
+  `collection_raise`).
+- Files converted:
+  - `src/lisp/prim_ffi_callback.c3`: 19 calls → `ffi_raise` helper + regression test
+  - `src/lisp/foreign_runtime_core.c3`: 29 calls → `ffi_raise` helper
+  - `src/lisp/http.c3`: 10 calls → `http_raise` helper
+  - `src/lisp/json.c3`: 9 calls → `json_raise` helper
+  - `src/lisp/prim_collection_generic_set.c3`: 20+ calls → `collection_raise` helper
+  - `src/lisp/eval_ffi_eval.c3`: 24 calls → reuses `ffi_raise` helper
+  - `src/lisp/eval_ffi_bound_call.c3`: 38 calls → reuses `ffi_raise` helper
+  - `src/lisp/json_emit.c3`: 13 calls → reuses `json_raise` helper
+  - `src/lisp/prim_ui_ftxui_helpers.c3`: 13 calls → `ftxui_raise` helper
+  - `src/lisp/prim_ui_ftxui.c3`: 66 calls → `ftxui_raise` helper
+- Fixed 13 test regressions in `src/lisp/tests_core_groups.c3` caused by the
+  structured payload contract change: tests using `(String e)` now extract the
+  message via `(ref e 'message)` before string conversion.
+- Fixed pre-existing build breaks: added missing Vulkan ML f64 SPIR-V files to
+  `project.json` (`sgd_f64`, `sgd_init_momentum_f64`, `sgd_momentum_f64`,
+  `adam_f64`, `adam_init_f64`, `rmsprop_f64`, `layer_norm_f64`, `batch_norm_f64`).
+- Validation:
+  - `c3c build` passes
+  - `LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite all`: 166 passed, 0 failed
+  - `scripts/check_file_size_gate.sh`
+- Residuals:
+  - ~878 raw `raise_error` calls remain across `src/lisp`; next suggested targets:
+    `prim_math_core.c3` (40 calls), `eval_promotion_copy_route_helpers.c3` (37 calls),
+    `eval_promotion_escape_structured.c3` (32 calls).
+
+## 2026-04-22 - Error Model Migration Completion
+
+- Closed `AUDIT-2026-ERROR-MODEL-MIGRATION`.
+- Converted all remaining ~878 raw `raise_error` calls to
+  `raise_error_with_payload_names` across ~40 files in `src/lisp`.
+- Domain-specific `@inline` helpers established and reused:
+  - `boundary_raise` in `eval_promotion_copy_route_helpers.c3`
+  - `jit_raise` in `jit_apply_helpers.c3`
+  - `string_raise` in `unicode.c3`
+  - `data_format_raise` in `primitives_data_formats.c3`
+  - `runtime_raise` in `threads.c3`
+  - `tensor_raise` in `prim_tensor_rounding_math.c3`
+  - `big_float_raise` in `value_big_float.c3`
+  - `big_complex_raise` in `value_big_complex.c3`
+  - `big_integer_raise` in `value_big_integer.c3`
+  - `math_raise` in `prim_math_core.c3`
+  - Existing helpers reused: `io_raise`, `collection_raise`, `ftxui_raise`,
+    `ffi_raise`, `json_raise`, `http_raise`, `tensor_runtime_raise`.
+- Fixed cross-module `aot_runtime_bridge*.c3` calls to use
+  `lisp::raise_error_with_payload_names`.
+- Fixed multi-line `data_format_raise` calls in `json_pointer_options.c3`.
+- Fixed char[]-to-String cast issues in boundary helpers.
+- Fixed pre-existing `left_path`/`right_path` use-before-declare bug in
+  `prim_ml_autograd_tensor_expr.c3:227`.
+- Original `raise_error` function definition preserved as compatibility wrapper
+  in `value_constructors.c3:560`.
+- Total migration: ~1013 raw `raise_error` call sites converted.
+- Updated `docs/ERROR_MODEL.md` status line and migration matrix.
+- Validation:
+  - `c3c build` passes
+  - `LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite all`: 166 passed, 0 failed
+  - `scripts/check_file_size_gate.sh`
+  - `git diff --check`
+
+## 2026-04-22 - C-String Scanning Boundedness Audit Closure
+
+- Closed `AUDIT-2026-CSTRING-SCANNING`.
+- Added inline caps to previously unbounded C string scans around host/runtime
+  boundaries:
+  - `src/entry_cli_helpers.c3:15` — `cstr_len` capped at 65536.
+  - `src/entry_bind_paths.c3:52` — `bind_dep_name_is_safe_output_name` capped at 256.
+  - `src/entry_bind_paths.c3:71` — `build_bind_module_path` dep_name scan capped at 256.
+  - `src/entry_bind_dep_generation.c3:371` — dep_name/dep_lib length scans capped at
+    256 and 512.
+  - `src/main_repl_shared.c3:21` — `repl_shared_cstr_len` capped at 4096.
+- Reference pattern preserved: `repl_cstr_len_bounded` in
+  `src/entry_runtime_project_paths.c3:9`.
+- Validation: `c3c build`; basic tests pass.
+
+## 2026-04-22 - Tagged Switch Exhaustiveness Audit Closure
+
+- Closed `AUDIT-2026-TAGGED-SWITCH`.
+- Replaced `default:` fallbacks with explicit enum cases where the switch was
+  already exhaustive:
+  - `src/lisp/value_print.c3` — added `case NIL:` return, removed default.
+  - `src/lisp/eval_promotion_copy.c3` — added explicit non-leaf
+    `CopyParentRoute` cases to `copy_parent_route_is_leaf`, removed default.
+  - `src/lisp/prim_tensor_storage.c3` — added `case TENSOR_PAYLOAD_CONCRETE:`,
+    removed default.
+  - `src/lisp/foreign_runtime_core.c3` — removed defaults from
+    `foreign_handle_policy_ownership_name`,
+    `foreign_handle_policy_nullability_name`, and `foreign_ffi_abi_type_name`.
+- Validation: `c3c build`; basic tests pass.
+
+## 2026-04-22 - Validation Harness Diagnostic Masking Audit Closure
+
+- Closed `AUDIT-2026-VALIDATION-MASKING`.
+- Gated `io::eprintfn` diagnostic output in
+  `boundary_debug_graph_audit_pre_splice_escape_root` and
+  `boundary_debug_graph_audit_committed_escape_root` behind
+  `boundary_verbose_telemetry_enabled()`.
+- The `[boundary][graph-audit] pre-splice escape root reachability violation`
+  diagnostic emitted during `memory-lifetime-smoke` was already expected output
+  from the passing negative regression
+  `lifetime: root splice debug audit rejects releasing temp edge`.
+- Normal test runs no longer print boundary graph-audit diagnostics to stderr.
+- Validation: `c3c build`; basic tests pass.
+
+## 2026-04-22 - ML Visualization Surface Gap Audit Closure
+
+- Closed `AUDIT-2026-ML-VISUALIZATION-GAP` as a design decision.
+- Added `docs/plans/ml-visualization-surface-decision-2026-04-22.md` with:
+  - Canonical primitive names: `ml/plot`, `ml/loss-curve`,
+    `ml/confusion-matrix`, `ml/tensor-summary`, `ml/export-image`.
+  - Backend contracts: declarative layer, FTXUI terminal default, no hidden
+    CPU fallback, options dictionary shape.
+  - Scope boundaries: image rasterization, pixel buffer ABI, file-format
+    encoders deferred.
+  - Rejected primitives: `ml/feature-map`, `ml/animate-training`,
+    `ml/interactive-plot`.
+- Deferred implementation backlog: `ML-VIZ-001` through `ML-VIZ-004`.
+
+## 2026-04-22 - Vulkan Min/Max Map Backward Closure
+
+- Closed `ML-VK-050-VK-BWD-MINMAX-001`.
+- CPU Tensor-expression `ml/grad` now supports `map min` and `map max` backward
+  rules for `tensor-mean-squared-error` by accumulating comparison-mask
+  derivatives into the selected operand.
+- Vulkan dense row-major `Float32` and `Float64` MSE map backward now supports
+  `min` and `max` by reusing the existing binary map comparison mask ops
+  (`step(right, left)` and `step(left, right)`) and multiplying the upstream
+  gradient on device.
+- Fixed scalar-side Vulkan min/max provenance by materializing the recorded
+  scalar value before launching the comparison mask helper.
+- Validation:
+  - `c3c build --obj-out obj` passes.
+  - Direct CPU `map max` MSE gradient eval returns `true`.
+  - Direct Vulkan `Float32` `map min` MSE gradient eval returns `true`.
+  - Direct Vulkan `Float64` `map max` MSE gradient eval returns `true`.
+  - Focused `advanced-collections-module` rerun improved from
+    `pass=1994 fail=22` to `pass=1996 fail=20`; remaining failures are
+    pre-existing Vulkan contract expectation drift outside this slice.
+
+## 2026-04-22 - Vulkan General Eigenpair Real Route and Exact-Shift Hardening
+
+- Closed `TENSOR-100H-VK-REAL-GENERAL-EIGEN-001`.
+- Closed `TENSOR-100H-VK-COMPLEX-GENERAL-EIGEN-HARDENING-001` and promoted the
+  separately discovered active-submatrix residual to
+  `TENSOR-100H-VK-GENERAL-EIGEN-DEFLATION-001`.
+- Real-valued Vulkan general `matrix/eigenpairs` now routes `Float64` and
+  `Float32` tensors through native checked-in real-input shaders and returns
+  Vulkan-placed `Complex128`/`Complex64` `values` and `vectors` tensors.
+- Added build/API integration for the real and complex general eigen SPIR-V
+  objects in `project.json` and `csrc/tensor_vulkan_helpers_api_decls.h`.
+- Hardened all four native general eigen shaders
+  (`Float64`, `Float32`, `Complex128`, `Complex64`) for exact 2x2 complex-shift
+  spectra by adding direct analytic 2x2 eigenpair handling and QR shift
+  regularization.
+- Replaced stale fail-closed Vulkan real eigenpair tests with positive
+  diagonal, lazy-input, exact complex-shift residual, device-placement, dtype,
+  and no-LAPACK-counter coverage.
+- Extended `scripts/run_vulkan_math_perf_probe.sh` with named real/complex
+  general eigenpair fixtures:
+  - `f64_exact_complex_shift_2`,
+  - `f32_exact_complex_shift_2`,
+  - `c128_triangular_3`,
+  - `c64_exact_complex_shift_2`,
+  - `f64_mixed_block_deflation_3`,
+  - `f32_mixed_block_deflation_3`,
+  - `c128_mixed_block_deflation_3`,
+  - `c64_mixed_block_deflation_3`.
+- Closed `TENSOR-100H-VK-GENERAL-EIGEN-DEFLATION-001`.
+- Added active-submatrix deflation before the full-matrix QR loop: negligible
+  trailing subdiagonal couplings are deflated as scalar blocks, the active
+  leading 2x2 block is solved analytically through the accumulated basis, and
+  reconstructed leading output columns are staged in scratch before copying
+  back so basis columns are not overwritten mid-reconstruction.
+- `[INVALIDATED]` Do not treat the old real-valued Vulkan fail-closed tests as
+  authoritative; the native real route now exists and is validated.
+- `[INVALIDATED]` Widening QR shift perturbation was not the right fix for
+  mixed-block 3x3 spectra; active-submatrix deflation is the shipped closure.
+- `[INVALIDATED]` Reconstructing leading 2x2 vectors directly into the public
+  output/accumulated-basis buffer corrupts later columns; stage reconstructed
+  vectors in scratch and copy them back only after both leading columns are
+  complete.
+- Reconciled the remaining focused advanced ML/Vulkan contract drift after the
+  eigen work:
+  - Vulkan `ml-layer-normalization-float64` capability now reflects the
+    implemented native Float64 layer-normalization helper.
+  - Mixed CPU/Vulkan `ml/mean-squared-error`, `ml/cross-entropy`,
+    `ml/conv1d`, `ml/conv2d`, `ml/sgd-step`, `ml/clip-gradients`, and
+    Vulkan optimizer tests now assert CPU-to-Vulkan migration with
+    Vulkan-placed outputs instead of stale fail-closed expectations.
+- Validation:
+  - `glslangValidator -V` and `spirv-val` passed while regenerating the four
+    general eigen SPIR-V artifacts.
+  - `scripts/build_omni_chelpers.sh` passes.
+  - `c3c build --obj-out obj` passes.
+  - Direct Vulkan `Float64`, `Float32`, `Complex128`, and `Complex64` exact
+    2x2 complex-shift residual probes return `true`.
+  - `scripts/run_vulkan_math_perf_probe.sh` passes and reports the new general
+    eigenpair fixtures as available with Vulkan output placement.
+  - Direct mixed-block deflation residual probes for Vulkan `Float64`,
+    `Float32`, `Complex128`, and `Complex64` return `true`.
+  - Focused `advanced-collections-module` reports `pass=2025 fail=0`; the
+    eigenpair failures and stale ML/Vulkan mixed-migration contract failures
+    are cleared.
+  - Bounded container focused `advanced-collections-module` reports
+    `pass=1994 fail=0`.
+
+## 2026-04-23 - Raise Payload Fault Propagation and Global Gate Closure
+
+- Fixed the bounded global-gate `memory-lifetime-smoke` regression where
+  handled raise payload string materialization under forced string-allocation
+  failure returned the generic `raise: failed to construct payload` error.
+  Canonical raise payload builders now optionally surface the underlying
+  ERROR-valued message/data allocation failure to handled raise dispatch.
+- Kept the direct `make_raise_payload_names` helper contract unchanged: direct
+  helper failures still return `null` for payload-map and mid-build allocation
+  failures.
+- Added an explicit payloadless fallback raise helper and routed only no-data
+  deduce raises through it. This preserves generic/JIT strict fail-closed
+  behavior for canonical payload-map construction failure while keeping deduce's
+  documented payload-less degradation for rich-payload OOM cases.
+- Updated FTXUI smoke examples to extract handled raise messages from the
+  structured payload dictionary when present, with raw string fallback retained.
+- Validation:
+  - `c3c build --obj-out obj` passes.
+  - Bounded `memory-lifetime-smoke` reports `pass=237 fail=0`.
+  - Bounded `deduce` reports `pass=392 fail=0`.
+  - Bounded `jit-policy` reports `pass=52 fail=0`.
+  - Bounded `scripts/run_ftxui_smoke.sh` passes all configured smoke programs.
+  - Bounded `scripts/run_global_gates.sh` passes file-size gate, normal build,
+    all configured normal lisp slices, compiler slice, and FTXUI smokes; ASAN
+    is explicitly skipped because the current C3 toolchain reports address
+    sanitizer unsupported for this target.
+- `[INVALIDATED]` Do not treat every canonical raise payload construction miss
+  as the same failure mode. ERROR-valued message/data materialization must
+  propagate the original ERROR; selected subsystem payload-map OOM may degrade
+  to payload-less dispatch only through an explicit fallback helper.

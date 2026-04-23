@@ -46,5 +46,5 @@ fn void interp_interrupt_clear(Interp* interp) @inline {
 }
 
 fn Value* interp_interrupt_error(Interp* interp) @inline {
-    return raise_error(interp, "evaluation interrupted");
+    return runtime_raise(interp, "runtime/evaluation-error", "evaluation interrupted");
 }

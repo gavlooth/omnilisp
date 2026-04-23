@@ -159,6 +159,7 @@ fn void* ast_arena_alloc(AstArena* arena, usz size) {
 
     AstArenaChunk* current = arena.chunks;
     if (current != null) {
+        if (current.used > current.capacity) return null;
         usz next_used = 0;
         if (lisp_checked_add_usz(current.used, aligned, &next_used) && next_used <= current.capacity) {
             char* data = ast_arena_chunk_data(current);
