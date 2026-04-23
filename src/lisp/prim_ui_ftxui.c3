@@ -567,6 +567,9 @@ fn Value* ui_ftxui_session_runtime_effect_children(
     return ftxui_raise(interp, "ui/invalid-argument", "ui-ftxui.session: effect children must be a proper list or array");
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ui_ftxui_session_open(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return ftxui_raise(interp, "ui/arity", "__ui-ftxui-session-open: expected ui effect tree");
     if (omni_ftxui_backend_available() == 0) {
@@ -659,6 +662,9 @@ fn Value* prim_ui_ftxui_session_open(Value*[] args, Env* env, Interp* interp) {
     return handle;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ui_ftxui_session_render(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return ftxui_raise(interp, "ui/arity", "__ui-ftxui-session-render: expected session handle");
     UiFtxuiSessionOwner* owner = null;
@@ -668,6 +674,9 @@ fn Value* prim_ui_ftxui_session_render(Value*[] args, Env* env, Interp* interp) 
     return ui_ftxui_session_status_bool(owner, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ui_ftxui_session_read_event(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return ftxui_raise(interp, "ui/arity", "__ui-ftxui-session-read-event: expected session handle");
     UiFtxuiSessionOwner* owner = null;
@@ -682,6 +691,9 @@ fn Value* prim_ui_ftxui_session_read_event(Value*[] args, Env* env, Interp* inte
     return ui_ftxui_session_event_to_value(&event, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ui_ftxui_session_update(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return ftxui_raise(interp, "ui/arity", "__ui-ftxui-session-update: expected session handle and ui effect tree");
     UiFtxuiSessionOwner* owner = null;
@@ -697,6 +709,9 @@ fn Value* prim_ui_ftxui_session_update(Value*[] args, Env* env, Interp* interp) 
     return args[0];
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ui_ftxui_session_invalidate(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return ftxui_raise(interp, "ui/arity", "__ui-ftxui-session-invalidate: expected session handle");
     UiFtxuiSessionOwner* owner = null;
@@ -706,6 +721,9 @@ fn Value* prim_ui_ftxui_session_invalidate(Value*[] args, Env* env, Interp* inte
     return args[0];
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ui_ftxui_session_post_event(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return ftxui_raise(interp, "ui/arity", "__ui-ftxui-session-post-event: expected session handle and event attrs");
     UiFtxuiSessionOwner* owner = null;
@@ -715,6 +733,9 @@ fn Value* prim_ui_ftxui_session_post_event(Value*[] args, Env* env, Interp* inte
     return args[0];
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ui_ftxui_session_close(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return ftxui_raise(interp, "ui/arity", "__ui-ftxui-session-close: expected session handle");
     Value* value = args[0];
@@ -731,6 +752,9 @@ fn Value* prim_ui_ftxui_session_close(Value*[] args, Env* env, Interp* interp) {
     return make_symbol(interp, interp.sym_true);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ui_ftxui_dispatch_effect_tree(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return ftxui_raise(interp, "ui/arity", "__ui-ftxui-dispatch: expected ui effect tree");
     if (omni_ftxui_backend_available() == 0) {
@@ -774,6 +798,9 @@ fn Value* prim_ui_ftxui_dispatch_effect_tree(Value*[] args, Env* env, Interp* in
     return make_symbol(interp, interp.sym_true);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ui_ftxui_loop_effect_tree(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return ftxui_raise(interp, "ui/arity", "__ui-ftxui-loop: expected ui effect tree");
     if (omni_ftxui_backend_available() == 0) {
@@ -850,6 +877,9 @@ fn Value* prim_ui_ftxui_loop_effect_tree(Value*[] args, Env* env, Interp* interp
     return make_symbol(interp, interp.sym_true);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ui_ftxui_run(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return ftxui_raise(interp, "ui/arity", "__ui-ftxui-run: expected ui root node");
     if (omni_ftxui_backend_available() == 0) {

@@ -3,6 +3,9 @@ module lisp;
 import std::core::mem;
 import main;
 
+<*
+@require interp != null
+*>
 fn Value* prim_matrix_singular_values(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) {
         return primitive_arity_raise(interp, "matrix/singular-values", "1 argument: rank-2 Float64, Float32, Complex128, or Complex64 Tensor", args.len);
@@ -214,6 +217,9 @@ fn Value* prim_matrix_singular_values(Value*[] args, Env* env, Interp* interp) {
     return out_value;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_matrix_svd(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) {
         return primitive_arity_raise(interp, "matrix/svd", "1 argument: rank-2 Float64, Float32, Complex128, or Complex64 Tensor", args.len);

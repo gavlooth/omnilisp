@@ -152,6 +152,9 @@ fn Value* kernel_capture_scale_f32(Value* kernel, Value* inputs, Value* push, In
     return kernel_capture_plan(kernel, nn_dict_get(kernel, interp, "operation"), "scale-f32", input_descriptors, output_descriptors, input_tensor, push, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_kernel_capture(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 3) return primitive_arity_raise(interp, "kernel/capture", "3 arguments: kernel inputs push", args.len);
     if (!kernel_is_value(args[0], interp)) return kernel_invalid(interp, "kernel", "Kernel value", args[0]);

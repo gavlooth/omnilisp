@@ -5,6 +5,9 @@ module lisp;
 // (deduce 'commit txn) -> Void
 // (deduce 'abort txn) -> Void
 // ============================================================
+<*
+@require interp != null
+*>
 fn Value* prim_deduce_block(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || args.len > 2) {
         return deduce_raise(interp, "deduce/block-expected-database", "deduce-block: expected (deduce 'block db ['read|'write|'write-deferred])");
@@ -74,6 +77,9 @@ fn Value* prim_deduce_block(Value*[] args, Env* env, Interp* interp) {
     return txn_v;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_deduce_commit(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) {
         return deduce_raise(interp, "deduce/commit-expected-transaction", "deduce-commit: expected (deduce 'commit txn)");
@@ -133,6 +139,9 @@ fn Value* prim_deduce_commit(Value*[] args, Env* env, Interp* interp) {
     return make_void(interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_deduce_abort(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) {
         return deduce_raise(interp, "deduce/abort-expected-transaction", "deduce-abort: expected (deduce 'abort txn)");

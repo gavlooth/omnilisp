@@ -9,6 +9,9 @@ import main;
 // ============================================================
 
 // (pipe-connect path) — connect to a Unix domain socket path
+<*
+@require interp != null
+*>
 fn Value* prim_pipe_connect(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_string(args[0])) {
         return io_raise(interp, "io/pipe-connect-expected-path", "pipe-connect: expected (pipe-connect path)");
@@ -118,6 +121,9 @@ fn Value* prim_pipe_connect(Value*[] args, Env* env, Interp* interp) {
 }
 
 // (pipe-listen path) — create a Unix domain listener socket at path
+<*
+@require interp != null
+*>
 fn Value* prim_pipe_listen(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_string(args[0])) {
         return io_raise(interp, "io/pipe-listen-expected-path", "pipe-listen: expected (pipe-listen path)");

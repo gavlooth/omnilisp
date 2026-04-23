@@ -5,6 +5,9 @@ import std::core::mem;
 // ============================================================
 // (tcp-listen host port [backlog]) — open listener socket (fiber-only)
 // ============================================================
+<*
+@require interp != null
+*>
 fn Value* prim_tcp_listen(Value*[] args, Env* env, Interp* interp) {
     Value* host_v = null;
     Value* port_v = null;
@@ -180,6 +183,9 @@ fn Value* tcp_accept_with_libuv(TcpHandle* listener, Interp* interp) {
 // ============================================================
 // (tcp-accept listener-handle) — accept one connection
 // ============================================================
+<*
+@require interp != null
+*>
 fn Value* prim_tcp_accept(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return io_raise(interp, "io/tcp-accept-expected-listener-handle", "tcp-accept: expected (tcp-accept listener-handle)");
     TcpHandle* listener = get_tcp_handle(args[0]);

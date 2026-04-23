@@ -4,6 +4,9 @@ import std::io;
 import main;
 
 // (signal-handle sig callback) -> signal-handle
+<*
+@require interp != null
+*>
 fn Value* prim_signal_handle(Value*[] args, Env* env, Interp* interp) {
     Value* sig_v = null;
     Value* callback_v = null;
@@ -53,6 +56,9 @@ fn Value* prim_signal_handle(Value*[] args, Env* env, Interp* interp) {
 }
 
 // (signal-unhandle signal-handle) -> void
+<*
+@require interp != null
+*>
 fn Value* prim_signal_unhandle(Value*[] args, Env* env, Interp* interp) {
     Value* handle_v = null;
     if (args.len == 1 && is_cons(args[0])) {
@@ -78,6 +84,9 @@ fn Value* prim_signal_unhandle(Value*[] args, Env* env, Interp* interp) {
 // (dns-resolve hostname) — resolve to IP string
 // ============================================================
 
+<*
+@require interp != null
+*>
 fn Value* prim_dns_resolve(Value*[] args, Env* env, Interp* interp) {
     // fault: lisp::ARITY_MISMATCH
     if (args.len < 1) return io_raise(interp, "io/dns-resolve-expected-hostname", "dns-resolve: expected (dns-resolve hostname)");

@@ -1,5 +1,8 @@
 module lisp;
 
+<*
+@require interp != null
+*>
 fn Value* prim_deduce_schema(Value*[] args, Env* env, Interp* interp) {
     (void)env;
     if (args.len != 1) {
@@ -30,6 +33,9 @@ fn Value* prim_deduce_schema(Value*[] args, Env* env, Interp* interp) {
     return deduce_relation_schema_payload(rel, schema, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_deduce_indexes(Value*[] args, Env* env, Interp* interp) {
     (void)env;
     if (args.len != 1) {

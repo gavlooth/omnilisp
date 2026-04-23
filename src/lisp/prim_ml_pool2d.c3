@@ -342,10 +342,16 @@ fn Value* prim_ml_pool2d_common(Value*[] args, Env* env, Interp* interp, bool av
     return out_value;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ml_max_pool2d(Value*[] args, Env* env, Interp* interp) {
     return prim_ml_pool2d_common(args, env, interp, false, "ml/max-pool2d");
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ml_avg_pool2d(Value*[] args, Env* env, Interp* interp) {
     return prim_ml_pool2d_common(args, env, interp, true, "ml/avg-pool2d");
 }

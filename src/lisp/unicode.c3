@@ -9,6 +9,9 @@ fn Value* string_raise(Interp* interp, String code, char[] message) @inline {
 // (string-normalize s mode) — NFC, NFD, NFKC, NFKD
 // ============================================================
 
+<*
+@require interp != null
+*>
 fn Value* prim_string_normalize(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return string_raise(interp, "type/arg-mismatch", "string-normalize: expected (string-normalize s mode)");
     if (!is_string(args[0])) return string_raise(interp, "type/arg-mismatch", "string-normalize: first arg must be string");
@@ -45,6 +48,9 @@ fn Value* prim_string_normalize(Value*[] args, Env* env, Interp* interp) {
 // (string-graphemes s) — split into list of grapheme clusters
 // ============================================================
 
+<*
+@require interp != null
+*>
 fn Value* prim_string_graphemes(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return string_raise(interp, "type/arity", "string-graphemes: expected 1 argument");
     if (!is_string(args[0])) return string_raise(interp, "type/arity", "string-graphemes: expected string argument");
@@ -99,6 +105,9 @@ fn Value* prim_string_graphemes(Value*[] args, Env* env, Interp* interp) {
 // (string-codepoints s) — list of integer codepoints
 // ============================================================
 
+<*
+@require interp != null
+*>
 fn Value* prim_string_codepoints(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return string_raise(interp, "type/arity", "string-codepoints: expected 1 argument");
     if (!is_string(args[0])) return string_raise(interp, "type/arity", "string-codepoints: expected string argument");
@@ -129,6 +138,9 @@ fn Value* prim_string_codepoints(Value*[] args, Env* env, Interp* interp) {
 // (char-category codepoint) — Unicode category string (e.g. "Lu", "Ll")
 // ============================================================
 
+<*
+@require interp != null
+*>
 fn Value* prim_char_category(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return string_raise(interp, "type/arity", "char-category: expected 1 argument");
     if (!is_int(args[0])) return string_raise(interp, "type/arg-mismatch", "char-category: expected integer codepoint");
@@ -152,6 +164,9 @@ fn Value* prim_char_category(Value*[] args, Env* env, Interp* interp) {
 // (char-width codepoint) — display width hint (-1, 0, 1, 2)
 // ============================================================
 
+<*
+@require interp != null
+*>
 fn Value* prim_char_width(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return string_raise(interp, "type/arity", "char-width: expected 1 argument");
     if (!is_int(args[0])) return string_raise(interp, "type/arg-mismatch", "char-width: expected integer codepoint");
@@ -168,6 +183,9 @@ fn Value* prim_char_width(Value*[] args, Env* env, Interp* interp) {
 // (char-property codepoint property) — Unicode metadata lookup
 // ============================================================
 
+<*
+@require interp != null
+*>
 fn Value* prim_char_property(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return string_raise(interp, "type/arity", "char-property: expected 2 arguments");
     if (!is_int(args[0])) return string_raise(interp, "type/arg-mismatch", "char-property: first argument must be integer codepoint");

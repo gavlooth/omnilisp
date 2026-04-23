@@ -57,6 +57,9 @@ fn Value* make_process_wait_result(Interp* interp, int pid, int exit_code, int t
 }
 
 // (process-wait process-handle|process-dict) -> dict {'pid n 'exit-code n 'term-signal n}
+<*
+@require interp != null
+*>
 fn Value* prim_process_wait(Value*[] args, Env* env, Interp* interp) {
     Value* target_v = null;
     if (args.len == 1 && is_cons(args[0])) {
@@ -103,6 +106,9 @@ fn Value* prim_process_wait(Value*[] args, Env* env, Interp* interp) {
 }
 
 // (process-kill process-handle|process-dict sig) -> void
+<*
+@require interp != null
+*>
 fn Value* prim_process_kill(Value*[] args, Env* env, Interp* interp) {
     Value* target_v = null;
     Value* sig_v = null;

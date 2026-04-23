@@ -317,10 +317,16 @@ fn Value* ml_linear_apply(Value*[] args, bool batched_reduce, Interp* interp) {
     return out_value;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ml_linear(Value*[] args, Env* env, Interp* interp) {
     return ml_linear_apply(args, false, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ml_linear_batched_reduce(Value*[] args, Env* env, Interp* interp) {
     return ml_linear_apply(args, true, interp);
 }

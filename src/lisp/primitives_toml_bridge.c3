@@ -217,6 +217,9 @@ fn Value* toml_datum_to_omni(OmniTomlDatum* datum, Interp* interp) {
     }
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_toml_parse(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || args.len > 2) return data_format_raise(interp, "type/arity", "toml-parse: expected 1-2 arguments");
     if (!is_string(args[0])) return data_format_raise(interp, "type/arity", "toml-parse: expected string argument");

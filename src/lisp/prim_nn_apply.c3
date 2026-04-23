@@ -52,18 +52,30 @@ fn Value* nn_apply_validate_options(Value* options, Interp* interp) {
     return null;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_nn_spec(Value*[] args, Env* env, Interp* interp) {
     return nn_model_accessor(args, interp, "nn/spec", "spec", "model.spec", "layer spec");
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_nn_parameters(Value*[] args, Env* env, Interp* interp) {
     return nn_model_accessor(args, interp, "nn/parameters", "params", "model.params", "parameter tree");
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_nn_state(Value*[] args, Env* env, Interp* interp) {
     return nn_model_accessor(args, interp, "nn/state", "state", "model.state", "state tree");
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_nn_mode(Value*[] args, Env* env, Interp* interp) {
     return nn_model_accessor(args, interp, "nn/mode", "mode", "model.mode", "eval or train symbol");
 }
@@ -839,6 +851,9 @@ fn Value* nn_forward_execute(Value*[] args, Interp* interp) {
     return nn_forward_payload(model, spec, params, &forward, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_nn_apply(Value*[] args, Env* env, Interp* interp) {
     Value* spec = null;
     Value* params = null;
@@ -849,6 +864,9 @@ fn Value* prim_nn_apply(Value*[] args, Env* env, Interp* interp) {
     return nn_apply_layer(spec, params, state, input, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_nn_predict(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 2) return primitive_arity_raise(interp, "nn/predict", "2 arguments: model input", args.len);
     if (Value* err = nn_require_model(args[0], interp)) return err;
@@ -927,6 +945,9 @@ fn Value* nn_make_count_value(Interp* interp, usz count, char[] label) {
     return make_int(interp, (long)count);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_nn_summary(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) return primitive_arity_raise(interp, "nn/summary", "1 argument: model", args.len);
     if (Value* err = nn_require_model(args[0], interp)) return err;

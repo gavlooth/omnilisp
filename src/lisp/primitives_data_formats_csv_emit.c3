@@ -125,6 +125,9 @@ fn Value* csv_emit_row(DString* out, Value* row, CsvEmitOptions* opts, Interp* i
     return data_format_raise(interp, "type/arg-mismatch", "csv-emit: expected each row to be an array or list");
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_csv_emit(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || args.len > 2) {
         return data_format_raise(interp, "type/arity", "csv-emit: expected 1-2 arguments");

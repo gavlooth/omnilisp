@@ -1,5 +1,8 @@
 module lisp;
 
+<*
+@require interp != null
+*>
 fn Value* prim_to_device(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 2) return primitive_arity_raise(interp, "to-device", "2 arguments: tensor device", args.len);
     if (!is_tensor(args[0])) return tensor_raise(interp, "tensor/invalid-argument", "to-device: expected Tensor");
@@ -26,6 +29,9 @@ fn Value* prim_to_device(Value*[] args, Env* env, Interp* interp) {
     );
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_rank(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_tensor(args[0])) return tensor_raise(interp, "tensor/invalid-argument", "rank: expected Tensor");
     TensorVal* tensor = args[0].tensor_val;
@@ -34,6 +40,9 @@ fn Value* prim_rank(Value*[] args, Env* env, Interp* interp) {
     return make_int(interp, (long)tensor.rank);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_shape(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_tensor(args[0])) return tensor_raise(interp, "tensor/invalid-argument", "shape: expected Tensor");
     TensorVal* tensor = args[0].tensor_val;

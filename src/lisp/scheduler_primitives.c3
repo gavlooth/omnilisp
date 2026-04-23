@@ -54,6 +54,9 @@ fn bool scheduler_cancel_fiber(usz fiber_id, Interp* interp) {
     return true;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_fiber_cancel(Value*[] args, Env* env, Interp* interp) {
     (void)env;
     scheduler_init();
@@ -95,6 +98,9 @@ fn Value* prim_fiber_cancel(Value*[] args, Env* env, Interp* interp) {
 // Creates a coroutine from thunk, adds to scheduler.
 // ============================================================
 
+<*
+@require interp != null
+*>
 fn Value* prim_spawn(Value*[] args, Env* env, Interp* interp) {
     scheduler_reset_if_idle();
 
@@ -205,6 +211,9 @@ fn Value* scheduler_await_in_fiber_context(usz target, Interp* interp) {
 // Returns the fiber's final result.
 // ============================================================
 
+<*
+@require interp != null
+*>
 fn Value* prim_await(Value*[] args, Env* env, Interp* interp) {
     usz target = 0;
     Value* parse_err = scheduler_parse_existing_fiber_arg(
@@ -248,6 +257,9 @@ fn Value* prim_await(Value*[] args, Env* env, Interp* interp) {
 // Runs all spawned fibers to completion. Round-robin scheduling.
 // ============================================================
 
+<*
+@require interp != null
+*>
 fn Value* prim_run_fibers(Value*[] args, Env* env, Interp* interp) {
     if (g_scheduler.running) {
         return scheduler_raise(

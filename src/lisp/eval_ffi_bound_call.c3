@@ -554,6 +554,9 @@ fn Value* foreign_runtime_call_c_abi_bound(FfiBoundFn* bound, Value*[] args, Env
 
 // prim_ffi_bound_call — primitive handler for bound FFI functions.
 // user_data points to a heap-allocated FfiBoundFn.
+<*
+@require interp != null
+*>
 fn Value* prim_ffi_bound_call(Value*[] args, Env* env, Interp* interp) {
     FfiBoundFn* bound = (FfiBoundFn*)interp.prim_user_data;
     ForeignRuntimeAdapter adapter;

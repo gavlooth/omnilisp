@@ -3,6 +3,9 @@ module lisp;
 import std::core::mem;
 import main;
 
+<*
+@require interp != null
+*>
 fn Value* prim_matrix_lu(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) {
         return primitive_arity_raise(interp, "matrix/lu", "1 argument: square numeric Tensor", args.len);
@@ -221,6 +224,9 @@ fn Value* prim_matrix_lu(Value*[] args, Env* env, Interp* interp) {
     return out;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_matrix_determinant(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) {
         return primitive_arity_raise(interp, "matrix/determinant", "1 argument: square numeric Tensor", args.len);
@@ -349,6 +355,9 @@ fn Value* prim_matrix_determinant(Value*[] args, Env* env, Interp* interp) {
     return make_double(interp, determinant);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_matrix_inverse(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) {
         return primitive_arity_raise(interp, "matrix/inverse", "1 argument: square Float64, Float32, Complex128, or Complex64 Tensor", args.len);

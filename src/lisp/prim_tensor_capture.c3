@@ -558,6 +558,9 @@ fn Value* tensor_capture_plan(Value* source, Value* nodes, int output_id, Interp
     return plan;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_tensor_capture(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) return primitive_arity_raise(interp, "tensor/capture", "1 argument: tensor", args.len);
     if (!is_tensor(args[0]) || args[0].tensor_val == null) return primitive_arg_type_raise(interp, "tensor/capture", 0, "Tensor", args[0]);

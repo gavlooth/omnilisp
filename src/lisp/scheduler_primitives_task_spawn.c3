@@ -31,6 +31,9 @@ fn Value* scheduler_prepare_task_spawn(OffloadWork* work, usz* task_id_out, Inte
     return null;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_task_spawn(Value*[] args, Env* env, Interp* interp) {
     (void)env;
     scheduler_init();
@@ -69,6 +72,9 @@ fn Value* prim_task_spawn(Value*[] args, Env* env, Interp* interp) {
     return scheduler_make_task_handle_value(task_id, generation, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_task_spawn_batch(Value*[] args, Env* env, Interp* interp) {
     (void)env;
     scheduler_init();

@@ -352,6 +352,9 @@ fn bool matrix_copy_float32_to_double_workspace(TensorVal* matrix, double** out_
     return true;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_matrix_eigenvalues(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) {
         return primitive_arity_raise(interp, "matrix/eigenvalues", "1 argument: square symmetric/Hermitian Float64, Complex128, or Complex64 Tensor", args.len);
@@ -443,6 +446,9 @@ fn Value* prim_matrix_eigenvalues(Value*[] args, Env* env, Interp* interp) {
     return values_value;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_matrix_eigenvectors(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) {
         return primitive_arity_raise(interp, "matrix/eigenvectors", "1 argument: square symmetric/Hermitian Float64, Complex128, or Complex64 Tensor", args.len);
@@ -572,6 +578,9 @@ fn Value* prim_matrix_eigenvectors(Value*[] args, Env* env, Interp* interp) {
     return out;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_matrix_eigenpairs(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) {
         return primitive_arity_raise(interp, "matrix/eigenpairs", "1 argument: square Float64, Float32, Complex128, or Complex64 Tensor", args.len);

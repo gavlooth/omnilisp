@@ -2,6 +2,9 @@ module lisp;
 
 import main;
 
+<*
+@require interp != null
+*>
 fn Value* prim_iterator_from_list(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) return iterator_ctor_raise(interp, "type/arity", "__iterator-from-list: expected 1 argument");
     if (!is_cons(args[0]) && !is_nil(args[0])) {
@@ -10,6 +13,9 @@ fn Value* prim_iterator_from_list(Value*[] args, Env* env, Interp* interp) {
     return iterator_from_list_value(args[0], interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_iterator_from_array(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) return iterator_ctor_raise(interp, "type/arity", "__iterator-from-array: expected 1 argument");
     if (!is_array(args[0])) {
@@ -18,6 +24,9 @@ fn Value* prim_iterator_from_array(Value*[] args, Env* env, Interp* interp) {
     return iterator_from_array_value(args[0], 0, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_iterator_from_dict(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) return iterator_ctor_raise(interp, "type/arity", "__iterator-from-dict: expected 1 argument");
     if (args[0] == null || args[0].tag != HASHMAP) {
@@ -26,6 +35,9 @@ fn Value* prim_iterator_from_dict(Value*[] args, Env* env, Interp* interp) {
     return iterator_from_dict_value(args[0], interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_iterator_from_tensor(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) return iterator_ctor_raise(interp, "type/arity", "__iterator-from-tensor: expected 1 argument");
     if (!is_tensor(args[0])) {
@@ -34,6 +46,9 @@ fn Value* prim_iterator_from_tensor(Value*[] args, Env* env, Interp* interp) {
     return iterator_from_tensor_value(args[0], interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_iterator_range_from(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) return iterator_ctor_raise(interp, "type/arity", "__iterator-range-from: expected 1 argument");
     if (args[0] == null || !is_int(args[0])) {
@@ -42,6 +57,9 @@ fn Value* prim_iterator_range_from(Value*[] args, Env* env, Interp* interp) {
     return iterator_range_from_value(args[0], interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_iterator_range_from_thunk(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || args[0] == null || !is_int(args[0])) {
         return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-range-from: expected integer state");
@@ -50,11 +68,17 @@ fn Value* prim_iterator_range_from_thunk(Value*[] args, Env* env, Interp* interp
     return iterator_make_pair_or_propagate(current, iterator_range_from_value(make_int(interp, current.int_val + 1), interp), interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_iterator_repeat(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) return iterator_ctor_raise(interp, "type/arity", "__iterator-repeat: expected 1 argument");
     return iterator_repeat_value(args[0], interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_iterator_repeat_thunk(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) {
         return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-repeat: expected item state");
@@ -62,6 +86,9 @@ fn Value* prim_iterator_repeat_thunk(Value*[] args, Env* env, Interp* interp) {
     return iterator_make_pair_or_propagate(args[0], iterator_repeat_value(args[0], interp), interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_iterator_cycle(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) return iterator_ctor_raise(interp, "type/arity", "__iterator-cycle: expected 1 argument");
     Value*[1] one = { args[0] };
@@ -70,6 +97,9 @@ fn Value* prim_iterator_cycle(Value*[] args, Env* env, Interp* interp) {
     return iterator_cycle_state_value(args[0], start, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_iterator_cycle_thunk(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) {
         return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-cycle: expected iterator state");

@@ -12,6 +12,9 @@ enum MatrixNormKind {
     MATRIX_NORM_NUCLEAR,
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_matrix_solve(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 2) {
         return primitive_arity_raise(interp, "matrix/solve", "2 arguments: coefficient Tensor and right-hand Tensor", args.len);

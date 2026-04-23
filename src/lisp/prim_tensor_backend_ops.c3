@@ -3,6 +3,9 @@ module lisp;
 import std::core::mem;
 import main;
 
+<*
+@require interp != null
+*>
 fn Value* prim_tensor_layout(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) return primitive_arity_raise(interp, "tensor-layout", "1 argument: tensor", args.len);
     if (!is_tensor(args[0])) return tensor_raise(interp, "tensor/arg-mismatch", "tensor-layout: expected Tensor");
@@ -239,6 +242,9 @@ fn Value* tensor_backend_set_ml_capability_fields(
     return null;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_tensor_backends(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 0) return primitive_arity_raise(interp, "tensor-backends", "no arguments", args.len);
 

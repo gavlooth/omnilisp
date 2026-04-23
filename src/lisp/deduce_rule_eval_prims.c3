@@ -1,5 +1,8 @@
 module lisp;
 
+<*
+@require interp != null
+*>
 fn Value* prim_deduce_rule(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 3) {
         return deduce_raise(interp, "deduce/rule-expected-db-head-body", "deduce-rule!: expected (deduce/rule! db head-atom body-atom...)");

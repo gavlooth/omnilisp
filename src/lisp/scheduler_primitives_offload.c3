@@ -64,6 +64,9 @@ fn Value* scheduler_begin_fiber_offload(OffloadWork* work, usz fiber_id, Interp*
     return null;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_offload(Value*[] args, Env* env, Interp* interp) {
     (void)env;
     if (args.len < 1) {
@@ -72,6 +75,9 @@ fn Value* prim_offload(Value*[] args, Env* env, Interp* interp) {
     return scheduler_execute_offload_job(args[0], false, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_offload_batch(Value*[] args, Env* env, Interp* interp) {
     (void)env;
     if (args.len < 1) {

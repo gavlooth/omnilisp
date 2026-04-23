@@ -6,6 +6,9 @@ import main;
 // (tls-read tls-handle [max-bytes]) -> string
 // ============================================================
 
+<*
+@require interp != null
+*>
 fn Value* prim_tls_read(Value*[] args, Env* env, Interp* interp) {
     Value* handle_v = null;
     Value* max_bytes_v = null;
@@ -69,6 +72,9 @@ fn Value* prim_tls_read(Value*[] args, Env* env, Interp* interp) {
 // (tls-write tls-handle data) -> bytes written
 // ============================================================
 
+<*
+@require interp != null
+*>
 fn Value* prim_tls_write(Value*[] args, Env* env, Interp* interp) {
     // fault: lisp::ARITY_MISMATCH
     if (args.len < 2) return tls_raise_async(interp, "io/tls-write-expected-handle-data", "tls-write: expected (tls-write handle data)");
@@ -106,6 +112,9 @@ fn Value* prim_tls_write(Value*[] args, Env* env, Interp* interp) {
 // (tls-close tls-handle) -> void
 // ============================================================
 
+<*
+@require interp != null
+*>
 fn Value* prim_tls_close(Value*[] args, Env* env, Interp* interp) {
     // fault: lisp::ARITY_MISMATCH
     if (args.len < 1) return tls_raise_async(interp, "io/tls-close-expected-handle", "tls-close: expected (tls-close handle)");

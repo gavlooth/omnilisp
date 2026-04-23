@@ -70,6 +70,9 @@ fn void deduce_relation_finalizer(void* handle) {
 // (deduce-open path) → database handle
 // (deduce-open 'memory) → ephemeral database
 // ============================================================
+<*
+@require interp != null
+*>
 fn Value* prim_deduce_open(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return deduce_raise(interp, "deduce/open-expected-path-or-memory", "deduce-open: expected path or 'memory");
 

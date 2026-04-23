@@ -2,6 +2,9 @@ module lisp;
 
 import std::io;
 
+<*
+@require interp != null
+*>
 fn Value* prim_meta_type_symbol_not_callable(Value*[] args, Env* env, Interp* interp) {
     if (interp == null || interp.last_call_name == INVALID_SYMBOL_ID) {
         return runtime_raise(interp, "runtime/evaluation-error", "type symbol is not a callable constructor/coercion surface");

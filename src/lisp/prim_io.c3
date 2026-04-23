@@ -1,5 +1,8 @@
 module lisp;
 
+<*
+@require interp != null
+*>
 fn Value* prim_print(Value*[] args, Env* env, Interp* interp) {
     if (args.len >= 1) {
         return io_console_emit(args[0], false, false, interp);
@@ -7,6 +10,9 @@ fn Value* prim_print(Value*[] args, Env* env, Interp* interp) {
     return make_void(interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_println(Value*[] args, Env* env, Interp* interp) {
     if (args.len >= 1) {
         return io_console_emit(args[0], false, true, interp);
@@ -14,15 +20,24 @@ fn Value* prim_println(Value*[] args, Env* env, Interp* interp) {
     return make_void(interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_newline(Value*[] args, Env* env, Interp* interp) {
     return io_console_emit(null, false, true, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_display(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return runtime_raise(interp, "type/arity", "display: expected argument");
     return io_console_emit(args[0], true, false, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_read_line(Value*[] args, Env* env, Interp* interp) {
     if (args.len > 1 || (args.len == 1 && !is_nil(args[0]))) {
         return io_raise(interp, "io/read-line-expected-no-args", "read-line: expected (read-line)");

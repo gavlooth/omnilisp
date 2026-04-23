@@ -125,6 +125,9 @@ fn Value* ml_clip_gradient_tree(Value* gradients, double max_norm, Interp* inter
     return ml_clip_scale_tree(gradients, scale, interp, out_gradients);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ml_clip_gradients(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 2) return primitive_arity_raise(interp, "ml/clip-gradients", "2 arguments: gradients max-norm", args.len);
     double max_norm = 0.0;

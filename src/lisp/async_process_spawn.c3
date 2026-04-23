@@ -283,6 +283,9 @@ fn Value* process_spawn_impl(Value*[] args, Env* env, Interp* interp, ProcessSpa
     return out;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_process_spawn(Value*[] args, Env* env, Interp* interp) {
     return process_spawn_impl(args, env, interp);
 }

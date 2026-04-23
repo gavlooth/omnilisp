@@ -799,6 +799,9 @@ fn Value* ml_grad_linear_softmax_cross_entropy(Value* spec, Interp* interp) {
     return result;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ml_grad(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) return primitive_arity_raise(interp, "ml/grad", "1 argument: gradient spec Dictionary", args.len);
     if (args[0].tag != HASHMAP || args[0].hashmap_val == null) {
@@ -813,6 +816,9 @@ fn Value* prim_ml_grad(Value*[] args, Env* env, Interp* interp) {
     return ml_grad_invalid(interp, "ml/grad: unsupported gradient spec kind");
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ml_sgd_step(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 3) return primitive_arity_raise(interp, "ml/sgd-step", "3 arguments: parameters gradients learning-rate", args.len);
     double learning_rate = 0.0;

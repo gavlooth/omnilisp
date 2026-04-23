@@ -238,6 +238,9 @@ fn Value* numeric_neg1(Interp* interp, Value* value) {
     return make_int(interp, -value.int_val);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_add(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || args.len > 2) return primitive_arity_raise(interp, "+", "1 or 2 arguments", args.len);
 
@@ -250,17 +253,26 @@ fn Value* prim_add(Value*[] args, Env* env, Interp* interp) {
     return numeric_add2(interp, args[0], args[1]);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_sub(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || args.len > 2) return primitive_arity_raise(interp, "-", "1 or 2 arguments", args.len);
     if (args.len == 1) return numeric_neg1(interp, args[0]);
     return numeric_sub2(interp, args[0], args[1]);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_mul(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return primitive_arity_raise(interp, "*", "2 arguments", args.len);
     return numeric_mul2(interp, args[0], args[1]);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_div(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return primitive_arity_raise(interp, "/", "2 arguments", args.len);
     if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "/", 0, "number", args[0]);
@@ -295,6 +307,9 @@ fn Value* prim_div(Value*[] args, Env* env, Interp* interp) {
     return make_int(interp, args[0].int_val / b);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_mod(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return primitive_arity_raise(interp, "%", "2 arguments", args.len);
     if (!(is_int(args[0]) || is_big_integer(args[0]))) return primitive_arg_type_raise(interp, "%", 0, "integer", args[0]);

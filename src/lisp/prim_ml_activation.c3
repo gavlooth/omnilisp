@@ -43,6 +43,9 @@ fn Value* ml_activation_map_binary(Value* func, Value* left, Value* right, Env* 
     return prim_tensor_map(map_args[..], env, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ml_relu(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) return primitive_arity_raise(interp, "ml/relu", "1 argument: input", args.len);
     TensorVal* source = null;
@@ -57,6 +60,9 @@ fn Value* prim_ml_relu(Value*[] args, Env* env, Interp* interp) {
     return ml_activation_map_binary(max_func, args[0], zero, env, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ml_leaky_relu(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1 && args.len != 2) return primitive_arity_raise(interp, "ml/leaky-relu", "1 or 2 arguments: input [negative-slope]", args.len);
     TensorVal* source = null;
@@ -97,6 +103,9 @@ fn Value* prim_ml_leaky_relu(Value*[] args, Env* env, Interp* interp) {
     return ml_activation_map_binary(add_func, positive, scaled_negative, env, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ml_sigmoid(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) return primitive_arity_raise(interp, "ml/sigmoid", "1 argument: input", args.len);
     TensorVal* source = null;
@@ -123,6 +132,9 @@ fn Value* prim_ml_sigmoid(Value*[] args, Env* env, Interp* interp) {
     return ml_activation_map_binary(div_func, one, denom, env, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ml_tanh(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) return primitive_arity_raise(interp, "ml/tanh", "1 argument: input", args.len);
     TensorVal* source = null;
@@ -134,6 +146,9 @@ fn Value* prim_ml_tanh(Value*[] args, Env* env, Interp* interp) {
     return ml_activation_map_unary(tanh_func, args[0], env, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ml_gelu(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) return primitive_arity_raise(interp, "ml/gelu", "1 argument: input", args.len);
     TensorVal* source = null;

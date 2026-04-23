@@ -7,6 +7,9 @@ module lisp;
 //   drop! relation                      → lifecycle removal, dropped handle
 // ============================================================
 
+<*
+@require interp != null
+*>
 fn Value* prim_deduce_clear(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) {
         return deduce_raise(interp, "deduce/clear-expected-relation", "deduce-clear: expected (deduce 'clear! relation)");
@@ -64,6 +67,9 @@ fn Value* prim_deduce_clear(Value*[] args, Env* env, Interp* interp) {
     return make_void(interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_deduce_drop(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) {
         return deduce_raise(interp, "deduce/drop-expected-relation", "deduce-drop: expected (deduce 'drop! relation)");

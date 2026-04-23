@@ -254,10 +254,16 @@ fn Value* json_emit_impl(Value*[] args, Interp* interp, bool pretty_default) {
     return result;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_json_emit(Value*[] args, Env* env, Interp* interp) {
     return json_emit_impl(args, interp, false);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_json_emit_pretty(Value*[] args, Env* env, Interp* interp) {
     return json_emit_impl(args, interp, true);
 }

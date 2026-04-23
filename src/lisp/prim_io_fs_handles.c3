@@ -38,6 +38,9 @@ fn bool fs_array_push(Value* arr_v, Value* val, Interp* interp) {
 }
 
 // (fs-stat path) -> dict {'size n 'mode n}
+<*
+@require interp != null
+*>
 fn Value* prim_fs_stat(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_string(args[0])) {
         return io_fs_raise(interp, "io/fs-stat-expected-path", "fs-stat: expected (fs-stat path)");
@@ -72,6 +75,9 @@ fn Value* prim_fs_stat(Value*[] args, Env* env, Interp* interp) {
 }
 
 // (fs-readdir path) -> array of entry names
+<*
+@require interp != null
+*>
 fn Value* prim_fs_readdir(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_string(args[0])) {
         return io_fs_raise(interp, "io/fs-readdir-expected-path", "fs-readdir: expected (fs-readdir path)");
@@ -109,6 +115,9 @@ fn Value* prim_fs_readdir(Value*[] args, Env* env, Interp* interp) {
 }
 
 // (fs-rename src dst) -> void
+<*
+@require interp != null
+*>
 fn Value* prim_fs_rename(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2 || !is_string(args[0]) || !is_string(args[1])) {
         return io_fs_raise(interp, "io/fs-rename-expected-src-dst", "fs-rename: expected (fs-rename src dst)");
@@ -121,6 +130,9 @@ fn Value* prim_fs_rename(Value*[] args, Env* env, Interp* interp) {
 }
 
 // (fs-unlink path) -> void
+<*
+@require interp != null
+*>
 fn Value* prim_fs_unlink(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_string(args[0])) {
         return io_fs_raise(interp, "io/fs-unlink-expected-path", "fs-unlink: expected (fs-unlink path)");

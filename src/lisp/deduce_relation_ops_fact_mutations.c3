@@ -1,5 +1,8 @@
 module lisp;
 
+<*
+@require interp != null
+*>
 fn Value* prim_retract_fact(Value*[] args, Env* env, Interp* interp) {
     // fault: lisp::ARITY_MISMATCH
     if (args.len < 1) return deduce_raise(interp, "deduce/retract-expected-relation-values", "retract!: expected (retract! relation val...)");

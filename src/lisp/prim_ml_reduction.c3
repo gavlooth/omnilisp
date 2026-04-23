@@ -513,18 +513,30 @@ fn Value* ml_reduction_apply(Value*[] args, Interp* interp, int op, char[] name)
     return out_value;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ml_sum(Value*[] args, Env* env, Interp* interp) {
     return ml_reduction_apply(args, interp, ML_REDUCTION_SUM, "ml/sum");
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ml_mean(Value*[] args, Env* env, Interp* interp) {
     return ml_reduction_apply(args, interp, ML_REDUCTION_MEAN, "ml/mean");
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ml_variance(Value*[] args, Env* env, Interp* interp) {
     return ml_reduction_apply(args, interp, ML_REDUCTION_VARIANCE, "ml/variance");
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ml_max(Value*[] args, Env* env, Interp* interp) {
     return ml_reduction_apply(args, interp, ML_REDUCTION_MAX, "ml/max");
 }

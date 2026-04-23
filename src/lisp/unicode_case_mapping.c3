@@ -11,6 +11,9 @@ fn bool unicode_string_len_fits_utf8proc(char[] src) @inline {
     return src.len <= (usz)long.max;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_string_upcase_unicode(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return string_raise(interp, "type/arity", "string-upcase: expected 1 argument");
     if (!is_string(args[0])) return string_raise(interp, "type/arity", "string-upcase: expected string argument");
@@ -56,6 +59,9 @@ fn Value* prim_string_upcase_unicode(Value*[] args, Env* env, Interp* interp) {
 // Unicode-aware string-downcase
 // ============================================================
 
+<*
+@require interp != null
+*>
 fn Value* prim_string_downcase_unicode(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return string_raise(interp, "type/arity", "string-downcase: expected 1 argument");
     if (!is_string(args[0])) return string_raise(interp, "type/arity", "string-downcase: expected string argument");
@@ -101,6 +107,9 @@ fn Value* prim_string_downcase_unicode(Value*[] args, Env* env, Interp* interp) 
 // Unicode-aware string-casefold
 // ============================================================
 
+<*
+@require interp != null
+*>
 fn Value* prim_string_casefold_unicode(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return string_raise(interp, "type/arity", "string-casefold: expected 1 argument");
     if (!is_string(args[0])) return string_raise(interp, "type/arity", "string-casefold: expected string argument");
@@ -127,6 +136,9 @@ fn Value* prim_string_casefold_unicode(Value*[] args, Env* env, Interp* interp) 
 // Unicode-aware string-titlecase
 // ============================================================
 
+<*
+@require interp != null
+*>
 fn Value* prim_string_titlecase_unicode(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return string_raise(interp, "type/arity", "string-titlecase: expected 1 argument");
     if (!is_string(args[0])) return string_raise(interp, "type/arity", "string-titlecase: expected string argument");

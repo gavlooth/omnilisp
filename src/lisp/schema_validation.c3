@@ -19,6 +19,9 @@ module lisp;
 // (validate schema-name value) → true or nil
 // ============================================================
 
+<*
+@require interp != null
+*>
 fn Value* prim_validate(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return runtime_raise(interp, "type/arg-mismatch", "validate: expected (validate schema value)");
 
@@ -40,6 +43,9 @@ fn Value* prim_validate(Value*[] args, Env* env, Interp* interp) {
     return make_nil(interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_schema_explain(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) {
         return raise_error_with_payload_names(

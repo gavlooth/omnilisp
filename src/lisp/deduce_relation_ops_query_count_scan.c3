@@ -3,6 +3,9 @@ module lisp;
 // ============================================================
 // Count + scan operations
 // ============================================================
+<*
+@require interp != null
+*>
 fn Value* prim_deduce_count(Value*[] args, Env* env, Interp* interp) {
     // fault: lisp::ARITY_MISMATCH
     if (args.len < 1 || args.len > 3) {

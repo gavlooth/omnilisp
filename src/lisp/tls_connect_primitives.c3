@@ -7,6 +7,9 @@ import main;
 // (tls-connect tcp-handle hostname [ca-bundle-path] [client-cert-pem-path client-key-pem-path] [resume-session?]) -> tls-handle
 // ============================================================
 
+<*
+@require interp != null
+*>
 fn Value* prim_tls_connect(Value*[] args, Env* env, Interp* interp) {
     Value* tcp_v = null;
     Value* host_v = null;
@@ -158,6 +161,9 @@ fn Value* prim_tls_connect(Value*[] args, Env* env, Interp* interp) {
 
 // Regression helper for trust-store cause preservation.
 // Not exported into the public Omni surface.
+<*
+@require interp != null
+*>
 fn Value* prim_tls_trust_store_load_cause(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return tls_raise_async(interp, "io/tls-trust-store-load-cause-expected-path", "tls-trust-store-load-cause: expected (tls-trust-store-load-cause path)");
     if (!is_string(args[0])) return tls_raise_async(interp, "io/tls-trust-store-load-cause-path-not-string", "tls-trust-store-load-cause: path must be a string");

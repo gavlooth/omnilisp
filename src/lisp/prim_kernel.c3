@@ -558,6 +558,9 @@ fn Value* kernel_run_binary_f32(Value* kernel, Value* inputs, Value* push, Inter
     return kernel_output_dict(output_name, output_value, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_kernel(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) return primitive_arity_raise(interp, "Kernel", "1 argument: spec Dictionary", args.len);
     if (Value* err = kernel_validate_spec(args[0], interp)) return err;
@@ -565,6 +568,9 @@ fn Value* prim_kernel(Value*[] args, Env* env, Interp* interp) {
     return kernel_normalize(args[0], interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_kernel_run(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 3) return primitive_arity_raise(interp, "kernel/run", "3 arguments: kernel inputs push", args.len);
     if (Value* err = kernel_validate_spec(args[0], interp)) return err;

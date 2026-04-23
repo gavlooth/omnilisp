@@ -15,6 +15,9 @@ fn Value* prim_resume_error_and_cleanup(
     return runtime_raise(interp, "runtime/evaluation-error", msg);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_resume_complete(Value* coroutine_val, main::StackCtx* ctx, Interp* interp) {
     Value* result = (Value*)ctx.result;
     if (result == null) {
@@ -26,6 +29,9 @@ fn Value* prim_resume_complete(Value* coroutine_val, main::StackCtx* ctx, Interp
     return result;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_resume_yield_result(Interp* interp) {
     Value* yielded = interp.yield_value;
     main::ScopeRegion* yield_scope = interp.yield_scope;
@@ -91,6 +97,9 @@ fn void prim_resume_switch_context(main::StackCtx* ctx, Interp* interp) {
     restore_interp_state_preserve_raise(interp, &saved);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_resume_post_switch(Value* coroutine_val, main::StackCtx* ctx, Interp* interp) {
     if (ctx.status == main::StackCtxStatus.CTX_DEAD) {
         return prim_resume_error_and_cleanup(coroutine_val, ctx, interp, "stack overflow in coroutine");
@@ -101,6 +110,9 @@ fn Value* prim_resume_post_switch(Value* coroutine_val, main::StackCtx* ctx, Int
     return prim_resume_yield_result(interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_resume(Value*[] args, Env* env, Interp* interp) {
     Value* coroutine_val = null;
     main::StackCtx* ctx = null;
@@ -121,6 +133,9 @@ fn Value* prim_resume(Value*[] args, Env* env, Interp* interp) {
     return prim_resume_post_switch(coroutine_val, ctx, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_yield_require_context(main::StackCtx** current_out, Interp* interp) {
     main::StackCtx* current = main::g_current_stack_ctx;
     if (current == null) {
@@ -144,10 +159,16 @@ fn bool prim_yield_suspend_and_restore(main::StackCtx* current, Interp* interp) 
     return true;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_yield_resume_result(Interp* interp) {
     return interp_consume_resume_value_or_nil(interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_yield(Value*[] args, Env* env, Interp* interp) {
     main::StackCtx* current = null;
     Value* parse_err = prim_yield_require_context(&current, interp);

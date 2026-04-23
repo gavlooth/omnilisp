@@ -1,5 +1,8 @@
 module lisp;
 
+<*
+@require interp != null
+*>
 fn Value* prim_deduce_refresh(Value*[] args, Env* env, Interp* interp) {
     DeduceRefreshRequest refresh = {};
     Value* prepare_err = deduce_refresh_prepare_request(args, &refresh, interp);

@@ -573,6 +573,9 @@ fn Value* make_tensor_contract_expr(
     return result;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_contract(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 3 && args.len != 4) {
         return primitive_arity_raise(interp, "contract", "3 or 4 arguments: left right axis-pairs | left right left-axes right-axes", args.len);

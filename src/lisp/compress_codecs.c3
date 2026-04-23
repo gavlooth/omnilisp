@@ -6,6 +6,9 @@ import std::core::mem;
 // (deflate s) -> raw deflate compressed string
 // ============================================================
 
+<*
+@require interp != null
+*>
 fn Value* prim_deflate(Value*[] args, Env* env, Interp* interp) {
     int level = LIBDEFLATE_DEFAULT_LEVEL;
     if (Value* err = parse_optional_compression_level(args, &level, interp)) return err;
@@ -37,6 +40,9 @@ fn Value* prim_deflate(Value*[] args, Env* env, Interp* interp) {
 // (inflate s [original-size]) -> decompressed string
 // ============================================================
 
+<*
+@require interp != null
+*>
 fn Value* prim_inflate(Value*[] args, Env* env, Interp* interp) {
     // fault: lisp::ARITY_MISMATCH
     if (args.len < 1 || args.len > 2) return compression_type_raise(interp, "type/arity", "inflate: expected 1-2 arguments");
@@ -102,6 +108,9 @@ fn Value* prim_inflate(Value*[] args, Env* env, Interp* interp) {
 // (zlib-compress s [level]) -> zlib compressed string
 // ============================================================
 
+<*
+@require interp != null
+*>
 fn Value* prim_zlib_compress(Value*[] args, Env* env, Interp* interp) {
     int level = LIBDEFLATE_DEFAULT_LEVEL;
     if (Value* err = parse_optional_compression_level(args, &level, interp)) return err;
@@ -132,6 +141,9 @@ fn Value* prim_zlib_compress(Value*[] args, Env* env, Interp* interp) {
 // (zlib-decompress s [original-size]) -> decompressed string
 // ============================================================
 
+<*
+@require interp != null
+*>
 fn Value* prim_zlib_decompress(Value*[] args, Env* env, Interp* interp) {
     // fault: lisp::ARITY_MISMATCH
     if (args.len < 1 || args.len > 2) return compression_type_raise(interp, "type/arity", "zlib-decompress: expected 1-2 arguments");

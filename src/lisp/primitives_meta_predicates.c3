@@ -6,6 +6,9 @@ fn Value* meta_raise(Interp* interp, String code, char[] message) @inline {
 
 
 // Macro/eval/type/meta primitives.
+<*
+@require interp != null
+*>
 fn Value* prim_is_boolean(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return meta_raise(interp, "type/arity", "boolean?: expected 1 argument");
     if (is_symbol(args[0]) && (args[0].sym_val == interp.sym_true || args[0].sym_val == interp.sym_false)) {
@@ -14,6 +17,9 @@ fn Value* prim_is_boolean(Value*[] args, Env* env, Interp* interp) {
     return make_nil(interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_is_list(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return meta_raise(interp, "type/arity", "list?: expected 1 argument");
     Value* v = args[0];
@@ -23,12 +29,18 @@ fn Value* prim_is_list(Value*[] args, Env* env, Interp* interp) {
     return is_nil(v) ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_is_procedure(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return meta_raise(interp, "type/arity", "procedure?: expected 1 argument");
     ValueTag t = args[0].tag;
     return (t == CLOSURE || t == PRIMITIVE || t == PARTIAL_PRIM || t == METHOD_TABLE || t == CONTINUATION) ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_is_zero(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_numeric_value(args[0])) return meta_raise(interp, "type/arg-mismatch", "zero?: expected number");
     if (is_big_complex(args[0])) return big_complex_value_is_zero(args[0]) ? make_symbol(interp, interp.sym_true) : make_nil(interp);
@@ -40,6 +52,9 @@ fn Value* prim_is_zero(Value*[] args, Env* env, Interp* interp) {
     return cmp == 0 ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_is_positive(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_numeric_value(args[0])) return meta_raise(interp, "type/arg-mismatch", "positive?: expected number");
     if (is_big_complex(args[0]) || is_fixed_complex(args[0])) return meta_raise(interp, "type/arg-mismatch", "positive?: complex numbers are not ordered");
@@ -49,6 +64,9 @@ fn Value* prim_is_positive(Value*[] args, Env* env, Interp* interp) {
     return cmp > 0 ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_is_negative(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_numeric_value(args[0])) return meta_raise(interp, "type/arg-mismatch", "negative?: expected number");
     if (is_big_complex(args[0]) || is_fixed_complex(args[0])) return meta_raise(interp, "type/arg-mismatch", "negative?: complex numbers are not ordered");
@@ -58,16 +76,25 @@ fn Value* prim_is_negative(Value*[] args, Env* env, Interp* interp) {
     return cmp < 0 ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_is_even(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_int(args[0])) return meta_raise(interp, "type/arg-mismatch", "even?: expected integer");
     return (args[0].int_val % 2 == 0) ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_is_odd(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_int(args[0])) return meta_raise(interp, "type/arg-mismatch", "odd?: expected integer");
     return (args[0].int_val % 2 != 0) ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_time_point_p(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return meta_raise(interp, "type/arity", "time-point?: expected 1 argument");
     return is_time_point(args[0]) ? make_symbol(interp, interp.sym_true) : make_nil(interp);
@@ -75,6 +102,9 @@ fn Value* prim_time_point_p(Value*[] args, Env* env, Interp* interp) {
 
 // --- Phase 7: Macroexpand, eval, apply, bound? ---
 
+<*
+@require interp != null
+*>
 fn Value* prim_macroexpand(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return meta_raise(interp, "type/arg-mismatch", "macroexpand: expected quoted expression");
     Value* form = args[0];
@@ -93,6 +123,9 @@ fn Value* prim_macroexpand(Value*[] args, Env* env, Interp* interp) {
     return make_nil(interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_eval(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return meta_raise(interp, "type/arity", "eval: expected expression");
     Expr* expr = value_to_expr(args[0], interp);
@@ -102,6 +135,9 @@ fn Value* prim_eval(Value*[] args, Env* env, Interp* interp) {
     return result;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_apply(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return meta_raise(interp, "type/arity", "apply: expected function and argument list");
     Value* func = args[0];
@@ -123,6 +159,9 @@ fn Value* prim_apply(Value*[] args, Env* env, Interp* interp) {
     return jit_apply_multi_args(interp, func, arg_list, arg_count);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_bound(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_symbol(args[0])) return meta_raise(interp, "type/arg-mismatch", "bound?: expected symbol");
     SymbolId sym = args[0].sym_val;
@@ -131,11 +170,17 @@ fn Value* prim_bound(Value*[] args, Env* env, Interp* interp) {
     return (v != null) ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_error(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || args[0].tag != STRING) return meta_raise(interp, "type/arg-mismatch", "error: expected string message");
     return raise_error_with_payload_names(interp, "type", "type/arg-mismatch", (String)args[0].str_chars[:args[0].str_len], null);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_is_error(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return meta_raise(interp, "type/arity", "error?: expected 1 argument");
     return (args[0] != null && args[0].tag == ERROR)
@@ -143,6 +188,9 @@ fn Value* prim_is_error(Value*[] args, Env* env, Interp* interp) {
         : make_nil(interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_error_message(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || args[0].tag != ERROR) return meta_raise(interp, "type/arg-mismatch", "error-message: expected error value");
     return make_string(interp, args[0].str_chars[:args[0].str_len]);

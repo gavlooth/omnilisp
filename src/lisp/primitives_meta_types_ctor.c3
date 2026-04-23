@@ -9,6 +9,9 @@ import main;
  * Explicit constructor annotation checker for forms like:
  *   (^(Box Integer) (Box 42))
  */
+<*
+@require interp != null
+*>
 fn Value* prim_ctor_type_apply(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) {
         return ctor_type_raise(interp, "type/ctor-arity-mismatch", "^: expected type form and value", null);

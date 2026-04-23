@@ -7,6 +7,9 @@ module lisp;
 // Returns dicts with ?var bindings (? stripped from keys).
 // ============================================================
 
+<*
+@require interp != null
+*>
 fn Value* prim_deduce_match(Value*[] args, Env* env, Interp* interp) {
     (void)env;
     if (args.len < 2 || args.len > 4) {

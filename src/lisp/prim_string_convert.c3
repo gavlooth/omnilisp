@@ -57,6 +57,9 @@ fn Value* conversion_big_integer_or_nil(Interp* interp, char[] s, usz overflow_a
     return make_big_integer_from_string(interp, s);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ctor_int(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return conversion_type_raise(interp, "Integer: expected int, finite double, or in-range numeric string");
 
@@ -122,6 +125,9 @@ fn Value* prim_ctor_int(Value*[] args, Env* env, Interp* interp) {
     return conversion_type_raise(interp, "Integer: expected int, finite double, or in-range numeric string");
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ctor_string(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return conversion_type_raise(interp, "String: expected string, number, symbol, or list of strings");
 
@@ -141,6 +147,9 @@ fn Value* prim_ctor_string(Value*[] args, Env* env, Interp* interp) {
     return conversion_type_raise(interp, "String: expected string, number, symbol, or list of strings");
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ctor_double(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return conversion_type_raise(interp, "Float64: expected integer, float64, BigFloat in Float64 range, or numeric string");
 
@@ -180,6 +189,9 @@ fn Value* prim_ctor_double(Value*[] args, Env* env, Interp* interp) {
     return conversion_type_raise(interp, "Float64: expected integer, float64, BigFloat in Float64 range, or numeric string");
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ctor_float(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || args.len > 2) {
         return conversion_type_raise(interp, "Float: expected value and optional precision 64");
@@ -203,6 +215,9 @@ fn Value* prim_ctor_float(Value*[] args, Env* env, Interp* interp) {
     return conversion_type_raise(interp, "Float: unsupported precision; expected 32 or 64");
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ctor_float32(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return conversion_type_raise(interp, "Float32: expected integer, float, BigFloat in Float32 range, or numeric string");
 
@@ -249,6 +264,9 @@ fn Value* prim_ctor_float32(Value*[] args, Env* env, Interp* interp) {
     return conversion_type_raise(interp, "Float32: expected integer, float, BigFloat in Float32 range, or numeric string");
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ctor_symbol(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return conversion_type_raise(interp, "Symbol: expected symbol or string");
 
@@ -261,6 +279,9 @@ fn Value* prim_ctor_symbol(Value*[] args, Env* env, Interp* interp) {
     return conversion_type_raise(interp, "Symbol: expected symbol or string");
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ctor_big_integer(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return conversion_type_raise(interp, "BigInteger: expected integer or decimal integer string");
 
@@ -274,6 +295,9 @@ fn Value* prim_ctor_big_integer(Value*[] args, Env* env, Interp* interp) {
     return conversion_type_raise(interp, "BigInteger: expected integer or decimal integer string");
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ctor_big_float(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return conversion_type_raise(interp, "BigFloat: expected numeric value or finite decimal string");
 
@@ -290,6 +314,9 @@ fn Value* prim_ctor_big_float(Value*[] args, Env* env, Interp* interp) {
     return conversion_type_raise(interp, "BigFloat: expected numeric value or finite decimal string");
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ctor_big_complex(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || args.len > 2) return conversion_type_raise(interp, "BigComplex: expected real part and optional imaginary part");
 
@@ -327,6 +354,9 @@ fn Value* prim_ctor_big_complex(Value*[] args, Env* env, Interp* interp) {
     return conversion_type_raise(interp, "BigComplex: expected numeric real and imaginary parts");
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ctor_complex128(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || args.len > 2) return conversion_type_raise(interp, "Complex128: expected real part and optional imaginary part");
 
@@ -343,6 +373,9 @@ fn Value* prim_ctor_complex128(Value*[] args, Env* env, Interp* interp) {
     return make_complex128(interp, real_part.real, imag_part.real);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ctor_complex64(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || args.len > 2) return conversion_type_raise(interp, "Complex64: expected real part and optional imaginary part");
 
@@ -359,22 +392,34 @@ fn Value* prim_ctor_complex64(Value*[] args, Env* env, Interp* interp) {
     return make_complex64(interp, real_part.real, imag_part.real);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ctor_bool(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return conversion_type_raise(interp, "Boolean: expected 1 argument");
     return is_falsy(args[0], interp) ? make_symbol(interp, interp.sym_false) : make_symbol(interp, interp.sym_true);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ctor_nil(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return conversion_type_raise(interp, "Nil: expected nil");
     Value* arg = args[0];
     return (arg == null || arg.tag == NIL) ? make_nil(interp) : conversion_type_raise(interp, "Nil: expected nil");
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ctor_void(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 0) return conversion_type_raise(interp, "Void: expected 0 arguments");
     return make_void(interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ctor_closure(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return conversion_type_raise(interp, "Closure: expected closure");
     Value* arg = args[0];
@@ -382,6 +427,9 @@ fn Value* prim_ctor_closure(Value*[] args, Env* env, Interp* interp) {
     return conversion_type_raise(interp, "Closure: expected closure");
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_string_to_number(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_string(args[0])) return make_nil(interp);
     char[] s = args[0].str_chars[:args[0].str_len];
@@ -449,6 +497,9 @@ fn Value* prim_string_to_number(Value*[] args, Env* env, Interp* interp) {
     return make_int(interp, val);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_number_to_string(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || (!is_number(args[0]) && !is_big_integer(args[0]) && !is_big_float(args[0]) && !is_big_complex(args[0]) && !is_fixed_complex(args[0]))) return conversion_type_raise(interp, "String: expected number");
     if (is_big_integer(args[0])) {
@@ -472,6 +523,9 @@ fn Value* prim_number_to_string(Value*[] args, Env* env, Interp* interp) {
     return make_string(interp, int_to_string(args[0].int_val, &buf));
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_exact_to_inexact(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_numeric_value(args[0])) return conversion_type_raise(interp, "Float64: expected number");
     if (is_fixed_complex(args[0])) return conversion_type_raise(interp, "Float64: expected real number");
@@ -480,6 +534,9 @@ fn Value* prim_exact_to_inexact(Value*[] args, Env* env, Interp* interp) {
     return make_double(interp, out);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_inexact_to_exact(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_numeric_value(args[0])) return conversion_type_raise(interp, "Integer: expected number");
     if (is_big_complex(args[0]) || is_fixed_complex(args[0])) return conversion_type_raise(interp, "Integer: expected real number");
@@ -487,6 +544,9 @@ fn Value* prim_inexact_to_exact(Value*[] args, Env* env, Interp* interp) {
     return conversion_int_from_double_or_raise(interp, to_double(args[0]), "Integer: expected finite number in Integer range");
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_read_string(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || args[0].tag != STRING) return conversion_type_raise(interp, "read-string: expected string");
     char[] src = args[0].str_chars[:args[0].str_len];
@@ -495,6 +555,9 @@ fn Value* prim_read_string(Value*[] args, Env* env, Interp* interp) {
     return r.value;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_string_to_symbol(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || args[0].tag != STRING) return conversion_type_raise(interp, "Symbol: expected string");
     SymbolId sym = interp.symbols.intern(args[0].str_chars[:args[0].str_len]);
@@ -504,6 +567,9 @@ fn Value* prim_string_to_symbol(Value*[] args, Env* env, Interp* interp) {
     return make_symbol(interp, sym);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_symbol_to_string(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_symbol(args[0])) return conversion_type_raise(interp, "String: expected symbol");
     char[] name = interp.symbols.get_name(args[0].sym_val);

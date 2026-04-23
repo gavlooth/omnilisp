@@ -29,6 +29,9 @@ fn Value* scheduler_prepend_result_or_error(
     return next;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_thread_spawn(Value*[] args, Env* env, Interp* interp) {
     (void)env;
     scheduler_init();
@@ -58,6 +61,9 @@ fn Value* prim_thread_spawn(Value*[] args, Env* env, Interp* interp) {
     return scheduler_make_thread_handle_value(thread_id, generation, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_thread_spawn_batch(Value*[] args, Env* env, Interp* interp) {
     (void)env;
     scheduler_init();
@@ -169,6 +175,9 @@ fn Value* prim_thread_spawn_batch(Value*[] args, Env* env, Interp* interp) {
     return results_rev;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_thread_join(Value*[] args, Env* env, Interp* interp) {
     (void)env;
     scheduler_init();
@@ -201,6 +210,9 @@ fn Value* prim_thread_join(Value*[] args, Env* env, Interp* interp) {
     return scheduler_thread_join_impl(thread_id, generation, -1, handle, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_thread_join_timeout(Value*[] args, Env* env, Interp* interp) {
     (void)env;
     scheduler_init();
@@ -230,6 +242,9 @@ fn Value* prim_thread_join_timeout(Value*[] args, Env* env, Interp* interp) {
     return scheduler_thread_join_impl(thread_id, generation, timeout_ms, handle, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_thread_cancel(Value*[] args, Env* env, Interp* interp) {
     (void)env;
     scheduler_init();

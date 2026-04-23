@@ -788,6 +788,9 @@ fn Value* ml_image_export(Value* tensor_value, Value* path_value, Value* options
     return out;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ml_plot(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1 && args.len != 2) return primitive_arity_raise(interp, "ml/plot", "1 or 2 arguments: data [options]", args.len);
     Value* multi_node = null;
@@ -800,6 +803,9 @@ fn Value* prim_ml_plot(Value*[] args, Env* env, Interp* interp) {
     return ml_plot_ext_make_graph_node(&series, args.len == 2 ? args[1] : null, interp, "ml/plot", "ml/plot", "ML Plot", series.x != null ? "xy" : "line");
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ml_loss_curve(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1 && args.len != 2) return primitive_arity_raise(interp, "ml/loss-curve", "1 or 2 arguments: losses [options]", args.len);
     MlVisualizationSeries series;
@@ -808,16 +814,25 @@ fn Value* prim_ml_loss_curve(Value*[] args, Env* env, Interp* interp) {
     return ml_visualization_make_graph_node(&series, args.len == 2 ? args[1] : null, interp, "ml/loss-curve", "ml/loss-curve", "Loss");
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ml_tensor_summary(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1 && args.len != 2) return primitive_arity_raise(interp, "ml/tensor-summary", "1 or 2 arguments: tensor [options]", args.len);
     return ml_visualization_tensor_summary(args[0], args.len == 2 ? args[1] : null, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ml_confusion_matrix(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 2 && args.len != 3) return primitive_arity_raise(interp, "ml/confusion-matrix", "2 or 3 arguments: predictions targets [options]", args.len);
     return ml_confusion_build(args[0], args[1], args.len == 3 ? args[2] : null, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ml_export_image(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 2 && args.len != 3) return primitive_arity_raise(interp, "ml/export-image", "2 or 3 arguments: tensor path [options]", args.len);
     return ml_image_export(args[0], args[1], args.len == 3 ? args[2] : null, interp);

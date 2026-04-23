@@ -13,6 +13,9 @@ fn Value* array_promote_or_error(Value* value, Interp* interp) @inline {
     return promoted;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_sort(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return collection_raise(interp, "type/arg-mismatch", "sort: expected list argument");
     if (is_nil(args[0])) return make_nil(interp);
@@ -66,6 +69,9 @@ fn Value* prim_sort(Value*[] args, Env* env, Interp* interp) {
     return result;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_sort_by(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return collection_raise(interp, "type/arg-mismatch", "sort-by: expected comparator and list");
     Value* cmp_fn = args[0];
@@ -120,6 +126,9 @@ fn Value* prim_sort_by(Value*[] args, Env* env, Interp* interp) {
 
 // --- Phase 8: Array primitives ---
 
+<*
+@require interp != null
+*>
 fn Value* prim_array(Value*[] args, Env* env, Interp* interp) {
     // Single iterator arg -> consume to array
     if (args.len == 1 && args[0].tag == ITERATOR) {
@@ -167,6 +176,9 @@ fn Value* prim_array(Value*[] args, Env* env, Interp* interp) {
     return v;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_array_set(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 3 || !is_array(args[0]) || !is_int(args[1])) return collection_raise(interp, "type/arg-mismatch", "set!: expected array target, integer index, value");
     if (args[0].array_val == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "set!: array backing storage is missing");
@@ -180,12 +192,18 @@ fn Value* prim_array_set(Value*[] args, Env* env, Interp* interp) {
     return make_void(interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_array_length(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_array(args[0])) return collection_raise(interp, "type/arg-mismatch", "array-length: expected array");
     if (args[0].array_val == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "array-length: array backing storage is missing");
     return make_int(interp, (long)args[0].array_val.length);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_array_to_list(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_array(args[0])) return collection_raise(interp, "type/arg-mismatch", "array->list: expected array");
     Array* vec = args[0].array_val;
@@ -199,6 +217,9 @@ fn Value* prim_array_to_list(Value*[] args, Env* env, Interp* interp) {
     return result;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_list_to_array(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return collection_raise(interp, "type/arg-mismatch", "list->array: expected list");
     if (!is_cons(args[0]) && !is_nil(args[0])) return collection_raise(interp, "type/arg-mismatch", "list->array: expected list");
@@ -225,11 +246,17 @@ fn Value* prim_list_to_array(Value*[] args, Env* env, Interp* interp) {
     return v;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_is_array(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return collection_raise(interp, "type/arity", "array?: expected 1 argument");
     return is_array(args[0]) ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_array_push(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2 || !is_array(args[0])) return collection_raise(interp, "type/arg-mismatch", "push!: expected array and value");
     Array* vec = args[0].array_val;

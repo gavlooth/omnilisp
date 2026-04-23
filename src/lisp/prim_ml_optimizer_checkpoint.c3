@@ -86,6 +86,9 @@ fn Value* ml_optimizer_checkpoint_validate_bundle(Value* bundle, Interp* interp)
     return ml_optimizer_checkpoint_bundle(nn_dict_get(bundle, interp, "spec"), nn_dict_get(bundle, interp, "state"), interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ml_save_optimizer(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2 || args.len > 3) return primitive_arity_raise(interp, "ml/save-optimizer", "2 or 3 arguments: spec state [path]", args.len);
     Value* bundle = ml_optimizer_checkpoint_bundle(args[0], args[1], interp);
@@ -95,6 +98,9 @@ fn Value* prim_ml_save_optimizer(Value*[] args, Env* env, Interp* interp) {
     return nn_ckpt_save_text_or_path(json, save_args[0:(args.len == 3 ? 2 : 1)], interp, "ml/save-optimizer");
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ml_load_optimizer(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) return primitive_arity_raise(interp, "ml/load-optimizer", "1 argument: JSON checkpoint string or path", args.len);
     Value* payload = nn_ckpt_parse_root(args[0], interp, "optimizer");

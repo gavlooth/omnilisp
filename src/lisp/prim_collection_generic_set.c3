@@ -126,6 +126,9 @@ fn bool ref_try_lookup_collection(Interp* interp, Value* coll, Value* key, Value
     return false;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ref(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return collection_raise(interp, "type/arity", "ref: expected collection and key");
     Value* result = null;
@@ -133,12 +136,18 @@ fn Value* prim_ref(Value*[] args, Env* env, Interp* interp) {
     return ref_type_error(interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_push(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return collection_raise(interp, "type/arity", "push!: expected 2 arguments");
     if (!is_array(args[0])) return collection_raise(interp, "type/arg-mismatch", "push!: expected array");
     return prim_array_push(args, env, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_keys(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return collection_raise(interp, "type/arity", "keys: expected 1 argument");
     if (args[0].tag != HASHMAP) return collection_raise(interp, "type/arg-mismatch", "keys: expected dict");
@@ -146,6 +155,9 @@ fn Value* prim_keys(Value*[] args, Env* env, Interp* interp) {
     return hashmap_keys_list_canonical(args[0].hashmap_val, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_values(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return collection_raise(interp, "type/arity", "values: expected 1 argument");
     if (args[0].tag != HASHMAP) return collection_raise(interp, "type/arg-mismatch", "values: expected dict");
@@ -153,6 +165,9 @@ fn Value* prim_values(Value*[] args, Env* env, Interp* interp) {
     return hashmap_values_list_canonical(args[0].hashmap_val, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_has(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return collection_raise(interp, "type/arity", "has?: expected 2 arguments");
     if (args[0].tag != HASHMAP) return collection_raise(interp, "type/arg-mismatch", "has?: expected dict");
@@ -161,6 +176,9 @@ fn Value* prim_has(Value*[] args, Env* env, Interp* interp) {
     return found != null ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_remove(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return collection_raise(interp, "type/arity", "remove!: expected 2 arguments");
     if (args[0].tag != HASHMAP) return collection_raise(interp, "type/arg-mismatch", "remove!: expected dict");
@@ -171,6 +189,9 @@ fn Value* prim_remove(Value*[] args, Env* env, Interp* interp) {
 
 // Generic mutating update surface:
 // (set! collection key value) dispatches by collection type.
+<*
+@require interp != null
+*>
 fn Value* prim_set_bang(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 3) return collection_raise(interp, "type/arity", "set!: expected collection, key, value");
     if (args[0].tag == ARRAY) return prim_array_set(args, env, interp);
@@ -196,6 +217,9 @@ fn bool set_constructor_capacity(usz elem_count, uint* out) {
     return true;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_set(Value*[] args, Env* env, Interp* interp) {
     uint cap = 0;
     if (!set_constructor_capacity(args.len, &cap)) {
@@ -214,6 +238,9 @@ fn Value* prim_set(Value*[] args, Env* env, Interp* interp) {
     return set_val;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_set_add(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2 || args[0].tag != SET) return collection_raise(interp, "type/arg-mismatch", "set-add: expected set and value");
     if (args[0].hashmap_val == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "set-add: set backing storage is missing");
@@ -228,6 +255,9 @@ fn Value* prim_set_add(Value*[] args, Env* env, Interp* interp) {
     return make_void(interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_set_remove(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2 || args[0].tag != SET) return collection_raise(interp, "type/arg-mismatch", "set-remove: expected set and value");
     if (args[0].hashmap_val == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "set-remove: set backing storage is missing");
@@ -235,6 +265,9 @@ fn Value* prim_set_remove(Value*[] args, Env* env, Interp* interp) {
     return make_void(interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_set_contains(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2 || args[0].tag != SET) return collection_raise(interp, "type/arg-mismatch", "set-contains?: expected set and value");
     if (args[0].hashmap_val == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "set-contains?: set backing storage is missing");
@@ -242,12 +275,18 @@ fn Value* prim_set_contains(Value*[] args, Env* env, Interp* interp) {
     return (v != null) ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_set_size(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || args[0].tag != SET) return collection_raise(interp, "type/arg-mismatch", "length: expected set");
     if (args[0].hashmap_val == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "length: set backing storage is missing");
     return make_int(interp, (long)args[0].hashmap_val.count);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_set_to_list(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || args[0].tag != SET) return collection_raise(interp, "type/arg-mismatch", "List: expected set");
     if (args[0].hashmap_val == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "List: set backing storage is missing");

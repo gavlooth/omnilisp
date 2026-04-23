@@ -12,6 +12,9 @@ fn void deduce_ignore_post_commit_error(Value* err, Interp* interp) {
     deduce_clear_post_commit_raise_state(interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_assert_fact(Value*[] args, Env* env, Interp* interp) {
     // fault: lisp::ARITY_MISMATCH
     if (args.len < 1) return deduce_raise(interp, "deduce/fact-expected-relation-values", "fact!: expected (fact! relation val...)");

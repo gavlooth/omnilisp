@@ -2,6 +2,9 @@ module lisp;
 
 import std::core::mem;
 
+<*
+@require interp != null
+*>
 fn Value* prim_async_sleep(Value*[] args, Env* env, Interp* interp) {
     // fault: lisp::ARITY_MISMATCH
     if (args.len < 1) return io_raise(interp, "io/async-sleep-expected-ms", "async-sleep: expected (async-sleep ms)");

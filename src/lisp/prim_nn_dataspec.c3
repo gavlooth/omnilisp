@@ -358,6 +358,9 @@ fn Value* nn_validate_dataspec(Value* spec, Interp* interp) {
     return nn_validate_layer_spec(spec, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_nn_validate(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) return primitive_arity_raise(interp, "nn/validate", "1 argument: spec", args.len);
     if (Value* err = nn_validate_dataspec(args[0], interp)) return err;
@@ -391,6 +394,9 @@ fn Value* nn_set_parameter_options(Value* spec, Value* options, Interp* interp) 
     return null;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_nn_dense(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2 || args.len > 3) return primitive_arity_raise(interp, "nn/dense", "2 or 3 arguments: input-features output-features [options]", args.len);
     Value* options = args.len == 3 ? args[2] : null;
@@ -405,6 +411,9 @@ fn Value* prim_nn_dense(Value*[] args, Env* env, Interp* interp) {
     return spec;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_nn_batch_normalization(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2 || args.len > 3) return primitive_arity_raise(interp, "nn/batch-normalization", "2 or 3 arguments: channels channel-axis [options]", args.len);
     Value* options = args.len == 3 ? args[2] : null;
@@ -428,6 +437,9 @@ fn Value* prim_nn_batch_normalization(Value*[] args, Env* env, Interp* interp) {
     return spec;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_nn_activation(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) return primitive_arity_raise(interp, "nn/activation", "1 argument: activation", args.len);
     Value* spec = nn_make_dict(interp, 4);
@@ -446,36 +458,57 @@ fn Value* nn_activation_ctor(Interp* interp, char[] activation) {
     return spec;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_nn_relu(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 0) return primitive_arity_raise(interp, "nn/relu", "0 arguments", args.len);
     return nn_activation_ctor(interp, "relu");
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_nn_leaky_relu(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 0) return primitive_arity_raise(interp, "nn/leaky-relu", "0 arguments", args.len);
     return nn_activation_ctor(interp, "leaky-relu");
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_nn_sigmoid(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 0) return primitive_arity_raise(interp, "nn/sigmoid", "0 arguments", args.len);
     return nn_activation_ctor(interp, "sigmoid");
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_nn_tanh(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 0) return primitive_arity_raise(interp, "nn/tanh", "0 arguments", args.len);
     return nn_activation_ctor(interp, "tanh");
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_nn_gelu(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 0) return primitive_arity_raise(interp, "nn/gelu", "0 arguments", args.len);
     return nn_activation_ctor(interp, "gelu");
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_nn_softmax(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 0) return primitive_arity_raise(interp, "nn/softmax", "0 arguments", args.len);
     return nn_activation_ctor(interp, "softmax");
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_nn_flatten(Value*[] args, Env* env, Interp* interp) {
     if (args.len > 2) return primitive_arity_raise(interp, "nn/flatten", "0, 1, or 2 arguments: [start-axis [end-axis]]", args.len);
     Value* spec = nn_make_dict(interp, 6);
@@ -487,6 +520,9 @@ fn Value* prim_nn_flatten(Value*[] args, Env* env, Interp* interp) {
     return spec;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_nn_sequential(Value*[] args, Env* env, Interp* interp) {
     if (args.len == 0) return primitive_arity_raise(interp, "nn/sequential", "at least 1 layer spec", args.len);
     Value* layers = make_array_checked(interp, args.len, "nn/sequential: out of memory");
@@ -504,6 +540,9 @@ fn Value* prim_nn_sequential(Value*[] args, Env* env, Interp* interp) {
     return spec;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_nn_conv1d(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 7 || args.len > 8) return primitive_arity_raise(interp, "nn/conv1d", "7 or 8 arguments: in-channels out-channels kernel stride padding dilation groups [options]", args.len);
     Value* options = args.len == 8 ? args[7] : null;
@@ -520,6 +559,9 @@ fn Value* prim_nn_conv1d(Value*[] args, Env* env, Interp* interp) {
     return spec;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_nn_conv2d(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 7 || args.len > 8) return primitive_arity_raise(interp, "nn/conv2d", "7 or 8 arguments: in-channels out-channels kernel stride padding dilation groups [options]", args.len);
     Value* options = args.len == 8 ? args[7] : null;
@@ -548,10 +590,16 @@ fn Value* nn_pool2d_ctor(Value*[] args, Interp* interp, char[] prim_name, char[]
     return spec;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_nn_max_pool2d(Value*[] args, Env* env, Interp* interp) {
     return nn_pool2d_ctor(args, interp, "nn/max-pool2d", "max-pool2d");
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_nn_avg_pool2d(Value*[] args, Env* env, Interp* interp) {
     return nn_pool2d_ctor(args, interp, "nn/avg-pool2d", "avg-pool2d");
 }

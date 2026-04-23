@@ -4,6 +4,9 @@ fn Value* scheduler_true_value(Interp* interp) @inline {
     return interp.global_env.lookup(interp.sym_true);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_task_join(Value*[] args, Env* env, Interp* interp) {
     (void)env;
     scheduler_init();
@@ -36,6 +39,9 @@ fn Value* prim_task_join(Value*[] args, Env* env, Interp* interp) {
     return scheduler_task_join_impl(task_id, generation, -1, handle, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_task_join_timeout(Value*[] args, Env* env, Interp* interp) {
     (void)env;
     scheduler_init();
@@ -65,6 +71,9 @@ fn Value* prim_task_join_timeout(Value*[] args, Env* env, Interp* interp) {
     return scheduler_task_join_impl(task_id, generation, timeout_ms, handle, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_task_cancel(Value*[] args, Env* env, Interp* interp) {
     (void)env;
     scheduler_init();

@@ -7,6 +7,9 @@ import main;
 // (tls-server-wrap tcp-handle cert-pem-path key-pem-path) -> tls-handle
 // ============================================================
 
+<*
+@require interp != null
+*>
 fn Value* prim_tls_server_wrap(Value*[] args, Env* env, Interp* interp) {
     Value* tcp_v = null;
     Value* cert_path_v = null;

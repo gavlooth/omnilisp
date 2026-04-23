@@ -9,98 +9,170 @@ module lisp;
 // ============================================================
 // Namespaced command aliases (deduce/<command> ...)
 // ============================================================
+<*
+@require interp != null
+*>
 fn Value* prim_deduce_ns_open(Value*[] args, Env* env, Interp* interp) {
     return prim_deduce_open(args, env, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_deduce_ns_open_named(Value*[] args, Env* env, Interp* interp) {
     return prim_deduce_open_named(args, env, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_deduce_ns_block(Value*[] args, Env* env, Interp* interp) {
     return prim_deduce_block(args, env, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_deduce_ns_commit(Value*[] args, Env* env, Interp* interp) {
     return prim_deduce_commit(args, env, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_deduce_ns_abort(Value*[] args, Env* env, Interp* interp) {
     return prim_deduce_abort(args, env, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_deduce_ns_scan(Value*[] args, Env* env, Interp* interp) {
     return prim_deduce_scan(args, env, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_deduce_ns_scan_range(Value*[] args, Env* env, Interp* interp) {
     return prim_deduce_scan_range(args, env, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_deduce_ns_query(Value*[] args, Env* env, Interp* interp) {
     return prim_deduce_query(args, env, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_deduce_ns_schema(Value*[] args, Env* env, Interp* interp) {
     return prim_deduce_schema(args, env, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_deduce_ns_indexes(Value*[] args, Env* env, Interp* interp) {
     return prim_deduce_indexes(args, env, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_deduce_ns_stats(Value*[] args, Env* env, Interp* interp) {
     return prim_deduce_stats(args, env, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_deduce_ns_count(Value*[] args, Env* env, Interp* interp) {
     return prim_deduce_count(args, env, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_deduce_ns_match(Value*[] args, Env* env, Interp* interp) {
     return prim_deduce_match(args, env, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_deduce_ns_fact(Value*[] args, Env* env, Interp* interp) {
     return prim_assert_fact(args, env, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_deduce_ns_retract(Value*[] args, Env* env, Interp* interp) {
     return prim_retract_fact(args, env, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_deduce_ns_clear(Value*[] args, Env* env, Interp* interp) {
     return prim_deduce_clear(args, env, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_deduce_ns_drop(Value*[] args, Env* env, Interp* interp) {
     return prim_deduce_drop(args, env, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_deduce_ns_rule(Value*[] args, Env* env, Interp* interp) {
     return prim_deduce_rule(args, env, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_deduce_ns_explain(Value*[] args, Env* env, Interp* interp) {
     return prim_deduce_explain(args, env, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_deduce_ns_why_result(Value*[] args, Env* env, Interp* interp) {
     return prim_deduce_why_result(args, env, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_deduce_ns_analyze(Value*[] args, Env* env, Interp* interp) {
     return prim_deduce_analyze(args, env, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_deduce_ns_materialize(Value*[] args, Env* env, Interp* interp) {
     return prim_deduce_materialize(args, env, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_deduce_ns_dematerialize(Value*[] args, Env* env, Interp* interp) {
     return prim_deduce_dematerialize(args, env, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_deduce_ns_refresh(Value*[] args, Env* env, Interp* interp) {
     return prim_deduce_refresh(args, env, interp);
 }
@@ -112,6 +184,9 @@ fn bool deduce_cmd_matches(char[] name, char[] cmd) {
     return deduce_name_equals(name, cmd);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_deduce_dispatch(char[] name, Value*[] rest, Env* env, Interp* interp) {
     if (deduce_cmd_matches(name, "open")) return prim_deduce_open(rest, env, interp);
     if (deduce_cmd_matches(name, "open-named")) return prim_deduce_open_named(rest, env, interp);
@@ -170,6 +245,9 @@ fn Value* prim_deduce_dispatch(char[] name, Value*[] rest, Env* env, Interp* int
 // (deduce 'why-result relation vals...) → provenance payload for one stored row
 // (deduce 'analyze db)             → deterministic evaluator diagnostics payload
 // ============================================================
+<*
+@require interp != null
+*>
 fn Value* prim_deduce(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return deduce_raise(interp, "deduce/dispatch-expected-command", "deduce: expected (deduce 'command args...)");
 

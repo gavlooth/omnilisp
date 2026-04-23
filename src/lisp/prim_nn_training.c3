@@ -354,6 +354,9 @@ fn Value* nn_train_model_with_params(Value* model, Value* params, Interp* interp
     return next;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_nn_forward(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 2 && args.len != 4 && args.len != 5) {
         return primitive_arity_raise(interp, "nn/forward", "2 arguments: model input, or 4/5 arguments: spec params state input [options]", args.len);
@@ -361,28 +364,46 @@ fn Value* prim_nn_forward(Value*[] args, Env* env, Interp* interp) {
     return nn_forward_execute(args, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_nn_grad(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 3 && args.len != 4) return primitive_arity_raise(interp, "nn/grad", "3 or 4 arguments: model input targets [options]", args.len);
     Value* options = args.len == 4 ? args[3] : null;
     return nn_train_grad_result(args[0], args[1], args[2], options, interp, "nn/grad", 3);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_nn_sgd(Value*[] args, Env* env, Interp* interp) {
     return nn_optimizer_spec(args, interp, "nn/sgd", NN_OPTIMIZER_SGD);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_nn_adam(Value*[] args, Env* env, Interp* interp) {
     return nn_optimizer_spec(args, interp, "nn/adam", NN_OPTIMIZER_ADAM);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_nn_adamw(Value*[] args, Env* env, Interp* interp) {
     return nn_optimizer_spec(args, interp, "nn/adamw", NN_OPTIMIZER_ADAMW);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_nn_rmsprop(Value*[] args, Env* env, Interp* interp) {
     return nn_optimizer_spec(args, interp, "nn/rmsprop", NN_OPTIMIZER_RMSPROP);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_nn_train_step(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 5 && args.len != 6) return primitive_arity_raise(interp, "nn/train-step", "5 or 6 arguments: model input targets optimizer-spec optimizer-state [options]", args.len);
     Value* options = args.len == 6 ? args[5] : null;

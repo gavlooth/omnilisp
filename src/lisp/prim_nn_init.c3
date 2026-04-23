@@ -351,6 +351,9 @@ fn Value* nn_init_metadata(Interp* interp, NnInitContext* ctx) {
     return metadata;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_nn_init(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || args.len > 2) return primitive_arity_raise(interp, "nn/init", "1 or 2 arguments: spec [options]", args.len);
     if (Value* err = nn_validate_dataspec(args[0], interp)) return err;

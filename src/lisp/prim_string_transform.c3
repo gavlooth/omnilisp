@@ -6,6 +6,9 @@ import main;
 // =============================================================================
 // SECTION: STRING TRANSFORMATIONS
 // =============================================================================
+<*
+@require interp != null
+*>
 fn Value* prim_string_append(Value*[] args, Env* env, Interp* interp) {
     if (args.len == 0) return make_string(interp, "");
 
@@ -28,6 +31,9 @@ fn Value* prim_string_append(Value*[] args, Env* env, Interp* interp) {
 /**
  * (string-upcase s) -> uppercase string
  */
+<*
+@require interp != null
+*>
 fn Value* prim_string_upcase(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return string_raise(interp, "type/arity", "string-upcase: expected 1 argument");
     if (!is_string(args[0])) {
@@ -48,6 +54,9 @@ fn Value* prim_string_upcase(Value*[] args, Env* env, Interp* interp) {
 /**
  * (string-downcase s) -> lowercase string
  */
+<*
+@require interp != null
+*>
 fn Value* prim_string_downcase(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return string_raise(interp, "type/arity", "string-downcase: expected 1 argument");
     if (!is_string(args[0])) {
@@ -68,6 +77,9 @@ fn Value* prim_string_downcase(Value*[] args, Env* env, Interp* interp) {
 /**
  * (string-trim s) -> string with leading/trailing whitespace removed
  */
+<*
+@require interp != null
+*>
 fn Value* prim_string_trim(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return string_raise(interp, "type/arity", "string-trim: expected 1 argument");
     if (!is_string(args[0])) {
@@ -100,6 +112,9 @@ fn Value* prim_string_trim(Value*[] args, Env* env, Interp* interp) {
  * (string-join sep list) -> joined string
  * Join list of strings with separator
  */
+<*
+@require interp != null
+*>
 fn Value* prim_string_join(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return string_raise(interp, "type/arity", "string-join: expected 2 arguments");
     if (!is_string(args[0])) return string_raise(interp, "type/arg-mismatch", "string-join: expected string separator");
@@ -144,6 +159,9 @@ fn Value* prim_string_join(Value*[] args, Env* env, Interp* interp) {
 /**
  * (substring s start end) -> substring
  */
+<*
+@require interp != null
+*>
 fn Value* prim_substring(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 3) return string_raise(interp, "type/arity", "substring: expected 3 arguments");
     if (!is_string(args[0])) return string_raise(interp, "type/arity", "substring: expected string as first argument");
@@ -172,6 +190,9 @@ fn Value* prim_substring(Value*[] args, Env* env, Interp* interp) {
 /**
  * (string-split s sep) -> list of strings
  */
+<*
+@require interp != null
+*>
 fn Value* prim_string_split(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return string_raise(interp, "type/arity", "string-split: expected 2 arguments");
     if (!is_string(args[0]) || !is_string(args[1])) {

@@ -1,6 +1,9 @@
 module lisp;
 
 // (deduce 'open-named db relation-name db-name col...) -> relation handle
+<*
+@require interp != null
+*>
 fn Value* prim_deduce_open_named(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 4) {
         return deduce_raise(interp, "deduce/open-named-expected-db-relation-dbname-columns", "deduce-open-named: expected (deduce 'open-named db relation-name db-name col...)");

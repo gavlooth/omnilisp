@@ -6,6 +6,9 @@ import std::io;
 // (tcp-write handle data) — blocking write, returns bytes written
 // ============================================================
 
+<*
+@require interp != null
+*>
 fn Value* prim_tcp_write(Value*[] args, Env* env, Interp* interp) {
     // fault: lisp::ARITY_MISMATCH
     if (args.len < 2) return io_raise(interp, "io/tcp-write-expected-handle-data", "tcp-write: expected (tcp-write handle data)");
@@ -40,6 +43,9 @@ fn Value* prim_tcp_write(Value*[] args, Env* env, Interp* interp) {
 // (tcp-read handle [max-bytes]) — blocking read, returns string
 // ============================================================
 
+<*
+@require interp != null
+*>
 fn Value* prim_tcp_read(Value*[] args, Env* env, Interp* interp) {
     // fault: lisp::ARITY_MISMATCH
     if (args.len < 1) return io_raise(interp, "io/tcp-read-expected-handle-max-bytes", "tcp-read: expected (tcp-read handle [max-bytes])");
@@ -75,6 +81,9 @@ fn Value* prim_tcp_read(Value*[] args, Env* env, Interp* interp) {
 // (tcp-read-timeout handle timeout-ms) — read with timeout
 // ============================================================
 
+<*
+@require interp != null
+*>
 fn Value* prim_tcp_read_timeout(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) {
         return io_raise(interp, "io/tcp-read-timeout-expected-handle-timeout", "tcp-read-timeout: expected (tcp-read-timeout handle timeout-ms)");
@@ -94,6 +103,9 @@ fn Value* prim_tcp_read_timeout(Value*[] args, Env* env, Interp* interp) {
 // (tcp-close handle) — close connection (fiber-only)
 // ============================================================
 
+<*
+@require interp != null
+*>
 fn Value* prim_tcp_close(Value*[] args, Env* env, Interp* interp) {
     // fault: lisp::ARITY_MISMATCH
     if (args.len < 1) return io_raise(interp, "io/tcp-close-expected-handle", "tcp-close: expected (tcp-close handle)");

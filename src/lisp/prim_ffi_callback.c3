@@ -248,6 +248,9 @@ fn void ffi_callback_dispatch(void* user_data, void* ret, void** args) @extern("
 // (ffi-callback lambda ['Type1 'Type2 ...] 'ReturnType)
 //   OR
 // (ffi-callback lambda 'Type1 'Type2 ... 'ReturnType)
+<*
+@require interp != null
+*>
 fn Value* prim_ffi_callback(Value*[] args, Env* env, Interp* interp) {
     (void)env;
     if (args.len < 3) {

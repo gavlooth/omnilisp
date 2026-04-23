@@ -88,6 +88,9 @@ fn Value* ml_stable_exp_stats_cpu(
     return null;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ml_logsumexp(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 2) return primitive_arity_raise(interp, "ml/logsumexp", "2 arguments: input axes", args.len);
     if (!is_tensor(args[0])) return tensor_type_raise(interp, "ml/logsumexp: expected Tensor input");
@@ -251,6 +254,9 @@ fn Value* ml_softmax_eval_vulkan(
     return result;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ml_softmax(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 2) return primitive_arity_raise(interp, "ml/softmax", "2 arguments: input axis", args.len);
     if (!is_tensor(args[0])) return tensor_type_raise(interp, "ml/softmax: expected Tensor input");
@@ -380,6 +386,9 @@ fn Value* prim_ml_softmax(Value*[] args, Env* env, Interp* interp) {
     return out_value;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ml_mean_squared_error(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 2) return primitive_arity_raise(interp, "ml/mean-squared-error", "2 arguments: predictions targets", args.len);
     if (!is_tensor(args[0]) || !is_tensor(args[1])) {
@@ -466,6 +475,9 @@ fn Value* prim_ml_mean_squared_error(Value*[] args, Env* env, Interp* interp) {
     return out_value;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ml_cross_entropy(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 3) return primitive_arity_raise(interp, "ml/cross-entropy", "3 arguments: logits targets axis", args.len);
     if (!is_tensor(args[0]) || !is_tensor(args[1])) {

@@ -6,6 +6,9 @@ import std::core::mem;
 // (gzip s) -> compressed string
 // ============================================================
 
+<*
+@require interp != null
+*>
 fn Value* prim_gzip(Value*[] args, Env* env, Interp* interp) {
     int level = LIBDEFLATE_DEFAULT_LEVEL;
     if (Value* err = parse_optional_compression_level(args, &level, interp)) return err;
@@ -37,6 +40,9 @@ fn Value* prim_gzip(Value*[] args, Env* env, Interp* interp) {
 // (gunzip s) -> decompressed string
 // ============================================================
 
+<*
+@require interp != null
+*>
 fn Value* prim_gunzip(Value*[] args, Env* env, Interp* interp) {
     // fault: lisp::ARITY_MISMATCH
     if (args.len < 1) return compression_type_raise(interp, "type/arity", "gunzip: expected 1 argument");

@@ -3,6 +3,9 @@ module lisp;
 import std::io;
 
 // (__raw-uv-timer-callback-handle callback) -> uv-timer-callback-handle
+<*
+@require interp != null
+*>
 fn Value* prim_uv_timer_callback_handle(Value*[] args, Env* env, Interp* interp) {
     Value* callback_v = null;
     if (args.len == 1 && is_cons(args[0])) {
@@ -20,6 +23,9 @@ fn Value* prim_uv_timer_callback_handle(Value*[] args, Env* env, Interp* interp)
 }
 
 // (__raw-uv-timer-callback-unhandle handle) -> void (idempotent)
+<*
+@require interp != null
+*>
 fn Value* prim_uv_timer_callback_unhandle(Value*[] args, Env* env, Interp* interp) {
     Value* handle_v = null;
     if (args.len == 1 && is_cons(args[0])) {
@@ -48,6 +54,9 @@ fn Value* prim_uv_timer_callback_unhandle(Value*[] args, Env* env, Interp* inter
 }
 
 // (__raw-uv-timer-callback-invoke handle) -> void
+<*
+@require interp != null
+*>
 fn Value* prim_uv_timer_callback_invoke(Value*[] args, Env* env, Interp* interp) {
     Value* handle_v = null;
     if (args.len == 1 && is_cons(args[0])) {
@@ -95,6 +104,9 @@ fn Value* prim_uv_timer_callback_invoke(Value*[] args, Env* env, Interp* interp)
 }
 
 // (__raw-uv-timer-callback-dispatch-count handle) -> Integer
+<*
+@require interp != null
+*>
 fn Value* prim_uv_timer_callback_dispatch_count(Value*[] args, Env* env, Interp* interp) {
     Value* handle_v = null;
     if (args.len == 1 && is_cons(args[0])) {

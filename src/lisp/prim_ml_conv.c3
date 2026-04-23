@@ -269,6 +269,9 @@ fn Value* ml_conv1d_try_vulkan(Value* input_value, Value* kernel_value, usz stri
     return ml_conv1d_vulkan_result(input, kernel, &spec, result_shape[0:3], interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ml_conv1d(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 6) return primitive_arity_raise(interp, "ml/conv1d", "6 arguments: input kernel stride padding dilation groups", args.len);
     if (!is_tensor(args[0]) || !is_tensor(args[1])) {

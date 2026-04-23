@@ -66,6 +66,9 @@ fn Value* parse_optional_compression_level(Value*[] args, int* level_out, Interp
 // (adler32 s) -> checksum int
 // ============================================================
 
+<*
+@require interp != null
+*>
 fn Value* prim_adler32(Value*[] args, Env* env, Interp* interp) {
     // fault: lisp::ARITY_MISMATCH
     if (args.len != 1) return compression_type_raise(interp, "type/arity", "adler32: expected 1 argument");
@@ -81,6 +84,9 @@ fn Value* prim_adler32(Value*[] args, Env* env, Interp* interp) {
 // (crc32 s) -> checksum int
 // ============================================================
 
+<*
+@require interp != null
+*>
 fn Value* prim_crc32(Value*[] args, Env* env, Interp* interp) {
     // fault: lisp::ARITY_MISMATCH
     if (args.len != 1) return compression_type_raise(interp, "type/arity", "crc32: expected 1 argument");

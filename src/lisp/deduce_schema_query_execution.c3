@@ -2,6 +2,9 @@ module lisp;
 
 import std::core::mem;
 
+<*
+@require interp != null
+*>
 fn Value* prim_deduce_query(Value*[] args, Env* env, Interp* interp) {
     // fault: lisp::ARITY_MISMATCH
     if (args.len < 2 || args.len > 4) {

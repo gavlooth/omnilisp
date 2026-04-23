@@ -1,5 +1,8 @@
 module lisp;
 
+<*
+@require interp != null
+*>
 fn Value* prim_deduce_stats(Value*[] args, Env* env, Interp* interp) {
     (void)env;
     if (args.len != 1) {

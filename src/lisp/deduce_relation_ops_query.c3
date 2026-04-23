@@ -2,6 +2,9 @@ module lisp;
 
 import std::core::mem;
 
+<*
+@require interp != null
+*>
 fn Value* prim_deduce_scan_range(Value*[] args, Env* env, Interp* interp) {
     Value* rel_val = null;
     Relation* rel = null;

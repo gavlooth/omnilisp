@@ -6,6 +6,9 @@ import std::core::mem;
 // (tcp-connect host port) — async connect in fiber context, returns handle
 // ============================================================
 
+<*
+@require interp != null
+*>
 fn Value* prim_tcp_connect(Value*[] args, Env* env, Interp* interp) {
     // fault: lisp::ARITY_MISMATCH
     if (args.len < 2) return io_raise(interp, "io/tcp-connect-expected-host-port", "tcp-connect: expected (tcp-connect host port)");

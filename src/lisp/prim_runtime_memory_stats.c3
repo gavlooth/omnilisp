@@ -113,6 +113,9 @@ fn Value* runtime_memory_copy_stats(Interp* interp) {
     return out;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_runtime_memory_stats(Value*[] args, Env* env, Interp* interp) {
     (void)args;
     (void)env;

@@ -380,6 +380,9 @@ fn Value* ml_layer_norm_eval_vulkan(
     return result;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ml_layer_normalization(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 2 && args.len != 3) {
         return primitive_arity_raise(interp, "ml/layer-normalization", "2 or 3 arguments: input axis [epsilon]", args.len);
@@ -485,6 +488,9 @@ fn Value* prim_ml_layer_normalization(Value*[] args, Env* env, Interp* interp) {
     return out_value;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ml_batch_normalization(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 6 && args.len != 7) {
         return primitive_arity_raise(interp, "ml/batch-normalization", "6 or 7 arguments: input scale bias mean variance channel-axis [epsilon]", args.len);

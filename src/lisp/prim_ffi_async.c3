@@ -138,6 +138,9 @@ fn OffloadCompletion* ffi_async_offload_callback(OffloadWork work) {
     return completion;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ffi_async_call(Value*[] args, Env* env, Interp* interp) {
     (void)env;
     if (args.len < 1) {

@@ -24,18 +24,27 @@ fn bool iterator_wrapper_has_callable_thunk(Value* value) @inline {
     }
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_iterator_p(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return make_nil(interp);
     if (args[0].tag == ITERATOR) return make_symbol(interp, interp.sym_true);
     return make_nil(interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_make_iterator(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) return iterator_ctor_raise(interp, "type/arity", "__make-iterator: expected 1 argument");
     if (!is_closure(args[0])) return iterator_ctor_raise(interp, "type/arg-mismatch", "__make-iterator: expected closure thunk");
     return make_iterator(interp, args[0]);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ctor_iterator(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) return iterator_ctor_raise(interp, "type/arity", "Iterator: expected 1 argument");
     if (args[0].tag == ITERATOR) {
@@ -52,6 +61,9 @@ fn Value* prim_ctor_iterator(Value*[] args, Env* env, Interp* interp) {
     return iterator_ctor_raise(interp, "type/arg-mismatch", "Iterator: expected closure thunk, iterator, or collection");
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_next(Value*[] args, Env* env, Interp* interp) {
     Value* iterator = null;
     Value* parse_err = iterator_require_arg(args, "next: expected iterator", &iterator, interp);
@@ -93,6 +105,9 @@ fn Value* iterator_consume_items(Value* iterator, Value** items, usz* count_out,
     return null;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_collect(Value*[] args, Env* env, Interp* interp) {
     Value* iterator = null;
     Value* parse_err = iterator_require_arg(args, "collect: expected iterator", &iterator, interp);
@@ -112,6 +127,9 @@ fn Value* prim_collect(Value*[] args, Env* env, Interp* interp) {
     return result;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_to_array(Value*[] args, Env* env, Interp* interp) {
     Value* iterator = null;
     Value* parse_err = iterator_require_arg(args, "to-array: expected iterator", &iterator, interp);

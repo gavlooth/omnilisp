@@ -13,6 +13,9 @@ extern fn void c_exit(int status) @extern("_exit");
  * (shell cmd true) -> list (stdout-string exit-code)
  * Runs cmd via popen, captures stdout, returns output as string.
  */
+<*
+@require interp != null
+*>
 fn Value* prim_shell(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_string(args[0])) {
         return runtime_raise(interp, "type/arg-mismatch", "shell: expected string command");
@@ -52,6 +55,9 @@ fn Value* prim_shell(Value*[] args, Env* env, Interp* interp) {
 /**
  * (getenv name) -> string or nil
  */
+<*
+@require interp != null
+*>
 fn Value* prim_getenv(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_string(args[0])) {
         return runtime_raise(interp, "type/arg-mismatch", "getenv: expected string");
@@ -68,6 +74,9 @@ fn Value* prim_getenv(Value*[] args, Env* env, Interp* interp) {
  * (time) -> integer epoch seconds
  * (time-ms) -> integer epoch milliseconds (via clock_gettime)
  */
+<*
+@require interp != null
+*>
 fn Value* prim_time(Value*[] args, Env* env, Interp* interp) {
     long t = c_time(null);
     return make_int(interp, t);
@@ -77,6 +86,9 @@ fn Value* prim_time(Value*[] args, Env* env, Interp* interp) {
 extern fn int c_clock_gettime(int clk_id, void* tp) @extern("clock_gettime");
 const int CLOCK_REALTIME = 0;
 
+<*
+@require interp != null
+*>
 fn Value* prim_time_ms(Value*[] args, Env* env, Interp* interp) {
     long[2] ts;  // tv_sec, tv_nsec
     if (c_clock_gettime(CLOCK_REALTIME, &ts) != 0) {
@@ -89,6 +101,9 @@ fn Value* prim_time_ms(Value*[] args, Env* env, Interp* interp) {
 /**
  * (exit) or (exit code) -> exits process
  */
+<*
+@require interp != null
+*>
 fn Value* prim_exit(Value*[] args, Env* env, Interp* interp) {
     int code = 0;
     if (args.len >= 1 && args[0].tag == INT) {
@@ -105,6 +120,9 @@ fn Value* prim_exit(Value*[] args, Env* env, Interp* interp) {
  * (sleep secs) -> Void
  * secs can be int or double (fractional seconds supported)
  */
+<*
+@require interp != null
+*>
 fn Value* prim_sleep(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return runtime_raise(interp, "type/arg-mismatch", "sleep: expected number of seconds");
     double secs;

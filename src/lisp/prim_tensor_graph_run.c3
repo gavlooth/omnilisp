@@ -495,6 +495,9 @@ fn Value* tensor_graph_run_view_node(Value* node, Value*[] results, Interp* inte
     return null;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_tensor_run(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) return primitive_arity_raise(interp, "tensor/run", "1 argument: tensor-graph", args.len);
     Value* graph = args[0];

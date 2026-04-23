@@ -259,6 +259,9 @@ fn Value* ml_plot_ext_graph_from_pairs(Value* input, Value* options, Interp* int
     return node;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ml_scatter(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1 && args.len != 2) return primitive_arity_raise(interp, "ml/scatter", "1 or 2 arguments: points [options]", args.len);
     Value* options = args.len == 2 ? args[1] : null;
@@ -276,6 +279,9 @@ fn Value* prim_ml_scatter(Value*[] args, Env* env, Interp* interp) {
     return node;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ml_roc_curve(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1 && args.len != 2) return primitive_arity_raise(interp, "ml/roc-curve", "1 or 2 arguments: points [options]", args.len);
     Value* node = ml_plot_ext_graph_from_pairs(args[0], args.len == 2 ? args[1] : null, interp, "ml/roc-curve", "ROC Curve", "roc-curve");
@@ -287,6 +293,9 @@ fn Value* prim_ml_roc_curve(Value*[] args, Env* env, Interp* interp) {
     return node;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ml_pr_curve(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1 && args.len != 2) return primitive_arity_raise(interp, "ml/pr-curve", "1 or 2 arguments: points [options]", args.len);
     Value* node = ml_plot_ext_graph_from_pairs(args[0], args.len == 2 ? args[1] : null, interp, "ml/pr-curve", "Precision-Recall Curve", "pr-curve");
@@ -298,6 +307,9 @@ fn Value* prim_ml_pr_curve(Value*[] args, Env* env, Interp* interp) {
     return node;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ml_bar_chart(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1 && args.len != 2) return primitive_arity_raise(interp, "ml/bar-chart", "1 or 2 arguments: values [options]", args.len);
     MlVisualizationSeries series;
@@ -327,6 +339,9 @@ fn Value* ml_plot_ext_histogram_bins(Value* options, Interp* interp, int* out_bi
     return null;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ml_histogram(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1 && args.len != 2) return primitive_arity_raise(interp, "ml/histogram", "1 or 2 arguments: values [options]", args.len);
     Value* options = args.len == 2 ? args[1] : null;
@@ -467,6 +482,9 @@ fn Value* ml_plot_ext_heatmap_from_container(Value* input, Interp* interp, Value
     return null;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ml_heatmap(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1 && args.len != 2) return primitive_arity_raise(interp, "ml/heatmap", "1 or 2 arguments: matrix [options]", args.len);
     Value* options = args.len == 2 ? args[1] : null;

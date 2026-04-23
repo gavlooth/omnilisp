@@ -4,6 +4,9 @@ import std::core::mem;
 import std::io;
 import main;
 
+<*
+@require interp != null
+*>
 fn Value* prim_read_file(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_string(args[0])) {
         return io_file_raise(interp, "io/read-file-expected-path", "read-file: expected (read-file path)");
@@ -24,6 +27,9 @@ fn Value* prim_read_file(Value*[] args, Env* env, Interp* interp) {
 /**
  * (write-file path content) -> Void on success
  */
+<*
+@require interp != null
+*>
 fn Value* prim_write_file(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2 || !is_string(args[0]) || !is_string(args[1])) {
         return io_file_raise(interp, "io/write-file-expected-path-content", "write-file: expected (write-file path content)");
@@ -77,6 +83,9 @@ fn Value* prim_write_file(Value*[] args, Env* env, Interp* interp) {
 /**
  * (file-exists? path) -> true if file exists, nil otherwise
  */
+<*
+@require interp != null
+*>
 fn Value* prim_file_exists(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_string(args[0])) {
         return io_file_raise(interp, "io/file-exists?-expected-path", "file-exists?: expected (file-exists? path)");
@@ -108,6 +117,9 @@ fn Value* prim_file_exists(Value*[] args, Env* env, Interp* interp) {
 /**
  * (read-lines path) -> list of strings (one per line)
  */
+<*
+@require interp != null
+*>
 fn Value* prim_read_lines(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_string(args[0])) {
         return io_file_raise(interp, "io/read-lines-expected-path", "read-lines: expected (read-lines path)");
@@ -166,6 +178,9 @@ fn Value* prim_read_lines(Value*[] args, Env* env, Interp* interp) {
  * (load path) -> evaluates all expressions in the file, returns last result
  * Reads a script file and evaluates it in the current environment.
  */
+<*
+@require interp != null
+*>
 fn Value* prim_load(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_string(args[0])) {
         return io_raise(interp, "type/arg-mismatch", "load: expected a string path");

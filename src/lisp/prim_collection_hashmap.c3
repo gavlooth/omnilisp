@@ -31,6 +31,9 @@ fn Value* dict_ctor_runtime_raise(Interp* interp, char[] message) @inline {
     return collection_raise(interp, "type/arg-mismatch", message);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_length(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return collection_raise(interp, "type/arity", "length: expected 1 argument");
 
@@ -416,6 +419,9 @@ fn bool dict_initial_capacity_for_arg_count(usz arg_count, uint* out) {
     return true;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_dict(Value*[] args, Env* env, Interp* interp) {
     if (args.len % 2 != 0) {
         return dict_ctor_type_raise(interp, "type/arity", "Dictionary: expected even number of key/value arguments");
@@ -436,6 +442,9 @@ fn Value* prim_dict(Value*[] args, Env* env, Interp* interp) {
     return v;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_dict_set(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 3) return collection_raise(interp, "type/arity", "set!: expected collection, key, value");
     if (args[0].tag != HASHMAP) return runtime_raise(interp, "runtime/evaluation-error", "set!: generic form expects array or dict target");

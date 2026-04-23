@@ -5,6 +5,9 @@ import main;
 // =============================================================================
 // SECTION: STRING FORMATTING + CL-FORMAT
 // =============================================================================
+<*
+@require interp != null
+*>
 fn Value* prim_format(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || args[0].tag != STRING) return runtime_raise(interp, "type/arg-mismatch", "format: expected format string");
     char[] fmt = args[0].str_chars[:args[0].str_len];
@@ -33,6 +36,9 @@ fn Value* prim_format(Value*[] args, Env* env, Interp* interp) {
     return strval_materialize_result(builder, interp, "format: failed to allocate result value");
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_cl_format(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || args[0].tag != STRING) return runtime_raise(interp, "type/arg-mismatch", "cl-format: expected format string");
     char[] fmt = args[0].str_chars[:args[0].str_len];

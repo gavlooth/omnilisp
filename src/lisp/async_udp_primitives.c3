@@ -2,6 +2,9 @@ module lisp;
 
 import std::core::mem;
 
+<*
+@require interp != null
+*>
 fn Value* prim_udp_socket(Value*[] args, Env* env, Interp* interp) {
     // Effect fast-path for arity-0 primitives may pass a single nil payload.
     if (args.len > 1 || (args.len == 1 && !is_nil(args[0]))) {
@@ -16,6 +19,9 @@ fn Value* prim_udp_socket(Value*[] args, Env* env, Interp* interp) {
 }
 
 // (udp-bind handle host port) — bind UDP socket to local address
+<*
+@require interp != null
+*>
 fn Value* prim_udp_bind(Value*[] args, Env* env, Interp* interp) {
     Value* handle_v = null;
     Value* host_v = null;
@@ -74,6 +80,9 @@ fn Value* prim_udp_bind(Value*[] args, Env* env, Interp* interp) {
 }
 
 // (udp-send handle host port data) — send one datagram
+<*
+@require interp != null
+*>
 fn Value* prim_udp_send(Value*[] args, Env* env, Interp* interp) {
     Value* handle_v = null;
     Value* host_v = null;
@@ -141,6 +150,9 @@ fn Value* prim_udp_send(Value*[] args, Env* env, Interp* interp) {
 }
 
 // (udp-recv handle [max-bytes]) — receive one datagram payload as string
+<*
+@require interp != null
+*>
 fn Value* prim_udp_recv(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) {
         return io_raise(interp, "io/udp-recv-expected-handle", "udp-recv: expected (udp-recv handle [max-bytes])");
@@ -186,6 +198,9 @@ fn Value* prim_udp_recv(Value*[] args, Env* env, Interp* interp) {
 }
 
 // (udp-close handle) — close UDP handle
+<*
+@require interp != null
+*>
 fn Value* prim_udp_close(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) {
         return io_raise(interp, "io/udp-close-expected-handle", "udp-close: expected (udp-close handle)");

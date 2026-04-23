@@ -47,6 +47,9 @@ fn Value* iterator_make_thunk2(PrimitiveFn func, Value* first_arg, Value* second
     return partial;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_iterator_from_list_thunk(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) {
         return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-from-list: expected list state");
@@ -62,6 +65,9 @@ fn Value* prim_iterator_from_list_thunk(Value*[] args, Env* env, Interp* interp)
     return iterator_make_pair_or_propagate(car(current), iterator_from_list_value(cdr(current), interp), interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_iterator_from_array_thunk(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) {
         return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-from-array: expected array state");
@@ -79,6 +85,9 @@ fn Value* prim_iterator_from_array_thunk(Value*[] args, Env* env, Interp* interp
     return iterator_make_pair_or_propagate(item, iterator_from_array_value(array_value, index + 1, interp), interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_iterator_from_tensor_thunk(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) {
         return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-from-tensor: expected Tensor state");

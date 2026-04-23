@@ -48,6 +48,9 @@ fn Value* make_fs_handle(Interp* interp, int fd, bool* trace_fd_closed = null) {
 }
 
 // (fs-open path flags [mode]) -> fs-handle
+<*
+@require interp != null
+*>
 fn Value* prim_fs_open(Value*[] args, Env* env, Interp* interp) {
     Value* path_v = null;
     Value* flags_v = null;
@@ -100,6 +103,9 @@ fn Value* prim_fs_open(Value*[] args, Env* env, Interp* interp) {
 }
 
 // (fs-read handle n) -> string
+<*
+@require interp != null
+*>
 fn Value* prim_fs_read(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2 || !is_int(args[1])) {
         return io_fs_raise(interp, "io/fs-read-expected-handle-bytes", "fs-read: expected (fs-read handle n)");
@@ -132,6 +138,9 @@ fn Value* prim_fs_read(Value*[] args, Env* env, Interp* interp) {
 }
 
 // (fs-write handle data) -> int bytes-written
+<*
+@require interp != null
+*>
 fn Value* prim_fs_write(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2 || !is_string(args[1])) {
         return io_fs_raise(interp, "io/fs-write-expected-handle-data", "fs-write: expected (fs-write handle data)");
@@ -150,6 +159,9 @@ fn Value* prim_fs_write(Value*[] args, Env* env, Interp* interp) {
 }
 
 // (fs-close handle) -> void
+<*
+@require interp != null
+*>
 fn Value* prim_fs_close(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) {
         return io_fs_raise(interp, "io/fs-close-expected-handle", "fs-close: expected (fs-close handle)");

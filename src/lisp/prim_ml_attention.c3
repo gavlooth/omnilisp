@@ -313,6 +313,9 @@ fn Value* ml_attention_eval_vulkan(
     return result;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ml_scaled_dot_product_attention(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 3 || args.len > 5) {
         return primitive_arity_raise(interp, "ml/scaled-dot-product-attention", "3 to 5 arguments: query key value [mask] [scale]", args.len);

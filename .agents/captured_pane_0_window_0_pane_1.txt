@@ -1,0 +1,344 @@
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+        modified:   .agents/PLAN.md
+        modified:   .agents/SESSION_REPORT.md
+        modified:   .agents/plan_parts/plan_part_05.md
+        modified:   .agents/session_report_parts/session_report_part_40.md
+        modified:   AGENTS.md
+        new file:   AUDIT_REPORT_2026-04-21.md
+        modified:   TODO.md
+        modified:   csrc/tensor_vulkan_helpers_api_decls.h
+        new file:   csrc/tensor_vulkan_helpers_contract_region.c
+        modified:   csrc/tensor_vulkan_helpers_dispatch_batch.c
+        new file:   csrc/tensor_vulkan_helpers_dispatch_mixed.c
+        new file:   csrc/tensor_vulkan_helpers_dispatch_view.c
+        modified:   csrc/tensor_vulkan_helpers_ml_clip.c
+        modified:   docs/reference/03-collections.part-01.md
+        modified:   docs/reference/11-appendix-primitives.md
+        modified:   docs/todo_parts/todo_part_14.md
+        new file:   memory/MEMORY_IMPROVEMENTS_PROPOSAL.md
+        modified:   memory/changelog_parts/changelog_part_37.md
+        modified:   scripts/build_omni_chelpers.sh
+        modified:   src/entry_build_runtime_manifest_lisp_part3.c3
+        modified:   src/lisp/compiler_primitive_variable_hash_table_domains_collections.c3
+        modified:   src/lisp/eval_init_primitive_tables.c3
+        modified:   src/lisp/prim_kernel.c3
+        new file:   src/lisp/prim_kernel_source.c3
+        modified:   src/lisp/prim_tensor_backend_expr.c3
+        modified:   src/lisp/prim_tensor_capture.c3
+        new file:   src/lisp/prim_tensor_capture_memory_plan.c3
+        new file:   src/lisp/prim_tensor_capture_selected_region.c3
+        modified:   src/lisp/prim_tensor_device_copy.c3
+        new file:   src/lisp/prim_tensor_graph_run.c3
+        new file:   src/lisp/prim_tensor_graph_run_chains.c3
+        new file:   src/lisp/prim_tensor_graph_run_selected_plan.c3
+        modified:   src/lisp/prim_tensor_map.c3
+        modified:   src/lisp/tensor_vulkan_backend.c3
+        modified:   src/lisp/tensor_vulkan_backend_batch.c3
+        modified:   src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part9.c3
+        modified:   src/lisp/tests_compiler_codegen_groups.c3
+
+no changes added to commit (use "git add" and/or "git commit -a")
+╭─[christos@spark-05bb]─detached at 90e63e5 ≢  +11 ~26  3 [~/Omni]                                                                            zsh at    took  21ms
+❯
+╭─[christos@spark-05bb]─detached at 90e63e5 ≢  +12 ~26  3 [~/Omni]                                                                                        zsh at   
+❯ seq 50 | parallel -j1 "ralf --pane 0:1 --task \"continue  \" ; printf \"iteration %s \n\" {}; sleep 200"
+Bareword found where operator expected (Missing operator before "rounds"?) at (eval 14) line 3, near "4 rounds"
+Bareword found where operator expected (Missing operator before "rounds"?) at (eval 15) line 3, near "4 rounds"
+iteration 1
+iteration 2
+iteration 3
+iteration 4
+iteration 5
+iteration 6
+iteration 7
+iteration 8
+iteration 9
+iteration 10
+iteration 11
+iteration 12
+iteration 13
+iteration 14
+iteration 15
+iteration 16
+iteration 17
+iteration 18
+iteration 19
+iteration 20
+^C%
+╭─[christos@spark-05bb]─detached at 90e63e5 ≢  +13 ~75  3 [~/Omni]                                                                   zsh at    took  1h 9m 55.861s
+❯ seq 50 | parallel -j1 "ralf --pane 0:2 --task \"continue  \" ; printf \"iteration %s \n\" {}; sleep 200"
+Bareword found where operator expected (Missing operator before "rounds"?) at (eval 14) line 3, near "4 rounds"
+Bareword found where operator expected (Missing operator before "rounds"?) at (eval 15) line 3, near "4 rounds"
+iteration 1
+iteration 2
+iteration 3
+iteration 4
+iteration 5
+iteration 6
+iteration 7
+iteration 8
+iteration 9
+iteration 10
+iteration 11
+iteration 12
+iteration 13
+iteration 14
+iteration 15
+iteration 16
+iteration 17
+iteration 18
+iteration 19
+iteration 20
+iteration 21
+iteration 22
+iteration 23
+iteration 24
+iteration 25
+iteration 26
+iteration 27
+iteration 28
+iteration 29
+^C%
+╭─[christos@spark-05bb]─detached at 90e63e5 ≢  +21 ~189 -1  3 [~/Omni]                                                               zsh at    took  1h 37m 46.41s
+❯ seq 500 | parallel -j1 "ralf --pane 0:2 --task \"continue  \" ; printf \"iteration %s \n\" {}; sleep 200"
+Bareword found where operator expected (Missing operator before "rounds"?) at (eval 14) line 3, near "4 rounds"
+Bareword found where operator expected (Missing operator before "rounds"?) at (eval 15) line 3, near "4 rounds"
+iteration 1
+iteration 2
+iteration 3
+iteration 4
+iteration 5
+iteration 6
+iteration 7
+iteration 8
+iteration 9
+iteration 10
+iteration 11
+iteration 12
+iteration 13
+iteration 14
+^C%
+╭─[christos@spark-05bb]─detached at 90e63e5 ≢  +22 ~195 -1  3 [~/Omni]                                                                  zsh at    took  48m 53.51s
+❯ seq 500 | parallel -j1 " sleep 900;ralf --pane 0:5 --task \"continue  \" ; printf \"iteration %s \n\" {}"
+Bareword found where operator expected (Missing operator before "rounds"?) at (eval 14) line 3, near "4 rounds"
+Bareword found where operator expected (Missing operator before "rounds"?) at (eval 15) line 3, near "4 rounds"
+^C%
+╭─[christos@spark-05bb]─detached at 90e63e5 ≢  ?1 +22 ~206 -1  3 [~/Omni]                                                               zsh at    took  2m 18.013s
+❯ seq 5000 | parallel -j1 "ralf --pane 0:2 --task \"continue auditing and reparing/improving everything in codebase. Check for antipatterns, memory problems, half baked todo/planed items, incomplete implementations, edge cases etc etc. Use every tool you need to debug and implement.  Do not split files unless they exceed 1000 locs\" ; printf \"iteration %s \n\" {}; sleep 600"
+Bareword found where operator expected (Missing operator before "rounds"?) at (eval 14) line 3, near "4 rounds"
+Bareword found where operator expected (Missing operator before "rounds"?) at (eval 15) line 3, near "4 rounds"
+^C
+╭─[christos@spark-05bb]─detached at 90e63e5 ≢  ?1 +22 ~206 -1  3 [~/Omni]                                                                  zsh at    took  53.015s
+❯ seq 5000 | parallel -j1 "ralf --pane 0:2 --task \"continue auditing and reparing/improving everything in codebase. Check for antipatterns, memory problems, half baked todo/planed items, incomplete implementations, edge cases etc etc. Use every tool you need to debug and implement.  Do not split files unless they exceed 1000 locs\" ; printf \"iteration %s \n\" {}; sleep 600"
+Bareword found where operator expected (Missing operator before "rounds"?) at (eval 14) line 3, near "4 rounds"
+Bareword found where operator expected (Missing operator before "rounds"?) at (eval 15) line 3, near "4 rounds"
+iteration 1
+iteration 2
+iteration 3
+iteration 4
+iteration 5
+iteration 6
+iteration 7
+iteration 8
+iteration 9
+iteration 10
+iteration 11
+iteration 12
+iteration 13
+iteration 14
+iteration 15
+iteration 16
+iteration 17
+iteration 18
+iteration 19
+iteration 20
+iteration 21
+iteration 22
+iteration 23
+iteration 24
+iteration 25
+iteration 26
+iteration 27
+iteration 28
+iteration 29
+iteration 30
+iteration 31
+iteration 32
+iteration 33
+iteration 34
+iteration 35
+iteration 36
+iteration 37
+iteration 38
+iteration 39
+iteration 40
+iteration 41
+iteration 42
+iteration 43
+iteration 44
+iteration 45
+iteration 46
+iteration 47
+iteration 48
+iteration 49
+iteration 50
+iteration 51
+iteration 52
+continue auditing and reparing/improving everything in codebase. Check for antipatterns, memory problems, half baked todo/planed items, incomplete implementations, edge cases etc etc. Use every tool you need to debug and implement.  Do not split files unless they exceed 1000 locs
+iteration 53
+continue auditing and reparing/improving everything in codebase. Check for antipatterns, memory problems, half baked todo/planed items, incomplete implementations, edge cases etc etc. Use every tool you need to debug and implement.  Do not split files unless they exceed 1000 locs
+iteration 54
+continue auditing and reparing/improving everything in codebase. Check for antipatterns, memory problems, half baked todo/planed items, incomplete implementations, edge cases etc etc. Use every tool you need to debug and implement.  Do not split files unless they exceed 1000 locs
+iteration 55
+continue auditing and reparing/improving everything in codebase. Check for antipatterns, memory problems, half baked todo/planed items, incomplete implementations, edge cases etc etc. Use every tool you need to debug and implement.  Do not split files unless they exceed 1000 locs
+iteration 56
+continue auditing and reparing/improving everything in codebase. Check for antipatterns, memory problems, half baked todo/planed items, incomplete implementations, edge cases etc etc. Use every tool you need to debug and implement.  Do not split files unless they exceed 1000 locs
+iteration 57
+continue auditing and reparing/improving everything in codebase. Check for antipatterns, memory problems, half baked todo/planed items, incomplete implementations, edge cases etc etc. Use every tool you need to debug and implement.  Do not split files unless they exceed 1000 locs
+iteration 58
+continue auditing and reparing/improving everything in codebase. Check for antipatterns, memory problems, half baked todo/planed items, incomplete implementations, edge cases etc etc. Use every tool you need to debug and implement.  Do not split files unless they exceed 1000 locs
+^C
+╭─[christos@spark-05bb]─detached at 90e63e5 ≢  +30 ~281 -1  3 [~/Omni]                                                              zsh at    took  9h 45m 50.639s
+❯ seq 5000 | parallel -j1 "ralf --pane 0:1 --task \"continue auditing and reparing/improving everything in codebase. Check for antipatterns, memory problems, half baked todo/planed items, incomplete implementations, edge cases etc etc. Use every tool you need to debug and implement.  Do not split files unless they exceed 1000 locs\" ; printf \"iteration %s \n\" {}; sleep 600"
+Bareword found where operator expected (Missing operator before "rounds"?) at (eval 14) line 3, near "4 rounds"
+Bareword found where operator expected (Missing operator before "rounds"?) at (eval 15) line 3, near "4 rounds"
+iteration 1
+iteration 2
+^C
+╭─[christos@spark-05bb]─detached at 90e63e5 ≢  +32 ~281 -1  3 [~/Omni]                                                                  zsh at    took  23m 6.361s
+❯ seq 5000 | parallel -j1 "ralf --pane 0:1 --task \"continue auditing and reparing/improving everything in codebase. Check for antipatterns, memory problems, half baked todo/planed items, incomplete implementations, edge cases etc etc. Use every tool you need to debug and implement.  Do not split files unless they exceed 1000 locs\" ; printf \"iteration %s \n\" {}; sleep 300"
+Bareword found where operator expected (Missing operator before "rounds"?) at (eval 14) line 3, near "4 rounds"
+Bareword found where operator expected (Missing operator before "rounds"?) at (eval 15) line 3, near "4 rounds"
+iteration 1
+iteration 2
+iteration 3
+iteration 4
+iteration 5
+iteration 6
+iteration 7
+iteration 8
+iteration 9
+iteration 10
+iteration 11
+iteration 12
+iteration 13
+iteration 14
+iteration 15
+iteration 16
+iteration 17
+iteration 18
+iteration 19
+iteration 20
+iteration 21
+iteration 22
+iteration 23
+iteration 24
+iteration 25
+iteration 26
+iteration 27
+iteration 28
+iteration 29
+iteration 30
+iteration 31
+iteration 32
+iteration 33
+iteration 34
+iteration 35
+iteration 36
+iteration 37
+iteration 38
+iteration 39
+iteration 40
+iteration 41
+iteration 42
+iteration 43
+iteration 44
+iteration 45
+iteration 46
+iteration 47
+iteration 48
+iteration 49
+iteration 50
+iteration 51
+iteration 52
+iteration 53
+iteration 54
+iteration 55
+iteration 56
+iteration 57
+iteration 58
+iteration 59
+iteration 60
+iteration 61
+iteration 62
+iteration 63
+iteration 64
+iteration 65
+iteration 66
+iteration 67
+iteration 68
+iteration 69
+iteration 70
+iteration 71
+iteration 72
+iteration 73
+iteration 74
+iteration 75
+iteration 76
+
+ ▌      Line 248, Char 9: default: {                                                                                                                                                                    ╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱
+ ▌                                                                                                                                                                                                      ╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱
+ ▌    /home/christos/Omni/src/lisp/compiler_mutable_capture_detection_walk.c3:                                                                                                                           Charm™               v0.60.0
+ ▌      Line 44, Char 9: default:                                                                                                                                                                       ▄▀▀▀▀ █▀▀▀▄ █   █ ▄▀▀▀▀ █   █
+ ▌      Line 104, Char 9: default:                                                                                                                                                                      █     █▀▀▀▄ █   █ ▀▀▀▀█ █▀▀▀█
+ ▌                                                                                                                                                                                                       ▀▀▀▀ ▀   ▀  ▀▀▀  ▀▀▀▀  ▀   ▀
+ ▌    /home/christos/Omni/src/lisp/prim_tensor_capture_memory_plan.c3:                                                                                                                                  ╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱
+ ▌      Line 13, Char 9: default:
+ ▌      Line 28, Char 9: default:                                                                                                                                                                       Codebase Audit Report on
+ ▌      Line 43, Char 9: default:                                                                                                                                                                       Issues and Improvements
+ ▌
+ ▌    /home/christos/Omni/src/lisp/prim_ml_reduction.c3:                                                                                                                                                ~/Omni
+ ▌      Line 229, Char 9: default:
+ ▌      Line 203, Char 9: default:                                                                                                                                                                      ◇ Kimi for Coding
+ ▌                                                                                                                                                                                                        via Kimi Coding
+ ▌    /home/christos/Omni/src/lisp/prim_tensor_matrix_qr_cholesky.c3:                                                                                                                                     Thinking Off
+ ▌      Line 323, Char 13: default:                                                                                                                                                                       28% (75.6K) $0.05
+ ▌      Line 538, Char 13: default:
+ ▌                                                                                                                                                                                                      Modified Files ──────────────
+ ▌    /home/christos/Omni/src/lisp/prim_tensor_matrix_factor_primitives.c3:
+ ▌      Line 335, Char 13: default:                                                                                                                                                                     ~/s/session_report_part_42…
+ ▌      Line 165, Char 13: default:                                                                                                                                                                     +135
+ ▌      Line 466, Char 13: default:                                                                                                                                                                     csrc/tensor_vulkan_helpers_…
+ ▌                                                                                                                                                                                                      +13
+ ▌    /home/christos/Omni/src/lisp/prim_tensor_matrix.c3:                                                                                                                                               csrc/tensor_cuda_helper… +51
+ ▌      Line 153, Char 13: default:                                                                                                                                                                     -20
+ ▌                                                                                                                                                                                                      csrc/tensor_vulkan_he… +351 -
+ ▌    /home/christos/Omni/src/lisp/prim_tensor_map_eval.c3:                                                                                                                                             228
+ ▌      Line 199, Char 9: default:                                                                                                                                                                      csrc/tensor_vulkan_helpers_…
+ ▌      Line 210, Char 9: default: {                                                                                                                                                                    +23
+ ▌                                                                                                                                                                                                      ~/l/prim_system.c3 +6 -2
+ ▌    /home/christos/Omni/src/lisp/parser_parser.c3:                                                                                                                                                    ~/l/prim_ml_autograd.c3 +1 -1
+ ▌      Line 75, Char 17: default: break;                                                                                                                                                               ~/l/value_constructors.… +57
+ ▌                                                                                                                                                                                                      -17
+ ▌    /home/christos/Omni/src/lisp/macros_define_hygiene.c3:                                                                                                                                            ~/l/json_pointer_option_help…
+ ▌      Line 63, Char 9: default: {}                                                                                                                                                                    +1
+ ▌                                                                                                                                                                                                      ~/l/prim_ml_autograd_… +676 -
+ ▌    (Results are truncated. Consider using a more specific path or pattern.)                                                                                                                          808
+                                                                                                                                                                                                        src/entry_build_runtime_m… +1
+    ERROR  Too Many Requests                                                                                                                                                                            -1
+                                                                                                                                                                                                        ~/l/ffi_dlopen_registry.c3 +1
+   POST "https://api.kimi.com/coding/v1/messages": 429 Too Many Requests                                                                                                                                ~/l/prim_tensor_construct… +4
+   {"error":{"type":"rate_limit_error","message":"The engine is currently overloaded, please try again                                                                                                  -1
+   later"},"type":"error"}                                                                                                                                                                              ~/l/prim_nn_init.c3 +34 -11
+                                                                                                                                                                                                        src/main_repl_shared.c3 +3
+    ╭───────────────────────────────────────────────────╮                                                                                                                                               ~/l/prim_io_fs_stream.c3 +2
+    │ ⋯ To-Do 0/5  Fixing mismatched f64 unary op bound │ ctrl+t open                                                                                                                                   ~/l/prim_ffi_async.c3 +11
+    ╰───────────────────────────────────────────────────╯                                                                                                                                               ~/l/tests_advanced_std… +115
+                                                                                                                                                                                                        -78
+  !  Yolo mode!                                                                                                                                                                                         csrc/tensor_vulkan_helper… +1
+ :::                                                                                                                                                                                                    -1
+ :::                                                                                                                                                                                                    csrc/tensor_vulkan_helper… +1
+                                                                                                                                                                                                        -1
+ tab focus editor • ctrl+p commands • ctrl+l models • ↑↓ scroll • shift+↑↓ scroll one item • b/pgup page up • f/pgdn page down • c/y copy • ctrl+c quit • ctrl+g more

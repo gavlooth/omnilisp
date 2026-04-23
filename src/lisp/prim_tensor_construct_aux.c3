@@ -111,6 +111,9 @@ fn Value* tensor_construct_from_iterator_auto(Value* iterator_value, Interp* int
     return tensor_construct_inferred_auto(materialized_data, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_tensor(Value*[] args, Env* env, Interp* interp) {
     if (args.len == 1) {
         if (args[0] != null && args[0].tag == ITERATOR) return tensor_construct_from_iterator_auto(args[0], interp);
@@ -132,6 +135,9 @@ fn Value* prim_tensor(Value*[] args, Env* env, Interp* interp) {
     return primitive_arity_raise(interp, "Tensor", "1, 2, or 3 arguments: data [dtype] or dtype shape data-or-scalar", args.len);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_realize(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1 && args.len != 2) {
         return primitive_arity_raise(interp, "realize", "1 or 2 arguments: expr [out]", args.len);
@@ -177,11 +183,17 @@ fn Value* prim_realize(Value*[] args, Env* env, Interp* interp) {
     return tensor_copy_into_destination(args[0], args[1], interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_tensor_p(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return tensor_raise(interp, "tensor/invalid-argument", "tensor?: expected 1 argument");
     return is_tensor(args[0]) ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_dtype(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_tensor(args[0])) return tensor_raise(interp, "tensor/invalid-argument", "dtype: expected Tensor");
     TensorVal* tensor = args[0].tensor_val;
@@ -200,6 +212,9 @@ fn SymbolId tensor_device_symbol(TensorDeviceKind device, Interp* interp) {
     }
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_device(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) return primitive_arity_raise(interp, "device", "1 argument: tensor", args.len);
     if (!is_tensor(args[0])) return tensor_raise(interp, "tensor/invalid-argument", "device: expected Tensor");

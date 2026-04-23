@@ -111,6 +111,9 @@ fn Value* validate_instance_constraints(Instance* inst, TypeInfo* ti, Interp* in
     return null;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_type_constructor(Value*[] args, Env* env, Interp* interp) {
     TypeId type_id = (TypeId)interp.constructor_type_id;
     TypeInfo* ti = interp.types.get(type_id);

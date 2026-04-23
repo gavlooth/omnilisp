@@ -479,6 +479,9 @@ fn Value* nn_ckpt_save_text_or_path(Value* json, Value*[] args, Interp* interp, 
     return make_void(interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_nn_save_spec(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || args.len > 2) return primitive_arity_raise(interp, "nn/save-spec", "1 or 2 arguments: spec [path]", args.len);
     if (Value* err = nn_validate_dataspec(args[0], interp)) return err;
@@ -487,6 +490,9 @@ fn Value* prim_nn_save_spec(Value*[] args, Env* env, Interp* interp) {
     return nn_ckpt_save_text_or_path(json, args, interp, "nn/save-spec");
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_nn_load_spec(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) return primitive_arity_raise(interp, "nn/load-spec", "1 argument: JSON checkpoint string or path", args.len);
     Value* payload = nn_ckpt_parse_root(args[0], interp, "spec");
@@ -498,6 +504,9 @@ fn Value* prim_nn_load_spec(Value*[] args, Env* env, Interp* interp) {
     return spec;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_nn_save(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || args.len > 2) return primitive_arity_raise(interp, "nn/save", "1 or 2 arguments: model [path]", args.len);
     if (Value* err = nn_require_model(args[0], interp)) return err;
@@ -505,6 +514,9 @@ fn Value* prim_nn_save(Value*[] args, Env* env, Interp* interp) {
     return nn_ckpt_save_text_or_path(json, args, interp, "nn/save");
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_nn_load(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) return primitive_arity_raise(interp, "nn/load", "1 argument: JSON checkpoint string or path", args.len);
     Value* payload = nn_ckpt_parse_root(args[0], interp, "model");

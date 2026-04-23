@@ -563,6 +563,9 @@ fn Value* ml_rmsprop_step_tree(Value* params, Value* grads, Value* square, Value
     return ml_optimizer_invalid(interp, "ml/optimizer-step: parameter tree leaves must be tensors");
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ml_optimizer_step(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 4) return primitive_arity_raise(interp, "ml/optimizer-step", "4 arguments: spec parameters gradients state", args.len);
     if (args[0].tag != HASHMAP || args[0].hashmap_val == null) return primitive_arg_type_raise(interp, "ml/optimizer-step", 0, "Dictionary optimizer spec", args[0]);

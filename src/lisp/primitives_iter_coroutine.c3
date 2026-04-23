@@ -27,6 +27,9 @@ fn Value* iterator_make_cons_or_error(Value* car_value, Value* cdr_value, char[]
     return pair;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_iterator_map(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 2) return iterator_ctor_raise(interp, "type/arity", "__iterator-map: expected 2 arguments");
     if (args[1] == null || args[1].tag != ITERATOR) {
@@ -35,6 +38,9 @@ fn Value* prim_iterator_map(Value*[] args, Env* env, Interp* interp) {
     return iterator_map_value(args[0], args[1], interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_iterator_map_thunk(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) {
         return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-map: expected iterator state");
@@ -55,6 +61,9 @@ fn Value* prim_iterator_map_thunk(Value*[] args, Env* env, Interp* interp) {
     return iterator_make_pair_or_propagate(mapped, iterator_map_value(func, rest, interp), interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_iterator_filter(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 2) return iterator_ctor_raise(interp, "type/arity", "__iterator-filter: expected 2 arguments");
     if (args[1] == null || args[1].tag != ITERATOR) {
@@ -63,6 +72,9 @@ fn Value* prim_iterator_filter(Value*[] args, Env* env, Interp* interp) {
     return iterator_filter_value(args[0], args[1], interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_iterator_filter_thunk(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) {
         return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-filter: expected iterator state");
@@ -90,6 +102,9 @@ fn Value* prim_iterator_filter_thunk(Value*[] args, Env* env, Interp* interp) {
     return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-filter: expected iterator state");
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_iterator_take(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 2) return iterator_ctor_raise(interp, "type/arity", "__iterator-take: expected 2 arguments");
     if (args[0] == null || !is_int(args[0])) {
@@ -102,6 +117,9 @@ fn Value* prim_iterator_take(Value*[] args, Env* env, Interp* interp) {
     return iterator_take_value(args[0], args[1], interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_iterator_take_thunk(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) {
         return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-take: expected iterator state");
@@ -129,6 +147,9 @@ fn Value* prim_iterator_take_thunk(Value*[] args, Env* env, Interp* interp) {
     );
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_iterator_zip(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 2) return iterator_ctor_raise(interp, "type/arity", "__iterator-zip: expected 2 arguments");
     if (args[0] == null || args[0].tag != ITERATOR || args[1] == null || args[1].tag != ITERATOR) {
@@ -137,6 +158,9 @@ fn Value* prim_iterator_zip(Value*[] args, Env* env, Interp* interp) {
     return iterator_zip_value(args[0], args[1], interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_iterator_zip_thunk(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) {
         return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-zip: expected iterators");
@@ -167,6 +191,9 @@ fn Value* prim_iterator_zip_thunk(Value*[] args, Env* env, Interp* interp) {
     return iterator_make_pair_or_propagate(item_pair, iterator_zip_value(left_rest, right_rest, interp), interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_iterator_foldl(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 3) return iterator_ctor_raise(interp, "type/arity", "__iterator-foldl: expected 3 arguments");
     if (args[2] == null || args[2].tag != ITERATOR) {

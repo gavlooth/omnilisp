@@ -768,6 +768,9 @@ fn Value* matrix_transpose_view_value(Value* source_value, TensorVal* matrix, In
     main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
     return result;
 }
+<*
+@require interp != null
+*>
 fn Value* prim_matrix_transpose_view(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) {
         return primitive_arity_raise(interp, "matrix/transpose-view", "1 argument: rank-2 Tensor", args.len);
@@ -783,6 +786,9 @@ fn Value* prim_matrix_transpose_view(Value*[] args, Env* env, Interp* interp) {
     }
     return matrix_transpose_view_value(matrix_value, matrix_value.tensor_val, interp, "matrix/transpose-view: tensor metadata is missing");
 }
+<*
+@require interp != null
+*>
 fn Value* prim_matrix_transpose(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) {
         return primitive_arity_raise(interp, "matrix/transpose", "1 argument: rank-2 Tensor", args.len);
@@ -832,6 +838,9 @@ fn Value* prim_matrix_transpose(Value*[] args, Env* env, Interp* interp) {
     keep_out = true;
     return out_value;
 }
+<*
+@require interp != null
+*>
 fn Value* prim_matrix_diagonal(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) {
         return primitive_arity_raise(interp, "matrix/diagonal", "1 argument: rank-2 Tensor", args.len);
@@ -878,6 +887,9 @@ fn Value* prim_matrix_diagonal(Value*[] args, Env* env, Interp* interp) {
     keep_out = true;
     return out_value;
 }
+<*
+@require interp != null
+*>
 fn Value* prim_matrix_diagonal_matrix(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) {
         return primitive_arity_raise(interp, "matrix/diagonal-matrix", "1 argument: rank-1 Tensor", args.len);

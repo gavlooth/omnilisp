@@ -31,12 +31,18 @@ fn CoroutineThunkState* coroutine_alloc_thunk_state(Value* thunk, Interp* interp
     return state;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_coroutine_p(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return make_nil(interp);
     if (args[0].tag == COROUTINE) return make_symbol(interp, interp.sym_true);
     return make_nil(interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_coroutine_require_thunk(Value*[] args, Value** thunk_out, Interp* interp) {
     if (args.len < 1) return coroutine_ctor_type_raise(interp, "Coroutine: expected closure thunk");
     Value* thunk = args[0];
@@ -47,6 +53,9 @@ fn Value* prim_coroutine_require_thunk(Value*[] args, Value** thunk_out, Interp*
     return null;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_coroutine_prepare_thunk(Value* thunk, Interp* interp) {
     // AOT closures are primitive wrappers allocated in root_scope by aot::make_closure.
     // They do not expose closure_val/body, so skip JIT expression warming for them.
@@ -67,6 +76,9 @@ fn Value* prim_coroutine_prepare_thunk(Value* thunk, Interp* interp) {
     return thunk;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_coroutine_create_ctx(Value* thunk, main::StackCtx** ctx_out, Interp* interp) {
     if (thunk == null) return runtime_raise(interp, "runtime/invalid-state", "coroutine: failed to promote thunk");
     if (thunk.tag == ERROR) return thunk;
@@ -89,6 +101,9 @@ fn Value* prim_coroutine_create_ctx(Value* thunk, main::StackCtx** ctx_out, Inte
     return null;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_coroutine(Value*[] args, Env* env, Interp* interp) {
     Value* thunk = null;
     Value* parse_err = prim_coroutine_require_thunk(args, &thunk, interp);

@@ -23,6 +23,9 @@ fn Value* http_raise(Interp* interp, char[] code, char[] message) @inline {
 // (http-get url) → dict with 'status 'headers 'body
 // ============================================================
 
+<*
+@require interp != null
+*>
 fn Value* prim_http_get(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_string(args[0])) {
         return http_raise(interp, "io/http-get-expected-url", "http-get: expected (http-get url)");
@@ -76,6 +79,9 @@ fn Value* prim_http_get(Value*[] args, Env* env, Interp* interp) {
 // (http-request method url headers body) → dict
 // ============================================================
 
+<*
+@require interp != null
+*>
 fn Value* prim_http_request(Value*[] args, Env* env, Interp* interp) {
     Value* method_v = null;
     Value* url_v = null;

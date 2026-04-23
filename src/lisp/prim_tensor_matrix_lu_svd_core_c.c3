@@ -3,6 +3,9 @@ module lisp;
 import std::core::mem;
 import main;
 
+<*
+@require interp != null
+*>
 fn Value* prim_matrix_identity(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1 && args.len != 2) {
         return primitive_arity_raise(interp, "matrix/identity", "1 or 2 arguments: non-negative Integer size [dtype]", args.len);
@@ -31,6 +34,9 @@ fn Value* prim_matrix_identity(Value*[] args, Env* env, Interp* interp) {
     keep_out = true;
     return out_value;
 }
+<*
+@require interp != null
+*>
 fn Value* prim_matrix_trace(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) {
         return primitive_arity_raise(interp, "matrix/trace", "1 argument: square rank-2 Tensor", args.len);
@@ -63,6 +69,9 @@ fn Value* prim_matrix_trace(Value*[] args, Env* env, Interp* interp) {
     if (!tensor_has_valid_storage(matrix)) return tensor_runtime_raise(interp, "matrix/trace: tensor backing storage is missing");
     return matrix_trace_scalar_value(matrix, interp);
 }
+<*
+@require interp != null
+*>
 fn Value* prim_matrix_rank(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1 && args.len != 2) {
         return primitive_arity_raise(interp, "matrix/rank", "1 or 2 arguments: rank-2 Float64, Float32, Complex128, or Complex64 Tensor [non-negative tolerance]", args.len);
@@ -113,6 +122,9 @@ fn Value* prim_matrix_rank(Value*[] args, Env* env, Interp* interp) {
     }
     return make_int(interp, (long)rank);
 }
+<*
+@require interp != null
+*>
 fn Value* prim_matrix_norm(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1 && args.len != 2) {
         return primitive_arity_raise(interp, "matrix/norm", "1 or 2 arguments: rank-2 Float64, Float32, Complex128, or Complex64 Tensor [norm selector]", args.len);

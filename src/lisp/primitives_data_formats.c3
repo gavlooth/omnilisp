@@ -34,6 +34,9 @@ fn bool time_point_time_args_in_range(Value* hour, Value* minute, Value* second,
         time_point_arg_in_range(microsecond, 0, 999999);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_time_point(Value*[] args, Env* env, Interp* interp) {
     if (args.len == 0) return data_format_raise(interp, "type/arg-mismatch", "time-point: expected kind symbol");
     if (args[0] == null || args[0].tag != SYMBOL) {

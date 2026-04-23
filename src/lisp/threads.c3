@@ -24,6 +24,9 @@ struct AtomicRef {
     types::Atomic{long} value;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_atomic(Value*[] args, Env* env, Interp* interp) {
     // fault: lisp::EXPECTED_INT
     if (args.len < 1 || !is_int(args[0])) return runtime_raise(interp, "type/arg-mismatch", "atomic: expected integer");
@@ -46,6 +49,9 @@ fn AtomicRef* get_atomic_ref(Value* v) {
     return (AtomicRef*)v.ffi_val.lib_handle;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_atomic_add(Value*[] args, Env* env, Interp* interp) {
     // fault: lisp::ARITY_MISMATCH
     if (args.len < 2) return runtime_raise(interp, "type/arg-mismatch", "atomic-add!: expected (atomic-add! ref n)");
@@ -59,6 +65,9 @@ fn Value* prim_atomic_add(Value*[] args, Env* env, Interp* interp) {
     return make_int(interp, old);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_atomic_read(Value*[] args, Env* env, Interp* interp) {
     // fault: lisp::ARITY_MISMATCH
     if (args.len < 1) return runtime_raise(interp, "type/arg-mismatch", "atomic-read: expected (atomic-read ref)");
@@ -69,6 +78,9 @@ fn Value* prim_atomic_read(Value*[] args, Env* env, Interp* interp) {
     return make_int(interp, ref.value.load());
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_atomic_cas(Value*[] args, Env* env, Interp* interp) {
     // fault: lisp::ARITY_MISMATCH
     if (args.len < 3) return runtime_raise(interp, "type/arg-mismatch", "atomic-cas!: expected (atomic-cas! ref old new)");

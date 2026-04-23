@@ -16,6 +16,9 @@ fn bool math_fill_random_bytes(void* buf, usz len) {
     return true;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_random(Value*[] args, Env* env, Interp* interp) {
     ulong buf;
     if (!math_fill_random_bytes(&buf, ulong.sizeof)) {
@@ -27,6 +30,9 @@ fn Value* prim_random(Value*[] args, Env* env, Interp* interp) {
     return make_double(interp, val);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_random_int(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "random-int", "1 argument", args.len);
     long n;

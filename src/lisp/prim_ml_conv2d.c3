@@ -317,6 +317,9 @@ fn Value* ml_conv2d_try_vulkan(Value* input_value, Value* kernel_value, usz stri
     return ml_conv2d_vulkan_result(input, kernel, &spec, result_shape[0:4], interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_ml_conv2d(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 9) {
         return primitive_arity_raise(interp, "ml/conv2d", "9 arguments: input kernel stride-height stride-width padding-height padding-width dilation-height dilation-width groups", args.len);

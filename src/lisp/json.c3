@@ -85,6 +85,9 @@ fn Value* json_val_to_omni(YyjsonVal* val, Interp* interp) {
     return make_nil(interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_json_get(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 2) return json_raise(interp, "parser/arity", "json-get: expected 2 arguments");
     if (args[0] == null) return make_nil(interp);
@@ -115,6 +118,9 @@ fn Value* prim_json_get(Value*[] args, Env* env, Interp* interp) {
     return current;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_json_parse(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || args.len > 2) {
         return json_raise(interp, "parser/arity", "json-parse: expected 1-2 arguments");

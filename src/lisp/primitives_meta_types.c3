@@ -10,6 +10,9 @@ import main;
 /**
  * (type-of v) -> symbol representing the type name
  */
+<*
+@require interp != null
+*>
 fn Value* prim_type_of(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return meta_raise(interp, "type/arity", "type-of: expected 1 argument");
     SymbolId type_name = value_type_name(args[0], interp);
@@ -19,6 +22,9 @@ fn Value* prim_type_of(Value*[] args, Env* env, Interp* interp) {
 /**
  * (is? v 'TypeName) -> true if v's type is or is subtype of TypeName
  */
+<*
+@require interp != null
+*>
 fn Value* prim_is_type(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return meta_raise(interp, "type/arity", "is?: expected 2 arguments");
     if (args[1] == null || args[1].tag != SYMBOL) {
@@ -53,6 +59,9 @@ fn Value* prim_is_type(Value*[] args, Env* env, Interp* interp) {
 /**
  * (instance? v) -> true if v is a user-defined type instance
  */
+<*
+@require interp != null
+*>
 fn Value* prim_is_instance(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return meta_raise(interp, "type/arity", "instance?: expected 1 argument");
     bool result = args[0].tag == INSTANCE;
@@ -63,6 +72,9 @@ fn Value* prim_is_instance(Value*[] args, Env* env, Interp* interp) {
  * (type-args v) -> list of inferred type argument symbols, or nil if not parametric.
  * Example: (type-args (Box 42)) => '(Integer)
  */
+<*
+@require interp != null
+*>
 fn Value* prim_type_args(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return meta_raise(interp, "type/arity", "type-args: expected 1 argument");
     if (args[0] == null || args[0].tag != INSTANCE) return make_nil(interp);
@@ -90,6 +102,9 @@ fn Value* prim_type_args(Value*[] args, Env* env, Interp* interp) {
 
 // --- Memory reclamation ---
 
+<*
+@require interp != null
+*>
 fn Value* prim_free_bang(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return runtime_raise(interp, "type/arity", "unsafe-free!: expected 1 argument");
     Value* v = args[0];

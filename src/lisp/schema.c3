@@ -1,5 +1,8 @@
 module lisp;
 
+<*
+@require interp != null
+*>
 fn Value* prim_explain(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) {
         return runtime_raise(interp, "type/arg-mismatch", "explain: expected (explain 'dispatch <form>) or (explain 'effect <form>)");

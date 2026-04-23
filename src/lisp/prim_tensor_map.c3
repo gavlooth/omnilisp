@@ -169,6 +169,9 @@ fn bool tensor_map_promoted_result_dtype(
     return true;
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_tensor_map(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 2 && args.len != 3) {
         return primitive_arity_raise(interp, "__tensor-map", "2 or 3 arguments: function, tensor [input]", args.len);

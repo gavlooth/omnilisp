@@ -435,6 +435,9 @@ fn Value* foreign_runtime_resolve_member(Value* owner_v, Value* member_descripto
     return adapter.resolve_member(owner_v, member_descriptor, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_foreign_describe(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) return ffi_raise(interp, "ffi/arity", "foreign-describe: expected 1 argument");
     if (args[0] != null && args[0].tag == PRIMITIVE && args[0].prim_val != null &&
@@ -458,6 +461,9 @@ fn Value* prim_foreign_describe(Value*[] args, Env* env, Interp* interp) {
     return adapter.describe_handle(args[0], interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_foreign_release(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) return ffi_raise(interp, "ffi/arity", "foreign-release: expected 1 argument");
     ForeignRuntimeAdapter adapter;

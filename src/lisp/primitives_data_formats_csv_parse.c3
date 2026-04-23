@@ -103,6 +103,9 @@ fn Value* csv_flush_row(Value* rows, Value* row, CsvFieldBuf* field, Interp* int
     return csv_rows_push_row(rows, row, interp);
 }
 
+<*
+@require interp != null
+*>
 fn Value* prim_csv_parse(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || args.len > 2) {
         return data_format_raise(interp, "type/arity", "csv-parse: expected 1-2 arguments");
