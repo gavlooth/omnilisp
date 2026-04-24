@@ -49,6 +49,42 @@ The historical content was split mechanically to keep individual files below the
 - Part 41: [.agents/session_report_parts/session_report_part_41.md](session_report_parts/session_report_part_41.md) (43 lines)
 - Part 42: [.agents/session_report_parts/session_report_part_42.md](session_report_parts/session_report_part_42.md) (710 lines)
 
+## 2026-04-24 14:31 CEST - Entrypoint Status Cleanup
+
+- Objective attempted:
+  - Continue from the zero-item TODO checkpoint by checking visible entrypoint
+    docs for stale active-queue language.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `docs/areas/compiler-parser-refactor.md`
+- Code or configuration changes made:
+  - Updated the compiler/parser area page so its canonical source list calls
+    `docs/plans/compiler-parser-refactor-plan.md` a historical execution
+    record instead of a single active plan.
+  - Updated the same page's split-threshold note to distinguish the historical
+    `500` LOC `R` cycle from the current repo-wide `1000` LOC split threshold
+    active from 2026-04-21.
+- Commands run:
+  - `git diff --check -- docs/areas/compiler-parser-refactor.md`
+  - `scripts/check_status_consistency.sh`
+  - `rg -n "single active plan|Active cycle threshold|active plan|active roadmap|active implementation|Still open|remain open|remaining .*open|live queue|TODO actionable count" docs/README.md docs/plans/README.md docs/areas/*.md TODO.md AUDIT_REPORT*.md .agents/PLAN.md`
+  - `jj diff --stat`
+- Key results:
+  - Status consistency still passes with TODO actionable count `0`.
+  - Remaining matched "open" language is either explicit closed-state wording
+    or historical `.agents/PLAN.md` content marked as non-authoritative by the
+    current checkpoint.
+- Invalidated assumptions or failed approaches:
+  - None.
+- Current best recommendation or checkpoint:
+  - Treat `TODO.md` plus `scripts/check_status_consistency.sh` as the current
+    backlog authority; the compiler/parser refactor tracker is historical.
+- Unresolved issues:
+  - None from this cleanup pass.
+- Dependencies, blockers, or restart requirements:
+  - No rebuild or runtime restart is required; this was documentation-only.
+- Signature: GPT-5 Codex
+
 ## 2026-04-19 21:42 CEST - All Eligible Over-700 Files Split
 
 - Objective attempted:

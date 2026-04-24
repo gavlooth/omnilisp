@@ -1,12 +1,12 @@
 # Compiler, Parser, and Refactor Structure
 
 Status: `green` (major split landed; remaining compiler/parser files are below the active split threshold and this lane is no longer an active work queue)
-As of: 2026-03-19
+As of: 2026-04-24
 
 ## Canonical Sources
 
 - `memory/CHANGELOG.md` (execution history + validated changes)
-- `docs/plans/compiler-parser-refactor-plan.md` (single active plan for this area)
+- `docs/plans/compiler-parser-refactor-plan.md` (historical execution record for this area)
 - current `src/lisp/*` module/file layout
 
 ## Current State
@@ -14,7 +14,7 @@ As of: 2026-03-19
 - Large monolith files have already been split into area-scoped files (`compiler_*`, `parser_*`, `jit_*`, `tests_*`, `value_*`, `eval_*`).
 - The codebase structure is significantly ahead of older "god-file" descriptions.
 - Historical extraction record remains centralized in `docs/plans/compiler-parser-refactor-plan.md`.
-- Active cycle threshold is now locked to modules over `500` LOC, executed in strict largest-first order (`R1` complete).
+- Historical `R` cycle threshold was modules over `500` LOC, executed in strict largest-first order; the current repo-wide code split threshold is `1000` LOC from 2026-04-21, and no compiler/parser split queue is open.
 - `R2` landed by splitting `compiler_expr_serialize_exprs.c3` into expression-family modules (`compiler_expr_serialize_callable_forms.c3`, `compiler_expr_serialize_definition_forms.c3`) while keeping dispatch in `compiler_expr_serialize_exprs.c3`.
 - `R3` landed by splitting effect lowering from native-call lowering (`compiler_native_effect_compilation_flat_style.c3` + `compiler_native_call_compilation_flat_style.c3`).
 - `R4` landed with one coherent follow-up slice: match/pattern lowering extracted to `compiler_native_match_compilation_flat_style.c3`; queue refreshed with `compiler_free_vars_walk.c3` as next target.
