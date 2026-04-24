@@ -5131,6 +5131,22 @@ Validation:
   - When Valgrind is invoked through `env`, use `--trace-children=yes`; without
     it, Memcheck traces the wrapper process rather than `./build/main` and can
     report a false green ownership signal.
+
+## 2026-04-24 fixed-width complex closure-plan checkbox reconciliation
+
+- Reconciled `docs/plans/fixed-width-complex-closure-plan-2026-04-18.md` with
+  already-landed CUDA complex SVD history.
+  - Marked the stale unchecked CUDA SVD adapter, singular-values, norm,
+    factor-output, and validation rows as closed.
+  - Replaced the obsolete "next checkpoint" text with a closure-state note:
+    cuSOLVER remains an optional dynamically loaded CUDA SVD provider, public
+    operations route only after capability/layout/shape checks, and no active
+    checkpoint remains under the plan.
+- No runtime semantics changed.
+- Validation:
+  - unchecked checkbox scan over plans/TODO/session artifacts returned no rows
+  - `scripts/check_status_consistency.sh`
+  - `git diff --check`
   - bounded container normal `basic` (`169 passed, 0 failed`)
   - bounded container normal Valgrind `memory-lifetime-smoke`
     (`255 passed, 0 failed`)

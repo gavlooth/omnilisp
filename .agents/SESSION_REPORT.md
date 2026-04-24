@@ -5886,6 +5886,35 @@ Re-audit notes:
 
 Signature: GPT-5 Codex
 
+## 2026-04-24 17:43 CEST - Fixed-Width Complex Closure Plan Reconciliation
+
+Objective:
+- Continue after the memory teardown commit by cleaning stale planning state
+  that contradicted the zero-item live queue.
+
+Changes made:
+- Updated `docs/plans/fixed-width-complex-closure-plan-2026-04-18.md` so the
+  CUDA complex SVD adapter, singular-values/norm routing, SVD factor routing,
+  and validation rows are checked off and linked to their already-landed
+  `TENSOR-100H-CUDA-SVD-NORMS-ADAPTERS` and
+  `TENSOR-100H-CUDA-SVD-NORMS-EXEC` closures.
+- Replaced the obsolete CUDA SVD "next checkpoint" with a closure-state note.
+
+Commands run:
+- `rg -n "^[[:space:]]*[-0-9.]*[[:space:]]*\\[[[:space:]]\\]" docs/plans docs/todo_parts TODO.md .agents/PLAN.md .agents/SESSION_REPORT.md`
+- `scripts/check_status_consistency.sh`
+- `git diff --check`
+
+Key results:
+- No unchecked checkbox rows remain in plans/TODO/session artifacts.
+- Status consistency passed.
+- Diff whitespace check passed.
+
+Unresolved issues:
+- None for this documentation reconciliation.
+
+Signature: GPT-5 Codex
+
 ## 2026-04-24 17:36 CEST - Memory Lifetime Owned-Root Teardown Closure
 
 Objective:

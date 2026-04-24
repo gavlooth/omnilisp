@@ -124,37 +124,38 @@ Implementation sequence:
      exposes `cusolver` / `cusolver-complex-svd` loader capabilities, and keeps
      operation-specific CUDA complex SVD capability fields false until routing
      lands.
-3. [ ] Add generated adapter PTX source, for example
+3. [x] Add generated adapter PTX source, for example
    `csrc/tensor_cuda_complex_svd.cu` and
    `csrc/tensor_cuda_complex_svd_ptx.inc`.
-4. [ ] Implement CUDA complex singular-values helpers and route
+   - Closed 2026-04-22 under `TENSOR-100H-CUDA-SVD-NORMS-ADAPTERS`:
+     row-major Omni to column-major cuSOLVER input adapters, wide-matrix
+     adjoint preparation, cuSOLVER `U` to public row-major `u`, and cuSOLVER
+     `VT = V^H` to public row-major `v` are shipped in the CUDA complex matrix
+     PTX/helper module.
+4. [x] Implement CUDA complex singular-values helpers and route
    `matrix/singular-values`.
-5. [ ] Implement CUDA spectral/nuclear norm helpers. Norms read back only the
+5. [x] Implement CUDA spectral/nuclear norm helpers. Norms read back only the
    public `Float64` scalar.
-6. [ ] Implement CUDA complex `matrix/svd` factor helpers returning CUDA-placed
+6. [x] Implement CUDA complex `matrix/svd` factor helpers returning CUDA-placed
    `u`, `s`, and `v`.
-7. [ ] Add tests for capability reporting, unavailable/fail-closed behavior,
+7. [x] Add tests for capability reporting, unavailable/fail-closed behavior,
    values, dtype, device placement, lazy CUDA inputs, empty axes, wide inputs,
    reconstruction, call counters, and no CPU/LAPACK fallback.
+   - Closed 2026-04-22 under `TENSOR-100H-CUDA-SVD-NORMS-EXEC`: CUDA
+     Complex128/Complex64 `matrix/singular-values`, spectral/nuclear
+     `matrix/norm`, and reduced-factor `matrix/svd` route through dynamically
+     loaded cuSOLVER `gesvd` plus the shipped adapter ABI. Regression coverage
+     includes capability truth, fail-closed unavailable behavior, dtype/device
+     placement, lazy CUDA inputs, empty axes, wide SVD factors, reconstruction,
+     and cuSOLVER counter movement.
 
-Active hypothesis:
+Closure state:
 
-- cuSOLVER should be treated as an isolated CUDA SVD provider. Loader
-  availability is now observable, but public operations stay disabled until the
-  adapter boundary prevents row/column-major and `VT` orientation errors.
-
-Current approach:
-
-- Implement the shared CUDA adapter PTX before routing any public
-  `matrix/singular-values`, `matrix/norm`, or `matrix/svd` primitive to
-  cuSOLVER. This avoids another case-specific SVD path and keeps the capability
-  contract honest.
-
-Next checkpoint:
-
-- `TENSOR-100H-CUDA-SVD-NORMS-ADAPTERS`: generated PTX plus resolver tests for
-  row-major to cuSOLVER column-major input preparation and `VT` to public `v`
-  conversion.
+- cuSOLVER is an isolated optional CUDA SVD provider behind dynamic loading.
+  Public operations route only after shape, byte-length, layout-adapter, and
+  capability checks pass.
+- No active checkpoint remains under this lane. Reopen future CUDA SVD work only
+  as a new measurement- or capability-led item.
 
 Validation gate:
 
