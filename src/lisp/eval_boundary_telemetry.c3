@@ -31,6 +31,62 @@ struct BoundaryDecisionStats {
 
 BoundaryDecisionStats g_boundary_decision_stats;
 
+struct BoundaryValueShapeStats {
+    usz array_construct_count;
+    usz array_capacity_total;
+    usz array_capacity_peak;
+    usz array_growth_count;
+    usz array_growth_old_capacity_total;
+    usz array_growth_new_capacity_total;
+    usz array_growth_new_capacity_peak;
+    usz hashmap_construct_count;
+    usz hashmap_capacity_total;
+    usz hashmap_capacity_peak;
+    usz hashmap_growth_count;
+    usz hashmap_growth_old_capacity_total;
+    usz hashmap_growth_new_capacity_total;
+    usz hashmap_growth_new_capacity_peak;
+    usz set_construct_count;
+    usz set_capacity_total;
+    usz set_capacity_peak;
+    usz set_growth_count;
+    usz set_growth_old_capacity_total;
+    usz set_growth_new_capacity_total;
+    usz set_growth_new_capacity_peak;
+    usz closure_env_copy_frame_count;
+    usz closure_env_copy_depth_total;
+    usz closure_env_copy_depth_peak;
+    usz closure_env_copy_binding_count_total;
+    usz closure_env_copy_binding_count_peak;
+    usz string_payload_count;
+    usz string_payload_bytes_total;
+    usz string_payload_bytes_peak;
+    usz error_payload_count;
+    usz error_payload_bytes_total;
+    usz error_payload_bytes_peak;
+    usz big_integer_wrapper_count;
+    usz big_integer_decimal_input_count;
+    usz big_integer_decimal_input_bytes_total;
+    usz big_integer_decimal_input_bytes_peak;
+    usz tensor_construct_count;
+    usz tensor_payload_bytes_total;
+    usz tensor_payload_bytes_peak;
+    usz ffi_handle_wrapper_count;
+    usz ffi_handle_borrowed_count;
+    usz ffi_handle_owned_count;
+    usz ffi_handle_manual_count;
+    usz ffi_handle_releasable_count;
+    usz ffi_handle_buffer_count;
+    usz ffi_handle_library_count;
+    usz stable_passport_valid_count;
+    usz stable_passport_owner_scope_invalid_count;
+    usz stable_passport_owner_escape_changed_count;
+    usz stable_passport_root_not_in_owner_chain_count;
+    usz stable_passport_prepared_graph_stale_count;
+}
+
+BoundaryValueShapeStats g_boundary_value_shape_stats;
+
 // Instrumentation policy:
 // - macros are used only for telemetry/trace scaffolding
 // - ownership transitions and boundary control flow stay in functions
@@ -85,6 +141,130 @@ fn bool boundary_trace_runtime_enabled() @inline {
 
 fn bool boundary_benchmark_runtime_enabled() @inline {
     return boundary_benchmark_mode_enabled() && boundary_policy_benchmark_trace_enabled();
+}
+
+fn void boundary_value_shape_note_array_construct(usz capacity) @inline {
+    if (!boundary_telemetry_enabled()) return;
+    g_boundary_value_shape_stats.array_construct_count++;
+    g_boundary_value_shape_stats.array_capacity_total += capacity;
+    if (capacity > g_boundary_value_shape_stats.array_capacity_peak) g_boundary_value_shape_stats.array_capacity_peak = capacity;
+}
+
+fn void boundary_value_shape_note_array_growth(usz old_capacity, usz new_capacity) @inline {
+    if (!boundary_telemetry_enabled()) return;
+    g_boundary_value_shape_stats.array_growth_count++;
+    g_boundary_value_shape_stats.array_growth_old_capacity_total += old_capacity;
+    g_boundary_value_shape_stats.array_growth_new_capacity_total += new_capacity;
+    if (new_capacity > g_boundary_value_shape_stats.array_growth_new_capacity_peak) g_boundary_value_shape_stats.array_growth_new_capacity_peak = new_capacity;
+}
+
+fn void boundary_value_shape_note_hashmap_construct(usz capacity) @inline {
+    if (!boundary_telemetry_enabled()) return;
+    g_boundary_value_shape_stats.hashmap_construct_count++;
+    g_boundary_value_shape_stats.hashmap_capacity_total += capacity;
+    if (capacity > g_boundary_value_shape_stats.hashmap_capacity_peak) g_boundary_value_shape_stats.hashmap_capacity_peak = capacity;
+}
+
+fn void boundary_value_shape_note_hashmap_growth(usz old_capacity, usz new_capacity) @inline {
+    if (!boundary_telemetry_enabled()) return;
+    g_boundary_value_shape_stats.hashmap_growth_count++;
+    g_boundary_value_shape_stats.hashmap_growth_old_capacity_total += old_capacity;
+    g_boundary_value_shape_stats.hashmap_growth_new_capacity_total += new_capacity;
+    if (new_capacity > g_boundary_value_shape_stats.hashmap_growth_new_capacity_peak) g_boundary_value_shape_stats.hashmap_growth_new_capacity_peak = new_capacity;
+}
+
+fn void boundary_value_shape_note_set_construct(usz capacity) @inline {
+    if (!boundary_telemetry_enabled()) return;
+    g_boundary_value_shape_stats.set_construct_count++;
+    g_boundary_value_shape_stats.set_capacity_total += capacity;
+    if (capacity > g_boundary_value_shape_stats.set_capacity_peak) g_boundary_value_shape_stats.set_capacity_peak = capacity;
+}
+
+fn void boundary_value_shape_note_set_growth(usz old_capacity, usz new_capacity) @inline {
+    if (!boundary_telemetry_enabled()) return;
+    g_boundary_value_shape_stats.set_growth_count++;
+    g_boundary_value_shape_stats.set_growth_old_capacity_total += old_capacity;
+    g_boundary_value_shape_stats.set_growth_new_capacity_total += new_capacity;
+    if (new_capacity > g_boundary_value_shape_stats.set_growth_new_capacity_peak) g_boundary_value_shape_stats.set_growth_new_capacity_peak = new_capacity;
+}
+
+fn void boundary_value_shape_note_env_copy_frame(usz depth, usz binding_count) @inline {
+    if (!boundary_telemetry_enabled()) return;
+    g_boundary_value_shape_stats.closure_env_copy_frame_count++;
+    g_boundary_value_shape_stats.closure_env_copy_depth_total += depth;
+    g_boundary_value_shape_stats.closure_env_copy_binding_count_total += binding_count;
+    if (depth > g_boundary_value_shape_stats.closure_env_copy_depth_peak) g_boundary_value_shape_stats.closure_env_copy_depth_peak = depth;
+    if (binding_count > g_boundary_value_shape_stats.closure_env_copy_binding_count_peak) g_boundary_value_shape_stats.closure_env_copy_binding_count_peak = binding_count;
+}
+
+fn void boundary_value_shape_note_string_payload(usz len) @inline {
+    if (!boundary_telemetry_enabled()) return;
+    g_boundary_value_shape_stats.string_payload_count++;
+    g_boundary_value_shape_stats.string_payload_bytes_total += len;
+    if (len > g_boundary_value_shape_stats.string_payload_bytes_peak) g_boundary_value_shape_stats.string_payload_bytes_peak = len;
+}
+
+fn void boundary_value_shape_note_error_payload(usz len) @inline {
+    if (!boundary_telemetry_enabled()) return;
+    g_boundary_value_shape_stats.error_payload_count++;
+    g_boundary_value_shape_stats.error_payload_bytes_total += len;
+    if (len > g_boundary_value_shape_stats.error_payload_bytes_peak) g_boundary_value_shape_stats.error_payload_bytes_peak = len;
+}
+
+fn void boundary_value_shape_note_big_integer_wrapper() @inline {
+    if (!boundary_telemetry_enabled()) return;
+    g_boundary_value_shape_stats.big_integer_wrapper_count++;
+}
+
+fn void boundary_value_shape_note_big_integer_decimal_input(usz len) @inline {
+    if (!boundary_telemetry_enabled()) return;
+    g_boundary_value_shape_stats.big_integer_decimal_input_count++;
+    g_boundary_value_shape_stats.big_integer_decimal_input_bytes_total += len;
+    if (len > g_boundary_value_shape_stats.big_integer_decimal_input_bytes_peak) g_boundary_value_shape_stats.big_integer_decimal_input_bytes_peak = len;
+}
+
+fn void boundary_value_shape_note_tensor_construct(usz byte_len) @inline {
+    if (!boundary_telemetry_enabled()) return;
+    g_boundary_value_shape_stats.tensor_construct_count++;
+    g_boundary_value_shape_stats.tensor_payload_bytes_total += byte_len;
+    if (byte_len > g_boundary_value_shape_stats.tensor_payload_bytes_peak) g_boundary_value_shape_stats.tensor_payload_bytes_peak = byte_len;
+}
+
+fn void boundary_value_shape_note_ffi_handle(FfiHandleOwnership ownership, ForeignHandleKind handle_kind, bool releasable) @inline {
+    if (!boundary_telemetry_enabled()) return;
+    g_boundary_value_shape_stats.ffi_handle_wrapper_count++;
+    switch (ownership) {
+        case FFI_HANDLE_BORROWED:
+            g_boundary_value_shape_stats.ffi_handle_borrowed_count++;
+        case FFI_HANDLE_OWNED:
+            g_boundary_value_shape_stats.ffi_handle_owned_count++;
+        case FFI_HANDLE_MANUAL:
+            g_boundary_value_shape_stats.ffi_handle_manual_count++;
+    }
+    if (releasable) g_boundary_value_shape_stats.ffi_handle_releasable_count++;
+    switch (handle_kind) {
+        case FOREIGN_HANDLE_BUFFER:
+            g_boundary_value_shape_stats.ffi_handle_buffer_count++;
+        case FOREIGN_HANDLE_LIBRARY:
+            g_boundary_value_shape_stats.ffi_handle_library_count++;
+        default:
+    }
+}
+
+fn void boundary_value_shape_note_stable_passport_reason(StableGraphPassportInvalidationReason reason) @inline {
+    if (!boundary_telemetry_enabled()) return;
+    switch (reason) {
+        case STABLE_GRAPH_PASSPORT_VALID:
+            g_boundary_value_shape_stats.stable_passport_valid_count++;
+        case STABLE_GRAPH_PASSPORT_OWNER_SCOPE_INVALID:
+            g_boundary_value_shape_stats.stable_passport_owner_scope_invalid_count++;
+        case STABLE_GRAPH_PASSPORT_OWNER_ESCAPE_CHANGED:
+            g_boundary_value_shape_stats.stable_passport_owner_escape_changed_count++;
+        case STABLE_GRAPH_PASSPORT_ROOT_NOT_IN_OWNER_CHAIN:
+            g_boundary_value_shape_stats.stable_passport_root_not_in_owner_chain_count++;
+        case STABLE_GRAPH_PASSPORT_PREPARED_GRAPH_STALE:
+            g_boundary_value_shape_stats.stable_passport_prepared_graph_stale_count++;
+    }
 }
 
 macro boundary_telemetry_inc_splice_attempted() {
@@ -303,6 +483,10 @@ fn void boundary_restore_decision_stats(BoundaryDecisionStats snapshot) @inline 
 
 fn BoundaryDecisionStats boundary_decision_stats_snapshot() @inline {
     return g_boundary_decision_stats;
+}
+
+fn BoundaryValueShapeStats boundary_value_shape_stats_snapshot() @inline {
+    return g_boundary_value_shape_stats;
 }
 
 fn void boundary_note_splice_result(BoundaryScopeTransferResult result) @inline {

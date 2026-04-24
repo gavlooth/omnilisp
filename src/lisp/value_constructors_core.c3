@@ -107,6 +107,7 @@ fn Value* make_string(Interp* interp, char[] str) {
     }
     v.str_chars[len] = 0;
     v.str_len = len;
+    boundary_value_shape_note_string_payload(len);
 
     return v;
 }
@@ -127,6 +128,7 @@ fn Value* make_string_owned(Interp* interp, char* owned_chars, usz len) {
     v.string_heap_owned = true;
     // owned_chars must have capacity >= len + 1.
     v.str_chars[len] = 0;
+    boundary_value_shape_note_string_payload(len);
     return v;
 }
 

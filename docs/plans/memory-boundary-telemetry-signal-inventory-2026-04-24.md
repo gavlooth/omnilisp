@@ -73,14 +73,26 @@ optimization proposals into measured decisions.
 ## Current Coverage Interpretation
 
 The existing observability is strong for route choice, copy debt, selected
-container root families, and current benchmark timing. It is weak for allocator
-shape, collection capacity/growth histograms, closure-env dimensions, payload
-byte distributions, and opaque wrapper churn.
+container root families, current benchmark timing, and the low-overhead
+allocator/value-shape counter families landed by `MEM-BENCH-OBSERVE-002`.
+Those counters cover:
 
-Therefore `MEM-BENCH-OBSERVE-002` should not add a new benchmark first. It
-should add missing counters for allocator pressure and value-shape dimensions
-behind existing instrumentation gates, then `MEM-BENCH-OBSERVE-003` can expand
-workloads with meaningful fields to report.
+- TEMP/ESCAPE slow-path request bytes and selected chunk bytes.
+- TEMP/ESCAPE peak live chunks and slack bytes observed at reset/destroy.
+- Scope fresh allocation vs freelist reuse hits.
+- Fiber-temp take/return/drop chunk bytes, including context-local bytes.
+- Array/hashmap/set construction and growth capacity totals/peaks.
+- Closure env-copy frame depth and binding-count totals/peaks.
+- String, error, BigInteger decimal-input, and tensor payload bytes.
+- FFI wrapper ownership/release-authority classes.
+- Stable passport invalidation reason counts.
+
+The remaining gap is benchmark coverage: the runtime now has fields to report,
+but `memory-lifetime-bench` still needs workloads that exercise those fields
+with stable `OMNI_BENCH_SUMMARY` output.
+
+Therefore `MEM-BENCH-OBSERVE-003` should expand workloads next instead of
+adding more counters first.
 
 ## Negative-Memory Constraints
 

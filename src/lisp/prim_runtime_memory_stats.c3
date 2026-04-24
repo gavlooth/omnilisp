@@ -31,7 +31,7 @@ fn Value* runtime_memory_dict_set_symbol(Value* dict, Interp* interp, char[] key
 }
 
 fn Value* runtime_memory_scope_stats(Interp* interp) {
-    Value* out = runtime_memory_make_dict(interp, 32);
+    Value* out = runtime_memory_make_dict(interp, 64);
     if (out == null || out.tag == ERROR) return out;
     main::ScopeMemoryTelemetryStats stats = main::g_scope_memory_telemetry_stats;
     if (Value* err = runtime_memory_dict_set_usz(out, interp, "temp-bytes-allocated", stats.total_temp_bytes_allocated)) return err;
@@ -40,10 +40,26 @@ fn Value* runtime_memory_scope_stats(Interp* interp) {
     if (Value* err = runtime_memory_dict_set_usz(out, interp, "escape-chunk-bytes-allocated", stats.escape_chunk_bytes_allocated)) return err;
     if (Value* err = runtime_memory_dict_set_usz(out, interp, "temp-bytes-freed", stats.temp_bytes_freed)) return err;
     if (Value* err = runtime_memory_dict_set_usz(out, interp, "escape-bytes-freed", stats.escape_bytes_freed)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "temp-slow-alloc-count", stats.temp_slow_alloc_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "escape-slow-alloc-count", stats.escape_slow_alloc_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "temp-slow-requested-bytes", stats.temp_slow_requested_bytes)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "escape-slow-requested-bytes", stats.escape_slow_requested_bytes)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "temp-slow-selected-chunk-bytes", stats.temp_slow_selected_chunk_bytes)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "escape-slow-selected-chunk-bytes", stats.escape_slow_selected_chunk_bytes)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "temp-live-chunk-count", stats.temp_live_chunk_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "escape-live-chunk-count", stats.escape_live_chunk_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "temp-peak-live-chunk-count", stats.temp_peak_live_chunk_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "escape-peak-live-chunk-count", stats.escape_peak_live_chunk_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "temp-unused-bytes-at-reset", stats.temp_unused_bytes_at_reset)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "escape-unused-bytes-at-reset", stats.escape_unused_bytes_at_reset)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "temp-unused-bytes-at-destroy", stats.temp_unused_bytes_at_destroy)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "escape-unused-bytes-at-destroy", stats.escape_unused_bytes_at_destroy)) return err;
     if (Value* err = runtime_memory_dict_set_usz(out, interp, "scope-create-count", stats.scope_create_count)) return err;
     if (Value* err = runtime_memory_dict_set_usz(out, interp, "scope-release-count", stats.scope_release_count)) return err;
     if (Value* err = runtime_memory_dict_set_usz(out, interp, "scope-destroy-count", stats.scope_destroy_count)) return err;
     if (Value* err = runtime_memory_dict_set_usz(out, interp, "scope-recycle-count", stats.scope_recycle_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "scope-fresh-alloc-count", stats.scope_fresh_alloc_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "scope-recycle-hit-count", stats.scope_recycle_hit_count)) return err;
     if (Value* err = runtime_memory_dict_set_usz(out, interp, "freelist-count", main::g_scope_freelist_count)) return err;
     if (Value* err = runtime_memory_dict_set_usz(out, interp, "generation-counter", main::g_scope_generation_counter)) return err;
     if (interp.current_scope != null) {
@@ -81,6 +97,11 @@ fn Value* runtime_memory_fiber_temp_stats(Interp* interp) {
     if (Value* err = runtime_memory_dict_set_usz(out, interp, "ctx-take-hits", stats.ctx_take_hits)) return err;
     if (Value* err = runtime_memory_dict_set_usz(out, interp, "ctx-return-count", stats.ctx_return_count)) return err;
     if (Value* err = runtime_memory_dict_set_usz(out, interp, "ctx-pool-created", stats.ctx_pool_created)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "take-hit-chunk-bytes", stats.take_hit_chunk_bytes)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "return-chunk-bytes", stats.return_chunk_bytes)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "drop-free-chunk-bytes", stats.drop_free_chunk_bytes)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "ctx-take-hit-chunk-bytes", stats.ctx_take_hit_chunk_bytes)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "ctx-return-chunk-bytes", stats.ctx_return_chunk_bytes)) return err;
     if (Value* err = runtime_memory_dict_set_usz(out, interp, "lifecycle-clone-callbacks", stats.lifecycle_clone_callbacks)) return err;
     if (Value* err = runtime_memory_dict_set_usz(out, interp, "lifecycle-destroy-callbacks", stats.lifecycle_destroy_callbacks)) return err;
     if (Value* err = runtime_memory_dict_set_usz(out, interp, "lifecycle-destroy-deferred", stats.lifecycle_destroy_deferred)) return err;
@@ -88,6 +109,64 @@ fn Value* runtime_memory_fiber_temp_stats(Interp* interp) {
     if (Value* err = runtime_memory_dict_set_usz(out, interp, "eligible-slow-allocs", stats.eligible_slow_allocs)) return err;
     if (Value* err = runtime_memory_dict_set_usz(out, interp, "bypass-large-allocs", stats.bypass_large_allocs)) return err;
     if (Value* err = runtime_memory_dict_set_usz(out, interp, "bypass-escape-activity-allocs", stats.bypass_escape_activity_allocs)) return err;
+    return out;
+}
+
+fn Value* runtime_memory_value_shape_stats(Interp* interp) {
+    Value* out = runtime_memory_make_dict(interp, 96);
+    if (out == null || out.tag == ERROR) return out;
+    BoundaryValueShapeStats stats = boundary_value_shape_stats_snapshot();
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "array-construct-count", stats.array_construct_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "array-capacity-total", stats.array_capacity_total)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "array-capacity-peak", stats.array_capacity_peak)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "array-growth-count", stats.array_growth_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "array-growth-old-capacity-total", stats.array_growth_old_capacity_total)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "array-growth-new-capacity-total", stats.array_growth_new_capacity_total)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "array-growth-new-capacity-peak", stats.array_growth_new_capacity_peak)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "hashmap-construct-count", stats.hashmap_construct_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "hashmap-capacity-total", stats.hashmap_capacity_total)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "hashmap-capacity-peak", stats.hashmap_capacity_peak)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "hashmap-growth-count", stats.hashmap_growth_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "hashmap-growth-old-capacity-total", stats.hashmap_growth_old_capacity_total)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "hashmap-growth-new-capacity-total", stats.hashmap_growth_new_capacity_total)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "hashmap-growth-new-capacity-peak", stats.hashmap_growth_new_capacity_peak)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "set-construct-count", stats.set_construct_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "set-capacity-total", stats.set_capacity_total)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "set-capacity-peak", stats.set_capacity_peak)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "set-growth-count", stats.set_growth_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "set-growth-old-capacity-total", stats.set_growth_old_capacity_total)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "set-growth-new-capacity-total", stats.set_growth_new_capacity_total)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "set-growth-new-capacity-peak", stats.set_growth_new_capacity_peak)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "closure-env-copy-frame-count", stats.closure_env_copy_frame_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "closure-env-copy-depth-total", stats.closure_env_copy_depth_total)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "closure-env-copy-depth-peak", stats.closure_env_copy_depth_peak)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "closure-env-copy-binding-count-total", stats.closure_env_copy_binding_count_total)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "closure-env-copy-binding-count-peak", stats.closure_env_copy_binding_count_peak)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "string-payload-count", stats.string_payload_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "string-payload-bytes-total", stats.string_payload_bytes_total)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "string-payload-bytes-peak", stats.string_payload_bytes_peak)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "error-payload-count", stats.error_payload_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "error-payload-bytes-total", stats.error_payload_bytes_total)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "error-payload-bytes-peak", stats.error_payload_bytes_peak)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "big-integer-wrapper-count", stats.big_integer_wrapper_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "big-integer-decimal-input-count", stats.big_integer_decimal_input_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "big-integer-decimal-input-bytes-total", stats.big_integer_decimal_input_bytes_total)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "big-integer-decimal-input-bytes-peak", stats.big_integer_decimal_input_bytes_peak)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "tensor-construct-count", stats.tensor_construct_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "tensor-payload-bytes-total", stats.tensor_payload_bytes_total)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "tensor-payload-bytes-peak", stats.tensor_payload_bytes_peak)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "ffi-handle-wrapper-count", stats.ffi_handle_wrapper_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "ffi-handle-borrowed-count", stats.ffi_handle_borrowed_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "ffi-handle-owned-count", stats.ffi_handle_owned_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "ffi-handle-manual-count", stats.ffi_handle_manual_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "ffi-handle-releasable-count", stats.ffi_handle_releasable_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "ffi-handle-buffer-count", stats.ffi_handle_buffer_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "ffi-handle-library-count", stats.ffi_handle_library_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "stable-passport-valid-count", stats.stable_passport_valid_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "stable-passport-owner-scope-invalid-count", stats.stable_passport_owner_scope_invalid_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "stable-passport-owner-escape-changed-count", stats.stable_passport_owner_escape_changed_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "stable-passport-root-not-in-owner-chain-count", stats.stable_passport_root_not_in_owner_chain_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "stable-passport-prepared-graph-stale-count", stats.stable_passport_prepared_graph_stale_count)) return err;
     return out;
 }
 
@@ -208,6 +287,7 @@ fn Value* prim_runtime_memory_stats(Value*[] args, Env* env, Interp* interp) {
     if (Value* err = runtime_memory_dict_set(out, interp, "copy-to-parent", runtime_memory_copy_stats(interp))) return err;
     if (Value* err = runtime_memory_dict_set(out, interp, "escape-shape", runtime_memory_escape_shape_stats(interp))) return err;
     if (Value* err = runtime_memory_dict_set(out, interp, "boundary-decisions", runtime_memory_boundary_decision_stats(interp))) return err;
+    if (Value* err = runtime_memory_dict_set(out, interp, "value-shape", runtime_memory_value_shape_stats(interp))) return err;
     return out;
 }
 
@@ -223,29 +303,45 @@ fn void runtime_memory_print_telemetry() {
     CopyToParentStats copy_stats = copy_to_parent_stats_snapshot();
     BoundaryEscapeShapeStats shape_stats = boundary_escape_shape_stats_snapshot();
     BoundaryDecisionStats boundary_stats = boundary_decision_stats_snapshot();
+    BoundaryValueShapeStats value_stats = boundary_value_shape_stats_snapshot();
 
     io::printn("{\"kind\":\"runtime-memory-stats\",\"status\":\"ok\",");
-    io::printfn("\"scope\":{\"temp_bytes_allocated\":%d,\"escape_bytes_allocated\":%d,\"temp_chunk_bytes_allocated\":%d,\"escape_chunk_bytes_allocated\":%d,\"temp_bytes_freed\":%d,\"escape_bytes_freed\":%d,\"scope_create_count\":%d,\"scope_release_count\":%d,\"scope_destroy_count\":%d,\"scope_recycle_count\":%d},",
+    io::printfn("\"scope\":{\"temp_bytes_allocated\":%d,\"escape_bytes_allocated\":%d,\"temp_chunk_bytes_allocated\":%d,\"escape_chunk_bytes_allocated\":%d,\"temp_bytes_freed\":%d,\"escape_bytes_freed\":%d,\"temp_slow_alloc_count\":%d,\"escape_slow_alloc_count\":%d,\"temp_peak_live_chunk_count\":%d,\"escape_peak_live_chunk_count\":%d,\"temp_unused_bytes_at_reset\":%d,\"escape_unused_bytes_at_reset\":%d,\"temp_unused_bytes_at_destroy\":%d,\"escape_unused_bytes_at_destroy\":%d,\"scope_create_count\":%d,\"scope_release_count\":%d,\"scope_destroy_count\":%d,\"scope_recycle_count\":%d,\"scope_fresh_alloc_count\":%d,\"scope_recycle_hit_count\":%d},",
         scope_stats.total_temp_bytes_allocated,
         scope_stats.total_escape_bytes_allocated,
         scope_stats.temp_chunk_bytes_allocated,
         scope_stats.escape_chunk_bytes_allocated,
         scope_stats.temp_bytes_freed,
         scope_stats.escape_bytes_freed,
+        scope_stats.temp_slow_alloc_count,
+        scope_stats.escape_slow_alloc_count,
+        scope_stats.temp_peak_live_chunk_count,
+        scope_stats.escape_peak_live_chunk_count,
+        scope_stats.temp_unused_bytes_at_reset,
+        scope_stats.escape_unused_bytes_at_reset,
+        scope_stats.temp_unused_bytes_at_destroy,
+        scope_stats.escape_unused_bytes_at_destroy,
         scope_stats.scope_create_count,
         scope_stats.scope_release_count,
         scope_stats.scope_destroy_count,
-        scope_stats.scope_recycle_count);
+        scope_stats.scope_recycle_count,
+        scope_stats.scope_fresh_alloc_count,
+        scope_stats.scope_recycle_hit_count);
     io::printfn("\"scope_transfer\":{\"splice_calls\":%d,\"escape_bytes_spliced\":%d,\"temp_bytes_freed_by_splice\":%d},",
         transfer_stats.splice_calls,
         transfer_stats.splice_escape_chunk_bytes,
         transfer_stats.splice_temp_chunk_bytes_freed);
-    io::printfn("\"fiber_temp\":{\"take_hits\":%d,\"take_misses\":%d,\"return_count\":%d,\"drop_frees\":%d,\"current_pool_count\":%d},",
+    io::printfn("\"fiber_temp\":{\"take_hits\":%d,\"take_misses\":%d,\"return_count\":%d,\"drop_frees\":%d,\"current_pool_count\":%d,\"take_hit_chunk_bytes\":%d,\"return_chunk_bytes\":%d,\"drop_free_chunk_bytes\":%d,\"ctx_take_hit_chunk_bytes\":%d,\"ctx_return_chunk_bytes\":%d},",
         fiber_stats.take_hits,
         fiber_stats.take_misses,
         fiber_stats.return_count,
         fiber_stats.drop_frees,
-        main::g_fiber_temp_chunk_pool_count);
+        main::g_fiber_temp_chunk_pool_count,
+        fiber_stats.take_hit_chunk_bytes,
+        fiber_stats.return_chunk_bytes,
+        fiber_stats.drop_free_chunk_bytes,
+        fiber_stats.ctx_take_hit_chunk_bytes,
+        fiber_stats.ctx_return_chunk_bytes);
     io::printfn("\"copy_to_parent\":{\"total_calls\":%d,\"fast_reuse_hits\":%d,\"defensive_copies\":%d,\"copy_to_parent_bytes\":%d},",
         copy_stats.total_calls,
         copy_stats.fast_reuse_hits,
@@ -273,6 +369,25 @@ fn void runtime_memory_print_telemetry() {
         shape_stats.module_roots,
         shape_stats.type_info_roots,
         shape_stats.ffi_handle_roots);
+    io::printfn("\"value_shape\":{\"array_construct_count\":%d,\"array_growth_count\":%d,\"hashmap_construct_count\":%d,\"hashmap_growth_count\":%d,\"set_construct_count\":%d,\"set_growth_count\":%d,\"closure_env_copy_frame_count\":%d,\"string_payload_bytes_total\":%d,\"error_payload_bytes_total\":%d,\"big_integer_wrapper_count\":%d,\"big_integer_decimal_input_bytes_total\":%d,\"tensor_payload_bytes_total\":%d,\"ffi_handle_wrapper_count\":%d,\"ffi_handle_releasable_count\":%d,\"stable_passport_owner_scope_invalid_count\":%d,\"stable_passport_owner_escape_changed_count\":%d,\"stable_passport_root_not_in_owner_chain_count\":%d,\"stable_passport_prepared_graph_stale_count\":%d},",
+        value_stats.array_construct_count,
+        value_stats.array_growth_count,
+        value_stats.hashmap_construct_count,
+        value_stats.hashmap_growth_count,
+        value_stats.set_construct_count,
+        value_stats.set_growth_count,
+        value_stats.closure_env_copy_frame_count,
+        value_stats.string_payload_bytes_total,
+        value_stats.error_payload_bytes_total,
+        value_stats.big_integer_wrapper_count,
+        value_stats.big_integer_decimal_input_bytes_total,
+        value_stats.tensor_payload_bytes_total,
+        value_stats.ffi_handle_wrapper_count,
+        value_stats.ffi_handle_releasable_count,
+        value_stats.stable_passport_owner_scope_invalid_count,
+        value_stats.stable_passport_owner_escape_changed_count,
+        value_stats.stable_passport_root_not_in_owner_chain_count,
+        value_stats.stable_passport_prepared_graph_stale_count);
     io::printfn("\"boundary_decisions\":{\"planned_stable_publish\":%d,\"planned_stable_materialize\":%d,\"planned_transplant\":%d,\"selected_stable_publish\":%d,\"selected_stable_materialize\":%d,\"selected_transplant\":%d,\"selected_fail_closed\":%d,\"route_fail_transplant_rejected\":%d,\"materialization_node_count\":%d,\"materialization_copy_bytes\":%d,\"selected_stable_materialize_cons\":%d,\"selected_stable_materialize_array\":%d,\"selected_stable_materialize_hashmap\":%d,\"selected_stable_materialize_set\":%d,\"selected_stable_materialize_closure\":%d,\"selected_stable_materialize_big_integer\":%d,\"materialization_copy_bytes_cons\":%d,\"materialization_copy_bytes_array\":%d,\"materialization_copy_bytes_hashmap\":%d,\"materialization_copy_bytes_set\":%d,\"materialization_copy_bytes_closure\":%d,\"materialization_copy_bytes_big_integer\":%d}}",
         (long)boundary_stats.planned_route_by_route[(usz)BoundaryPlanRoute.BOUNDARY_PLAN_ROUTE_STABLE_PUBLISH_REUSE],
         (long)boundary_stats.planned_route_by_route[(usz)BoundaryPlanRoute.BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION],

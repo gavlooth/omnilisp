@@ -60,6 +60,7 @@ fn BoundaryEnvCopyResult copy_env_materialize_frame(Env* env, Interp* interp, us
         new_env.build_hash_table();
     }
     main::scope_register_dtor(interp.current_scope, (void*)new_env, &scope_dtor_env);
+    boundary_value_shape_note_env_copy_frame(depth, env.binding_count);
     return boundary_env_copy_ok(new_env, depth);
 }
 

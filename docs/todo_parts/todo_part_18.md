@@ -276,13 +276,17 @@ Source: `docs/plans/memory-boundary-telemetry-benchmark-plan-2026-04-24.md`.
     proposal text as current implementation truth when it conflicts with
     `memory/CHANGELOG.md` or `docs/areas/memory-runtime.md`.
 
-- [ ] `MEM-BENCH-OBSERVE-002` expand low-overhead counter coverage.
+- [x] `MEM-BENCH-OBSERVE-002` expand low-overhead counter coverage.
   - classification: runtime telemetry, targeted instrumentation.
+  - done 2026-04-24: added gated allocator pressure counters, value-shape
+    counters, payload-byte counters, FFI/tensor wrapper authority counters,
+    and stable passport invalidation reason counters; exposed them through
+    `runtime-memory-stats` and `OMNI_MEM_TELEMETRY`.
   - task: add missing counters for allocator pressure, collection shape
     pressure, payload byte sizes, and FFI/tensor wrapper crossings.
   - validation: `c3c build --obj-out obj`, counters-enabled build with
-    `-D OMNI_BOUNDARY_INSTR_COUNTERS`, bounded `memory-lifetime-smoke`, and
-    `git diff --check`.
+    `-D OMNI_BOUNDARY_INSTR_COUNTERS`, bounded `basic`, bounded
+    `memory-lifetime-smoke`, and `git diff --check`.
   - prerequisites: `MEM-BENCH-OBSERVE-001` identifies missing fields and their
     owning files.
   - negative-memory constraint: keep default hot paths zero-overhead unless the
@@ -295,8 +299,7 @@ Source: `docs/plans/memory-boundary-telemetry-benchmark-plan-2026-04-24.md`.
     BigInteger/String/Error payloads, lazy tensor metadata, and FFI wrappers.
   - validation: bounded `memory-lifetime-bench` with `OMNI_BOUNDARY_BENCH=1`
     and counters enabled; each workload emits a stable `OMNI_BENCH_SUMMARY`.
-  - prerequisites: counter fields from `MEM-BENCH-OBSERVE-002` are available
-    or explicitly deferred with reason.
+  - prerequisites: counter fields from `MEM-BENCH-OBSERVE-002` are available.
   - negative-memory constraint: do not make benchmark fixtures weaken runtime
     proof/fail-closed invariants just to produce cleaner route counts.
 

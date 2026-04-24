@@ -367,6 +367,7 @@ fn Value* make_array_checked(Interp* interp, usz capacity, char[] oom_message) {
 
     v.tag = ARRAY;
     v.array_val = arr;
+    boundary_value_shape_note_array_construct(arr.capacity);
     return v;
 }
 

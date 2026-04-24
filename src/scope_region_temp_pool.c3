@@ -8,11 +8,13 @@ fn void scope_chunk_reclaim_temp_global(ScopeChunk* chunk) {
         g_fiber_temp_chunk_pool = chunk;
         g_fiber_temp_chunk_pool_count++;
         g_fiber_temp_pool_stats.return_count++;
+        fiber_temp_telemetry_note_return(chunk, false);
         fiber_temp_pool_record_peak();
         scope_global_unlock();
         return;
     }
     g_fiber_temp_pool_stats.drop_frees++;
+    fiber_temp_telemetry_note_drop_free(chunk);
     scope_global_unlock();
     mem::free(chunk);
 }
@@ -26,6 +28,7 @@ fn ScopeChunk* fiber_temp_chunk_try_take(usz min_bytes) {
         if (local != null) {
             g_fiber_temp_pool_stats.take_hits++;
             g_fiber_temp_pool_stats.ctx_take_hits++;
+            fiber_temp_telemetry_note_take_hit(local, true);
             return local;
         }
     }
@@ -43,6 +46,7 @@ fn ScopeChunk* fiber_temp_chunk_try_take(usz min_bytes) {
             }
             g_fiber_temp_chunk_pool_count--;
             g_fiber_temp_pool_stats.take_hits++;
+            fiber_temp_telemetry_note_take_hit(cur, false);
             scope_global_unlock();
             cur.next = null;
             return cur;
@@ -69,6 +73,7 @@ fn void scope_chunk_reclaim_temp(ScopeChunk* chunk) {
         ctx_pool.count++;
         g_fiber_temp_pool_stats.return_count++;
         g_fiber_temp_pool_stats.ctx_return_count++;
+        fiber_temp_telemetry_note_return(chunk, true);
         return;
     }
 

@@ -30,6 +30,7 @@ fn Value* make_big_integer_from_owned_handle(Interp* interp, void* handle, char[
     v.tag = BIG_INTEGER;
     v.big_integer_val = handle;
     main::scope_register_dtor(interp.current_scope, (void*)v, &scope_dtor_value);
+    boundary_value_shape_note_big_integer_wrapper();
     return v;
 }
 
@@ -50,6 +51,7 @@ fn Value* make_big_integer_from_string(Interp* interp, char[] value) {
             "BigInteger: expected decimal integer string",
             null);
     }
+    boundary_value_shape_note_big_integer_decimal_input(value.len);
     return make_big_integer_from_owned_handle(interp, handle, "BigInteger: failed to allocate integer payload");
 }
 

@@ -278,8 +278,10 @@ fn Value* prim_array_push(Value*[] args, Env* env, Interp* interp) {
         }
         for (usz i = 0; i < vec.length; i++) { new_items[i] = vec.items[i]; }
         mem::free(vec.items);
+        usz old_cap = vec.capacity;
         vec.items = new_items;
         vec.capacity = new_cap;
+        boundary_value_shape_note_array_growth(old_cap, new_cap);
     }
     Value* promoted = array_promote_or_error(args[1], interp);
     if (promoted == null || promoted.tag == ERROR) return promoted;

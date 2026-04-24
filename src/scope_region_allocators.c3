@@ -32,6 +32,7 @@ fn void* ScopeRegion.alloc_slow(ScopeRegion* self, usz aligned_size) {
         ? scope_chunk_alloc_temp(new_cap)
         : scope_chunk_alloc_raw(new_cap);
     if (chunk == null) return null;
+    scope_telemetry_note_temp_slow_alloc_request(aligned_size, chunk.capacity);
     scope_telemetry_note_temp_chunk_alloc(chunk);
     chunk.next = self.chunks;
     self.chunks = chunk;
@@ -62,6 +63,7 @@ fn void* ScopeRegion.alloc_escape_slow(ScopeRegion* self, usz aligned_size) {
 
     ScopeChunk* chunk = scope_chunk_alloc_raw(new_cap);
     if (chunk == null) return null;
+    scope_telemetry_note_escape_slow_alloc_request(aligned_size, chunk.capacity);
     scope_telemetry_note_escape_chunk_alloc(chunk);
     ScopeChunk* previous_head = self.escape_chunks;
     chunk.next = previous_head;

@@ -15,6 +15,7 @@ fn Value* make_tensor_double_uninitialized_checked(Interp* interp, usz[] shape, 
     v.tag = TENSOR;
     v.tensor_val = tensor;
     main::scope_register_dtor(interp.current_scope, (void*)v, &scope_dtor_value);
+    boundary_value_shape_note_tensor_construct(tensor.byte_len);
     return v;
 }
 
@@ -31,6 +32,7 @@ fn Value* make_tensor_uninitialized_checked(Interp* interp, TensorDType dtype, u
     v.tag = TENSOR;
     v.tensor_val = tensor;
     main::scope_register_dtor(interp.current_scope, (void*)v, &scope_dtor_value);
+    boundary_value_shape_note_tensor_construct(tensor.byte_len);
     return v;
 }
 

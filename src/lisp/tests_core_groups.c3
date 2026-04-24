@@ -454,6 +454,9 @@ fn void run_basic_runtime_memory_stats_tests(Interp* interp, int* pass, int* fai
         "       (>= (ref (ref s 'scope) 'temp-bytes-allocated) 0) "
         "       (>= (ref (ref s 'copy-to-parent) 'copy-to-parent-bytes) 0) "
         "       (>= (ref (ref s 'fiber-temp) 'take-hits) 0) "
+        "       (>= (ref (ref s 'scope) 'temp-peak-live-chunk-count) 0) "
+        "       (>= (ref (ref s 'value-shape) 'array-construct-count) 0) "
+        "       (>= (ref (ref s 'value-shape) 'ffi-handle-releasable-count) 0) "
         "       (>= (ref (ref s 'boundary-decisions) 'materialization-copy-bytes) 0) "
         "       (>= (ref (ref s 'boundary-decisions) 'selected-fail-closed) 0)))",
         interp

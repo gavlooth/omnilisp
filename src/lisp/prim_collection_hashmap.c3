@@ -224,6 +224,7 @@ fn bool hashmap_grow_checked(HashMap* map, Interp* interp) {
     }
     mem::free(old_entries);
     stable_graph_note_mutation_ptr((void*)map);
+    boundary_value_shape_note_hashmap_growth((usz)old_cap, (usz)new_cap);
     return true;
 }
 
@@ -391,6 +392,7 @@ fn Value* make_hashmap_no_raise(Interp* interp, uint capacity) {
     }
     v.tag = HASHMAP;
     v.hashmap_val = map;
+    boundary_value_shape_note_hashmap_construct((usz)map.capacity);
     return v;
 }
 
@@ -406,7 +408,10 @@ fn Value* make_hashmap(Interp* interp, uint capacity) {
 
 fn Value* make_set_checked(Interp* interp, uint capacity, char[] oom_message) {
     Value* v = make_hashmap_checked(interp, capacity, oom_message);
-    if (v != null && v.tag == HASHMAP) v.tag = SET;
+    if (v != null && v.tag == HASHMAP) {
+        v.tag = SET;
+        if (v.hashmap_val != null) boundary_value_shape_note_set_construct((usz)v.hashmap_val.capacity);
+    }
     return v;
 }
 

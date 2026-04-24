@@ -10,6 +10,7 @@ fn ScopeRegion* scope_create(ScopeRegion* parent = null) {
     uint generation = 0;
     uint escape_generation = 0;
     bool fiber_temp_eligible = scope_fiber_temp_context_eligible() && parent != null;
+    bool reused_from_freelist = false;
 
     // Global freelist and generation stamps are shared across threads.
     if (scope_freelist_recycle_enabled()) {
@@ -18,6 +19,7 @@ fn ScopeRegion* scope_create(ScopeRegion* parent = null) {
             scope = g_scope_freelist;
             g_scope_freelist = scope.pool_next;
             g_scope_freelist_count--;
+            reused_from_freelist = true;
         }
         generation = ++g_scope_generation_counter;
         escape_generation = ++g_scope_generation_counter;
@@ -32,11 +34,13 @@ fn ScopeRegion* scope_create(ScopeRegion* parent = null) {
     if (scope == null) {
         scope = (ScopeRegion*)mem::malloc(ScopeRegion.sizeof);
         if (scope == null) return null;
+        scope_telemetry_note_scope_fresh_alloc();
         scope.chunks = null;
         scope.escape_chunks = null;
         scope.escape_chunks_tail = null;
         scope.escape_dtors_tail = null;
     } else {
+        if (reused_from_freelist) scope_telemetry_note_scope_recycle_hit();
         assert(scope.escape_chunks == null, "scope_create: recycled scope escape_chunks must be cleared");
         assert(scope.escape_chunks_tail == null, "scope_create: recycled scope escape_chunks_tail must be cleared");
         assert(scope.escape_dtors == null, "scope_create: recycled scope escape_dtors must be cleared");

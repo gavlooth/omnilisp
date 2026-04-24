@@ -1,7 +1,8 @@
 # Memory Boundary Telemetry Benchmark Plan - 2026-04-24
 
-Status: open planning lane for TODO items `MEM-BENCH-OBSERVE-002` through
-`MEM-BENCH-OBSERVE-005`; `MEM-BENCH-OBSERVE-001` is complete.
+Status: open planning lane for TODO items `MEM-BENCH-OBSERVE-003` through
+`MEM-BENCH-OBSERVE-005`; `MEM-BENCH-OBSERVE-001` and
+`MEM-BENCH-OBSERVE-002` are complete.
 
 ## Active Hypothesis
 
@@ -133,12 +134,16 @@ the benchmark is stable across repeated container runs.
 
 - `MEM-BENCH-OBSERVE-001`: existing signal inventory is recorded in
   `docs/plans/memory-boundary-telemetry-signal-inventory-2026-04-24.md`.
+- `MEM-BENCH-OBSERVE-002`: low-overhead counter coverage is implemented and
+  exposed through `runtime-memory-stats`/`OMNI_MEM_TELEMETRY` for allocator
+  pressure, value-shape dimensions, wrapper authority classes, and stable
+  passport invalidation reasons.
 
 ## Next Checkpoint
 
-The next decision point is completion of `MEM-BENCH-OBSERVE-002`: add the
-lowest-risk missing counters from the signal inventory, then decide which
-workloads can emit meaningful benchmark summaries.
+The next decision point is completion of `MEM-BENCH-OBSERVE-003`: extend
+`memory-lifetime-bench` workloads so the new counter fields emit meaningful
+`OMNI_BENCH_SUMMARY` deltas before baseline capture.
 
 ## Negative-Memory Constraints
 

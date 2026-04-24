@@ -25,6 +25,7 @@ fn void scope_destroy(ScopeRegion* scope) {
     g_scope_memory_telemetry_stats.scope_destroy_count++;
     scope_guard_owner(scope, "scope_destroy");
     scope_assert_escape_tail_consistency(scope);
+    scope_telemetry_note_scope_unused_at_destroy(scope);
     // 1. Run destructors (reverse order — LIFO) for both lanes
     scope_run_dtors(scope);
     scope_run_escape_dtors(scope);

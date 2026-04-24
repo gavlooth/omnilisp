@@ -4947,6 +4947,34 @@ Validation:
   - `c3c build --obj-out obj -D OMNI_BOUNDARY_INSTR_COUNTERS`
   - bounded container counters-enabled `memory-lifetime-smoke`
     (`255 passed, 0 failed`)
+
+## 2026-04-24 memory telemetry counter expansion
+
+- Implemented and closed `MEM-BENCH-OBSERVE-002`.
+  - Scope telemetry now records gated allocator-shape counters for TEMP/ESCAPE
+    slow-path request bytes, selected chunk capacity bytes, peak live chunks,
+    reset/destroy slack bytes, and fresh vs recycled `ScopeRegion` allocation.
+  - Fiber-temp telemetry now records gated take/return/drop chunk bytes,
+    including context-local take/return byte totals.
+  - Boundary value-shape telemetry now records array/hashmap/set construction
+    and growth capacity totals/peaks, closure env-copy depth/binding counts,
+    string/error/BigInteger/tensor payload bytes, FFI wrapper ownership and
+    release-authority classes, and stable passport invalidation reasons.
+  - `runtime-memory-stats` and `OMNI_MEM_TELEMETRY` expose the new fields under
+    expanded `scope`/`fiber-temp` dictionaries and the new `value-shape`
+    dictionary.
+- Ownership note:
+  - The counters are observational only. They do not introduce per-value RC,
+    root pinning, or a new lifetime authority; scope/region ownership remains
+    the runtime source of truth.
+- Validation:
+  - C3 diagnostics on major edited files
+  - `c3c build --obj-out obj`
+  - `c3c build --obj-out obj -D OMNI_BOUNDARY_INSTR_COUNTERS`
+  - bounded container `basic` slice (`169 passed, 0 failed`)
+  - bounded container `memory-lifetime-smoke` (`255 passed, 0 failed`)
+  - bounded container `basic` slice with `OMNI_MEM_TELEMETRY=1` (`169
+    passed, 0 failed`, JSON telemetry included `value_shape`)
   - bounded container normal `memory-lifetime-smoke` (`255 passed, 0 failed`)
   - bounded container normal `basic` (`169 passed, 0 failed`)
   - bounded container normal Valgrind `memory-lifetime-smoke`

@@ -209,6 +209,47 @@ The historical content was split mechanically to keep individual files below the
   - No rebuild or runtime restart is required for this documentation-only slice.
 - Signature: GPT-5 Codex
 
+## 2026-04-24 15:17 CEST - Memory Telemetry Counter Expansion
+
+- Objective attempted:
+  - Complete `MEM-BENCH-OBSERVE-002` by adding the lowest-risk missing
+    allocator and value-shape counters needed before benchmark expansion.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - runtime memory telemetry and boundary instrumentation files
+  - `docs/plans/memory-boundary-telemetry-benchmark-plan-2026-04-24.md`
+  - `docs/todo_parts/todo_part_18.md`
+- Code or configuration changes made:
+  - Added gated scope allocator counters for slow-path requested bytes,
+    selected chunk bytes, live/peak chunk counts, reset/destroy slack, and
+    fresh-vs-recycled scope allocation.
+  - Added gated value-shape counters for array/hashmap/set capacity and growth,
+    closure env-copy depth/bindings, string/error/BigInteger/tensor payload
+    bytes, FFI wrapper release authority, and stable passport invalidation
+    reasons.
+  - Exposed the new fields through `runtime-memory-stats`, `OMNI_MEM_TELEMETRY`,
+    and existing basic runtime-memory stats checks.
+- Commands run:
+  - C3 diagnostics on major edited files
+  - `c3c build --obj-out obj`
+  - `c3c build --obj-out obj -D OMNI_BOUNDARY_INSTR_COUNTERS`
+  - bounded container `basic` slice: `169 passed, 0 failed`
+  - bounded container `memory-lifetime-smoke`: `255 passed, 0 failed`
+  - bounded container `basic` slice with `OMNI_MEM_TELEMETRY=1`: `169
+    passed, 0 failed`, JSON telemetry included `value_shape`
+- Key results:
+  - `MEM-BENCH-OBSERVE-002` is closed; the next queue item is
+    `MEM-BENCH-OBSERVE-003` workload expansion.
+- Invalidated assumptions or failed approaches:
+  - None.
+- Unresolved issues:
+  - Benchmark workloads and baseline capture are still open under
+    `MEM-BENCH-OBSERVE-003` through `MEM-BENCH-OBSERVE-005`.
+- Dependencies, blockers, or restart requirements:
+  - Rebuild required for the new counters to be active in any running binary;
+    the local `build/main` was rebuilt in default and counters-enabled modes.
+- Signature: GPT-5 Codex
+
 ## 2026-04-19 21:42 CEST - All Eligible Over-700 Files Split
 
 - Objective attempted:

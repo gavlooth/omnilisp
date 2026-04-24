@@ -281,6 +281,7 @@ fn Value* make_ffi_handle_ex_with_descriptor(
     }
     v.tag = FFI_HANDLE;
     v.ffi_val = box;
+    boundary_value_shape_note_ffi_handle(ownership, handle_kind, ffi_handle_can_release_payload(box));
     return v;
 }
 
@@ -307,6 +308,7 @@ fn Value* make_error(Interp* interp, char[] msg) {
     }
     v.str_chars[len] = 0;
     v.str_len = len;
+    boundary_value_shape_note_error_payload(len);
 
     return v;
 }

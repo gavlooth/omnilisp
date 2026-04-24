@@ -231,9 +231,11 @@ fn Value* prim_set(Value*[] args, Env* env, Interp* interp) {
     if (map == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "Set: set backing storage is missing");
     Value* true_val = make_symbol(interp, interp.sym_true);
 foreach (arg : args) {
+        usz old_cap = (usz)map.capacity;
         if (!hashmap_set_checked(map, arg, true_val, interp)) {
             return collection_raise(interp, "type/out-of-memory", "Set: out of memory while growing backing storage");
         }
+        if ((usz)map.capacity != old_cap) boundary_value_shape_note_set_growth(old_cap, (usz)map.capacity);
 }
     return set_val;
 }
@@ -245,6 +247,7 @@ fn Value* prim_set_add(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2 || args[0].tag != SET) return collection_raise(interp, "type/arg-mismatch", "set-add: expected set and value");
     if (args[0].hashmap_val == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "set-add: set backing storage is missing");
     Value* true_val = make_symbol(interp, interp.sym_true);
+    usz old_cap = (usz)args[0].hashmap_val.capacity;
     if (!hashmap_set(args[0].hashmap_val, args[1], true_val, interp)) {
         return raise_error_with_payload_names(
             interp,
@@ -252,6 +255,7 @@ fn Value* prim_set_add(Value*[] args, Env* env, Interp* interp) {
             "runtime/out-of-memory",
             "set-add: set backing storage out of memory");
     }
+    if ((usz)args[0].hashmap_val.capacity != old_cap) boundary_value_shape_note_set_growth(old_cap, (usz)args[0].hashmap_val.capacity);
     return make_void(interp);
 }
 

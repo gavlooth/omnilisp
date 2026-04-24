@@ -12,9 +12,9 @@ The live backlog has been consolidated into `TODO.md` at the repo root.
 ## TODO-Linked Plan Status
 
 - Current live queue status: memory-boundary telemetry/benchmark evidence work
-  is open in `TODO.md` Part 18 as `MEM-BENCH-OBSERVE-002` through
+  is open in `TODO.md` Part 18 as `MEM-BENCH-OBSERVE-003` through
   `MEM-BENCH-OBSERVE-005`; `MEM-BENCH-OBSERVE-001` closed with the signal
-  inventory.
+  inventory and `MEM-BENCH-OBSERVE-002` closed with runtime counter coverage.
 
 - `slash-surface-naming-audit-plan-2026-04-23.md`: closed surface naming
   audit. Closed slices document Pika as language-core, choose a Deduce module

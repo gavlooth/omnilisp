@@ -19,6 +19,7 @@ fn bool stable_escape_store_passport_snapshot(Interp* interp, StableEscapeHandle
         reason = STABLE_GRAPH_PASSPORT_PREPARED_GRAPH_STALE;
     }
     entry.passport.invalidation_reason = reason;
+    boundary_value_shape_note_stable_passport_reason(reason);
     *out_passport = entry.passport;
     return true;
 }
