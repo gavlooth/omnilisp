@@ -1,7 +1,7 @@
 # Omni Lisp Language Specification
 
 **Version:** 0.4.7
-**Date:** 2026-04-11
+**Date:** 2026-04-24
 
 Omni Lisp is a Lisp dialect with first-class delimited continuations, algebraic effects, strict-arity multi-param lambdas, multiple dispatch, and a structural type system. It runs on a deterministic scope-region memory system with dual-lane TEMP/ESCAPE ownership, implemented in C3 with a GNU Lightning JIT engine and a Lisp-to-C3 AOT transpiler.
 
@@ -50,10 +50,10 @@ Omni without learning advanced semantics first.
   - truthy: everything else (`0`, `""`, empty collections, symbols, etc.)
 - Start with these value families:
   - scalars: int, Float64, string, symbol, nil
-  - functions: closures (`lambda`)
+  - functions: closures (`λ`, with `lambda` as a long alias)
   - collections: list, array, dict
-- Function spelling: `lambda` is canonical; plain `λ` is accepted as an
-  equivalent input spelling.
+- Function spelling: `λ` is canonical for input and output; `lambda` remains
+  accepted as the long accessibility alias.
 - Prefer generic collection operations (`length`, `ref`, `map`, `filter`,
   `foldl`) instead of type-specific naming.
 - Surface naming policy for contributors:
@@ -78,15 +78,15 @@ Run these in REPL first:
 
 '(1 2 3)                   ; list
 [1 2 3]                    ; array
-{'name "omni" 'year 2026}  ; dict
+{name "omni" year 2026}    ; dict; bare symbol keys auto-quote
 
 (length [1 2 3])
-(ref {'a 10 'b 20} 'b)
+(ref {a 10 b 20} 'b)
 ```
 
 Core forms to learn first:
 - binding/flow: `define`, `let`, `if`, `block`
-- functions: `lambda`, strict arity calls
+- functions: `λ`, strict arity calls
 - collections: list/array/dict literals + generic ops (`length`, `ref`, `map`)
 
 ### 0.3 What To Ignore Initially
@@ -200,15 +200,15 @@ failures.
 
 ```lisp
 ; absence (valid "not found")
-(find (lambda (x) (= x 999)) '(1 2 3))
+(find (λ (x) (= x 999)) '(1 2 3))
 ; => nil
 
 ; recoverable/programmer failure
 (signal raise
-  {'code 'io/not-found
-   'message "read-file: path not found"
-   'domain 'io
-   'data {'path "missing.txt"}})
+  {code 'io/not-found
+   message "read-file: path not found"
+   domain 'io
+   data {path "missing.txt"}})
 ```
 
 Pitfall:
@@ -286,7 +286,7 @@ null?
 
 ; Collection literals
 [1 2 3]         ; array literal, equivalent to (Array 1 2 3)
-{'a 1 'b 2}     ; dict literal, equivalent to (Dictionary 'a 1 'b 2)
+{a 1 b 2}       ; dict literal, equivalent to (Dictionary 'a 1 'b 2)
 
 ; Quote shorthand
 'symbol     ; equivalent to (quote symbol)

@@ -71,6 +71,10 @@ fn Value* expand_template(Value* tmpl, MatchResult* bindings, Interp* interp, Ge
                 return make_symbol(interp, gsym);
             }
 
+            if (symbol_is_lambda_spelling(&interp.symbols, tmpl.sym_val, interp.sym_lambda)) {
+                return make_symbol(interp, interp.sym_lambda);
+            }
+
             Value* captured_value = null;
             if (template_lookup_captured(captured, captured_count, tmpl.sym_val, &captured_value)) {
                 return captured_value;

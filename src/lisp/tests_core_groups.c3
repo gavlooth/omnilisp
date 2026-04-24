@@ -55,6 +55,8 @@ fn void run_basic_index_and_match_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "mylist.[idx] => 40", "mylist.[idx]", 40, pass, fail);
     test_eq(interp, "dict dot-bracket symbol key", "(let (m {'a 1 'b 2}) m.['a])", 1, pass, fail);
     test_eq(interp, "dict dot-bracket string key", "(let (m {\"name\" 78}) m.[\"name\"])", 78, pass, fail);
+    test_eq(interp, "dict bare key quotes symbol", "(let (m {name 78}) (ref m 'name))", 78, pass, fail);
+    test_eq(interp, "dict bare key value still evaluates", "(let (name 9 m {name (+ name 1)}) (ref m 'name))", 10, pass, fail);
     test_truthy(interp, "index/ref parity list", "(= (ref '(10 20 30) 1) (let (l '(10 20 30)) l.[1]))", pass, fail);
     test_truthy(interp, "index/ref parity list negative", "(= (ref '(10 20 30) -1) (let (l '(10 20 30)) l.[-1]))", pass, fail);
     test_truthy(interp, "index/ref parity array", "(= (ref [10 20 30] 2) (let (a [10 20 30]) a.[2]))", pass, fail);

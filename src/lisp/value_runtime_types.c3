@@ -180,6 +180,7 @@ struct FfiHandle {
     ForeignRuntimeKind runtime_kind;  // Common foreign runtime descriptor.
     ForeignHandleKind  handle_kind;   // Library/module/callable/object/buffer/opaque.
     uint     capabilities;            // FOREIGN_CAP_* bitset.
+    FfiBridgeBoundaryMode boundary_mode; // Boundary traversal/copy declaration.
 }
 
 /**

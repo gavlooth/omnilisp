@@ -106,6 +106,12 @@ fn void run_advanced_macro_hygiene_quasi_pattern_tests(Interp* interp, int* pass
     test_nil(interp, "choose-if macro all false", "(choose-if false 1 false 2)", pass, fail);
     setup(interp, "(define [macro] my-and (syntax-match ([a b] (template (if (insert a) (insert b) false)))))");
     test_eq(interp, "my-and true", "(my-and true 42)", 42, pass, fail);
+    test_str_val(interp,
+        "macroexpand emits canonical lambda symbol",
+        "(block (define [macro] emit-lambda-form (syntax-match ([] (template (lambda (x) x))))) (String (car (macroexpand '(emit-lambda-form)))))",
+        "\xCE\xBB",
+        pass,
+        fail);
     setup(interp, "(define [macro] let1 (syntax-match ([name val body] (template (let ((insert name) (insert val)) (insert body))))))");
     test_eq(interp, "let1 macro", "(let1 x 10 (+ x 5))", 15, pass, fail);
     test_eq(interp, "stream-yield macro expands capture special form",

@@ -115,7 +115,7 @@ fn char[] macro_validate_emitted_form(Value* val, Interp* interp, usz depth = 0)
 
         if ((uint)sym == (uint)interp.sym_if) {
             if (!macro_list_has_exact_arity(rest, 3)) return "malformed emitted form: if expects exactly 3 arguments";
-        } else if ((uint)sym == (uint)interp.sym_lambda) {
+        } else if (symbol_is_lambda_spelling(&interp.symbols, sym, interp.sym_lambda)) {
             if (!macro_list_has_exact_arity(rest, 2)) return "malformed emitted form: lambda expects parameter list and body";
             Value* params = rest.cons_val.car;
             if (!macro_validate_lambda_params(params)) {

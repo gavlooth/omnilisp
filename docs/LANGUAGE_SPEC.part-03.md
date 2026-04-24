@@ -54,11 +54,12 @@ Use `_` / `_n` placeholders, `|>` pipe, or `partial` for partial application.
 
 I/O primitives go through algebraic effects (`io/print`, `io/println`, etc.). When no handler is installed, a fast path calls raw primitives directly (zero overhead). Custom handlers can intercept, suppress, or redirect I/O.
 
-### 7.6 String Operations (14)
+### 7.6 String Operations (15)
 
 | Prim | Arity | Description |
 |------|-------|-------------|
 | `string-append` | variadic | Concatenate strings |
+| `str` | 1 | Interpolate `{expr}` holes in a string using lexical bindings and `String` coercion; escape literal braces as `{{` and `}}` |
 | `string-join` | 2 | Join list with separator |
 | `substring` | 3 | Extract substring (negative indices supported) |
 | `string-split` | 2 | Split by delimiter |
@@ -117,11 +118,14 @@ I/O primitives go through algebraic effects (`io/print`, `io/println`, etc.). Wh
 
 | Prim | Arity | Description |
 |------|-------|-------------|
-| `Dictionary` / `Dict` | variadic | Create a dictionary from key-value pairs; `{'a 1 'b 2}` is equivalent to this |
+| `Dictionary` / `Dict` | variadic | Create a dictionary from key-value pairs; `{a 1 b 2}` is equivalent to `(Dictionary 'a 1 'b 2)` |
 
 Canonical constructor surface is `Dictionary` (with `Dict` shorthand).
 Dictionary keys are value-typed: symbols, strings, integers, and other stable
 value keys are supported.
+In `{}` literals only, a bare symbol in key position is implicitly quoted:
+`{name "Alice" age 30}` is equivalent to `{'name "Alice" 'age 30}`.
+Non-symbol keys remain explicit, for example `{(+ 1 2) "three"}`.
 Style guidance:
 - prefer symbol keys for internal language/runtime maps
 - prefer string keys for external payload maps (JSON/HTTP/config)
@@ -373,7 +377,7 @@ all non-contracted right axes.
 
 (define z (map + x 1.0))
 (ref z [1 2])   ; => 7.0
-(ref (Tensor (map (lambda (v) (+ v 1)) (Iterator [1 2 3]))) [1]) ; => 3.0
+(ref (Tensor (map (λ (v) (+ v 1)) (Iterator [1 2 3]))) [1]) ; => 3.0
 
 (define a (Tensor Float64 [2 3] [1 2 3 4 5 6]))
 (define b (Tensor Float64 [3 2] [7 8 9 10 11 12]))
@@ -476,7 +480,8 @@ all non-contracted right axes.
 - In `ffi λ`, FFI-local metadata dictionaries may refine a foreign handle
   policy. `^{'name File 'ownership owned 'finalizer fclose}` implies
   `ForeignHandle`; the explicit `^{'type ForeignHandle ...}` form is also
-  accepted. Dictionary entries are key/value pairs with quoted symbol keys;
+  accepted. Dictionary entries are key/value pairs; bare symbol keys in `{}` are
+  implicitly quoted, and explicit quoted symbol keys remain accepted.
   Omni does not use colon keywords.
 - Supported `ForeignHandle` metadata keys are `'type`, `'name`, `'ownership`,
   `'finalizer`, and `'nullability`. Supported ownership values are `borrowed`,
@@ -496,7 +501,7 @@ all non-contracted right axes.
   load/resolve/reflect capabilities; direct call capability is reflected on
   `ForeignCallable` descriptors for bound functions.
 - `(foreign-describe ffi-bound-function)` returns reflection metadata for C ABI
-  functions declared through `[ffi lambda]`: `'type 'ForeignCallable`, `'runtime
+  functions declared through `[ffi λ]` (`[ffi lambda]` remains accepted): `'type 'ForeignCallable`, `'runtime
   'c-abi`, `'kind 'function`, `'name`, `'c-name`, `'library`, `'parameters`,
   `'returns`, `'resolved`, `'available`, and `'capabilities`. `'parameters` is
   an array of descriptor dictionaries; `'returns` is one descriptor dictionary.
@@ -521,7 +526,7 @@ all non-contracted right axes.
   - `^Boolean`: Omni `true` / `false` only
   - `^String`: Omni `String`, or `nil` for a null plain `char*`
   - `^ForeignHandle`: live `FFI_HANDLE`, or `nil` for null
-  - FFI-local metadata dictionaries in `ffi λ` use the same quoted-symbol key/value dictionary syntax as the rest of Omni; no colon keywords are used.
+  - FFI-local metadata dictionaries in `ffi λ` use ordinary Omni dictionary syntax; bare symbol keys in `{}` auto-quote, explicit quoted keys remain accepted, and no colon keywords are used.
 - Return conversion follows the same no-raw-pointer rule: non-null `^String`
   C plain `char*` returns are copied into Omni `String` values, null string
   returns become `nil`, non-null `^ForeignHandle` C pointer returns become

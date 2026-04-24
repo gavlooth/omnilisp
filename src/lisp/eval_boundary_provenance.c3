@@ -551,7 +551,16 @@ fn BoundaryTransplantProof boundary_build_transplant_root_proof(
     proof.root_non_null = root != null;
     proof.root_owned_by_child_escape = root == null || (child != null && root.scope_gen == child.escape_generation);
     proof.stamp_rewrite_required = root != null;
+    if (root != null && root.tag == FFI_HANDLE) {
+        proof.ffi_native_traversal_required = ffi_bridge_boundary_value_requires_native_traversal(root);
+        proof.ffi_native_edges_safe = ffi_bridge_boundary_value_is_transplant_safe(root);
+    }
     if (proof.transfer.allowed) {
+        if (!proof.ffi_native_edges_safe) {
+            proof.transfer.allowed = false;
+            proof.transfer.reason = BOUNDARY_SCOPE_TRANSFER_CHILD_ESCAPE_LANE_INVALID;
+            return proof;
+        }
         proof.reachable_temp_edges_safe = boundary_debug_graph_audit_pre_splice_escape_root(root, parent, child, global_env);
         proof.closure_env_edges_safe = proof.reachable_temp_edges_safe;
         if (!proof.reachable_temp_edges_safe) {

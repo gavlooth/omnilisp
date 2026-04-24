@@ -155,13 +155,16 @@ Foreign handles are deliberately special, but they are not a loophole.
   explicit bridge-level copy. It must not assume transitive safety through a
   native pointer.
 
-Future bridge declarations should classify foreign state as opaque, keepalive,
-copy-hook, trace-hook, or unsafe. Default remains opaque.
+Bridge declarations classify foreign state as opaque, keepalive, copy-hook,
+trace-hook, or unsafe. Default remains opaque. The current runtime stores this
+as `FfiBridgeBoundaryMode` on each `FfiHandle`; trace/copy-hook declarations
+fail closed in boundary transplant proof until the corresponding bridge
+traversal or copy hook exists.
 
 Current implementation note: existing FFI wrapper construction is already tied
 to scope teardown through `Value` destructors and foreign payload release
-authority. Future memory architecture work must preserve that behavior instead
-of replacing it with generic language-value RC.
+authority. Memory architecture work must preserve that behavior instead of
+replacing it with generic language-value RC.
 
 ## ValueTag Policy Table
 

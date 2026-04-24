@@ -51,6 +51,9 @@ fn void run_advanced_collections_dict_literal_tests(Interp* interp, int* pass, i
     // Dictionary literal {}
     test_eq(interp, "{} empty", "(length {})", 0, pass, fail);
     test_eq(interp, "{} literal", "(ref {'a 1 'b 2} 'a)", 1, pass, fail);
+    test_eq(interp, "{} bare symbol key literal", "(ref {name \"Alice\" age 30 active true} 'age)", 30, pass, fail);
+    test_eq(interp, "{} bare key preserves value lookup", "(let (payload 99) (ref {status \"ok\" data payload} 'data))", 99, pass, fail);
+    test_str_val(interp, "{} explicit non-symbol key", "(ref {(+ 1 2) \"three\"} 3)", "three", pass, fail);
     test_truthy(interp, "{} string keys", "(has? {\"name\" \"Alice\"} \"name\")", pass, fail);
     test_truthy(interp, "{} has key", "(has? {'x 10 'y 20} 'y)", pass, fail);
     test_eq(interp, "{} count", "(length {'a 1 'b 2 'c 3})", 3, pass, fail);

@@ -155,6 +155,10 @@ fn void run_string_type_tests(Interp* interp, int* pass, int* fail) {
     test_str(interp, "string-append empty", "(string-append \"\" \"abc\")", pass, fail);
     test_str(interp, "substring 0 5", "(substring \"hello world\" 0 5)", pass, fail);
     test_str(interp, "substring 6 11", "(substring \"hello world\" 6 11)", pass, fail);
+    test_str_val(interp, "str interpolation evaluates hole", "(str \"sum {(+ 1 2)}\")", "sum 3", pass, fail);
+    test_str_val(interp, "str interpolation reads lexical bindings", "(let (name \"Ada\" age 36) (str \"hello {name}, age {age}\"))", "hello Ada, age 36", pass, fail);
+    test_str_val(interp, "str interpolation escapes braces", "(str \"{{x}}\")", "{x}", pass, fail);
+    test_error_contains(interp, "str interpolation rejects unmatched open brace", "(str \"{\")", "unmatched '{'", pass, fail);
 
     // String predicates
     test_truthy(interp, "string? hello => true", "(string? \"hello\")", pass, fail);

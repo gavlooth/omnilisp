@@ -22,11 +22,36 @@ fn bool boundary_commit_cons_head_matches(Value* value, long expected_head) @inl
 
 fn void run_memory_lifetime_boundary_commit_escape_primary_tests(Interp* interp, int* pass, int* fail) {
     {
+        FfiHandle opaque_handle = {};
+        opaque_handle.boundary_mode = FFI_BRIDGE_BOUNDARY_OPAQUE;
+        Value opaque_value = {};
+        opaque_value.tag = FFI_HANDLE;
+        opaque_value.ffi_val = &opaque_handle;
+
+        FfiHandle trace_handle = {};
+        trace_handle.boundary_mode = FFI_BRIDGE_BOUNDARY_TRACE_HOOK;
+        Value trace_value = {};
+        trace_value.tag = FFI_HANDLE;
+        trace_value.ffi_val = &trace_handle;
+
+        FfiBridgeBoundaryDeclaration opaque_declaration =
+            ffi_bridge_boundary_declaration_for_value(&opaque_value);
+        FfiBridgeBoundaryDeclaration trace_declaration =
+            ffi_bridge_boundary_declaration_for_value(&trace_value);
+
         bool ok = boundary_value_ownership_policy(FFI_HANDLE) == BOUNDARY_VALUE_OPAQUE_FOREIGN &&
                   boundary_value_tag_is_opaque_foreign(FFI_HANDLE) &&
                   !boundary_value_tag_has_omni_owned_edges(FFI_HANDLE) &&
                   !boundary_value_tag_is_stable_materialization_candidate(FFI_HANDLE) &&
                   boundary_graph_audit_edge_class(FFI_HANDLE) == BOUNDARY_GRAPH_EDGE_NONE &&
+                  opaque_declaration.opaque &&
+                  !opaque_declaration.unsafe &&
+                  ffi_bridge_boundary_value_is_opaque(&opaque_value) &&
+                  !ffi_bridge_boundary_value_requires_native_traversal(&opaque_value) &&
+                  ffi_bridge_boundary_value_is_transplant_safe(&opaque_value) &&
+                  trace_declaration.trace_hook &&
+                  ffi_bridge_boundary_value_requires_native_traversal(&trace_value) &&
+                  !ffi_bridge_boundary_value_is_transplant_safe(&trace_value) &&
                   boundary_value_tag_is_stable_materialization_candidate(ARRAY) &&
                   boundary_value_tag_requires_materialized_payload_clone(BIG_FLOAT) &&
                   boundary_graph_audit_edge_class(CLOSURE) == BOUNDARY_GRAPH_EDGE_ENV;
@@ -35,6 +60,40 @@ fn void run_memory_lifetime_boundary_commit_escape_primary_tests(Interp* interp,
             (*pass)++;
         } else {
             io::printn("[FAIL] lifetime: boundary ValueTag ownership policy keeps FFI opaque");
+            (*fail)++;
+        }
+    }
+
+    {
+        main::ScopeRegion* saved_scope = interp.current_scope;
+        main::ScopeRegion* target_scope = main::scope_create(saved_scope);
+        main::ScopeRegion* releasing_scope = target_scope == null ? null : main::scope_create(target_scope);
+        FfiHandle trace_handle = {};
+        trace_handle.boundary_mode = FFI_BRIDGE_BOUNDARY_TRACE_HOOK;
+        Value trace_root = {};
+        trace_root.tag = FFI_HANDLE;
+        trace_root.ffi_val = &trace_handle;
+        if (releasing_scope != null) trace_root.scope_gen = releasing_scope.escape_generation;
+
+        BoundaryTransplantProof proof = target_scope != null && releasing_scope != null
+            ? boundary_build_transplant_root_proof(target_scope, releasing_scope, &trace_root, interp.global_env)
+            : (BoundaryTransplantProof){};
+        bool ok = target_scope != null &&
+                  releasing_scope != null &&
+                  !proof.transfer.allowed &&
+                  proof.transfer.reason == BOUNDARY_SCOPE_TRANSFER_CHILD_ESCAPE_LANE_INVALID &&
+                  proof.ffi_native_traversal_required &&
+                  !proof.ffi_native_edges_safe;
+
+        if (releasing_scope != null) main::scope_release(releasing_scope);
+        if (target_scope != null) main::scope_release(target_scope);
+        interp.current_scope = saved_scope;
+
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: boundary FFI bridge trace hook fails closed");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] lifetime: boundary FFI bridge trace hook fails closed");
             (*fail)++;
         }
     }

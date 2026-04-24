@@ -103,7 +103,7 @@ Captures the continuation up to the enclosing `checkpoint` and binds it to `k`.
 
 ```lisp
 (checkpoint (+ 1 (capture k (k (k 10)))))
-; k = (lambda (x) (+ 1 x))
+; k = (λ (x) (+ 1 x))
 ; (k (k 10)) = (+ 1 (+ 1 10)) = 12
 ```
 
@@ -467,7 +467,7 @@ omni --repl --load demo.omni
 (push! nums 6)          ; mutates, adds 6
 
 ; Dictionary literal
-(define person {'name "Alice" 'age 30})
+(define person {name "Alice" age 30})
 (ref person 'name)      ; => "Alice"
 (has? person 'age)      ; => true
 (keys person)           ; => '(age name)
@@ -553,7 +553,8 @@ quoted      = "'" datum ;
 quasiquoted = "`" datum ;
 list        = "(" { expr } ")" ;
 array_lit   = "[" { expr } "]" ;           (* equivalent to Array constructor call *)
-dict_lit    = "{" { expr expr } "}" ;      (* equivalent to Dictionary constructor call; must be even *)
+dict_lit    = "{" { dict_key expr } "}" ;  (* equivalent to Dictionary constructor call; must be even *)
+dict_key    = symbol | expr ;              (* bare symbol keys auto-quote only in key position *)
 indexed     = expr ".[" expr "]" ;
 accessor    = "." expr ;
 

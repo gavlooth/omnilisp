@@ -6,7 +6,7 @@ import main;
 // SECTION 4c: EXPRESSION SERIALIZER (callable/control forms)
 // =============================================================================
 fn void Compiler.serialize_lambda_to_buf(Compiler* self, Expr* expr, List{char}* buf) {
-    self.buf_append(buf, "(lambda (");
+    self.buf_append(buf, "(\xCE\xBB (");
     usz fixed_count = expr.lambda.param_count;
     if (fixed_count == 0 && expr.lambda.param != INVALID_SYMBOL_ID) {
         fixed_count = 1;

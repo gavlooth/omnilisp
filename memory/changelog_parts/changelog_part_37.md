@@ -4788,3 +4788,31 @@
 - Validation passed: `c3c build --obj-out obj`; bounded container
   `memory-lifetime-smoke` (`254 passed, 0 failed`); bounded container Valgrind
   `memory-lifetime-smoke` (`254 passed, 0 failed`).
+
+## 2026-04-24 memory boundary FFI bridge declarations
+
+- Implemented and closed `MEM-BOUNDARY-FFI-BRIDGE-001`.
+  - Added `FfiBridgeBoundaryMode` and `FfiBridgeBoundaryDeclaration` helpers.
+  - `FfiHandle` now records a per-handle boundary mode; all existing FFI box
+    construction defaults to `FFI_BRIDGE_BOUNDARY_OPAQUE`, preserving current
+    behavior.
+  - Boundary transplant proof now consumes the bridge declaration and fails
+    closed for trace/copy-hook declarations until explicit traversal/copy hooks
+    exist.
+  - Regression coverage asserts the opaque default and the fail-closed behavior
+    for a trace-hook foreign handle in root transplant proof.
+- Validation passed: `c3c build --obj-out obj`; bounded container
+  `memory-lifetime-smoke` (`255 passed, 0 failed`); bounded container Valgrind
+  `memory-lifetime-smoke` (`255 passed, 0 failed`).
+
+## 2026-04-24 Implicit Body Block Syntax
+
+- Confirmed and covered the parser contract that `lambda`, shorthand function
+  `define`, ordinary `let`, `let ^rec`, and named `let` bodies accept multiple
+  expressions and lower them through the shared implicit `E_BLOCK` body helper.
+- Added runtime regressions for each requested body form in
+  `src/lisp/tests_advanced_core_unicode_groups_more.c3`.
+- Added compiler coverage that an implicit body block preserves tail-call
+  position for a final recursive call in `src/lisp/tests_compiler_codegen_groups.c3`.
+- Updated `docs/LANGUAGE_SPEC.part-02.md` to document the concise body syntax
+  and keep explicit `block` as the expression-level sequencing form.

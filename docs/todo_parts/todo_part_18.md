@@ -96,13 +96,14 @@ Source: `docs/plans/memory-boundary-proof-planner-roadmap-2026-04-24.md`.
   - negative-memory constraint: transplant is legal only when the whole source
     ownership island survives; otherwise materialize or fail closed.
 
-- [ ] `MEM-BOUNDARY-FFI-BRIDGE-001` add explicit FFI bridge boundary declarations.
+- [x] `MEM-BOUNDARY-FFI-BRIDGE-001` add explicit FFI bridge boundary declarations.
   - classification: runtime structure, structural overhaul.
-  - task: classify foreign handles as opaque, keepalive, copy-hook, trace-hook,
-    or unsafe so boundary planning never guesses through native pointers.
-  - next step: add bridge policy declarations while keeping existing
-    `FFI_HANDLE` behavior opaque by default.
-  - prerequisites: current `ValueTag` boundary ownership policy.
+  - done 2026-04-24: added per-handle `FfiBridgeBoundaryMode` declarations,
+    defaulted existing FFI boxes to opaque, and wired transplant proof to fail
+    closed for bridge modes that require undeclared native traversal/copy hooks.
+  - validation: `c3c build --obj-out obj`; bounded container
+    `memory-lifetime-smoke` (`255 passed, 0 failed`); bounded container
+    Valgrind `memory-lifetime-smoke` (`255 passed, 0 failed`).
   - negative-memory constraint: foreign payload finalizers/RC must not become
     ownership authority over ordinary Omni `Value` graphs.
 

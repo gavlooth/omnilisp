@@ -9,7 +9,7 @@ fn bool interp_init_symbol(Interp* self, SymbolId* out, char[] name) @inline {
 }
 
 fn bool interp_init_core_symbols(Interp* self) {
-    return interp_init_symbol(self, &self.sym_lambda, "lambda") &&
+    return interp_init_symbol(self, &self.sym_lambda, "\xCE\xBB") &&
         interp_init_symbol(self, &self.sym_if, "if") &&
         interp_init_symbol(self, &self.sym_let, "let") &&
         interp_init_symbol(self, &self.sym_define, "define") &&

@@ -3,6 +3,17 @@ module lisp;
 import std::collections::list;
 import std::core::mem;
 
+fn Expr* Parser.parse_bare_dict_symbol_key(Parser* self) {
+    Expr* e = self.alloc_expr_here();
+    if (e == null) return null;
+    e.tag = E_QUOTE;
+    e.quote.datum = self.interp.alloc_value_root();
+    e.quote.datum.tag = SYMBOL;
+    e.quote.datum.sym_val = self.get_current_symbol();
+    self.lexer.advance();
+    return e;
+}
+
 /**
  * Parse a dict literal after the opening '{' has been consumed.
  * Desugars {k1 v1 k2 v2 ...} to (Dictionary k1 v1 k2 v2 ...).
@@ -21,7 +32,10 @@ fn Expr* Parser.parse_dict_literal(Parser* self) {
 
     List{Expr*} args;
     while (lex.current.type != T_RBRACE && !self.has_error) {
-        Expr* arg = self.parse_expr();
+        bool is_key_position = args.len() % 2 == 0;
+        Expr* arg = is_key_position && lex.current.type == T_SYMBOL
+            ? self.parse_bare_dict_symbol_key()
+            : self.parse_expr();
         if (arg == null) { args.free(); return null; }
         args.push(arg);
     }

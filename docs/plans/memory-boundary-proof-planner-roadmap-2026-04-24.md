@@ -198,7 +198,10 @@ Represent bridge behavior explicitly: opaque, keepalive, copy hook, trace hook,
 or unsafe. Keep `FFI_HANDLE` opaque by default and fail closed for ambiguous
 foreign provenance.
 
-Tracked by `MEM-BOUNDARY-FFI-BRIDGE-001`.
+Closed 2026-04-24 by `MEM-BOUNDARY-FFI-BRIDGE-001`: FFI boxes now carry an
+explicit `FfiBridgeBoundaryMode`, defaulting to opaque. Boundary proof consumes
+that declaration and fails closed for trace/copy-hook modes until bridge
+traversal/copy hooks are implemented.
 
 ### Phase 6: Copy Debt Telemetry
 
@@ -242,9 +245,8 @@ FFI, JIT/eval boundary, or mutation semantics.
 
 ## Next Checkpoint
 
-The next concrete deliverable is `MEM-BOUNDARY-FFI-BRIDGE-001`: add explicit
-FFI bridge boundary declarations while keeping current `FFI_HANDLE` behavior
-opaque by default.
+The next concrete deliverable is `MEM-BOUNDARY-COPY-DEBT-001`: expose route
+failure and copy-debt telemetry without changing route behavior.
 
 ## Agent Assignments
 

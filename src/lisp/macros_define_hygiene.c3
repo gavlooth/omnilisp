@@ -204,7 +204,7 @@ fn bool is_special_form_symbol(SymbolId sym, Interp* interp) {
     return (uint)sym == (uint)interp.sym_if
         || (uint)sym == (uint)interp.sym_block
         || (uint)sym == (uint)interp.sym_let
-        || (uint)sym == (uint)interp.sym_lambda
+        || symbol_is_lambda_spelling(&interp.symbols, sym, interp.sym_lambda)
         || (uint)sym == (uint)interp.sym_define
         || (uint)sym == (uint)interp.sym_quote
         || (uint)sym == (uint)interp.sym_set

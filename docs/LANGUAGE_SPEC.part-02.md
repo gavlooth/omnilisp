@@ -1,30 +1,36 @@
 ## 3. Special Forms
 
-### 3.1 `lambda` -- Function Definition
+### 3.1 `λ` / `lambda` -- Function Definition
+
+`λ` is the canonical lambda spelling for input and printed/generated output.
+`lambda` remains accepted as the long accessibility alias.
 
 ```lisp
 ; Single parameter
-(lambda (x) body)
+(λ (x) body)
+(λ (x)
+  (println x)
+  (* x 2)) ; multiple body expressions are implicitly wrapped as (block ...)
 
 ; Multi-parameter (strict arity)
-(lambda (x y z) body)
+(λ (x y z) body)
 ; requires exactly 3 arguments — use _ placeholder, |> pipe, or partial for partial application
 
 ; Zero-argument
-(lambda () body)
+(λ () body)
 
 ; Variadic
-(lambda (x .. rest) body)
+(λ (x .. rest) body)
 
 ; Typed parameters (for dispatch)
-(lambda ((^Integer x) (^String y)) body)
+(λ ((^Integer x) (^String y)) body)
 
 ; Dictionary destructuring parameter — caller passes a dict
-(lambda ({name age}) (println name age))
-; called as: (f {'name "Alice" 'age 30})
+(λ ({name age}) (println name age))
+; called as: (f {name "Alice" age 30})
 
 ; Mixed positional + dict params
-(lambda ({host port} verbose) body)
+(λ ({host port} verbose) body)
 ```
 
 ### 3.2 `define` -- Global Definition
@@ -35,7 +41,10 @@
 
 ; Shorthand function define
 (define (f x y) body)
-; desugars to: (define f (lambda (x y) body))
+; desugars to: (define f (λ (x y) body))
+(define (f x)
+  (println x)
+  (* x 2))
 
 ; Zero-arg shorthand
 (define (thunk) 42)
@@ -47,7 +56,7 @@
 
 ; Dictionary destructuring parameter
 (define (connect {host port timeout}) (tcp-connect host port))
-; called as: (connect {'host "localhost" 'port 8080 'timeout 5000})
+; called as: (connect {host "localhost" port 8080 timeout 5000})
 
 ; Mixed dict + positional params
 (define (request {method url} body) ...)
@@ -73,7 +82,7 @@ Normative rules:
   alias, macro, reader tag, FFI, relation, rule, schema, effect).
 - Alternative declaration keywords (`def`, `defn`, `deftype`, etc.) are not
   canonical language forms and MUST NOT be introduced as parallel syntax.
-- `lambda` and `define` remain distinct: `lambda` is expression-level function
+- `λ` and `define` remain distinct: `λ` is expression-level function
   construction; `define` is global declaration.
 
 Examples:
@@ -141,6 +150,9 @@ Counterexample (non-canonical syntax; do not add):
 ```lisp
 ; Simple let (flat pairs)
 (let (name value) body)
+(let (name value)
+  (println name)
+  (+ name 1))
 
 ; Multi-binding (sequential left-to-right; lowers to nested lets)
 (let (x 1 y 2) (+ x y))
@@ -152,23 +164,31 @@ Counterexample (non-canonical syntax; do not add):
 (let ([a b ..] '(1 2 3 4 5)) (+ a b)) ; => 3
 
 ; Dictionary destructuring
-(let ({name age} {'name "Alice" 'age 30}) name) ; => "Alice"
-(let ({x y} {'x 10 'y 20}) (+ x y))             ; => 30
+(let ({name age} {name "Alice" age 30}) name) ; => "Alice"
+(let ({x y} {x 10 y 20}) (+ x y))             ; => 30
 
 ; Mixed bindings (plain + destructuring)
 (let ([a b] [3 4] z 5) (+ a (+ b z)))  ; => 12
 
 ; Recursive let
-(let ^rec (fact (lambda (n) (if (= n 0) 1 (* n (fact (- n 1))))))
+(let ^rec (fact (λ (n) (if (= n 0) 1 (* n (fact (- n 1))))))
+  (println "starting")
   (fact 5))
 
 ; Named let (loop construct)
 (let loop (n 5 acc 1)
+  (println n)
   (if (= n 0) acc
       (loop (- n 1) (* acc n))))
 ; Named let initializers are also sequential left-to-right.
 ; It lowers through an outer sequential let and an inner let ^rec.
 ```
+
+`λ`/`lambda`, shorthand function `define`, `let`, `let ^rec`, and named `let`
+bodies accept one or more expressions. When more than one body expression is
+present, the parser wraps them in an implicit `(block ...)`. The explicit
+`block` form remains available anywhere an expression is required, including
+inside `if` branches.
 
 ### 3.4 `if` -- Conditional
 
@@ -587,7 +607,7 @@ Removed accessor forms must hard-error:
 
 Use `(ref coll key)` for dynamic collection lookup, `expr.name` for path-step
 access, and `expr.[key]` for postfix dynamic/index access. For higher-order
-code, write the lambda explicitly: `(lambda (x) (ref x 'name))`.
+code, write the lambda explicitly: `(λ (x) (ref x 'name))`.
 
 Compatibility/removal details (including callable quoted-symbol accessor
 removal) are maintained in `docs/SURFACE_COMPATIBILITY.md`.

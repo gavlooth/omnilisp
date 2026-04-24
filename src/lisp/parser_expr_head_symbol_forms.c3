@@ -1,11 +1,7 @@
 module lisp;
 
 fn bool Parser.is_lambda_head_symbol(Parser* self, SymbolId head) {
-    if ((uint)head == (uint)self.interp.sym_lambda) return true;
-    char[] head_text = self.interp.symbols.get_name(head);
-    return head_text.len == 2 &&
-           head_text[0] == (char)0xCE &&
-           head_text[1] == (char)0xBB;
+    return symbol_is_lambda_spelling(&self.interp.symbols, head, self.interp.sym_lambda);
 }
 
 fn Expr* Parser.parse_quasiquote_like_form(Parser* self, SymbolId head) {

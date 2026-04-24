@@ -6087,6 +6087,8 @@ Commands run:
 - `c3c build --obj-out obj`
 - `scripts/run_validation_container.sh env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
 - `scripts/run_validation_container.sh valgrind --leak-check=full --error-exitcode=99 env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `scripts/run_validation_container.sh env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-lambda-syntax LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `scripts/run_validation_container.sh env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=compiler LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
 
 Key results:
 - Build passed.
@@ -6178,5 +6180,62 @@ Current checkpoint:
 Unresolved issues:
 - FFI bridge metadata, copy-debt telemetry, and commit-path migration remain
   open roadmap items.
+
+Signature: GPT-5 Codex
+
+## 2026-04-24 memory boundary FFI bridge declarations
+
+Objective:
+- Implement `MEM-BOUNDARY-FFI-BRIDGE-001` after transplant proof closure.
+
+Changes made:
+- Added `FfiBridgeBoundaryMode` and `FfiBridgeBoundaryDeclaration` helpers.
+- Added a per-handle boundary mode to `FfiHandle`; existing FFI box construction
+  defaults to opaque.
+- Wired boundary transplant proof to fail closed for trace/copy-hook bridge
+  modes until native traversal/copy hooks are actually implemented.
+- Extended memory-lifetime coverage for the opaque default and fail-closed
+  trace-hook proof behavior.
+- During final audit, added direct `str` interpolation coverage for the
+  concurrently present string primitive changes in the working copy.
+- Added direct bare-dictionary-key regression coverage for the concurrently
+  present parser literal-key change.
+- Fixed macro template expansion so literal `lambda` aliases emitted by
+  templates canonicalize to `λ`, matching parser/compiler output.
+- Closed `MEM-BOUNDARY-FFI-BRIDGE-001`; next checkpoint is
+  `MEM-BOUNDARY-COPY-DEBT-001`.
+
+Commands run:
+- C3 diagnostics for touched C3 files.
+- `c3c build --obj-out obj`
+- `scripts/run_validation_container.sh env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `scripts/run_validation_container.sh valgrind --leak-check=full --error-exitcode=99 env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `scripts/run_validation_container.sh env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=string-type LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `scripts/run_validation_container.sh env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=basic LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `scripts/run_validation_container.sh env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-macro-hygiene LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `scripts/run_validation_container.sh env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `scripts/run_validation_container.sh env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=compiler LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+
+Key results:
+- Build passed.
+- Bounded container `memory-lifetime-smoke` passed with `255 passed, 0 failed`.
+- Bounded container Valgrind `memory-lifetime-smoke` passed with
+  `255 passed, 0 failed`.
+- Bounded container `advanced-lambda-syntax` passed with `52 passed, 0 failed`.
+- Bounded container `string-type` passed with `43 passed, 0 failed`.
+- Bounded container `basic` passed with `169 passed, 0 failed`.
+- First `advanced-macro-hygiene` audit run failed the new canonical lambda
+  macroexpand assertion (`got='lambda'`); after the template-expansion fix,
+  the same group passed with `84 passed, 0 failed`.
+- Bounded container `advanced-collections-module` passed with
+  `2043 passed, 0 failed`.
+- Bounded container `compiler` passed with `292 passed, 0 failed`.
+
+Current checkpoint:
+- FFI bridge boundary declarations are explicit and opaque by default.
+- Copy-debt and route-failure telemetry is the next open proof-planner item.
+
+Unresolved issues:
+- Copy-debt telemetry and commit-path migration remain open roadmap items.
 
 Signature: GPT-5 Codex

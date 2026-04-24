@@ -10,6 +10,15 @@ fn void run_compiler_group_serializer_roundtrip_tests(Interp* interp, usz* pass,
     {
         bool ok = compiler_serializes_to_roundtrip(
             interp,
+            "(lambda (x) x)",
+            "(\xCE\xBB (x) x)"
+        );
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: lambda serializer emits canonical unicode spelling"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: lambda serializer emits canonical unicode spelling"); }
+    }
+    {
+        bool ok = compiler_serializes_to_roundtrip(
+            interp,
             "(import \"pkg/math.omni\" ((sum 'as plus) diff))",
             "(import \"pkg/math.omni\" ((sum 'as plus) diff))"
         );

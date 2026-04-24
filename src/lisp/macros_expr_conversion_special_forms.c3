@@ -12,7 +12,7 @@ fn Expr* vte_special_form(SymbolId sym, Value* rest, Interp* interp) {
         return e;
     }
     if ((uint)sym == (uint)interp.sym_block)            return vte_begin(rest, interp);
-    if ((uint)sym == (uint)interp.sym_lambda)           return vte_lambda(rest, interp);
+    if (symbol_is_lambda_spelling(&interp.symbols, sym, interp.sym_lambda)) return vte_lambda(rest, interp);
     if ((uint)sym == (uint)interp.sym_let)              return vte_let(rest, interp);
     if ((uint)sym == (uint)interp.sym_define)           return vte_define_or_set_form(rest, interp, false);
     if ((uint)sym == (uint)interp.sym_set)              return vte_define_or_set_form(rest, interp, true);

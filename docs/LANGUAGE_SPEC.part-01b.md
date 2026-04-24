@@ -15,14 +15,14 @@
 | string | `STRING` | Immutable string (heap-allocated) | `"hello"` |
 | symbol | `SYMBOL` | Interned identifier | `'foo`, `'hello` |
 | cons | `CONS` | Pair / list cell | `(cons 1 2)`, `'(1 2 3)` |
-| closure | `CLOSURE` | User-defined function with environment | `(lambda (x) x)` |
+| closure | `CLOSURE` | User-defined function with environment | `(λ (x) x)` |
 | continuation | `CONTINUATION` | Captured delimited continuation | via `capture` |
 | primitive | `PRIMITIVE` | Built-in function | `+`, `car` |
 | partial | `PARTIAL_PRIM` | Explicit partially applied primitive | `(partial + 3)` |
 | error | `ERROR` | Error value | `(error "oops")` |
-| Dictionary | `HASHMAP` | Mutable hash table | `{'a 1}`, `(Dictionary 'a 1)` |
+| Dictionary | `HASHMAP` | Mutable hash table | `{a 1}`, `(Dictionary 'a 1)` |
 | Array | `ARRAY` | Mutable dynamic array | `[1 2 3]`, `(Array 1 2 3)` |
-| Coroutine | `COROUTINE` | User-level coroutine | `(Coroutine (lambda () body))` |
+| Coroutine | `COROUTINE` | User-level coroutine | `(Coroutine (λ () body))` |
 | Tensor | `TENSOR` | Homogeneous n-dimensional numeric storage | `(Tensor [[1 2] [3 4]])` |
 | void | `VOID` | Singleton no-result value | `#<void>` |
 | ffi-handle | `FFI_HANDLE` | Foreign library handle | `(define [ffi lib] libc "libc.so.6")` |

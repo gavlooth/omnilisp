@@ -219,6 +219,19 @@ fn void run_compiler_group_multiarg_tco_tests(Interp* interp, usz* pass_out, usz
         );
     }
 
+    // 45a. Tail calls remain in tail position when a body is implicitly wrapped.
+    {
+        char[] code = compile_to_c3("(define (f x) (+ x 0) (f (+ x 1)))", interp);
+        bool ok = str_contains(code, "apply_multi_tail");
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: implicit block tail call emits apply_multi_tail",
+            "[FAIL] Compiler: implicit block tail call emits apply_multi_tail",
+            &pass,
+            &fail
+        );
+    }
+
     // 45b. >32 arg tail call still compiles all args
     {
         char[] code = compile_to_c3(

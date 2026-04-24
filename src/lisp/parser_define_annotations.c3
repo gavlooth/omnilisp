@@ -71,12 +71,7 @@ fn Expr* Parser.parse_define_ffi(Parser* self, Expr* e, List{SymbolId}* attrs) {
     if ((*attrs)[1] == self.interp.sym_module) {
         return self.parse_ffi_module(e, attrs);
     }
-    if ((*attrs)[1] == self.interp.sym_lambda) {
-        return self.parse_ffi_fn(e, attrs);
-    }
-    // Check for λ (U+03BB, UTF-8: CE BB)
-    char[] attr1_text = self.interp.symbols.get_name((*attrs)[1]);
-    if (attr1_text.len == 2 && attr1_text[0] == (char)0xCE && attr1_text[1] == (char)0xBB) {
+    if (symbol_is_lambda_spelling(&self.interp.symbols, (*attrs)[1], self.interp.sym_lambda)) {
         return self.parse_ffi_fn(e, attrs);
     }
     self.set_error("unknown [ffi ...] form: expected 'lib', 'λ', or 'module'");

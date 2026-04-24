@@ -112,7 +112,8 @@ fn FfiHandle* make_ffi_box(void* handle, char[] name, FfiHandleFinalizer finaliz
     ForeignHandleKind handle_kind = FOREIGN_HANDLE_OPAQUE,
     uint capabilities = 0,
     FfiHandleOwnership ownership = FFI_HANDLE_BORROWED,
-    void* user_data = null) {
+    void* user_data = null,
+    FfiBridgeBoundaryMode boundary_mode = FFI_BRIDGE_BOUNDARY_OPAQUE) {
     if (finalizer != null && free_lib_handle) {
         // Single release authority: finalizer path owns release policy.
         // Retain `free_lib_handle` only for plain resource pointers without
@@ -133,6 +134,7 @@ fn FfiHandle* make_ffi_box(void* handle, char[] name, FfiHandleFinalizer finaliz
     box.handle_kind = handle_kind;
     box.capabilities = capabilities;
     box.ownership = ownership;
+    box.boundary_mode = boundary_mode;
 
     usz len = name.len;
     if (len > 255) {

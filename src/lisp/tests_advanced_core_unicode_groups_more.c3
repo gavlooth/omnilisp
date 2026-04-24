@@ -11,7 +11,9 @@ fn void run_advanced_lambda_syntax_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "zero-arg closure", "(let (a 10) ((lambda () a)))", 10, pass, fail);
     test_eq(interp, "zero-arg stored thunk", "(let (thunk (lambda () 99)) (thunk))", 99, pass, fail);
     test_eq(interp, "zero-arg block body", "((lambda () (block 1 2 3)))", 3, pass, fail);
+    test_eq(interp, "zero-arg implicit block body", "((lambda () 1 2 3))", 3, pass, fail);
     test_eq(interp, "zero-arg computation", "((lambda () (+ 10 20)))", 30, pass, fail);
+    test_eq(interp, "unicode lambda canonical spelling", "((\xCE\xBB (x) (* x x)) 7)", 49, pass, fail);
 
     // Multi-param lambda (strict arity)
     test_eq(interp, "multi-param two", "((lambda (x y) (+ x y)) 3 4)", 7, pass, fail);
@@ -20,6 +22,7 @@ fn void run_advanced_lambda_syntax_tests(Interp* interp, int* pass, int* fail) {
     setup(interp, "(define mp-add3 (lambda (a b c) (+ a (+ b c))))");
     test_eq(interp, "multi-param defined fn", "(mp-add3 10 20 30)", 60, pass, fail);
     test_eq(interp, "multi-param three call", "(let (f (lambda (x y z) (+ x (+ y z)))) (f 1 2 3))", 6, pass, fail);
+    test_eq(interp, "define shorthand implicit block body", "(block (define implicit-body-probe 0) (define (implicit-body-double n) (set! implicit-body-probe n) (* n 2)) (implicit-body-double 21))", 42, pass, fail);
 
     // Arity error tests (strict enforcement)
     test_error_contains(interp, "arity err 2-param 1-arg", "((lambda (x y) (+ x y)) 5)", "arity", pass, fail);
@@ -74,9 +77,12 @@ fn void run_advanced_binding_mutation_tests(Interp* interp, int* pass, int* fail
     test_eq(interp, "multi-let sequential", "(let (ml-p 10 ml-q (+ ml-p 5)) ml-q)", 15, pass, fail);
     test_eq(interp, "multi-let with lambda", "(let (ml-f (lambda (xx) (+ xx 1)) ml-v (ml-f 10)) ml-v)", 11, pass, fail);
     test_eq(interp, "multi-let single", "(let (ml-z 42) ml-z)", 42, pass, fail);
+    test_eq(interp, "let implicit block body", "(let (ml-body-y 10) (+ ml-body-y 1) (* ml-body-y 2))", 20, pass, fail);
+    test_eq(interp, "let-rec implicit block body", "(let ^rec (ml-body-fact (lambda (n) (if (= n 0) 1 (* n (ml-body-fact (- n 1)))))) (+ 1 1) (ml-body-fact 5))", 120, pass, fail);
 
     // Named let
     test_eq(interp, "named-let sum 1..5", "(let loop (n 5 acc 0) (if (= n 0) acc (loop (- n 1) (+ acc n))))", 15, pass, fail);
+    test_eq(interp, "named-let implicit block body", "(let loop (n 3 acc 0) (+ acc 0) (if (= n 0) acc (loop (- n 1) (+ acc n))))", 6, pass, fail);
     test_eq(interp, "named-let fact 10", "(let fact (n 10 acc 1) (if (= n 0) acc (fact (- n 1) (* acc n))))", 3628800, pass, fail);
     test_eq(interp, "named-let fib 10", "(let fib (n 10 a 0 b 1) (if (= n 0) a (fib (- n 1) b (+ a b))))", 55, pass, fail);
     test_eq(interp, "named-let fib 20", "(let fib (n 20 a 0 b 1) (if (= n 0) a (fib (- n 1) b (+ a b))))", 6765, pass, fail);
