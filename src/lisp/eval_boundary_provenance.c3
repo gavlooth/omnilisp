@@ -433,7 +433,8 @@ fn BoundaryReturnClassification boundary_classify_return_value(
 }
 
 fn BoundaryScopeTransferResult boundary_try_scope_splice_escapes_result(main::ScopeRegion* parent, main::ScopeRegion* child) @inline {
-    BoundaryScopeTransferResult result = boundary_check_scope_transfer(parent, child);
+    BoundaryTransplantProof proof = boundary_build_transplant_proof(parent, child);
+    BoundaryScopeTransferResult result = proof.transfer;
     if (result.allowed) {
         main::scope_splice_escapes(parent, child);
     }
@@ -539,26 +540,68 @@ fn bool boundary_rewrite_spliced_escape_stamps(Value* root, main::ScopeRegion* p
     return true;
 }
 
+fn BoundaryTransplantProof boundary_build_transplant_root_proof(
+    main::ScopeRegion* parent,
+    main::ScopeRegion* child,
+    Value* root,
+    Env* global_env = null
+) @noinline {
+    BoundaryTransplantProof proof = boundary_build_transplant_proof(parent, child);
+    proof.root_graph_required = root != null;
+    proof.root_non_null = root != null;
+    proof.root_owned_by_child_escape = root == null || (child != null && root.scope_gen == child.escape_generation);
+    proof.stamp_rewrite_required = root != null;
+    if (proof.transfer.allowed) {
+        proof.reachable_temp_edges_safe = boundary_debug_graph_audit_pre_splice_escape_root(root, parent, child, global_env);
+        proof.closure_env_edges_safe = proof.reachable_temp_edges_safe;
+        if (!proof.reachable_temp_edges_safe) {
+            proof.transfer.allowed = false;
+            proof.transfer.reason = BOUNDARY_SCOPE_TRANSFER_CHILD_TEMP_LANE_INVALID;
+        }
+    }
+    return proof;
+}
+
+fn BoundaryScopeTransferResult boundary_try_scope_splice_escapes_root_proof_result(
+    main::ScopeRegion* parent,
+    main::ScopeRegion* child,
+    Value* root,
+    BoundaryTransplantProof* proof_io
+) {
+    BoundaryTransplantProof proof = {};
+    if (proof_io != null) {
+        proof = *proof_io;
+    } else {
+        proof = boundary_build_transplant_root_proof(parent, child, root);
+    }
+    BoundaryScopeTransferResult result = proof.transfer;
+    if (result.allowed) {
+        proof.stamp_rewrite_safe = boundary_rewrite_spliced_escape_stamps(root, parent, child);
+        if (result.allowed && !proof.stamp_rewrite_safe) {
+            result.allowed = false;
+            result.reason = BOUNDARY_SCOPE_TRANSFER_CHILD_ESCAPE_LANE_INVALID;
+            proof.transfer = result;
+        }
+        if (result.allowed) {
+            proof.transfer = result;
+            main::scope_splice_escapes(parent, child);
+        } else {
+            proof.transfer = result;
+        }
+    }
+    if (proof_io != null) *proof_io = proof;
+    boundary_note_splice_result(result);
+    return result;
+}
+
 fn BoundaryScopeTransferResult boundary_try_scope_splice_escapes_root_result(
     main::ScopeRegion* parent,
     main::ScopeRegion* child,
     Value* root,
     Env* global_env = null
 ) {
-    BoundaryScopeTransferResult result = boundary_check_scope_transfer(parent, child);
-    if (result.allowed) {
-        if (!boundary_debug_graph_audit_pre_splice_escape_root(root, parent, child, global_env)) {
-            result.allowed = false;
-            result.reason = BOUNDARY_SCOPE_TRANSFER_CHILD_TEMP_LANE_INVALID;
-        } else if (!boundary_rewrite_spliced_escape_stamps(root, parent, child)) {
-            result.allowed = false;
-            result.reason = BOUNDARY_SCOPE_TRANSFER_CHILD_ESCAPE_LANE_INVALID;
-        } else {
-            main::scope_splice_escapes(parent, child);
-        }
-    }
-    boundary_note_splice_result(result);
-    return result;
+    BoundaryTransplantProof proof = boundary_build_transplant_root_proof(parent, child, root, global_env);
+    return boundary_try_scope_splice_escapes_root_proof_result(parent, child, root, &proof);
 }
 
 <*

@@ -61,6 +61,12 @@ or survive as one ownership island. A transplant must preserve the boundary
 invariant that committed ESCAPE roots do not retain reachable Omni-owned edges
 into non-surviving TEMP storage.
 
+The current implementation records this through `BoundaryTransplantProof`.
+Scope splices, root splices, and commit splice candidates now share proof
+fields for parent/child legality, source-root shape, root graph audit,
+closure-env safety, FFI/native opacity, mutation applicability, and stamp
+rewrite safety before mutating scope state.
+
 If the proof is weaker than that, prefer stable materialization. Copying is not
 the goal; preserving the explicit region ownership contract is.
 

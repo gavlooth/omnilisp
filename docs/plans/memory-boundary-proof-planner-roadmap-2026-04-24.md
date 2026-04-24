@@ -185,7 +185,12 @@ Replace ad hoc splice/transplant eligibility checks with a
 states that the whole source ownership island survives without leaking
 non-surviving TEMP edges.
 
-Tracked by `MEM-BOUNDARY-TRANSPLANT-001`.
+Closed 2026-04-24 by `MEM-BOUNDARY-TRANSPLANT-001`: scope-transfer legality now
+builds a `BoundaryTransplantProof` with parent/child, refcount, owner-thread,
+lane-shape, source-root, root-audit, closure-env, FFI-opaque, mutation, and
+stamp-rewrite flags. Commit splice candidates consume a proof object instead of
+the former standalone boolean precheck, while preserving existing transplant
+success behavior.
 
 ### Phase 5: FFI Bridge Boundary Declarations
 
@@ -237,9 +242,9 @@ FFI, JIT/eval boundary, or mutation semantics.
 
 ## Next Checkpoint
 
-The next concrete deliverable is `MEM-BOUNDARY-TRANSPLANT-001`: replace ad hoc
-scope splice checks with a `BoundaryTransplantProof` object before changing any
-transplant success behavior.
+The next concrete deliverable is `MEM-BOUNDARY-FFI-BRIDGE-001`: add explicit
+FFI bridge boundary declarations while keeping current `FFI_HANDLE` behavior
+opaque by default.
 
 ## Agent Assignments
 

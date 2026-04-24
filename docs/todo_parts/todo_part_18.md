@@ -84,14 +84,15 @@ Source: `docs/plans/memory-boundary-proof-planner-roadmap-2026-04-24.md`.
   - negative-memory constraint: do not weaken existing structural mutation drift
     tests while adding epoch short-circuiting.
 
-- [ ] `MEM-BOUNDARY-TRANSPLANT-001` replace ad hoc splice checks with `BoundaryTransplantProof`.
+- [x] `MEM-BOUNDARY-TRANSPLANT-001` replace ad hoc splice checks with `BoundaryTransplantProof`.
   - classification: runtime behavior, structural overhaul.
-  - task: make whole-region transplant/splice a planner-selected route with a
-    proof object that records owner thread, refcount, lane, scope-chain, TEMP
-    edge, closure-env, and FFI/native constraints.
-  - next step: wrap current scope-transfer legality checks in a proof-returning
-    helper before changing any transplant success behavior.
-  - prerequisites: planner decision API from `MEM-BOUNDARY-PLANNER-001`.
+  - done 2026-04-24: added `BoundaryTransplantProof`, routed scope-transfer and
+    root-splice checks through proof builders, and made commit splice candidates
+    consume a proof object instead of the prior standalone boolean precheck
+    without expanding transplant success behavior.
+  - validation: `c3c build --obj-out obj`; bounded container
+    `memory-lifetime-smoke` (`254 passed, 0 failed`); bounded container
+    Valgrind `memory-lifetime-smoke` (`254 passed, 0 failed`).
   - negative-memory constraint: transplant is legal only when the whole source
     ownership island survives; otherwise materialize or fail closed.
 

@@ -26,17 +26,52 @@ fn void run_memory_lifetime_splice_legality_explicit_reasons_test(Interp* interp
         void* escaped = child.alloc_escape(16);
         interp.current_scope = saved;
 
+        BoundaryTransplantProof ready_proof = boundary_build_transplant_proof(parent, child);
+        BoundaryTransplantProof sibling_proof = boundary_build_transplant_proof(sibling, child);
+        BoundaryTransplantProof foreign_proof = boundary_build_transplant_proof(foreign, child);
         BoundaryScopeTransferResult sibling_result = boundary_try_scope_splice_escapes_result(sibling, child);
         BoundaryScopeTransferResult foreign_result = boundary_try_scope_splice_escapes_result(foreign, child);
 
         void* saved_child_owner = child.owner_thread_token;
         child.owner_thread_token = null;
+        BoundaryTransplantProof owner_proof = boundary_build_transplant_proof(parent, child);
         BoundaryScopeTransferResult owner_result = boundary_try_scope_splice_escapes_result(parent, child);
         child.owner_thread_token = saved_child_owner;
 
         main::scope_retain(child);
+        BoundaryTransplantProof retained_proof = boundary_build_transplant_proof(parent, child);
         BoundaryScopeTransferResult retained_result = boundary_try_scope_splice_escapes_result(parent, child);
 
+        bool ready_proof_ok = ready_proof.transfer.allowed &&
+                              ready_proof.transfer.reason == BOUNDARY_SCOPE_TRANSFER_OK &&
+                              ready_proof.parent_non_null &&
+                              ready_proof.child_non_null &&
+                              !ready_proof.same_scope &&
+                              ready_proof.immediate_child &&
+                              ready_proof.child_refcount_one &&
+                              ready_proof.owner_thread_match &&
+                              ready_proof.parent_escape_lane_valid &&
+                              ready_proof.child_temp_lane_valid &&
+                              ready_proof.child_escape_lane_valid &&
+                              !ready_proof.root_graph_required &&
+                              ready_proof.root_owned_by_child_escape &&
+                              ready_proof.source_escape_graph_safe &&
+                              ready_proof.reachable_temp_edges_safe &&
+                              ready_proof.closure_env_edges_safe &&
+                              !ready_proof.ffi_native_traversal_required &&
+                              ready_proof.ffi_native_edges_safe &&
+                              !ready_proof.mutation_epoch_required &&
+                              ready_proof.mutation_epoch_stable &&
+                              !ready_proof.stamp_rewrite_required &&
+                              ready_proof.stamp_rewrite_safe;
+        bool proof_reasons_ok = !sibling_proof.transfer.allowed &&
+                                sibling_proof.transfer.reason == BOUNDARY_SCOPE_TRANSFER_NOT_IMMEDIATE_CHILD &&
+                                !foreign_proof.transfer.allowed &&
+                                foreign_proof.transfer.reason == BOUNDARY_SCOPE_TRANSFER_NOT_IMMEDIATE_CHILD &&
+                                !owner_proof.transfer.allowed &&
+                                owner_proof.transfer.reason == BOUNDARY_SCOPE_TRANSFER_OWNER_THREAD_MISMATCH &&
+                                !retained_proof.transfer.allowed &&
+                                retained_proof.transfer.reason == BOUNDARY_SCOPE_TRANSFER_CHILD_REFCOUNT_NOT_ONE;
         bool sibling_ok = !sibling_result.allowed &&
                           sibling_result.reason == BOUNDARY_SCOPE_TRANSFER_NOT_IMMEDIATE_CHILD;
         bool foreign_ok = !foreign_result.allowed &&
@@ -59,13 +94,15 @@ fn void run_memory_lifetime_splice_legality_explicit_reasons_test(Interp* interp
         main::scope_release(foreign);
         main::scope_release(parent);
 
-        bool ok = sibling_ok && foreign_ok && owner_ok && retained_ok && state_ok;
+        bool ok = ready_proof_ok && proof_reasons_ok && sibling_ok && foreign_ok && owner_ok && retained_ok && state_ok;
         if (ok) {
             emit_pass_literal("[PASS] lifetime: splice legality explicit reasons");
             (*pass)++;
         } else {
             io::printfn(
-                "[FAIL] lifetime: splice legality explicit reasons (sibling=%s foreign=%s owner=%s retained=%s state_ok=%s reasons=%s/%s/%s/%s)",
+                "[FAIL] lifetime: splice legality explicit reasons (ready_proof=%s proof_reasons=%s sibling=%s foreign=%s owner=%s retained=%s state_ok=%s reasons=%s/%s/%s/%s)",
+                ready_proof_ok ? "yes" : "no",
+                proof_reasons_ok ? "yes" : "no",
                 sibling_ok ? "yes" : "no",
                 foreign_ok ? "yes" : "no",
                 owner_ok ? "yes" : "no",

@@ -6143,3 +6143,40 @@ Current checkpoint:
   `MEM-BOUNDARY-TRANSPLANT-001`.
 
 Signature: GPT-5 Codex
+
+## 2026-04-24 memory boundary transplant proof implementation
+
+Objective:
+- Implement `MEM-BOUNDARY-TRANSPLANT-001` after planner/passport/epoch closure.
+
+Changes made:
+- Added `BoundaryTransplantProof` to record splice/transplant proof fields.
+- Routed scope-transfer checks through `boundary_build_transplant_proof(...)`.
+- Added `boundary_build_transplant_root_proof(...)` and a proof-consuming root
+  splice execution helper.
+- Replaced the commit splice boolean precheck with a commit splice proof that
+  preserves source ESCAPE-root and graph-safety constraints.
+- Extended memory-lifetime tests for proof fields and root-audit proof rejection.
+- Closed `MEM-BOUNDARY-TRANSPLANT-001`; next checkpoint is
+  `MEM-BOUNDARY-FFI-BRIDGE-001`.
+
+Commands run:
+- `c3c build --obj-out obj`
+- `scripts/run_validation_container.sh env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `scripts/run_validation_container.sh valgrind --leak-check=full --error-exitcode=99 env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+
+Key results:
+- Build passed.
+- Bounded container `memory-lifetime-smoke` passed with `254 passed, 0 failed`.
+- Bounded container Valgrind `memory-lifetime-smoke` passed with
+  `254 passed, 0 failed`.
+
+Current checkpoint:
+- Transplant/splice is now proof-driven but behavior-preserving.
+- FFI/native bridge declarations remain the next open proof-planner item.
+
+Unresolved issues:
+- FFI bridge metadata, copy-debt telemetry, and commit-path migration remain
+  open roadmap items.
+
+Signature: GPT-5 Codex

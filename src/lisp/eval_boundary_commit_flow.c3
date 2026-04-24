@@ -86,11 +86,30 @@ fn void boundary_commit_normalized_closure_rollback(
     *stage = {};
 }
 
-fn bool boundary_commit_can_splice_escape_root(
+fn BoundaryTransplantProof boundary_commit_build_splice_escape_root_proof(
     Value* result,
-    main::ScopeRegion* releasing_scope
+    main::ScopeRegion* target_scope,
+    main::ScopeRegion* releasing_scope,
+    Env* global_env = null
 ) @inline {
-    if (result == null || releasing_scope == null) return false;
-    if (result.scope_gen != releasing_scope.escape_generation) return false;
-    return boundary_graph_audit_escape_reachability(result, releasing_scope);
+    BoundaryTransplantProof proof =
+        boundary_build_transplant_root_proof(target_scope, releasing_scope, result, global_env);
+    proof.root_owned_by_child_escape =
+        result != null &&
+        releasing_scope != null &&
+        result.scope_gen == releasing_scope.escape_generation;
+    if (proof.transfer.allowed && !proof.root_owned_by_child_escape) {
+        proof.transfer.allowed = false;
+        proof.transfer.reason = BOUNDARY_SCOPE_TRANSFER_CHILD_TEMP_LANE_INVALID;
+        proof.reachable_temp_edges_safe = false;
+    }
+    if (proof.transfer.allowed) {
+        proof.source_escape_graph_safe = boundary_graph_audit_escape_reachability(result, releasing_scope);
+        if (!proof.source_escape_graph_safe) {
+            proof.transfer.allowed = false;
+            proof.transfer.reason = BOUNDARY_SCOPE_TRANSFER_CHILD_TEMP_LANE_INVALID;
+            proof.reachable_temp_edges_safe = false;
+        }
+    }
+    return proof;
 }

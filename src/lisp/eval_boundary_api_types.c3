@@ -197,6 +197,31 @@ struct BoundaryScopeTransferResult {
     BoundaryScopeTransferReason reason;
 }
 
+struct BoundaryTransplantProof {
+    BoundaryScopeTransferResult transfer;
+    bool parent_non_null;
+    bool child_non_null;
+    bool same_scope;
+    bool immediate_child;
+    bool child_refcount_one;
+    bool owner_thread_match;
+    bool parent_escape_lane_valid;
+    bool child_temp_lane_valid;
+    bool child_escape_lane_valid;
+    bool root_graph_required;
+    bool root_non_null;
+    bool root_owned_by_child_escape;
+    bool source_escape_graph_safe;
+    bool reachable_temp_edges_safe;
+    bool closure_env_edges_safe;
+    bool ffi_native_traversal_required;
+    bool ffi_native_edges_safe;
+    bool mutation_epoch_required;
+    bool mutation_epoch_stable;
+    bool stamp_rewrite_required;
+    bool stamp_rewrite_safe;
+}
+
 const usz BOUNDARY_SCOPE_TRANSFER_REASON_COUNT =
     (usz)BoundaryScopeTransferReason.BOUNDARY_SCOPE_TRANSFER_CHILD_ESCAPE_LANE_INVALID + 1;
 

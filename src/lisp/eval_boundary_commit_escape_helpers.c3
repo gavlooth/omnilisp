@@ -104,9 +104,11 @@ fn void boundary_commit_escape_handle_releasing_scope(
         if (active_ctx.aborted) {
             if (allow_scope_splice &&
                 classification_io.provenance == BOUNDARY_RETURN_OWNED_BY_RELEASING_ESCAPE) {
-                if (boundary_commit_can_splice_escape_root(result, releasing_scope)) {
+                BoundaryTransplantProof splice_proof =
+                    boundary_commit_build_splice_escape_root_proof(result, target_scope, releasing_scope, interp.global_env);
+                if (splice_proof.transfer.allowed) {
                     BoundaryScopeTransferResult splice_result =
-                        boundary_try_scope_splice_escapes_root_result(target_scope, releasing_scope, result, interp.global_env);
+                        boundary_try_scope_splice_escapes_root_proof_result(target_scope, releasing_scope, result, &splice_proof);
                     if (splice_result.allowed) {
                         committed.value = result;
                         committed.outcome = BOUNDARY_COMMIT_SPLICED_RELEASING_SCOPE;
@@ -125,7 +127,7 @@ fn void boundary_commit_escape_handle_releasing_scope(
                     splice_reject_reason = splice_result.reason;
                 } else {
                     splice_rejected_for_commit = true;
-                    splice_reject_reason = BOUNDARY_SCOPE_TRANSFER_CHILD_TEMP_LANE_INVALID;
+                    splice_reject_reason = splice_proof.transfer.reason;
                 }
             }
             BoundaryPromotionAbortReason abort_reason = BOUNDARY_PROMOTION_ABORT_BUDGET_EXHAUSTED;
@@ -148,9 +150,11 @@ fn void boundary_commit_escape_handle_releasing_scope(
         if (allow_scope_splice &&
             classification_io.provenance == BOUNDARY_RETURN_OWNED_BY_RELEASING_ESCAPE &&
             boundary_should_promote(result, active_ctx, releasing_scope)) {
-            if (boundary_commit_can_splice_escape_root(result, releasing_scope)) {
+            BoundaryTransplantProof splice_proof =
+                boundary_commit_build_splice_escape_root_proof(result, target_scope, releasing_scope, interp.global_env);
+            if (splice_proof.transfer.allowed) {
                 BoundaryScopeTransferResult splice_result =
-                    boundary_try_scope_splice_escapes_root_result(target_scope, releasing_scope, result, interp.global_env);
+                    boundary_try_scope_splice_escapes_root_proof_result(target_scope, releasing_scope, result, &splice_proof);
                 if (splice_result.allowed) {
                     committed.value = result;
                     committed.outcome = BOUNDARY_COMMIT_SPLICED_RELEASING_SCOPE;
@@ -169,7 +173,7 @@ fn void boundary_commit_escape_handle_releasing_scope(
                 splice_reject_reason = splice_result.reason;
             } else {
                 splice_rejected_for_commit = true;
-                splice_reject_reason = BOUNDARY_SCOPE_TRANSFER_CHILD_TEMP_LANE_INVALID;
+                splice_reject_reason = splice_proof.transfer.reason;
             }
         }
     }

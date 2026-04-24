@@ -4767,3 +4767,24 @@
   - `c3c build`
   - `LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite all`
   - `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` (`2071 passed, 0 failed`)
+
+## 2026-04-24 memory boundary transplant proof implementation
+
+- Implemented and closed `MEM-BOUNDARY-TRANSPLANT-001`.
+  - Added `BoundaryTransplantProof` as the explicit proof object for
+    whole-region splice/transplant eligibility.
+  - Scope-transfer legality now builds proof fields for parent/child
+    non-nullness, same-scope rejection, immediate-child relationship,
+    child-refcount uniqueness, owner-thread match, and TEMP/ESCAPE lane shapes.
+  - Root-splice legality now records root presence, source ESCAPE-root
+    ownership, source escape graph safety, target root-audit safety,
+    closure-env safety, FFI/native opacity, mutation applicability, and stamp
+    rewrite safety before mutating scope state.
+  - Boundary commit splice candidates now consume
+    `BoundaryTransplantProof` instead of the former standalone
+    `boundary_commit_can_splice_escape_root(...)` boolean precheck.
+  - Regression coverage asserts explicit proof fields for legal/rejected scope
+    transfers and the root-audit proof rejection for a releasing TEMP edge.
+- Validation passed: `c3c build --obj-out obj`; bounded container
+  `memory-lifetime-smoke` (`254 passed, 0 failed`); bounded container Valgrind
+  `memory-lifetime-smoke` (`254 passed, 0 failed`).
