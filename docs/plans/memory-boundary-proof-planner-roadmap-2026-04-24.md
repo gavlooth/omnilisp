@@ -328,6 +328,30 @@ Temporary counters tracing identified the residual as:
 This residual is expected coverage rather than optimizer debt. The next
 copy-debt target is the remaining heap-backed scalar bucket.
 
+### Phase 13: BigInteger Copy-Debt Reduction
+
+Closed 2026-04-24 by `MEM-BOUNDARY-BIGINT-COPY-001`: TEMP `BIG_INTEGER` roots
+with explicit transplant candidacy now use the prepared-budget/proof transplant
+lane before stable destination materialization. The BigInteger regression
+snapshots the TEMP source payload handle before commit and verifies the
+committed ESCAPE value without dereferencing retired TEMP source state after a
+successful splice.
+
+Measured result from counters-enabled bounded `memory-lifetime-smoke` after the
+change:
+
+- `materialization_copy_bytes=208`
+- `materialization_copy_bytes_cons=0`
+- `materialization_copy_bytes_array=0`
+- `materialization_copy_bytes_closure=208`
+- `materialization_copy_bytes_big_integer=0`
+- `selected_stable_materialize_big_integer=0`
+- `selected_transplant=12`
+
+All optimizer-addressable stable-materialization copy debt identified by the
+tag counters is now reduced in the smoke slice; the remaining `208` copied
+bytes are the intentional no-splice closure rollback coverage.
+
 ## Validation Path
 
 Minimum validation per implementation phase:
@@ -357,12 +381,11 @@ FFI, JIT/eval boundary, or mutation semantics.
 
 The proof-planner implementation queue in TODO Part 18 is closed through
 planner-owned commit migration, tag attribution, `CONS` copy-debt reduction,
-closure copy-debt reduction, array copy-debt reduction, and closure residual
-classification. The measured follow-up queue is now open on
-`MEM-BOUNDARY-BIGINT-COPY-001`: counters-enabled `memory-lifetime-smoke` shows
-`BIG_INTEGER` as the only remaining optimizer-addressable materialization copy
-bucket (`56/264` copied bytes). The closure bucket (`208/264`) is retained by
-explicit no-splice rollback coverage.
+closure copy-debt reduction, array copy-debt reduction, closure residual
+classification, and BigInteger copy-debt reduction. Counters-enabled
+`memory-lifetime-smoke` now reports no optimizer-addressable
+stable-materialization copy bucket; the remaining `208` copied bytes are
+explicit no-splice closure rollback coverage.
 
 ## Agent Assignments
 

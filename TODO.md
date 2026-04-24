@@ -25,7 +25,7 @@ split gate applies to code files only.
 - Part 15: [docs/todo_parts/todo_part_15.md](docs/todo_parts/todo_part_15.md) (951 lines)
 - Part 16: [docs/todo_parts/todo_part_16.md](docs/todo_parts/todo_part_16.md) (261 lines)
 - Part 17: [docs/todo_parts/todo_part_17.md](docs/todo_parts/todo_part_17.md) (75 lines)
-- Part 18: [docs/todo_parts/todo_part_18.md](docs/todo_parts/todo_part_18.md) (251 lines)
+- Part 18: [docs/todo_parts/todo_part_18.md](docs/todo_parts/todo_part_18.md) (256 lines)
 
 ## Live Queue
 
@@ -36,11 +36,10 @@ split gate applies to code files only.
   `docs/plans/memory-boundary-proof-planner-roadmap-2026-04-24.md` is closed in
   Part 18 through planner-owned commit migration, tag attribution, `CONS`
   copy-debt reduction, closure copy-debt reduction, array copy-debt reduction,
-  and closure residual classification. The measured follow-up queue is now open
-  on `MEM-BOUNDARY-BIGINT-COPY-001`: counters-enabled
-  `memory-lifetime-smoke` reports `BIG_INTEGER` as the remaining
-  optimizer-addressable materialization bucket (`56/264` copied bytes). The
-  closure bucket (`208/264`) is expected no-splice rollback coverage.
+  closure residual classification, and BigInteger copy-debt reduction.
+  Counters-enabled `memory-lifetime-smoke` now reports no
+  optimizer-addressable stable-materialization copy bucket; the remaining
+  `208` copied bytes are expected no-splice closure rollback coverage.
 - No open stable-escape prepared-materialization rollout items remain in Part 16.
 - Recent closed stable-escape rollout history in Part 16 includes prepared
   `CONS`/`ARRAY`/dictionary/set/closure graph metadata, cyclic container

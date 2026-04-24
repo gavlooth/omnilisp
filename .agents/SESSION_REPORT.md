@@ -5525,6 +5525,70 @@ Re-audit notes:
 
 Signature: GPT-5 Codex
 
+## 2026-04-24 memory boundary BigInteger copy-debt reduction
+
+Date/time: 2026-04-24 14:45 CEST
+
+Objective:
+- Implement `MEM-BOUNDARY-BIGINT-COPY-001`, the remaining
+  optimizer-addressable materialization copy bucket after closure residual
+  classification.
+
+Changes made:
+- Added `BIG_INTEGER` to the prepared-budget/proof transplant gate in
+  `src/lisp/eval_boundary_commit_escape_helpers.c3`.
+- Updated the TEMP BigInteger regression in
+  `src/lisp/tests_memory_lifetime_boundary_commit_escape_primary_groups.c3` to
+  assert selected `REGION_TRANSPLANT`.
+- The regression snapshots the source payload handle before boundary commit and
+  validates the committed ESCAPE value without dereferencing retired TEMP source
+  state after a successful splice.
+- Updated the roadmap, TODO index, TODO Part 18, changelog, and session report.
+
+Commands run:
+- C3 diagnostics for touched runtime/test files.
+- `c3c build --obj-out obj`
+- `scripts/run_validation_container.sh env LD_LIBRARY_PATH=build:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+- `c3c build --obj-out obj -D OMNI_BOUNDARY_INSTR_COUNTERS`
+- `scripts/run_validation_container.sh env LD_LIBRARY_PATH=build:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+- `c3c build --obj-out obj`
+- `scripts/run_validation_container.sh env LD_LIBRARY_PATH=build:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=basic ./build/main --test-suite lisp`
+- `scripts/run_validation_container.sh valgrind --leak-check=full --error-exitcode=99 env LD_LIBRARY_PATH=build:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+- `c3c build --obj-out obj --sanitize=address`
+- `c3c build --obj-out obj`
+- `git diff --check`
+- `scripts/check_status_consistency.sh`
+
+Key results:
+- Build passed.
+- Bounded normal `memory-lifetime-smoke` passed with `255 passed, 0 failed`.
+- Bounded counters-enabled `memory-lifetime-smoke` passed with
+  `255 passed, 0 failed`.
+- Bounded `basic` passed with `169 passed, 0 failed`.
+- Bounded Valgrind `memory-lifetime-smoke` passed with
+  `255 passed, 0 failed` and exit code 0.
+- ASAN remains unavailable: local `c3c` rejected sanitizer mode before
+  compiling with `Address sanitizer is only supported on Linux, FreeBSD,
+  NetBSD, Darwin and Windows.`
+- Final normal rebuild after the ASAN attempt passed.
+- `git diff --check` passed.
+- `scripts/check_status_consistency.sh` passed with TODO actionable count `10`
+  and memory runtime/validation status `green`.
+- Counters moved `materialization_copy_bytes_big_integer` from `56` to `0` and
+  aggregate `materialization_copy_bytes` from `264` to `208`.
+- The remaining `208` copied bytes are the expected no-splice closure rollback
+  coverage classified by `MEM-BOUNDARY-CLOSURE-RESIDUAL-001`.
+
+Unresolved issues:
+- No optimizer-addressable stable-materialization copy bucket remains in the
+  counters-enabled `memory-lifetime-smoke` slice.
+- ASAN validation remains blocked by local `c3c` sanitizer support detection.
+
+Next actions:
+- Commit non-artifact changes after whitespace/status consistency gates pass.
+
+Signature: GPT-5 Codex
+
 ## 2026-04-24 memory boundary closure residual classification
 
 Date/time: 2026-04-24 14:25 CEST

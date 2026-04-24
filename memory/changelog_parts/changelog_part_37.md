@@ -5015,6 +5015,37 @@ Validation:
   - temporary counters-enabled `memory-lifetime-smoke` trace passed
     (`255 passed, 0 failed`) and identified the no-splice rollback caller
   - no runtime code change was retained from the trace
+
+## 2026-04-24 memory boundary BigInteger copy-debt reduction
+
+- Implemented and closed `MEM-BOUNDARY-BIGINT-COPY-001`.
+  - The pre-materialization transplant helper now includes `BIG_INTEGER` roots
+    in the same prepared-graph budget gate used by `CONS`, `CLOSURE`, and
+    `ARRAY`.
+  - TEMP BigInteger roots with explicit transplant candidacy now try promotion
+    into the releasing ESCAPE lane followed by proof-backed region transplant
+    before stable destination materialization.
+  - The TEMP BigInteger regression now asserts selected `REGION_TRANSPLANT` and
+    snapshots the source payload handle before boundary commit so it does not
+    dereference retired TEMP source state after a successful splice.
+- Measured result from counters-enabled bounded `memory-lifetime-smoke`:
+  - before: `materialization_copy_bytes=264`,
+    `materialization_copy_bytes_big_integer=56`
+  - after: `materialization_copy_bytes=208`,
+    `materialization_copy_bytes_big_integer=0`
+  - remaining copy bucket:
+    `materialization_copy_bytes_closure=208`, expected no-splice rollback
+    coverage from `MEM-BOUNDARY-CLOSURE-RESIDUAL-001`
+- Current best next optimization:
+  - No optimizer-addressable stable-materialization copy bucket remains in the
+    counters-enabled `memory-lifetime-smoke` slice.
+- Validation:
+  - C3 diagnostics for touched runtime/test files
+  - `c3c build --obj-out obj`
+  - `c3c build --obj-out obj -D OMNI_BOUNDARY_INSTR_COUNTERS`
+  - bounded container normal `memory-lifetime-smoke` (`255 passed, 0 failed`)
+  - bounded container counters-enabled `memory-lifetime-smoke`
+    (`255 passed, 0 failed`)
   - bounded container normal `basic` (`169 passed, 0 failed`)
   - bounded container normal Valgrind `memory-lifetime-smoke`
     (`255 passed, 0 failed`)

@@ -234,17 +234,22 @@ Source: `docs/plans/memory-boundary-proof-planner-roadmap-2026-04-24.md`.
   - negative-memory constraint: do not weaken child TEMP-edge proof rejection or
     refcount-one scope-splice requirements to remove this residual.
 
-- [ ] `MEM-BOUNDARY-BIGINT-COPY-001` reduce remaining heap-scalar stable-materialization copy debt.
+- [x] `MEM-BOUNDARY-BIGINT-COPY-001` reduce remaining heap-scalar stable-materialization copy debt.
   - classification: runtime performance, targeted optimization.
-  - task: evaluate whether temporary heap-backed scalar roots such as
-    `BIG_INTEGER` can safely use the prepared-budget/proof transplant lane
-    before stable destination materialization.
-  - why: after array reduction and closure residual classification,
-    counters-enabled `memory-lifetime-smoke` reports the only remaining
-    optimizer-addressable copy bucket as `materialization_copy_bytes_big_integer=56`.
-  - concrete next step: inspect `promote_escape_big_integer`,
-    `stable_escape_materialize_clone_big_payload`, and transplant proof gates
-    for heap-backed scalar roots.
+  - done 2026-04-24: `BIG_INTEGER` roots selected for stable materialization
+    now use the prepared-budget/proof transplant lane before stable destination
+    materialization. The regression snapshots the source payload handle before
+    commit and verifies the committed ESCAPE BigInteger value without
+    dereferencing the retired TEMP source after a splice.
+  - validation: `c3c build --obj-out obj`; counters-enabled build
+    (`-D OMNI_BOUNDARY_INSTR_COUNTERS`); bounded container normal and
+    counters-enabled `memory-lifetime-smoke` (`255 passed, 0 failed` each);
+    bounded container `basic` (`169 passed, 0 failed`); bounded container
+    Valgrind `memory-lifetime-smoke` (`255 passed, 0 failed`); ASAN attempted
+    and rejected by the local `c3c` toolchain before compiling; `git diff
+    --check`; `scripts/check_status_consistency.sh`. Counters moved
+    `materialization_copy_bytes_big_integer` from `56` to `0` and aggregate
+    `materialization_copy_bytes` from `264` to `208`.
   - prerequisites: `MEM-BOUNDARY-CLOSURE-RESIDUAL-001` remains closed as
     expected no-splice coverage.
   - negative-memory constraint: do not remove or rewrite the explicit no-splice

@@ -60,6 +60,7 @@ fn bool boundary_commit_pre_materialize_transplant_tag_supported(ValueTag tag) @
         case CONS:
         case CLOSURE:
         case ARRAY:
+        case BIG_INTEGER:
             return true;
         default:
             return false;

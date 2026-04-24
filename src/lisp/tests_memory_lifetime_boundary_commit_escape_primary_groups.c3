@@ -336,7 +336,7 @@ fn void run_memory_lifetime_boundary_commit_escape_primary_tests(Interp* interp,
         }
     }
 
-    // Invariant: TEMP BigInteger survivor materializes with a cloned payload.
+    // Invariant: TEMP BigInteger survivor transplants a promoted cloned payload.
     {
         main::ScopeRegion* root_scope = interp.current_scope;
         main::ScopeRegion* target_scope = main::scope_create(root_scope);
@@ -344,12 +344,13 @@ fn void run_memory_lifetime_boundary_commit_escape_primary_tests(Interp* interp,
         if (target_scope == null || releasing_scope == null) {
             if (releasing_scope != null) main::scope_release(releasing_scope);
             if (target_scope != null) main::scope_release(target_scope);
-            io::printn("[FAIL] lifetime: boundary_commit_escape TEMP BigInteger stable materialization");
+            io::printn("[FAIL] lifetime: boundary_commit_escape TEMP BigInteger transplant");
             (*fail)++;
         } else {
             interp.current_scope = releasing_scope;
             Value* src = make_big_integer_from_i64(interp, 123456789);
             bool setup_ok = src != null && src.tag == BIG_INTEGER && src.big_integer_val != null;
+            void* src_payload = setup_ok ? src.big_integer_val : null;
 
             PromotionContext ctx = {};
             boundary_promotion_context_begin(interp, &ctx, PROMOTION_CTX_BUDGET_RETURN);
@@ -360,16 +361,18 @@ fn void run_memory_lifetime_boundary_commit_escape_primary_tests(Interp* interp,
             bool big_ok = committed.value != null &&
                           committed.value.tag == BIG_INTEGER &&
                           committed.value.big_integer_val != null &&
-                          committed.value.big_integer_val != src.big_integer_val &&
-                          big_integer_values_equal(committed.value, src);
+                          committed.value.big_integer_val != src_payload;
+            long narrowed = 0;
+            bool value_ok = big_ok && big_integer_try_to_i64(committed.value, &narrowed) && narrowed == 123456789;
             bool ok = setup_ok &&
-                      !committed.releasing_scope_spliced &&
+                      committed.releasing_scope_spliced &&
                       !committed.reused_in_target_chain &&
-                      committed.stable_materialization_used &&
+                      !committed.stable_materialization_used &&
                       !committed.compatibility_path_used &&
-                      committed.outcome == BOUNDARY_COMMIT_DESTINATION_DIRECT_PROMOTED &&
+                      committed.outcome == BOUNDARY_COMMIT_SPLICED_RELEASING_SCOPE &&
+                      committed.selected_route == BOUNDARY_PLAN_ROUTE_REGION_TRANSPLANT &&
                       committed.value != src &&
-                      big_ok &&
+                      value_ok &&
                       committed.value.scope_gen == target_scope.escape_generation &&
                       main::is_in_scope((void*)committed.value, target_scope);
 
@@ -382,15 +385,17 @@ fn void run_memory_lifetime_boundary_commit_escape_primary_tests(Interp* interp,
             }
 
             if (ok) {
-                emit_pass_literal("[PASS] lifetime: boundary_commit_escape TEMP BigInteger stable materialization");
+                emit_pass_literal("[PASS] lifetime: boundary_commit_escape TEMP BigInteger transplant");
                 (*pass)++;
             } else {
-                io::printfn("[FAIL] lifetime: boundary_commit_escape TEMP BigInteger stable materialization (setup_ok=%s outcome=%d stable_materialized=%s compatibility=%s same=%s)",
+                io::printfn("[FAIL] lifetime: boundary_commit_escape TEMP BigInteger transplant (setup_ok=%s outcome=%d selected=%d stable_materialized=%s compatibility=%s same=%s value_ok=%s)",
                     setup_ok ? "yes" : "no",
                     (int)committed.outcome,
+                    (int)committed.selected_route,
                     committed.stable_materialization_used ? "yes" : "no",
                     committed.compatibility_path_used ? "yes" : "no",
-                    committed.value == src ? "yes" : "no");
+                    committed.value == src ? "yes" : "no",
+                    value_ok ? "yes" : "no");
                 (*fail)++;
             }
         }
