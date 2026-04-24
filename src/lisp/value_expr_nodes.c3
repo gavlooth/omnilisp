@@ -39,6 +39,7 @@ enum ExprTag : char {
     E_DEFMACRO,   // (defmacro name transformer) - macro definition
     E_MODULE,     // (module name (export ...) body...) - module definition
     E_IMPORT,     // (import name) - module import
+    E_WITH_MODULE, // (with name body...) - scoped module open
     E_DEFTYPE,    // (define [type] Name fields...)
     E_DEFABSTRACT, // (define [abstract] Name [Parent])
     E_DEFUNION,   // (define [union] Name variants...)

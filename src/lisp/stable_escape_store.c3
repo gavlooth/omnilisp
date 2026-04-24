@@ -808,39 +808,52 @@ fn bool stable_escape_store_handle_is_alive(Interp* interp, StableEscapeHandle* 
     return true;
 }
 
-fn Value* stable_escape_store_resolve_value(Interp* interp, StableEscapeHandle* handle) {
-    if (!stable_escape_store_handle_is_alive(interp, handle)) return null;
-    StableEscapeStore* store = stable_escape_store_from_interp(interp);
-    if (store == null) return null;
+fn StableEscapeStoreEntry* stable_escape_store_acquire_entry(StableEscapeStore* store, StableEscapeHandle* handle) {
+    if (handle == null || handle.kind != STABLE_ESCAPE_HANDLE_ROOT_VALUE) return null;
+    if (store == null || !store.initialized || handle.slot >= STABLE_ESCAPE_STORE_CAPACITY) return null;
 
     store.mu.lock();
-    defer store.mu.unlock();
-
     StableEscapeStoreEntry* entry = &store.entries[handle.slot];
+    if (!entry.active ||
+        entry.kind != handle.kind ||
+        entry.generation != handle.generation ||
+        entry.root != handle.root ||
+        entry.owner_scope == null ||
+        entry.owner_scope.generation == 0 ||
+        entry.owner_scope.escape_generation != entry.owner_escape_generation ||
+        !stable_escape_store_root_publishable_in_owner_scope(entry.root, entry.owner_scope) ||
+        !stable_escape_store_prepared_nodes_alive(entry)) {
+        store.mu.unlock();
+        return null;
+    }
+    return entry;
+}
+
+fn void stable_escape_store_release_entry(StableEscapeStore* store) {
+    if (store != null) store.mu.unlock();
+}
+
+fn Value* stable_escape_store_resolve_value(Interp* interp, StableEscapeHandle* handle) {
+    StableEscapeStore* store = stable_escape_store_from_interp(interp);
+    StableEscapeStoreEntry* entry = stable_escape_store_acquire_entry(store, handle);
+    if (entry == null) return null;
+    defer stable_escape_store_release_entry(store);
     return entry.root;
 }
 
 fn usz stable_escape_store_prepared_node_count(Interp* interp, StableEscapeHandle* handle) {
-    if (!stable_escape_store_handle_is_alive(interp, handle)) return 0;
     StableEscapeStore* store = stable_escape_store_from_interp(interp);
-    if (store == null) return 0;
-
-    store.mu.lock();
-    defer store.mu.unlock();
-
-    StableEscapeStoreEntry* entry = &store.entries[handle.slot];
+    StableEscapeStoreEntry* entry = stable_escape_store_acquire_entry(store, handle);
+    if (entry == null) return 0;
+    defer stable_escape_store_release_entry(store);
     return entry.prepared_node_count;
 }
 
 fn usz stable_escape_store_prepared_root_index(Interp* interp, StableEscapeHandle* handle) {
-    if (!stable_escape_store_handle_is_alive(interp, handle)) return STABLE_ESCAPE_PREPARED_INVALID_INDEX;
     StableEscapeStore* store = stable_escape_store_from_interp(interp);
-    if (store == null) return STABLE_ESCAPE_PREPARED_INVALID_INDEX;
-
-    store.mu.lock();
-    defer store.mu.unlock();
-
-    StableEscapeStoreEntry* entry = &store.entries[handle.slot];
+    StableEscapeStoreEntry* entry = stable_escape_store_acquire_entry(store, handle);
+    if (entry == null) return STABLE_ESCAPE_PREPARED_INVALID_INDEX;
+    defer stable_escape_store_release_entry(store);
     return entry.prepared_root_index;
 }
 
@@ -849,14 +862,10 @@ fn usz stable_escape_store_prepared_node_child_count(
     StableEscapeHandle* handle,
     usz node_index
 ) {
-    if (!stable_escape_store_handle_is_alive(interp, handle)) return 0;
     StableEscapeStore* store = stable_escape_store_from_interp(interp);
-    if (store == null) return 0;
-
-    store.mu.lock();
-    defer store.mu.unlock();
-
-    StableEscapeStoreEntry* entry = &store.entries[handle.slot];
+    StableEscapeStoreEntry* entry = stable_escape_store_acquire_entry(store, handle);
+    if (entry == null) return 0;
+    defer stable_escape_store_release_entry(store);
     if (entry.prepared_nodes == null || node_index >= entry.prepared_node_count) return 0;
     return entry.prepared_nodes[node_index].child_count;
 }
@@ -866,14 +875,10 @@ fn ValueTag stable_escape_store_prepared_node_tag(
     StableEscapeHandle* handle,
     usz node_index
 ) {
-    if (!stable_escape_store_handle_is_alive(interp, handle)) return VOID;
     StableEscapeStore* store = stable_escape_store_from_interp(interp);
-    if (store == null) return VOID;
-
-    store.mu.lock();
-    defer store.mu.unlock();
-
-    StableEscapeStoreEntry* entry = &store.entries[handle.slot];
+    StableEscapeStoreEntry* entry = stable_escape_store_acquire_entry(store, handle);
+    if (entry == null) return VOID;
+    defer stable_escape_store_release_entry(store);
     if (entry.prepared_nodes == null || node_index >= entry.prepared_node_count) return VOID;
     return entry.prepared_nodes[node_index].tag;
 }
@@ -884,14 +889,10 @@ fn usz stable_escape_store_prepared_node_child(
     usz node_index,
     uint child_ordinal
 ) {
-    if (!stable_escape_store_handle_is_alive(interp, handle)) return STABLE_ESCAPE_PREPARED_INVALID_INDEX;
     StableEscapeStore* store = stable_escape_store_from_interp(interp);
-    if (store == null) return STABLE_ESCAPE_PREPARED_INVALID_INDEX;
-
-    store.mu.lock();
-    defer store.mu.unlock();
-
-    StableEscapeStoreEntry* entry = &store.entries[handle.slot];
+    StableEscapeStoreEntry* entry = stable_escape_store_acquire_entry(store, handle);
+    if (entry == null) return STABLE_ESCAPE_PREPARED_INVALID_INDEX;
+    defer stable_escape_store_release_entry(store);
     if (entry.prepared_nodes == null || node_index >= entry.prepared_node_count) {
         return STABLE_ESCAPE_PREPARED_INVALID_INDEX;
     }

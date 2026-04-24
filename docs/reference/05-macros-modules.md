@@ -99,6 +99,11 @@ the canonical reader-tag attribute:
 (import math-utils 'all)
 (add 3 4)                    ;; => 7
 
+;; Scoped open: export bindings are local to the body
+(with math-utils
+  (add 3 4)
+  (multiply 2 5))             ;; => 10
+
 ;; Dotted/path module target
 (import ui.nodes)
 (ui.nodes.text "ok")
@@ -122,6 +127,8 @@ the canonical reader-tag attribute:
 - Module targets for `module` / `import` / `export-from` can be symbol, dotted/path token, or string file path
 - Modules loaded only once (cached)
 - Circular import detection
+- Scoped module open with `(with mod body...)`; exported names are visible only
+  in the child body environment
 - Method extensions are always global (dispatch is cross-cutting)
 - `module` / `import` / `export-from` return `Void` on success
 - `math` and `stats` are always-available core scientific module values. Use

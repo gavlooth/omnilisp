@@ -1,17 +1,17 @@
 module lisp;
 
-fn bool Parser.parse_import_target(Parser* self, Expr* e) {
+fn bool Parser.parse_import_target_into(Parser* self, ExprImport* imp, char[] form_name) {
     if (self.lexer.current.type == T_SYMBOL || self.lexer.current.type == T_PATH) {
-        e.import_expr.name = self.get_current_symbol();
+        imp.name = self.get_current_symbol();
         self.lexer.advance();
         return true;
     }
     if (self.lexer.current.type == T_STRING) {
-        e.import_expr.has_path = true;
+        imp.has_path = true;
         char[] str = self.lexer.current.text[:self.lexer.current.text_len];
         usz len = str.len;
         if (len == usz.max) {
-            self.set_error("import path is too long");
+            self.set_error("module path is too long");
             return false;
         }
         char* path_buf = (char*)self.alloc_ast_bytes(len + 1, "out of memory while parsing import path");
@@ -20,15 +20,24 @@ fn bool Parser.parse_import_target(Parser* self, Expr* e) {
             path_buf[i] = str[i];
         }
         path_buf[len] = 0;
-        e.import_expr.path = path_buf;
-        e.import_expr.path_len = len;
-        e.import_expr.name = self.intern_or_error(str, "failed to intern import path");
-        if (e.import_expr.name == INVALID_SYMBOL_ID) return false;
+        imp.path = path_buf;
+        imp.path_len = len;
+        imp.name = self.intern_or_error(str, "failed to intern import path");
+        if (imp.name == INVALID_SYMBOL_ID) return false;
         self.lexer.advance();
         return true;
     }
-    self.set_error("expected module name or path after import");
+    if (form_name.len == 4 &&
+        form_name[0] == 'w' && form_name[1] == 'i' && form_name[2] == 't' && form_name[3] == 'h') {
+        self.set_error("expected module name or path after with");
+    } else {
+        self.set_error("expected module name or path after import");
+    }
     return false;
+}
+
+fn bool Parser.parse_import_target(Parser* self, Expr* e) {
+    return self.parse_import_target_into(&e.import_expr, "import");
 }
 
 fn bool Parser.parse_import_symbol_spec(Parser* self, Expr* e, usz idx) {

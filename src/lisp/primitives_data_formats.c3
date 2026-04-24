@@ -32,6 +32,15 @@ fn bool data_is_ascii_space(char c) @inline {
     return c == ' ' || c == '\t' || c == '\n' || c == '\r';
 }
 
+fn int data_base64_value(char c) @inline {
+    if (c >= 'A' && c <= 'Z') return (int)(c - 'A');
+    if (c >= 'a' && c <= 'z') return 26 + (int)(c - 'a');
+    if (c >= '0' && c <= '9') return 52 + (int)(c - '0');
+    if (c == '+') return 62;
+    if (c == '/') return 63;
+    return -1;
+}
+
 <*
 @require interp != null
 *>
@@ -70,6 +79,86 @@ fn Value* prim_hex(Value*[] args, Env* env, Interp* interp) {
         if (promoted == null || promoted.tag == ERROR) return promoted;
         arr.array_val.items[out_i++] = promoted;
         high = -1;
+    }
+    arr.array_val.length = byte_count;
+    return arr;
+}
+
+<*
+@require interp != null
+*>
+fn Value* prim_base64(Value*[] args, Env* env, Interp* interp) {
+    if (args.len != 1 || args[0] == null || args[0].tag != STRING) {
+        return data_format_raise(interp, "type/arg-mismatch", "base64: expected 1 string argument");
+    }
+    char[] text = args[0].str_chars[:args[0].str_len];
+    usz clean_count = 0;
+    usz padding_count = 0;
+    bool padding_seen = false;
+    for (usz i = 0; i < text.len; i++) {
+        char c = text[i];
+        if (data_is_ascii_space(c)) continue;
+        if (c == '=') {
+            padding_seen = true;
+            padding_count++;
+            if (padding_count > 2) {
+                return data_format_raise(interp, "type/arg-mismatch", "base64: invalid padding");
+            }
+        } else {
+            if (padding_seen) {
+                return data_format_raise(interp, "type/arg-mismatch", "base64: data after padding");
+            }
+            if (data_base64_value(c) < 0) {
+                return data_format_raise(interp, "type/arg-mismatch", "base64: invalid base64 character");
+            }
+        }
+        clean_count++;
+    }
+    if (clean_count % 4 != 0) {
+        return data_format_raise(interp, "type/arg-mismatch", "base64: expected input length to be a multiple of 4");
+    }
+
+    usz byte_count = clean_count == 0 ? 0 : (clean_count / 4) * 3 - padding_count;
+    Value* arr = make_array(interp, byte_count);
+    if (arr == null || arr.tag != ARRAY || arr.array_val == null) return arr;
+
+    int[4] vals;
+    bool[4] pads;
+    usz q = 0;
+    usz out_i = 0;
+    for (usz i = 0; i < text.len; i++) {
+        char c = text[i];
+        if (data_is_ascii_space(c)) continue;
+        pads[q] = c == '=';
+        vals[q] = pads[q] ? 0 : data_base64_value(c);
+        q++;
+        if (q < 4) continue;
+
+        if (pads[0] || pads[1] || (pads[2] && !pads[3])) {
+            return data_format_raise(interp, "type/arg-mismatch", "base64: invalid padding");
+        }
+
+        int b0 = (vals[0] << 2) | (vals[1] >> 4);
+        Value* byte0 = make_int(interp, (long)b0);
+        Value* promoted0 = array_promote_or_error(byte0, interp);
+        if (promoted0 == null || promoted0.tag == ERROR) return promoted0;
+        arr.array_val.items[out_i++] = promoted0;
+
+        if (!pads[2]) {
+            int b1 = ((vals[1] & 15) << 4) | (vals[2] >> 2);
+            Value* byte1 = make_int(interp, (long)b1);
+            Value* promoted1 = array_promote_or_error(byte1, interp);
+            if (promoted1 == null || promoted1.tag == ERROR) return promoted1;
+            arr.array_val.items[out_i++] = promoted1;
+        }
+        if (!pads[3]) {
+            int b2 = ((vals[2] & 3) << 6) | vals[3];
+            Value* byte2 = make_int(interp, (long)b2);
+            Value* promoted2 = array_promote_or_error(byte2, interp);
+            if (promoted2 == null || promoted2.tag == ERROR) return promoted2;
+            arr.array_val.items[out_i++] = promoted2;
+        }
+        q = 0;
     }
     arr.array_val.length = byte_count;
     return arr;

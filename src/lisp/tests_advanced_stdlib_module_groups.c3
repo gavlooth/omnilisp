@@ -59,6 +59,11 @@ fn void run_advanced_collections_dict_literal_tests(Interp* interp, int* pass, i
     test_eq(interp, "{} count", "(length {'a 1 'b 2 'c 3})", 3, pass, fail);
     test_eq(interp, "#hex byte array length", "(length #hex \"ff 0a 1b 00\")", 4, pass, fail);
     test_eq(interp, "#hex byte array value", "(ref #hex \"48656c6c6f\" 1)", 101, pass, fail);
+    test_truthy(interp, "#json reader tag remains ordinary call", "(ref #json \"{\\\"ok\\\": true}\" \"ok\")", pass, fail);
+    test_eq(interp, "#toml reader tag remains ordinary call", "(ref #toml \"port = 8080\\n\" \"port\")", 8080, pass, fail);
+    test_eq(interp, "#base64 byte array length", "(length #base64 \"SGVsbG8=\")", 5, pass, fail);
+    test_eq(interp, "#base64 byte array value", "(ref #base64 \"SGVsbG8=\" 1)", 101, pass, fail);
+    test_error_contains(interp, "#base64 rejects malformed data", "#base64 \"SGVsbG8\"", "base64:", pass, fail);
     test_str_val(interp, "#uuid validates canonical UUID", "#uuid \"550e8400-e29b-41d4-a716-446655440000\"", "550e8400-e29b-41d4-a716-446655440000", pass, fail);
     // Array literal []
     test_eq(interp, "[] empty", "(length [])", 0, pass, fail);
@@ -167,6 +172,13 @@ fn void run_advanced_module_all_dependency_tests(Interp* interp, int* pass, int*
     setup(interp, "(module private-mod (export) (define secret 42))");
     setup(interp, "(import private-mod)");
     test_error(interp, "module empty export hides", "secret", pass, fail);
+    setup(interp, "(module scoped-open-mod (export scoped-add scoped-base) (define scoped-base 10) (define scoped-add (lambda (x) (+ x scoped-base))) (define hidden-scoped 99))");
+    test_eq(interp, "with module scoped export call", "(with scoped-open-mod (scoped-add 5))", 15, pass, fail);
+    test_eq(interp, "with module multiple body returns last", "(with scoped-open-mod (scoped-add 1) (scoped-add 2))", 12, pass, fail);
+    test_eq(interp, "with module qualified binding remains available", "(with scoped-open-mod scoped-open-mod.scoped-base)", 10, pass, fail);
+    test_truthy(interp, "with core math module opens exported primitives", "(with math (< (abs (- (+ (sin 0.0) (cos 0.0)) 1.0)) 0.000001))", pass, fail);
+    test_error(interp, "with module does not leak export", "(block (with scoped-open-mod (scoped-add 3)) scoped-add)", pass, fail);
+    test_error(interp, "with module keeps unexported hidden", "(with scoped-open-mod hidden-scoped)", pass, fail);
     setup(interp, "(module closure-mod (export make-counter) (define make-counter (lambda () (let (n 0) (lambda () (block (set! n (+ n 1)) n))))))");
     setup(interp, "(import closure-mod (make-counter))");
     setup(interp, "(define my-counter (make-counter))");

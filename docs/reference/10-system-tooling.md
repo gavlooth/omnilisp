@@ -80,6 +80,9 @@ nil               ;; nil value
 #b1010            ;; binary integer   -> 10
 #o755             ;; octal integer    -> 493
 #hex "ff0a"       ;; byte array       -> [255 10]
+#base64 "SGVsbG8=" ;; byte array     -> [72 101 108 108 111]
+#json "{\"ok\": true}"
+#toml "port = 8080"
 #time "2024-01-15T10:30:00Z"
 #uuid "550e8400-e29b-41d4-a716-446655440000"
 (Set "a" "b" "c") ;; set constructor

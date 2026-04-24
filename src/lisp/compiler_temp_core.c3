@@ -38,6 +38,7 @@ fn usz Compiler.compile_to_temp_non_null(Compiler* self, Expr* expr) {
             return defmacro_id;
         case E_MODULE: return self.compile_module_flat(expr);
         case E_IMPORT: return self.compile_import_flat(expr);
+        case E_WITH_MODULE: return self.compile_with_module_open_flat(expr);
         case E_EXPORT_FROM: return self.compile_export_from_flat(expr);
         case E_IF: return self.compile_if_flat(expr);
         case E_APP: return self.compile_app_flat(expr);

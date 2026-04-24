@@ -105,3 +105,20 @@ Source: `AUDIT_REPORT_VULKAN_CUDA_ML_2026-04-23.md`.
     `advanced-collections-module` (`2067 passed, 0 failed`).
   - negative-memory constraint: do not rely on ordinary `x > 0.0` if
     signed-zero behavior matters.
+
+- [ ] `SCOPED-MODULE-AOT-001` add AOT lowering for scoped module open.
+  - classification: runtime behavior, structural compiler/runtime parity.
+  - blocker/task: `(with mod body...)` is implemented for JIT/runtime but AOT
+    currently emits an explicit unsupported diagnostic for `E_WITH_MODULE`.
+  - why: a correct AOT implementation must preserve child-env scoping and must
+    not emulate scoped open by importing exports into `global_env`.
+  - concrete next step: design a compiler/runtime bridge that can enter a
+    temporary import child environment while compiling body expressions, then
+    add compiler slice tests for unqualified exports, shadowing, and no-leak
+    behavior.
+  - prerequisites: decide how AOT symbol references inside the `with` body map
+    to dynamically opened module exports without turning them into permanent C
+    globals.
+  - negative-memory constraint: do not implement AOT scoped open as
+    `import 'all` plus global cleanup; that would be scope-observable and
+    unsafe around errors.

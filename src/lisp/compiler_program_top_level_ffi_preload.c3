@@ -15,6 +15,12 @@ fn bool Compiler.has_ffi_preload_expr(Compiler* self, Expr* expr) {
                 if (self.has_ffi_preload_expr(expr.module_expr.body[i])) return true;
             }
             return false;
+        case E_WITH_MODULE:
+            if (expr.with_module == null) return false;
+            for (usz i = 0; i < expr.with_module.body_count; i++) {
+                if (self.has_ffi_preload_expr(expr.with_module.body[i])) return true;
+            }
+            return false;
         case E_BLOCK:
             if (expr.block == null) return false;
             for (usz i = 0; i < expr.block.expr_count; i++) {

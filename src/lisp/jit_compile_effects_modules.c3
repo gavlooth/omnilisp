@@ -97,6 +97,10 @@ fn void? jit_compile_import(void* s, Expr* expr, Interp* interp, JitLocals* loca
     jit_compile_3arg_helper(s, expr, interp, locals, (void*)&jit_do_import)!;
 }
 
+fn void? jit_compile_with_module_open(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
+    jit_compile_3arg_helper(s, expr, interp, locals, (void*)&jit_do_with_module_open)!;
+}
+
 fn Value* jit_do_export_from(Interp* interp, Expr* expr, Env* env) {
     interp = jit_resolve_interp(interp);
     if (interp == null) return null;

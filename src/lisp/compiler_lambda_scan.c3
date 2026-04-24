@@ -132,6 +132,15 @@ fn bool Compiler.scan_lambdas_module_expr(Compiler* self, Expr* expr) {
     return found;
 }
 
+fn bool Compiler.scan_lambdas_with_module_expr(Compiler* self, Expr* expr, List{SymbolId}* enclosing_bound) {
+    if (expr.with_module == null) return false;
+    bool found = false;
+    for (usz i = 0; i < expr.with_module.body_count; i++) {
+        found |= self.scan_lambdas_with_scope(expr.with_module.body[i], enclosing_bound);
+    }
+    return found;
+}
+
 fn bool Compiler.scan_lambdas_with_scope(Compiler* self, Expr* expr, List{SymbolId}* enclosing_bound) {
     if (self.has_error) return false;
     if (expr == null) return false;
@@ -164,6 +173,7 @@ fn bool Compiler.scan_lambdas_with_scope(Compiler* self, Expr* expr, List{Symbol
         case E_UNQUOTE_SPLICING: return self.scan_lambdas_with_scope(expr.unquote_splicing.body, enclosing_bound);
         case E_DEFMACRO: return false;
         case E_MODULE: return self.scan_lambdas_module_expr(expr);
+        case E_WITH_MODULE: return self.scan_lambdas_with_module_expr(expr, enclosing_bound);
         case E_IMPORT:
         case E_EXPORT_FROM: return false;
         default: return false;

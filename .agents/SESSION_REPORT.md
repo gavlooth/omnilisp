@@ -5951,6 +5951,88 @@ Re-audit notes:
 
 Signature: GPT-5 Codex
 
+## 2026-04-24 scoped module open and data reader tags
+
+Date/time: 2026-04-24 18:49:19 CEST
+
+Objective:
+- Implement the requested scoped module open form and keep new reader data tags
+  as ordinary reader-tag calls rather than parser special cases.
+
+Changes made:
+- Added `(with mod body...)` as `E_WITH_MODULE`, parsed from ordinary module
+  targets and evaluated by opening exported bindings in a child environment.
+- Reused the existing module import loader/cache and path resolution logic.
+- Added `json` and `toml` primitive aliases for `#json` and `#toml`, and added
+  a `base64` primitive for `#base64` byte-array decoding.
+- Added advanced module/data-reader tests covering scoped no-leak behavior,
+  core `math` scoped open, JSON/TOML reader tags, and Base64 decoding.
+- Fixed stale duplicate fragments in `src/lisp/stable_escape_store.c3` that
+  blocked C3 checking before this slice.
+- Updated docs, changelog, TODO, and Serena memory.
+
+Commands run:
+- `c3c -C build`
+- `c3c build`
+- `find /usr/local/lib deps/lib build -maxdepth 2 \( -name 'liblightning*' -o -name 'libreplxx*' -o -name 'libomni_chelpers*' -o -name 'libomni_ftxui*' \) -print`
+
+Key results:
+- `c3c -C build` passed.
+- `c3c build` reached link but failed because the local environment is missing
+  `liblightning`, `libreplxx`, `libomni_chelpers`, and `libomni_ftxui`.
+- No runtime test binary was available after the failed link.
+
+Unresolved issues:
+- `SCOPED-MODULE-AOT-001` tracks AOT lowering for scoped module open. Current
+  AOT behavior is an explicit unsupported diagnostic for `E_WITH_MODULE`;
+  do not emulate scoped open with global `import 'all`.
+
+Signature: GPT-5 Codex
+
+## 2026-04-24 codebase deep audit
+
+Objective:
+- Audit for bugs, memory leaks, regressions, code smells, and antipatterns without applying source fixes.
+
+Relevant workspace:
+- `/home/christos/Omni`
+
+Changes made:
+- No source changes.
+- Added this audit checkpoint only.
+
+Commands run:
+- `jj status`
+- `c3c build --obj-out obj`
+- C3 diagnostics for `src/lisp/stable_escape_store.c3`, `src/lisp/prim_ml_optimizer_vulkan.c3`, and `src/lisp/prim_ml_optimizer_cuda.c3`
+- `scripts/check_status_consistency.sh`
+- `git diff --check`
+- `scripts/run_validation_container.sh env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `scripts/run_validation_container.sh valgrind --trace-children=yes --leak-check=full --show-leak-kinds=definite,indirect,possible --error-exitcode=99 env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+
+Key results:
+- Build passed.
+- C3 diagnostics returned no diagnostics for the inspected hotspot files.
+- Status consistency checks passed.
+- `git diff --check` passed.
+- Bounded container `memory-lifetime-smoke` passed with `255 passed, 0 failed`.
+- Bounded container Valgrind `memory-lifetime-smoke` passed with `255 passed, 0 failed`; no definite, indirect, or possible leaks were reported.
+
+Audit findings:
+- `src/lisp/stable_escape_store.c3` stable-handle read accessors validate under one mutex acquisition, drop the lock, reacquire, and then read slot data without revalidating. `stable_escape_store_resolve_value`, prepared-node count/root/tag/child accessors, and child-count accessors can race with `stable_escape_store_retire` or `stable_escape_store_reset`, allowing stale, null, or reused-slot reads.
+- `src/lisp/value_interp_alloc_helpers.c3` still uses assertion-based allocation failure handling for core `Interp` allocators. This remains a fail-fast production-path antipattern compared with the repo's typed/fail-closed allocation policy.
+- `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part8.c3` is 1015 LOC, exceeding the current 1000 LOC code-file split gate.
+
+Unresolved issues:
+- No concurrency regression test currently exercises stable escape handle resolution racing retirement/reset.
+- No broad full-suite or GPU hardware-backed validation was run during this audit; validation was targeted to build, status checks, and memory-lifetime smoke/Valgrind.
+
+Current best recommendation:
+- First fix the stable escape accessor race by validating and reading under the same lock, or by introducing a locked lookup helper used by all handle accessors.
+- Add a scheduler/threaded regression that repeatedly resolves prepared graph metadata while another task retires/reset handles.
+
+Signature: GPT-5 Codex
+
 ## 2026-04-24 17:52 CEST - AGENTS Valgrind Guidance Re-Audit
 
 Objective:

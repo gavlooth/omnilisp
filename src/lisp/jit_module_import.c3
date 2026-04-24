@@ -7,9 +7,9 @@ import std::collections::list;
 // SECTION 3: JIT HELPER FUNCTIONS (module/import)
 // =============================================================================
 
-fn EvalResult load_import_target_module(Expr* expr, SymbolId name, Interp* interp, Module** mod_out) {
-    if (expr.import_expr.has_path) {
-        char[] rel_path = expr.import_expr.path[:expr.import_expr.path_len];
+fn EvalResult load_import_target_module_spec(ExprImport* spec, SymbolId name, Interp* interp, Module** mod_out) {
+    if (spec.has_path) {
+        char[] rel_path = spec.path[:spec.path_len];
         char[512] resolved;
         usz rlen = 0;
         if (!resolve_import_path_checked(rel_path, interp, &resolved, 512, &rlen)) {
@@ -54,6 +54,10 @@ fn EvalResult load_import_target_module(Expr* expr, SymbolId name, Interp* inter
     return eval_ok(make_void(interp));
 }
 
+fn EvalResult load_import_target_module(Expr* expr, SymbolId name, Interp* interp, Module** mod_out) {
+    return load_import_target_module_spec(&expr.import_expr, name, interp, mod_out);
+}
+
 fn bool module_exports_symbol(Module* mod, SymbolId name) {
     for (usz i = 0; i < mod.export_count; i++) {
         if ((uint)mod.exports[i] == (uint)name) return true;
@@ -61,16 +65,16 @@ fn bool module_exports_symbol(Module* mod, SymbolId name) {
     return false;
 }
 
-fn EvalResult bind_import_symbols(Expr* expr, Env* env, Module* mod, Interp* interp) {
+fn EvalResult bind_import_symbols_spec(ExprImport* spec, Env* env, Module* mod, Interp* interp) {
     Value* mod_val = make_module(interp, mod);
     if (mod_val == null || mod_val.tag == ERROR) {
         return eval_error("import: out of memory while binding module");
     }
-    if (env_define_with_barrier_result(env, expr.import_expr.name, mod_val, interp) != null) {
+    if (env_define_with_barrier_result(env, spec.name, mod_val, interp) != null) {
         return eval_error("import: out of memory while binding module");
     }
 
-    if (expr.import_expr.import_all) {
+    if (spec.import_all) {
         for (usz i = 0; i < mod.export_count; i++) {
             Value* val = mod.env.lookup(mod.exports[i]);
             if (val != null &&
@@ -81,9 +85,9 @@ fn EvalResult bind_import_symbols(Expr* expr, Env* env, Module* mod, Interp* int
         return eval_ok(make_void(interp));
     }
 
-    for (usz i = 0; i < expr.import_expr.import_count; i++) {
-        SymbolId imp_name = expr.import_expr.imports[i];
-        SymbolId alias_name = expr.import_expr.aliases[i];
+    for (usz i = 0; i < spec.import_count; i++) {
+        SymbolId imp_name = spec.imports[i];
+        SymbolId alias_name = spec.aliases[i];
         if (!module_exports_symbol(mod, imp_name)) {
             return eval_error("symbol not exported from module");
         }
@@ -97,6 +101,10 @@ fn EvalResult bind_import_symbols(Expr* expr, Env* env, Module* mod, Interp* int
         }
     }
     return eval_ok(make_void(interp));
+}
+
+fn EvalResult bind_import_symbols(Expr* expr, Env* env, Module* mod, Interp* interp) {
+    return bind_import_symbols_spec(&expr.import_expr, env, mod, interp);
 }
 
 fn EvalResult jit_load_module_from_file(char[] path, SymbolId name, Interp* interp) {
@@ -144,4 +152,28 @@ fn EvalResult jit_eval_import_impl(Expr* expr, Env* env, Interp* interp) {
     if (load_result.error.has_error) return load_result;
     if (mod == null) return eval_error("module not found");
     return bind_import_symbols(expr, env, mod, interp);
+}
+
+fn EvalResult jit_eval_with_module_open_impl(Expr* expr, Env* env, Interp* interp) {
+    if (expr.with_module == null) return eval_error("with: missing module open body");
+    ExprImport spec = expr.with_module.import_expr;
+    Module* mod = null;
+    EvalResult load_result = load_import_target_module_spec(&spec, spec.name, interp, &mod);
+    if (load_result.error.has_error) return load_result;
+    if (mod == null) return eval_error("with: module not found");
+
+    Env* scoped_env = make_env(interp, env);
+    if (scoped_env == null) return eval_error("with: out of memory while creating scoped environment");
+
+    spec.import_all = true;
+    spec.import_count = 0;
+    EvalResult bind_result = bind_import_symbols_spec(&spec, scoped_env, mod, interp);
+    if (bind_result.error.has_error) return bind_result;
+
+    EvalResult last_result = eval_ok(make_void(interp));
+    for (usz i = 0; i < expr.with_module.body_count; i++) {
+        last_result = jit_eval_to_result(expr.with_module.body[i], scoped_env, interp);
+        if (last_result.error.has_error) return last_result;
+    }
+    return last_result;
 }

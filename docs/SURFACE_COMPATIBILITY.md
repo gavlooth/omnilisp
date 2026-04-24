@@ -22,9 +22,10 @@ Policy:
 | Access syntax | `expr.name`, `expr.[key]`, `(ref expr key)` |
 | Macro definition | `(define [macro] name (syntax-match ...))` |
 | Reader tag macro definition | `(define [reader tag] name (syntax-match ...))` |
-| Reader tag use | `#tag form` parses as `(tag form)`; built-ins include `#hex`, `#time`, `#uuid` |
+| Reader tag use | `#tag form` parses as `(tag form)`; built-ins include `#hex`, `#base64`, `#json`, `#toml`, `#time`, `#uuid` |
 | Radix integer literals | `#x...`, `#b...`, `#o...` |
 | Grouped imports | `(import (mod (sym 'as alias)) (other 'all))`; quoted symbols remain the module markers |
+| Scoped module open | `(with mod body...)` opens exported module bindings only for the body |
 | Value dispatch constructor | `Value` |
 | Transaction command | `(deduce 'block db ['read|'write|'write-deferred])` |
 

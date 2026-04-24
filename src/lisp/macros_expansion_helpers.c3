@@ -146,6 +146,12 @@ fn void macro_stamp_expr_location(Expr* expr, usz line, usz column) {
                 macro_stamp_expr_location(expr.module_expr.body[i], line, column);
             }
             return;
+        case E_WITH_MODULE:
+            if (expr.with_module == null) return;
+            for (usz i = 0; i < expr.with_module.body_count; i++) {
+                macro_stamp_expr_location(expr.with_module.body[i], line, column);
+            }
+            return;
         default:
             return;
     }

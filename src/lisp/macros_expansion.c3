@@ -90,6 +90,11 @@ fn bool expand_macros_complex(Expr* expr, Interp* interp) {
         case E_MODULE:
             expand_macros_in_sequence(expr.module_expr.body, expr.module_expr.body_count, interp);
             return true;
+        case E_WITH_MODULE:
+            if (expr.with_module != null) {
+                expand_macros_in_sequence(expr.with_module.body, expr.with_module.body_count, interp);
+            }
+            return true;
         default:
             return false;
     }

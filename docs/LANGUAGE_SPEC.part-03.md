@@ -446,6 +446,9 @@ all non-contracted right axes.
 | `gensym` | Generate unique symbol |
 | `format` | Format string with values |
 | `hex` | Parse a hex string into an Array of integer bytes; reader tag form is `#hex "ff0a"` |
+| `base64` | Parse standard Base64 into an Array of integer bytes; reader tag form is `#base64 "SGVsbG8="` |
+| `json` | Alias for `json-parse`; reader tag form is `#json "..."` |
+| `toml` | Alias for `toml-parse`; reader tag form is `#toml "..."` |
 | `uuid` | Validate and return a canonical UUID string; reader tag form is `#uuid "..."` |
 | `sort` | Sort list |
 | `sort-by` | Sort list by comparator |

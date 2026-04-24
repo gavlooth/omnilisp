@@ -94,6 +94,7 @@ fn JitExprFamily jit_expr_family_for_tag(ExprTag tag) @inline {
         case E_DEFMACRO:
         case E_MODULE:
         case E_IMPORT:
+        case E_WITH_MODULE:
             return JitExprFamily.JIT_EXPR_FAMILY_EFFECTS;
         case E_UNQUOTE:
         case E_UNQUOTE_SPLICING:
@@ -173,6 +174,8 @@ fn void? jit_compile_expr_group_effects(void* s, Expr* expr, Interp* interp,
             jit_compile_module(s, expr, interp, locals)!;
         case E_IMPORT:
             jit_compile_import(s, expr, interp, locals)!;
+        case E_WITH_MODULE:
+            jit_compile_with_module_open(s, expr, interp, locals)!;
         default:
             *handled = false;
     }

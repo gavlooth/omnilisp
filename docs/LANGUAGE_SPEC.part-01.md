@@ -377,8 +377,9 @@ declared with the canonical `(define [reader tag] name (syntax-match ...))`
 surface. Any other non-tag `#` sequence is rejected with a deterministic
 parser/lexer error.
 
-Built-in data tags include `#hex "ff 0a"` for byte arrays, `#time
-"2024-01-15T10:30:00Z"` for UTC time points, and `#uuid
+Built-in data tags include `#hex "ff 0a"` and `#base64 "SGVsbG8="` for byte
+arrays, `#json "{\"ok\": true}"` and `#toml "port = 8080"` for data parsing,
+`#time "2024-01-15T10:30:00Z"` for UTC time points, and `#uuid
 "550e8400-e29b-41d4-a716-446655440000"` for validated UUID strings.
 
 ---

@@ -45,6 +45,7 @@ fn void Compiler.find_free_vars(Compiler* self, Expr* expr, List{SymbolId}* boun
         case E_BLOCK:
         case E_QUASIQUOTE:
         case E_MODULE:
+        case E_WITH_MODULE:
         case E_SET:
             self.find_free_vars_complex_form(expr, bound_vars, free_vars, enclosing_scope);
 

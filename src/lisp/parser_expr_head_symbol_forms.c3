@@ -37,6 +37,7 @@ fn Expr* Parser.parse_symbol_head_form(Parser* self, SymbolId head, bool* matche
     if ((uint)head == (uint)self.interp.sym_signal) return self.parse_perform();
     if ((uint)head == (uint)self.interp.sym_handle) return self.parse_handle();
     if ((uint)head == (uint)self.interp.sym_resolve) return self.parse_resolve();
+    if ((uint)head == (uint)self.interp.sym_with) return self.parse_with_module();
     SymbolId explain_sym = self.intern_or_error("explain", "parser: failed to intern explain symbol");
     if (explain_sym == INVALID_SYMBOL_ID) return null;
     if ((uint)head == (uint)explain_sym) return self.parse_explain();

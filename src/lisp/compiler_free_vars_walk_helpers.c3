@@ -85,6 +85,10 @@ fn void Compiler.find_free_vars_complex_form(Compiler* self, Expr* expr, List{Sy
             self.find_free_vars_in_qq(expr.quasiquote.body, bound_vars, free_vars, enclosing_scope);
         case E_MODULE:
             self.find_free_vars_list(expr.module_expr.body, expr.module_expr.body_count, bound_vars, free_vars, enclosing_scope);
+        case E_WITH_MODULE:
+            if (expr.with_module != null) {
+                self.find_free_vars_list(expr.with_module.body, expr.with_module.body_count, bound_vars, free_vars, enclosing_scope);
+            }
         case E_SET:
             self.find_free_vars_set(expr, bound_vars, free_vars, enclosing_scope);
         default:

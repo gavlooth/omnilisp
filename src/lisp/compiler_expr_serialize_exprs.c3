@@ -43,6 +43,9 @@ fn void Compiler.serialize_expr_to_buf(Compiler* self, Expr* expr, List{char}* b
         case E_IMPORT:
             self.serialize_import_to_buf(expr, buf);
 
+        case E_WITH_MODULE:
+            self.serialize_with_module_to_buf(expr, buf);
+
         case E_EXPORT_FROM:
             self.serialize_export_from_to_buf(expr, buf);
 

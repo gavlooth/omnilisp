@@ -12,14 +12,29 @@ fn bool parser_token_is_legacy_marker(Lexer* lexer, char[] marker) {
 
 fn void Parser.init_import_expr(Parser* self, Expr* e) {
     e.tag = E_IMPORT;
-    e.import_expr.has_path = false;
-    e.import_expr.path = null;
-    e.import_expr.path_len = 0;
-    e.import_expr.import_count = 0;
-    e.import_expr.import_capacity = 0;
-    e.import_expr.imports = null;
-    e.import_expr.aliases = null;
-    e.import_expr.import_all = false;
+    self.init_import_spec(&e.import_expr);
+}
+
+fn void Parser.init_import_spec(Parser* self, ExprImport* imp) {
+    imp.name = (SymbolId)0;
+    imp.has_path = false;
+    imp.path = null;
+    imp.path_len = 0;
+    imp.import_count = 0;
+    imp.import_capacity = 0;
+    imp.imports = null;
+    imp.aliases = null;
+    imp.import_all = false;
+}
+
+fn void Parser.init_with_module_expr(Parser* self, Expr* e) {
+    e.tag = E_WITH_MODULE;
+    e.with_module = (ExprWithModule*)self.alloc_ast_bytes(ExprWithModule.sizeof, "out of memory while allocating scoped module open");
+    if (e.with_module == null) return;
+    self.init_import_spec(&e.with_module.import_expr);
+    e.with_module.body = null;
+    e.with_module.body_count = 0;
+    e.with_module.body_capacity = 0;
 }
 
 fn bool Parser.import_ensure_capacity(Parser* self, Expr* e, usz needed) {

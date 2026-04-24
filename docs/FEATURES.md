@@ -37,7 +37,7 @@ For removed/renamed syntax, use:
 | Path access | `expr.name` | `docs/LANGUAGE_SPEC.md` section 6 |
 | Postfix index access | `expr.[key]` | `docs/LANGUAGE_SPEC.md` section 6 |
 | Generic collection ops | `length`, `map`, `filter`, `foldl`, etc. | `docs/reference/03-collections.md` |
-| Data reader tags | `#hex`, `#time`, `#uuid` | `docs/LANGUAGE_SPEC.md` sections 0/7 |
+| Data reader tags | `#hex`, `#base64`, `#json`, `#toml`, `#time`, `#uuid` | `docs/LANGUAGE_SPEC.md` sections 0/7 |
 
 ## 3. Type System and Dispatch
 

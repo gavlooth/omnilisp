@@ -177,6 +177,11 @@ fn usz Compiler.compile_import_flat(Compiler* self, Expr* expr) {
     return id;
 }
 
+fn usz Compiler.compile_with_module_open_flat(Compiler* self, Expr* expr) {
+    self.set_compile_error("compiler: scoped module open is not supported by AOT yet");
+    return self.emit_nil_temp();
+}
+
 /**
  * compile_export_from_flat — export-from is a no-op in compiled mode
  * (re-exported symbols are already inlined as globals).

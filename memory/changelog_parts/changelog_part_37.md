@@ -32,6 +32,33 @@
   - `c3c build --obj-out obj -D OMNI_BOUNDARY_INSTR_COUNTERS`
   - bounded container counters-enabled `memory-lifetime-smoke`
     (`255 passed, 0 failed`)
+
+## 2026-04-24 scoped module open and data reader tags
+
+- Added scoped module open syntax:
+  - `(with mod body...)` loads/resolves the same module target accepted by
+    `import`, opens all exported bindings only in a child environment, and
+    returns the last body value.
+  - The module value itself is also available inside the child environment, so
+    qualified access such as `mod.name` remains usable while unqualified export
+    bindings do not leak to the parent/global environment.
+  - JIT/runtime execution uses the existing module loader/cache and import path
+    resolution logic; AOT compilation currently rejects `E_WITH_MODULE` with an
+    explicit unsupported diagnostic rather than silently changing scope
+    semantics.
+- Kept `#json`, `#toml`, and `#base64` as ordinary reader-tag calls:
+  - `json` aliases `json-parse`.
+  - `toml` aliases `toml-parse`.
+  - `base64` decodes padded standard Base64 into an Array of integer bytes,
+    matching the byte-array convention used by `hex`.
+- Fixed stale duplicate fragments in `stable_escape_store.c3` prepared-node
+  accessors that blocked local C3 checking before this feature could be
+  validated.
+- Validation:
+  - `c3c -C build`
+  - attempted `c3c build`; compile/check completed but local link failed
+    because `liblightning`, `libreplxx`, `libomni_chelpers`, and
+    `libomni_ftxui` were not available in the configured link paths.
   - refreshed bounded container `memory-lifetime-bench` baseline
   - `scripts/check_memory_telemetry_benchmark_envelope.sh`
   - direct `(runtime-memory-stats)` smoke for the new fields

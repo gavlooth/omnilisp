@@ -251,15 +251,18 @@ fn bool register_regular_primitives_collections(Interp* interp) {
         { "crc32", &prim_crc32, 1 },
         // JSON
         { "json-parse", &prim_json_parse, -1 },
+        { "json", &prim_json_parse, -1 },
         { "json-emit", &prim_json_emit, -1 },
         { "json-emit-pretty", &prim_json_emit_pretty, -1 },
         { "json-get", &prim_json_get, 2 },
         { "time-point?", &prim_time_point_p, 1 },
         { "TimePoint", &prim_time_point, -1 }, // Canonical constructor.
         { "hex", &prim_hex, 1 },
+        { "base64", &prim_base64, 1 },
         { "uuid", &prim_uuid, 1 },
         // TOML / CSV
         { "toml-parse", &prim_toml_parse, -1 },
+        { "toml", &prim_toml_parse, -1 },
         { "csv-parse", &prim_csv_parse, -1 },
         { "csv-emit", &prim_csv_emit, -1 },
     };

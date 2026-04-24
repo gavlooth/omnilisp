@@ -590,6 +590,7 @@ that require importing a detachable Pika package.
 | Name | Arity | Description |
 |------|-------|-------------|
 | `json-parse` | 1-2 | Parse JSON string |
+| `json` | 1-2 | Alias for `json-parse`; reader tag form is `#json "..."` |
 | `json-emit` | 1-2 | Emit compact JSON (optional options list for writer flags) |
 | `json-emit-pretty` | 1-2 | Emit pretty JSON (optional options list for writer flags) |
 | `json-get` | 2 | JSON Pointer-style lookup on Omni JSON values |
@@ -602,8 +603,10 @@ that require importing a detachable Pika package.
 | `time-point?` | 1 | TimePoint predicate |
 | `time` | 1 | Parse a time string as a `TimePoint`; reader tag form is `#time "..."` |
 | `hex` | 1 | Parse a hex string into an Array of integer bytes; reader tag form is `#hex "ff0a"` |
+| `base64` | 1 | Parse standard Base64 into an Array of integer bytes; reader tag form is `#base64 "SGVsbG8="` |
 | `uuid` | 1 | Validate and return a canonical UUID string; reader tag form is `#uuid "..."` |
 | `toml-parse` | 1-2 | Parse TOML string (optional options list: `((check-utf8 false))`)
+| `toml` | 1-2 | Alias for `toml-parse`; reader tag form is `#toml "..."` |
 | `csv-parse` | 1-2 | Parse CSV text into rows (`delimiter` string or option list including `strict`; strict/default enforces RFC-4180 CRLF row endings) |
 | `csv-emit` | 1-2 | Emit rows as CSV text (`delimiter`, `line-ending`, `quote-char`, `quote-style`, `nil-as`, `strict`; strict/default line ending is `\\r\\n`) |
 

@@ -141,6 +141,14 @@ fn Value* jit_do_import(Interp* interp, Expr* expr, Env* env) {
     return r.value;
 }
 
+fn Value* jit_do_with_module_open(Interp* interp, Expr* expr, Env* env) {
+    interp = jit_resolve_interp(interp);
+    if (interp == null) return null;
+    EvalResult r = jit_eval_with_module_open_impl(expr, env, interp);
+    if (r.error.has_error) return make_error(interp, r.error.message[:256]);
+    return r.value;
+}
+
 fn void jit_set_call_name(Interp* interp, SymbolId name) {
     interp = jit_resolve_interp(interp);
     if (interp == null) return;

@@ -73,6 +73,7 @@ struct Interp {
     SymbolId sym_handle;
     SymbolId sym_resolve;
     SymbolId sym_with_continuation;
+    SymbolId sym_with;
     SymbolId sym__k;       // hidden continuation name for match-style handle clauses
     SymbolId sym_match;
     SymbolId sym_and;

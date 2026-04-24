@@ -68,6 +68,25 @@ fn void Compiler.serialize_import_to_buf(Compiler* self, Expr* expr, List{char}*
     buf.push(')');
 }
 
+fn void Compiler.serialize_with_module_to_buf(Compiler* self, Expr* expr, List{char}* buf) {
+    self.buf_append(buf, "(with ");
+    if (expr.with_module == null) {
+        self.buf_append(buf, "nil)");
+        return;
+    }
+    if (expr.with_module.import_expr.has_path && expr.with_module.import_expr.path != null) {
+        self.serialize_quoted_text_to_buf(expr.with_module.import_expr.path[:expr.with_module.import_expr.path_len], buf);
+    } else {
+        char[] imp_name = self.interp.symbols.get_name(expr.with_module.import_expr.name);
+        self.buf_append(buf, imp_name);
+    }
+    for (usz i = 0; i < expr.with_module.body_count; i++) {
+        buf.push(' ');
+        self.serialize_expr_to_buf(expr.with_module.body[i], buf);
+    }
+    buf.push(')');
+}
+
 fn void Compiler.serialize_export_from_to_buf(Compiler* self, Expr* expr, List{char}* buf) {
     self.buf_append(buf, "(export-from ");
     char[] efmod = self.interp.symbols.get_name(expr.export_from.source_module);

@@ -32,11 +32,14 @@ fn void init_prim_hash_collections_math_bitwise(SymbolTable* st) {
     prim_hash_insert(st.intern("coroutine?"), "aot::lookup_prim(\"coroutine?\")");
     prim_hash_insert(st.intern("json-get"), "aot::lookup_prim(\"json-get\")");
     prim_hash_insert(st.intern("json-parse"), "aot::lookup_prim(\"json-parse\")");
+    prim_hash_insert(st.intern("json"), "aot::lookup_prim(\"json\")");
     prim_hash_insert(st.intern("json-emit"), "aot::lookup_prim(\"json-emit\")");
     prim_hash_insert(st.intern("json-emit-pretty"), "aot::lookup_prim(\"json-emit-pretty\")");
     prim_hash_insert(st.intern("toml-parse"), "aot::lookup_prim(\"toml-parse\")");
+    prim_hash_insert(st.intern("toml"), "aot::lookup_prim(\"toml\")");
     prim_hash_insert(st.intern("csv-parse"), "aot::lookup_prim(\"csv-parse\")");
     prim_hash_insert(st.intern("csv-emit"), "aot::lookup_prim(\"csv-emit\")");
+    prim_hash_insert(st.intern("base64"), "aot::lookup_prim(\"base64\")");
     prim_hash_insert(st.intern("TimePoint"), "aot::lookup_prim(\"TimePoint\")");
     prim_hash_insert(st.intern("time-point?"), "aot::lookup_prim(\"time-point?\")");
     prim_hash_insert(st.intern("is?"), "aot::lookup_prim(\"is?\")");

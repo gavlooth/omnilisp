@@ -225,6 +225,7 @@ struct Expr {
         ExprDefineMacro  define_macro;
         ExprModule*      module_expr;  // Pointer-indirect (large struct)
         ExprImport       import_expr;
+        ExprWithModule*  with_module;  // Pointer-indirect (body list + import spec)
         ExprDefType*     deftype;      // Pointer-indirect (large struct)
         ExprDefAbstract  defabstract;
         ExprDefUnion*    defunion;     // Pointer-indirect (large struct)
@@ -254,4 +255,3 @@ struct EffectHandler {
     bool  strict_mode;  // ^strict: reject unhandled effects in body
     void* effect_state;  // HandleEffectState* (set by stack-context-based handle, null otherwise)
 }
-

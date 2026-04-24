@@ -255,6 +255,12 @@ fn void jit_warm_expr_cache(Expr* expr, Interp* interp) {
             jit_warm_expr_cache(expr.unquote_splicing.body, interp);
         case E_MODULE:
             jit_warm_module_body(expr, interp);
+        case E_WITH_MODULE:
+            if (expr.with_module != null) {
+                for (usz i = 0; i < expr.with_module.body_count; i++) {
+                    jit_warm_expr_cache(expr.with_module.body[i], interp);
+                }
+            }
         case E_FFI_LIB:
             jit_warm_expr_cache(expr.ffi_lib.path_expr, interp);
         default:

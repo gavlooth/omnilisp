@@ -21,6 +21,7 @@ fn bool interp_init_core_symbols(Interp* self) {
         interp_init_symbol(self, &self.sym_handle, "handle") &&
         interp_init_symbol(self, &self.sym_resolve, "resolve") &&
         interp_init_symbol(self, &self.sym_with_continuation, "with-continuation") &&
+        interp_init_symbol(self, &self.sym_with, "with") &&
         interp_init_symbol(self, &self.sym__k, "__k") &&
         interp_init_symbol(self, &self.sym_match, "match") &&
         interp_init_symbol(self, &self.sym_and, "and") &&

@@ -96,6 +96,16 @@ struct ExprImport {
 }
 
 /**
+ * ExprWithModule — Scoped module open: (with mod body...)
+ */
+struct ExprWithModule {
+    ExprImport import_expr;
+    Expr** body;
+    usz body_count;
+    usz body_capacity;
+}
+
+/**
  * ExprExportFrom — Re-export symbols from another module: (export-from mod (sym1 sym2)) or (export-from mod 'all)
  */
 struct ExprExportFrom {

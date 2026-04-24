@@ -26,7 +26,7 @@
 | T_FLOAT | `-?[0-9]+\.[0-9]+` | Floating-point literals |
 | T_STRING | `"..."` | String literals with escapes: `\n`, `\t`, `\\`, `\"` |
 | T_REGEX | `#r"..."` | Regex literal payload, represented as a string value |
-| T_READER_TAG | `#tag` | Reader tag prefix; `#tag form` parses as `(tag form)`. Built-ins include `#hex`, `#time`, `#uuid`; `#x`, `#b`, and `#o` are radix integers. |
+| T_READER_TAG | `#tag` | Reader tag prefix; `#tag form` parses as `(tag form)`. Built-ins include `#hex`, `#base64`, `#json`, `#toml`, `#time`, `#uuid`; `#x`, `#b`, and `#o` are radix integers. |
 | T_SYMBOL | `[a-zA-Z0-9_\-+*/=<>!?:@#$%&\|^~]+` | Identifiers |
 | T_PATH | `segment.segment[.segment]*` | Dot-separated paths |
 | T_UNDERSCORE | `_` | Wildcard (not a symbol) |
