@@ -25,15 +25,16 @@ split gate applies to code files only.
 - Part 15: [docs/todo_parts/todo_part_15.md](docs/todo_parts/todo_part_15.md) (951 lines)
 - Part 16: [docs/todo_parts/todo_part_16.md](docs/todo_parts/todo_part_16.md) (261 lines)
 - Part 17: [docs/todo_parts/todo_part_17.md](docs/todo_parts/todo_part_17.md) (107 lines)
-- Part 18: [docs/todo_parts/todo_part_18.md](docs/todo_parts/todo_part_18.md) (326 lines)
+- Part 18: [docs/todo_parts/todo_part_18.md](docs/todo_parts/todo_part_18.md) (331 lines)
 
 ## Live Queue
 
-- `MEM-BENCH-OBSERVE-003` through `MEM-BENCH-OBSERVE-005` in Part 18 are open
+- `MEM-BENCH-OBSERVE-004` and `MEM-BENCH-OBSERVE-005` in Part 18 are open
   to maximize memory-boundary telemetry and benchmark evidence before any
   further optimization work. `MEM-BENCH-OBSERVE-001` closed with the signal
   inventory in `docs/plans/memory-boundary-telemetry-signal-inventory-2026-04-24.md`;
-  `MEM-BENCH-OBSERVE-002` closed with runtime counter coverage.
+  `MEM-BENCH-OBSERVE-002` closed with runtime counter coverage;
+  `MEM-BENCH-OBSERVE-003` closed with benchmark workload coverage.
 - The memory boundary architecture verification blockers from
   `docs/plans/memory-boundary-architecture-spec-2026-04-24.md` are closed in
   Part 18.

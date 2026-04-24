@@ -292,8 +292,13 @@ Source: `docs/plans/memory-boundary-telemetry-benchmark-plan-2026-04-24.md`.
   - negative-memory constraint: keep default hot paths zero-overhead unless the
     existing instrumentation gate is enabled.
 
-- [ ] `MEM-BENCH-OBSERVE-003` expand the `memory-lifetime-bench` workload suite.
+- [x] `MEM-BENCH-OBSERVE-003` expand the `memory-lifetime-bench` workload suite.
   - classification: runtime benchmark, targeted workload expansion.
+  - done 2026-04-24: added `boundary_value_shape_counters`
+    `OMNI_BENCH_SUMMARY` coverage for allocator slow paths, reset/destroy
+    slack, collection growth, closure env-copy counters, scalar/tensor payload
+    bytes, FFI release authority, stable passport stale invalidation, and
+    selected transplant/copy-debt deltas.
   - task: add representative TEMP/ESCAPE workloads for large containers,
     closure env copies, cyclic/shared containers, mutation drift,
     BigInteger/String/Error payloads, lazy tensor metadata, and FFI wrappers.

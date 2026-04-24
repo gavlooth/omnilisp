@@ -250,6 +250,48 @@ The historical content was split mechanically to keep individual files below the
     the local `build/main` was rebuilt in default and counters-enabled modes.
 - Signature: GPT-5 Codex
 
+## 2026-04-24 15:28 CEST - Memory Benchmark Workload Expansion
+
+- Objective attempted:
+  - Complete `MEM-BENCH-OBSERVE-003` by expanding `memory-lifetime-bench`
+    workload coverage for the new counter families.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `src/lisp/tests_memory_lifetime_boundary_decision_bench_groups.c3`
+  - memory-boundary telemetry benchmark plan and TODO Part 18
+- Code or configuration changes made:
+  - Added the `boundary_value_shape_counters` benchmark summary line.
+  - The new workload covers allocator slow paths, scope reset/destroy slack,
+    collection construction/growth, closure env-copy, scalar/tensor payload
+    bytes, FFI release-authority wrappers, stable passport stale invalidation,
+    selected transplant deltas, and materialization copy-debt deltas.
+- Commands run:
+  - C3 diagnostics on the edited benchmark file
+  - `c3c build --obj-out obj`
+  - `c3c build --obj-out obj -D OMNI_BOUNDARY_INSTR_COUNTERS`
+  - bounded container counters-enabled `memory-lifetime-bench`
+- Key results:
+  - The bounded benchmark passed and emitted nonzero deltas for the new counter
+    families, including `shape_ok=128`, `closure_env_ok=32`,
+    `stable_passport_ok=1`, `array_growth_delta=128`,
+    `hashmap_growth_delta=1024`, `set_growth_delta=512`,
+    `ffi_releasable_delta=128`, `stable_stale_delta=1`, and
+    `materialization_copy_bytes_delta=0`.
+  - `MEM-BENCH-OBSERVE-003` is closed; the next queue item is
+    `MEM-BENCH-OBSERVE-004` baseline capture.
+- Invalidated assumptions or failed approaches:
+  - Initial reset-slack fixture allocated exact-sized chunks, producing
+    zero reset-slack deltas. The fixture now leaves intentional slack before
+    reset.
+- Unresolved issues:
+  - Baseline archive and interpretation are still open under
+    `MEM-BENCH-OBSERVE-004`; regression-envelope parsing remains open under
+    `MEM-BENCH-OBSERVE-005`.
+- Dependencies, blockers, or restart requirements:
+  - Rebuild required for the new benchmark binary; local `build/main` was
+    rebuilt in counters-enabled mode for benchmark validation.
+- Signature: GPT-5 Codex
+
 ## 2026-04-19 21:42 CEST - All Eligible Over-700 Files Split
 
 - Objective attempted:

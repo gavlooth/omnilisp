@@ -4975,6 +4975,36 @@ Validation:
   - bounded container `memory-lifetime-smoke` (`255 passed, 0 failed`)
   - bounded container `basic` slice with `OMNI_MEM_TELEMETRY=1` (`169
     passed, 0 failed`, JSON telemetry included `value_shape`)
+
+## 2026-04-24 memory telemetry benchmark workload expansion
+
+- Implemented and closed `MEM-BENCH-OBSERVE-003`.
+  - `memory-lifetime-bench` now emits
+    `OMNI_BENCH_SUMMARY suite=boundary_value_shape_counters`.
+  - The workload exercises allocator slow paths, scope reset/destroy slack,
+    collection construction/growth, closure env-copy, String/Error/BigInteger
+    payload bytes, tensor payload bytes, FFI release-authority wrappers, stable
+    passport stale invalidation, selected transplant deltas, and materialization
+    copy-debt deltas.
+- Measured counters-enabled bounded benchmark result:
+  - `shape_ok=128`, `closure_env_ok=32`, `stable_passport_ok=1`
+  - `temp_slow_delta=209`, `escape_slow_delta=416`
+  - `temp_reset_slack_delta=53248`,
+    `escape_reset_slack_delta=118784`
+  - `array_growth_delta=128`, `hashmap_growth_delta=1024`,
+    `set_growth_delta=512`
+  - `string_payload_bytes_delta=7168`,
+    `error_payload_bytes_delta=7040`,
+    `big_integer_input_bytes_delta=6400`,
+    `tensor_payload_bytes_delta=65536`
+  - `ffi_releasable_delta=128`, `stable_stale_delta=1`,
+    `selected_transplant_delta=32`,
+    `materialization_copy_bytes_delta=0`
+- Validation:
+  - C3 diagnostics on the edited benchmark file
+  - `c3c build --obj-out obj`
+  - `c3c build --obj-out obj -D OMNI_BOUNDARY_INSTR_COUNTERS`
+  - bounded container counters-enabled `memory-lifetime-bench`
   - bounded container normal `memory-lifetime-smoke` (`255 passed, 0 failed`)
   - bounded container normal `basic` (`169 passed, 0 failed`)
   - bounded container normal Valgrind `memory-lifetime-smoke`

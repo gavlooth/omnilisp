@@ -14,14 +14,14 @@ The historical content was split mechanically to keep individual files below the
 
 ## Current Checkpoint
 
-Date: 2026-04-24 15:17 CEST
+Date: 2026-04-24 15:28 CEST
 
 - Active hypothesis:
   - The memory model migration is complete; the next useful memory work is
     evidence collection, not more architecture migration.
 - Current approach:
   - Continue the memory-boundary telemetry/benchmark evidence lane in
-    `TODO.md` Part 18 as `MEM-BENCH-OBSERVE-003` through
+    `TODO.md` Part 18 as `MEM-BENCH-OBSERVE-004` and
     `MEM-BENCH-OBSERVE-005`.
   - Use `docs/plans/memory-boundary-telemetry-benchmark-plan-2026-04-24.md`
     as the active plan for maximizing observability before further
@@ -30,6 +30,8 @@ Date: 2026-04-24 15:17 CEST
     `docs/plans/memory-boundary-telemetry-signal-inventory-2026-04-24.md`.
   - `MEM-BENCH-OBSERVE-002` is closed with runtime counter coverage exposed
     through `runtime-memory-stats` and `OMNI_MEM_TELEMETRY`.
+  - `MEM-BENCH-OBSERVE-003` is closed with `memory-lifetime-bench`
+    `boundary_value_shape_counters` summary coverage.
   - The Part 18 memory-boundary proof-planner queue is closed through
     planner-owned commit migration, tag attribution, `CONS`/closure/array/
     BigInteger copy-debt reduction, and closure residual classification.
@@ -42,9 +44,8 @@ Date: 2026-04-24 15:17 CEST
   - Keep `scripts/check_status_consistency.sh` green after any planning or
     backlog change.
 - Next checkpoint:
-  - Complete `MEM-BENCH-OBSERVE-003` by expanding `memory-lifetime-bench`
-    workloads so the new allocator/value-shape counters report meaningful
-    `OMNI_BENCH_SUMMARY` deltas.
+  - Complete `MEM-BENCH-OBSERVE-004` by running the bounded benchmark suite,
+    archiving the summary output, and interpreting the first counter baseline.
 - Negative-memory constraints:
   - Do not reopen closed memory-boundary copy-debt work to chase the expected
     no-splice closure rollback coverage bucket.

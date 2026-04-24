@@ -1,8 +1,8 @@
 # Memory Boundary Telemetry Benchmark Plan - 2026-04-24
 
-Status: open planning lane for TODO items `MEM-BENCH-OBSERVE-003` through
-`MEM-BENCH-OBSERVE-005`; `MEM-BENCH-OBSERVE-001` and
-`MEM-BENCH-OBSERVE-002` are complete.
+Status: open planning lane for TODO items `MEM-BENCH-OBSERVE-004` and
+`MEM-BENCH-OBSERVE-005`; `MEM-BENCH-OBSERVE-001` through
+`MEM-BENCH-OBSERVE-003` are complete.
 
 ## Active Hypothesis
 
@@ -138,12 +138,17 @@ the benchmark is stable across repeated container runs.
   exposed through `runtime-memory-stats`/`OMNI_MEM_TELEMETRY` for allocator
   pressure, value-shape dimensions, wrapper authority classes, and stable
   passport invalidation reasons.
+- `MEM-BENCH-OBSERVE-003`: `memory-lifetime-bench` now emits
+  `boundary_value_shape_counters`, a stable `OMNI_BENCH_SUMMARY` line covering
+  allocator slow paths, reset/destroy slack, collection growth, closure env
+  copy, scalar/tensor payload bytes, FFI release authority, stable passport
+  stale invalidation, selected transplant count, and materialization copy debt.
 
 ## Next Checkpoint
 
-The next decision point is completion of `MEM-BENCH-OBSERVE-003`: extend
-`memory-lifetime-bench` workloads so the new counter fields emit meaningful
-`OMNI_BENCH_SUMMARY` deltas before baseline capture.
+The next decision point is completion of `MEM-BENCH-OBSERVE-004`: run the
+bounded benchmark suite, archive the summary output, and interpret the first
+counter baseline before adding a regression envelope.
 
 ## Negative-Memory Constraints
 
