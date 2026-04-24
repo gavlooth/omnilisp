@@ -5005,6 +5005,34 @@ Validation:
   - `c3c build --obj-out obj`
   - `c3c build --obj-out obj -D OMNI_BOUNDARY_INSTR_COUNTERS`
   - bounded container counters-enabled `memory-lifetime-bench`
+
+## 2026-04-24 memory telemetry benchmark baseline
+
+- Implemented and closed `MEM-BENCH-OBSERVE-004`.
+  - Added
+    `docs/plans/memory-boundary-telemetry-benchmark-baseline-2026-04-24.md`
+    with the bounded command, log path, captured `OMNI_BENCH_SUMMARY` lines,
+    interpretation, and recommended regression-envelope fields.
+  - Raw run log is
+    `.agents/memory-boundary-telemetry-baseline-2026-04-24.log`.
+- Baseline interpretation:
+  - Correctness counters pass for all benchmark lanes:
+    `splice_ok=2048`, `disallowed_ok=2048`, `reuse_ok=2048`,
+    `partial_ok=2048`, `shape_ok=128`, `closure_env_ok=32`,
+    `stable_passport_ok=1`.
+  - Materialization copy debt is zero in this profile:
+    `materialization_copy_bytes_delta=0` and
+    `materialization_copy_bytes=0`.
+  - The strongest active signals are allocator and collection shape counters:
+    `escape_slow_delta=416`, `temp_slow_delta=209`,
+    `hashmap_growth_delta=1024`, `set_growth_delta=512`,
+    `array_growth_delta=128`.
+  - Next optimization should not target copy-debt from this baseline alone;
+    `MEM-BENCH-OBSERVE-005` should first gate correctness and counter presence
+    with timing warnings only.
+- Validation:
+  - `c3c build --obj-out obj -D OMNI_BOUNDARY_INSTR_COUNTERS`
+  - bounded container counters-enabled `memory-lifetime-bench`
   - bounded container normal `memory-lifetime-smoke` (`255 passed, 0 failed`)
   - bounded container normal `basic` (`169 passed, 0 failed`)
   - bounded container normal Valgrind `memory-lifetime-smoke`

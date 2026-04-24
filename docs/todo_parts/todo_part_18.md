@@ -308,8 +308,12 @@ Source: `docs/plans/memory-boundary-telemetry-benchmark-plan-2026-04-24.md`.
   - negative-memory constraint: do not make benchmark fixtures weaken runtime
     proof/fail-closed invariants just to produce cleaner route counts.
 
-- [ ] `MEM-BENCH-OBSERVE-004` capture the first benchmark baseline and interpret it.
+- [x] `MEM-BENCH-OBSERVE-004` capture the first benchmark baseline and interpret it.
   - classification: runtime benchmark evidence, targeted baseline capture.
+  - done 2026-04-24: added
+    `docs/plans/memory-boundary-telemetry-benchmark-baseline-2026-04-24.md`
+    with bounded benchmark command, captured summary output, interpretation,
+    and recommended regression-envelope fields.
   - task: run the bounded benchmark suite, archive summary output, and document
     the top copy/allocator hotspots or explicitly record that no optimization
     is justified.

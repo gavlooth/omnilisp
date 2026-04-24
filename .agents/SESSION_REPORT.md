@@ -292,6 +292,42 @@ The historical content was split mechanically to keep individual files below the
     rebuilt in counters-enabled mode for benchmark validation.
 - Signature: GPT-5 Codex
 
+## 2026-04-24 15:34 CEST - Memory Benchmark Baseline Capture
+
+- Objective attempted:
+  - Complete `MEM-BENCH-OBSERVE-004` by capturing and interpreting the first
+    bounded memory-boundary telemetry benchmark baseline.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `docs/plans/memory-boundary-telemetry-benchmark-baseline-2026-04-24.md`
+  - `.agents/memory-boundary-telemetry-baseline-2026-04-24.log`
+  - TODO Part 18 and active telemetry plan
+- Code or configuration changes made:
+  - Added the baseline note with command, raw summary output, interpretation,
+    and recommended fields for the next regression-envelope parser.
+  - Closed `MEM-BENCH-OBSERVE-004`; only `MEM-BENCH-OBSERVE-005` remains open
+    in the telemetry lane.
+- Commands run:
+  - `c3c build --obj-out obj -D OMNI_BOUNDARY_INSTR_COUNTERS`
+  - bounded container counters-enabled `memory-lifetime-bench`
+- Key results:
+  - Correctness counters pass for all benchmark lanes.
+  - Materialization copy debt is zero in this profile
+    (`materialization_copy_bytes_delta=0`, `materialization_copy_bytes=0`).
+  - Strongest active signals are allocator and collection shape counters:
+    `escape_slow_delta=416`, `temp_slow_delta=209`,
+    `hashmap_growth_delta=1024`, `set_growth_delta=512`,
+    `array_growth_delta=128`.
+- Invalidated assumptions or failed approaches:
+  - None in this slice.
+- Unresolved issues:
+  - `MEM-BENCH-OBSERVE-005` remains open: add parser/regression envelope for
+    correctness and counter presence, with timing warnings only.
+- Dependencies, blockers, or restart requirements:
+  - Rebuild required for benchmark binary changes; local `build/main` was
+    rebuilt with counters enabled for this baseline run.
+- Signature: GPT-5 Codex
+
 ## 2026-04-19 21:42 CEST - All Eligible Over-700 Files Split
 
 - Objective attempted:
