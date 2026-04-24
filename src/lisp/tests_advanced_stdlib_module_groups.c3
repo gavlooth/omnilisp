@@ -135,6 +135,17 @@ fn void run_advanced_module_selective_rename_tests(Interp* interp, int* pass, in
     setup(interp, "(import rename-mod (compute 'as calc))");
     test_eq(interp, "renamed import", "(calc 3)", 30, pass, fail);
     test_error(interp, "original name hidden after rename", "(compute 3)", pass, fail);
+
+    // Grouped import: (import (mod (sym 'as alias)) (other 'all) (qualified-only))
+    setup(interp, "(module group-a (export ga hidden-a) (define ga (lambda (x) (+ x 10))) (define hidden-a 99))");
+    setup(interp, "(module group-b (export gb) (define gb (lambda (x) (* x 3))))");
+    setup(interp, "(module group-c (export gc) (define gc 77))");
+    setup(interp, "(import (group-a (ga 'as grouped-ga)) (group-b 'all) (group-c))");
+    test_eq(interp, "grouped import renamed selection", "(grouped-ga 5)", 15, pass, fail);
+    test_eq(interp, "grouped import all selection", "(gb 4)", 12, pass, fail);
+    test_eq(interp, "grouped import qualified-only module", "group-c.gc", 77, pass, fail);
+    test_error(interp, "grouped import original hidden after rename", "(ga 5)", pass, fail);
+    test_error(interp, "grouped import unexported hidden", "hidden-a", pass, fail);
 }
 
 fn void run_advanced_module_all_dependency_tests(Interp* interp, int* pass, int* fail) {
@@ -293,6 +304,18 @@ fn void run_advanced_parser_import_edge_tests(Interp* interp, int* pass, int* fa
         "parser import old :as rejected",
         "(import bad-mod (x :as y))",
         "expected 'as in import specifier",
+        pass, fail);
+
+    test_error_contains(interp,
+        "parser grouped import old :as rejected",
+        "(import (bad-mod (x :as y)))",
+        "expected 'as in import specifier",
+        pass, fail);
+
+    test_error_contains(interp,
+        "parser grouped import rejects dict selection",
+        "(import (bad-mod {x y}))",
+        "expected 'all or (specifiers...) after import module",
         pass, fail);
 
     test_error_contains(interp,

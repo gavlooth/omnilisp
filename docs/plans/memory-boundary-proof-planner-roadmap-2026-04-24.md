@@ -220,7 +220,10 @@ Migrate boundary commit paths to consume planner decisions as the source of
 truth. Existing stable publication, destination materialization, and
 compatibility routes should become planner-selected outcomes.
 
-Tracked by `MEM-BOUNDARY-PLAN-MIGRATE-001`.
+Closed 2026-04-24 by `MEM-BOUNDARY-PLAN-MIGRATE-001`: `boundary_commit_escape`
+now dispatches on `BoundaryPlanDecision.route`, destination promotion receives
+the planned route, and TEMP `CONS` transplant/compatibility fallback is modeled
+as explicit planner candidate state rather than an implicit helper fallback.
 
 ## Validation Path
 
@@ -249,10 +252,9 @@ FFI, JIT/eval boundary, or mutation semantics.
 
 ## Next Checkpoint
 
-The next concrete deliverable is `MEM-BOUNDARY-PLAN-MIGRATE-001`: migrate
-boundary commit paths so planner-selected routes become the source of truth for
-stable publish, transplant, destination materialization, and fail-closed
-outcomes.
+The proof-planner implementation queue in TODO Part 18 is closed. The next
+memory-boundary optimization should use the new route/copy-debt telemetry to
+pick a measured follow-up instead of adding another unmeasured boundary path.
 
 ## Agent Assignments
 

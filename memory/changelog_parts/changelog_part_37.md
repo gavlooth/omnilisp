@@ -4876,3 +4876,46 @@ Validation:
     `materialization_node_count=87` and `materialization_copy_bytes=10096`
   - normal rebuild after instrumentation validation plus bounded container
     Valgrind `memory-lifetime-smoke` (`255 passed, 0 failed`)
+
+## 2026-04-24 Lispy grouped import selection
+
+- Added grouped import syntax without using dictionary literals:
+  `(import (math (sin cos)) (stats 'all) (json))`.
+- Grouped imports lower to ordinary import commands in source order, preserving
+  existing single-module semantics for qualified-only imports, selective
+  imports, renamed imports with quoted `'as`, and unqualified all-imports with
+  quoted `'all`.
+- `{}` remains data-only dictionary literal syntax and is rejected as an import
+  selector.
+- Updated syntax/compatibility docs to document grouped import s-expressions
+  and the `{}` exclusion.
+
+Validation:
+- C3 diagnostics passed for `src/lisp/parser_import_export.c3` and
+  `src/lisp/tests_advanced_stdlib_module_groups.c3`.
+- `c3c build` passed.
+- Direct grouped-import eval smoke returned `true`.
+- Direct `{}` selector smoke failed closed at parse time with
+  `expected 'all or (specifiers...) after import module`.
+- `OMNI_TEST_QUIET=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` passed.
+- `git diff --check` passed.
+
+## 2026-04-24 memory boundary planner-owned commit migration
+
+- Implemented and closed `MEM-BOUNDARY-PLAN-MIGRATE-001`.
+  - `boundary_commit_escape` now dispatches by `BoundaryPlanDecision.route`
+    instead of switching directly on return provenance.
+  - Destination promotion receives the planned route and only executes stable
+    materialization or compatibility destination behavior when that route is
+    selected.
+  - TEMP `CONS` stable materialization now records transplant and compatibility
+    fallback as explicit planner candidates, preserving deterministic
+    promotion-abort, destination-error, and large-list commit behavior without
+    hidden helper fallback.
+  - Planner route tests now assert releasing-ESCAPE no-splice stable
+    materialization and explicit TEMP `CONS` compatibility fallback candidacy.
+- Validation passed:
+  - `c3c build --obj-out obj`
+  - bounded container `memory-lifetime-smoke` (`255 passed, 0 failed`)
+  - bounded container `basic` (`169 passed, 0 failed`)
+  - bounded container Valgrind `memory-lifetime-smoke` (`255 passed, 0 failed`)

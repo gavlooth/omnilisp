@@ -71,7 +71,7 @@ For removed/renamed syntax, use:
 |---|---|---|
 | Macro definition model | single transformer with `syntax-match` | `docs/LANGUAGE_SPEC.md` section 11 |
 | Macro hygiene and templates | `template`, `insert`, `splice`, gensym behavior | `docs/LANGUAGE_SPEC.md` + `docs/syntax-decision.md` |
-| Module boundaries | `module`, `import`, `export`, `export-from` | `docs/LANGUAGE_SPEC.md` section 12 |
+| Module boundaries | `module`, `import`, grouped `import`, `export`, `export-from` | `docs/LANGUAGE_SPEC.md` section 12 |
 
 ## 7. Runtime and Memory
 

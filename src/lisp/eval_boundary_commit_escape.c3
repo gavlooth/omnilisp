@@ -85,8 +85,8 @@ fn BoundaryCommitEscapeResult boundary_commit_escape(
     );
     boundary_commit_apply_initial_plan(&committed, plan);
 
-    switch (classification.provenance) {
-        case BOUNDARY_RETURN_REUSABLE_IN_TARGET_CHAIN:
+    switch (plan.route) {
+        case BOUNDARY_PLAN_ROUTE_STABLE_PUBLISH_REUSE:
             boundary_commit_escape_commit_reused_in_target_chain(
                 &txn,
                 &committed,
@@ -96,8 +96,9 @@ fn BoundaryCommitEscapeResult boundary_commit_escape(
             );
             boundary_note_commit_decision_enabled(committed);
             return committed;
-        case BOUNDARY_RETURN_OWNED_BY_RELEASING_TEMP:
-        case BOUNDARY_RETURN_OWNED_BY_RELEASING_ESCAPE:
+        case BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION:
+        case BOUNDARY_PLAN_ROUTE_REGION_TRANSPLANT:
+        case BOUNDARY_PLAN_ROUTE_COMPATIBILITY_DESTINATION:
             boundary_commit_escape_handle_releasing_scope(
                 &committed,
                 &result,
@@ -108,11 +109,12 @@ fn BoundaryCommitEscapeResult boundary_commit_escape(
                 allow_scope_splice,
                 &txn,
                 &commit_succeeded,
-                &classification
+                &classification,
+                plan
             );
             boundary_note_commit_decision_enabled(committed);
             return committed;
-        case BOUNDARY_RETURN_MIXED_UNCERTAIN:
+        case BOUNDARY_PLAN_ROUTE_MIXED_DESTINATION:
             boundary_commit_escape_handle_mixed_destination(
                 &committed,
                 result,
@@ -122,6 +124,20 @@ fn BoundaryCommitEscapeResult boundary_commit_escape(
                 &txn,
                 &commit_succeeded
             );
+            boundary_note_commit_decision_enabled(committed);
+            return committed;
+        case BOUNDARY_PLAN_ROUTE_FAIL_CLOSED:
+        case BOUNDARY_PLAN_ROUTE_NULL_RESULT:
+        case BOUNDARY_PLAN_ROUTE_PASSTHROUGH:
+            committed.fault_code = BOUNDARY_COMMIT_FAULT_FALLBACK_DISALLOWED;
+            committed.value = boundary_fallback_disallowed_error(interp, committed.fault_code);
+            committed.outcome = BOUNDARY_COMMIT_FALLBACK_DISALLOWED;
+            boundary_commit_set_selected_plan(
+                &committed,
+                BOUNDARY_PLAN_ROUTE_FAIL_CLOSED,
+                BOUNDARY_PLAN_REASON_FALLBACK_DISALLOWED
+            );
+            boundary_txn_abort(&txn);
             boundary_note_commit_decision_enabled(committed);
             return committed;
     }

@@ -320,6 +320,12 @@ For helper-style handler composition in examples and public-facing docs:
 (import math-utils 'all)
 (add 3 4)  ; => 7
 
+;; Grouped imports use ordinary s-expressions, not dictionaries.
+(import
+  (math-utils (add 'as plus))
+  (ui.nodes 'all)
+  (json))
+
 ;; Dotted/path module target
 (import ui.nodes)
 (ui.nodes.text "ok")
@@ -338,7 +344,11 @@ For helper-style handler composition in examples and public-facing docs:
 - Selective import: `(import mod (sym1 sym2))` for specific symbols
 - Rename: `(import mod (sym1 'as alias))` for renaming on import
 - `'all` imports all exports unqualified (opt-in)
+- Grouped import: `(import (mod spec) (other 'all) (qualified-only))` lowers
+  to ordinary import commands in source order
 - Omni has no dedicated keyword type; `'as`/`'all` are quoted symbols used as explicit module markers
+- `{}` is data-only dictionary literal syntax and is not accepted for grouped
+  module selection
 - `export-from` re-exports symbols from another module
 - Module targets for `module` / `import` / `export-from` can be:
   - symbol (`math-utils`)

@@ -105,6 +105,7 @@ fn void run_memory_lifetime_boundary_commit_escape_destination_commit_tests(Inte
                     target_scope,
                     releasing_scope,
                     &caller_ctx,
+                    BOUNDARY_PLAN_ROUTE_COMPATIBILITY_DESTINATION,
                     true
                 );
 

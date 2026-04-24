@@ -418,6 +418,7 @@ fn BoundaryCommitDestinationPromotion boundary_commit_try_destination_promotion(
     main::ScopeRegion* target_scope,
     main::ScopeRegion* releasing_scope,
     PromotionContext* active_ctx,
+    BoundaryPlanRoute planned_route,
     bool allow_direct_promotion
 ) {
     BoundaryCommitDestinationPromotion promotion = {
@@ -429,7 +430,12 @@ fn BoundaryCommitDestinationPromotion boundary_commit_try_destination_promotion(
     };
     if (result == null) return promotion;
 
-    if (result.tag == ERROR) {
+    bool allow_stable_materialization =
+        planned_route == BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION;
+    bool allow_compatibility_destination =
+        planned_route == BOUNDARY_PLAN_ROUTE_COMPATIBILITY_DESTINATION;
+
+    if (allow_compatibility_destination && result.tag == ERROR) {
         Value* destination_error = boundary_build_destination_error_escape(
             result,
             interp,
@@ -449,7 +455,7 @@ fn BoundaryCommitDestinationPromotion boundary_commit_try_destination_promotion(
         return promotion;
     }
 
-    if (stable_escape_materialization_candidate(result.tag)) {
+    if (allow_stable_materialization && stable_escape_materialization_candidate(result.tag)) {
         Value* destination_value = stable_escape_prepare_and_materialize_value(
             interp,
             result,
@@ -458,15 +464,6 @@ fn BoundaryCommitDestinationPromotion boundary_commit_try_destination_promotion(
             active_ctx
         );
         bool stable_materialized = destination_value != null;
-        if (!stable_materialized && result.tag == CONS) {
-            destination_value = boundary_build_destination_cons_escape(
-                result,
-                interp,
-                target_scope,
-                releasing_scope,
-                active_ctx
-            );
-        }
         if (!active_ctx.aborted &&
             boundary_commit_destination_promoted_error(destination_value, target_scope)) {
             promotion.value = destination_value;
@@ -487,13 +484,34 @@ fn BoundaryCommitDestinationPromotion boundary_commit_try_destination_promotion(
             promotion.stable_materialization_used = stable_materialized;
             return promotion;
         }
-        if (result.tag == CONS) {
-            promotion.fault_code = BOUNDARY_COMMIT_FAULT_DESTINATION_CONS_BUILD;
-            return promotion;
-        }
+        promotion.fault_code = result.tag == CONS
+            ? BOUNDARY_COMMIT_FAULT_DESTINATION_CONS_BUILD
+            : BOUNDARY_COMMIT_FAULT_DESTINATION_DIRECT_PROMOTION;
+        return promotion;
     }
 
-    if (result.tag == PARTIAL_PRIM) {
+    if (allow_compatibility_destination && result.tag == CONS) {
+        Value* destination_cons = boundary_build_destination_cons_escape(
+            result,
+            interp,
+            target_scope,
+            releasing_scope,
+            active_ctx
+        );
+        if (!active_ctx.aborted &&
+            destination_cons != null &&
+            destination_cons != result &&
+            destination_cons.scope_gen == target_scope.escape_generation) {
+            promotion.value = destination_cons;
+            promotion.outcome = BOUNDARY_COMMIT_DESTINATION_CONS_BUILT;
+            promotion.committed = true;
+            return promotion;
+        }
+        promotion.fault_code = BOUNDARY_COMMIT_FAULT_DESTINATION_CONS_BUILD;
+        return promotion;
+    }
+
+    if (allow_compatibility_destination && result.tag == PARTIAL_PRIM) {
         Value* destination_partial = boundary_build_destination_partial_escape(
             result,
             interp,
@@ -521,7 +539,7 @@ fn BoundaryCommitDestinationPromotion boundary_commit_try_destination_promotion(
         return promotion;
     }
 
-    if (result.tag == ITERATOR) {
+    if (allow_compatibility_destination && result.tag == ITERATOR) {
         Value* destination_iterator = boundary_build_destination_iterator_escape(
             result,
             interp,
@@ -549,7 +567,7 @@ fn BoundaryCommitDestinationPromotion boundary_commit_try_destination_promotion(
         return promotion;
     }
 
-    if (allow_direct_promotion) {
+    if (allow_compatibility_destination && allow_direct_promotion) {
         Value* destination_direct = boundary_promote_to_escape_ctx(result, interp, active_ctx);
         if (!active_ctx.aborted &&
             destination_direct != null &&

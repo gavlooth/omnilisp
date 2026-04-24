@@ -42,4 +42,4 @@ The historical content was split mechanically to keep individual files below the
 - Part 34: [memory/changelog_parts/changelog_part_34.md](changelog_parts/changelog_part_34.md) (624 lines)
 - Part 35: [memory/changelog_parts/changelog_part_35.md](changelog_parts/changelog_part_35.md) (668 lines)
 - Part 36: [memory/changelog_parts/changelog_part_36.md](changelog_parts/changelog_part_36.md) (679 lines)
-- Part 37: [memory/changelog_parts/changelog_part_37.md](changelog_parts/changelog_part_37.md) (4878 lines)
+- Part 37: [memory/changelog_parts/changelog_part_37.md](changelog_parts/changelog_part_37.md) (4921 lines)

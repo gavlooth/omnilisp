@@ -280,12 +280,18 @@ Patterns: literals, variables, wildcards `_`, sequences (`[a b ..]`, `[head .. t
 (import name (sym1 sym2))       ; selective import
 (import name (sym1 'as alias))  ; rename on import
 (import name 'all)              ; import all exports unqualified
+(import
+  (math-utils (add 'as plus))
+  (ui.nodes 'all)
+  (json))                       ; grouped imports, same spec syntax
 (export-from name (sym1))       ; re-export specific symbols
 (export-from name 'all)         ; re-export all
 ```
 
 Default import is qualified-only. Modules are cached; circular imports are detected.
 Omni has no dedicated keyword type; `'as` and `'all` are quoted symbols in module forms.
+Grouped imports are s-expression lists of ordinary import specs; `{}` remains
+dictionary literal syntax only and is not valid for module selection.
 
 ### 3.12 Collection Literals
 

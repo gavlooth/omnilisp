@@ -68,11 +68,11 @@ The live backlog has been consolidated into `TODO.md` at the repo root.
   maximizing stable indexed publication plus TEMP/ESCAPE boundary planning. It
   defines the `BoundaryPlanner` ladder, stable graph passports, transplant
   proofs, mutation epoch invalidation, FFI bridge declarations, copy-debt
-  telemetry, and commit-path migration. Open work is tracked in TODO Part 18
-  under `MEM-BOUNDARY-PLAN-MIGRATE-001`; `MEM-BOUNDARY-PLANNER-001`,
-  `MEM-BOUNDARY-PASSPORT-001`, `MEM-BOUNDARY-EPOCH-001`,
-  `MEM-BOUNDARY-TRANSPLANT-001`, `MEM-BOUNDARY-FFI-BRIDGE-001`, and
-  `MEM-BOUNDARY-COPY-DEBT-001` are closed.
+  telemetry, and commit-path migration. The TODO Part 18 proof-planner queue is
+  closed: `MEM-BOUNDARY-PLANNER-001`, `MEM-BOUNDARY-PASSPORT-001`,
+  `MEM-BOUNDARY-EPOCH-001`, `MEM-BOUNDARY-TRANSPLANT-001`,
+  `MEM-BOUNDARY-FFI-BRIDGE-001`, `MEM-BOUNDARY-COPY-DEBT-001`, and
+  `MEM-BOUNDARY-PLAN-MIGRATE-001` are closed.
 - `vulkan-backend-decision-2026-04-16.md`: completed `TENSOR-100E` baseline note for
   portable explicit GPU execution behind the existing `Tensor` surface. Vulkan
   is runtime-optional, capability-gated, and owned through an Omni C ABI

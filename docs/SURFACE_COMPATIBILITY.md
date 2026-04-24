@@ -24,6 +24,7 @@ Policy:
 | Reader tag macro definition | `(define [reader tag] name (syntax-match ...))` |
 | Reader tag use | `#tag form` parses as `(tag form)`; built-ins include `#hex`, `#time`, `#uuid` |
 | Radix integer literals | `#x...`, `#b...`, `#o...` |
+| Grouped imports | `(import (mod (sym 'as alias)) (other 'all))`; quoted symbols remain the module markers |
 | Value dispatch constructor | `Value` |
 | Transaction command | `(deduce 'block db ['read|'write|'write-deferred])` |
 
@@ -41,6 +42,7 @@ Policy:
 | macro clause DSL forms | single-transformer `syntax-match` macro form | legacy clause macro definitions removed |
 | `with-handlers`, `handle-chain` | explicit `handle`/`resolve` composition or `handle/chain` where applicable | old helper spellings are non-canonical |
 | `Val` dispatch constructor | `Value` | parser/runtime diagnostics should point to `Value` |
+| dict-shaped module selection | grouped import s-expressions | `{}` is reserved for dictionary literals/data |
 
 ## 3. Access Semantics Contract
 

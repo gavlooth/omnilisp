@@ -122,13 +122,15 @@ Source: `docs/plans/memory-boundary-proof-planner-roadmap-2026-04-24.md`.
   - negative-memory constraint: telemetry must not change route behavior or
     mask fail-closed outcomes.
 
-- [ ] `MEM-BOUNDARY-PLAN-MIGRATE-001` migrate boundary commit paths to planner-selected outcomes.
+- [x] `MEM-BOUNDARY-PLAN-MIGRATE-001` migrate boundary commit paths to planner-selected outcomes.
   - classification: runtime behavior, structural overhaul.
-  - task: make eval/JIT/root-store boundary commits consume planner decisions as
-    the source of truth for stable publish, transplant, materialization, and
-    fail-closed outcomes.
-  - next step: migrate one boundary commit path after planner/passport/proof
-    telemetry is validated.
+  - done 2026-04-24: `boundary_commit_escape` dispatches by
+    `BoundaryPlanDecision.route`; destination promotion receives the planned
+    route, and TEMP `CONS` transplant/compatibility fallback is represented as
+    explicit planner candidates instead of hidden helper fallback.
+  - validation: `c3c build --obj-out obj`; bounded container
+    `memory-lifetime-smoke` (`255 passed, 0 failed`); bounded container
+    `basic` (`169 passed, 0 failed`).
   - prerequisites: `MEM-BOUNDARY-PLANNER-001`,
     `MEM-BOUNDARY-PASSPORT-001`, `MEM-BOUNDARY-TRANSPLANT-001`, and
     `MEM-BOUNDARY-COPY-DEBT-001`.

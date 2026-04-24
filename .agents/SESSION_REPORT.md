@@ -5525,6 +5525,52 @@ Re-audit notes:
 
 Signature: GPT-5 Codex
 
+## 2026-04-24 memory boundary planner-owned commit migration
+
+Objective:
+- Implement `MEM-BOUNDARY-PLAN-MIGRATE-001` after route/copy-debt telemetry
+  closure.
+
+Changes made:
+- Switched `boundary_commit_escape` execution dispatch from return provenance to
+  `BoundaryPlanDecision.route`.
+- Routed destination promotion through the planned route so stable
+  materialization and compatibility destination paths are selected by the
+  planner instead of by helper-local fallback.
+- Made TEMP `CONS` transplant and compatibility fallback explicit planner
+  candidates, preserving the existing promotion-abort, destination-error, and
+  large-list behavior while removing hidden fallback selection.
+- Added planner route coverage for releasing-ESCAPE no-splice stable
+  materialization and TEMP `CONS` compatibility fallback candidacy.
+- Closed `MEM-BOUNDARY-PLAN-MIGRATE-001`; TODO Part 18 proof-planner queue is
+  now closed.
+
+Commands run:
+- `c3c build --obj-out obj`
+- `scripts/run_validation_container.sh env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `scripts/run_validation_container.sh env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=basic LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `scripts/run_validation_container.sh valgrind --leak-check=full --error-exitcode=99 env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+
+Key results:
+- Build passed.
+- Bounded container `memory-lifetime-smoke` passed with `255 passed, 0 failed`.
+- Bounded container `basic` passed with `169 passed, 0 failed`.
+- Bounded container Valgrind `memory-lifetime-smoke` passed with
+  `255 passed, 0 failed`.
+
+Invalidated assumptions or failed approaches:
+- `[INVALIDATED]` A strict stable-materialization-only route for TEMP `CONS`
+  invalidated existing boundary guarantees: prepared graph failure must still be
+  able to reach promotion-abort, transplant, or deterministic compatibility
+  destination behavior when the planner explicitly marks those candidates.
+
+Current checkpoint:
+- The proof-planner roadmap in TODO Part 18 is closed.
+- Next memory-boundary optimization should be chosen from measured route and
+  copy-debt telemetry.
+
+Signature: GPT-5 Codex
+
 ## 2026-04-24 memory boundary copy-debt telemetry
 
 Objective:
@@ -6316,6 +6362,50 @@ Unresolved issues:
 
 Signature: GPT-5 Codex
 
+## 2026-04-24 lispy grouped import selection
+
+Date/time: 2026-04-24 12:40:40 CEST
+
+Objective:
+- Replace the proposed dict-shaped grouped module selection with a lispy
+  s-expression import form while keeping quoted `'as` and `'all` markers.
+
+Changes made:
+- Added grouped import parsing in `src/lisp/parser_import_export.c3`.
+  `(import (mod (sym 'as alias)) (other 'all) (qualified-only))` now lowers to
+  a normal `E_BLOCK` of ordinary import commands in source order.
+- Added advanced module regressions for grouped renamed selection, grouped
+  `'all`, grouped qualified-only import, hidden original names, and rejection of
+  `{}` as an import selector.
+- Updated syntax/feature/surface compatibility docs and
+  `memory/changelog_parts/changelog_part_37.md`.
+
+Commands run:
+- C3 diagnostics for `src/lisp/parser_import_export.c3`.
+- C3 diagnostics for `src/lisp/tests_advanced_stdlib_module_groups.c3`.
+- C3 diagnostics for `src/lisp/eval_boundary_commit_escape_helpers.c3` after
+  the current working copy exposed a pre-existing `fault` identifier compile
+  issue in boundary code.
+- `c3c build`
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(block (module gm-a (export add) (define (add x) (+ x 1))) (module gm-b (export scale) (define (scale x) (* x 3))) (module gm-c (export v) (define v 9)) (import (gm-a (add 'as inc)) (gm-b 'all) (gm-c)) (and (= (inc 4) 5) (and (= (scale 4) 12) (= gm-c.v 9))))'`
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(import (bad-mod {x y}))'`
+- `OMNI_TEST_QUIET=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `git diff --check`
+
+Key results:
+- Build passed.
+- Direct grouped-import smoke returned `true`.
+- Direct `{}` selector smoke failed closed at parse time with
+  `expected 'all or (specifiers...) after import module`.
+- Advanced collections/module slice passed.
+- `git diff --check` passed.
+
+Unresolved issues:
+- Unrelated memory-boundary working-copy changes are present and were not
+  reverted; they are not part of the grouped import syntax change.
+
+Signature: GPT-5 Codex
+
 ## 2026-04-24 memory boundary FFI bridge declarations
 
 Objective:
@@ -6367,10 +6457,12 @@ Key results:
 Current checkpoint:
 - FFI bridge boundary declarations are explicit and opaque by default.
 - Copy-debt and route-failure telemetry has since been implemented and closed
-  under `MEM-BOUNDARY-COPY-DEBT-001`; the next open proof-planner item is
+  under `MEM-BOUNDARY-COPY-DEBT-001`.
+- Commit-path migration has since been implemented and closed under
   `MEM-BOUNDARY-PLAN-MIGRATE-001`.
 
 Unresolved issues:
-- Commit-path migration remains the open roadmap item.
+- The TODO Part 18 proof-planner queue is closed; next memory-boundary work
+  should be chosen from route/copy-debt telemetry.
 
 Signature: GPT-5 Codex

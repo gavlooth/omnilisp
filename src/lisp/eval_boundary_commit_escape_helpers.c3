@@ -22,6 +22,39 @@ fn void boundary_commit_escape_commit_reused_in_target_chain(
     if (commit_succeeded != null) *commit_succeeded = true;
 }
 
+fn BoundaryPlanReason boundary_commit_escape_failure_reason(BoundaryCommitFault fault_code) @inline {
+    if (fault_code == BOUNDARY_COMMIT_FAULT_SPLICE_REJECTED) {
+        return BOUNDARY_PLAN_REASON_TRANSPLANT_REJECTED;
+    }
+    if (fault_code == BOUNDARY_COMMIT_FAULT_MIXED_DESTINATION_PROMOTION) {
+        return BOUNDARY_PLAN_REASON_MIXED_DESTINATION_FAILED;
+    }
+    if (fault_code == BOUNDARY_COMMIT_FAULT_FALLBACK_DISALLOWED) {
+        return BOUNDARY_PLAN_REASON_FALLBACK_DISALLOWED;
+    }
+    if (fault_code == BOUNDARY_COMMIT_FAULT_PROMOTION_ABORTED) {
+        return BOUNDARY_PLAN_REASON_PROMOTION_ABORTED;
+    }
+    return BOUNDARY_PLAN_REASON_DESTINATION_FAILED;
+}
+
+fn void boundary_commit_escape_fail_closed(
+    BoundaryCommitEscapeResult* committed,
+    Interp* interp,
+    BoundaryTxn* txn,
+    BoundaryCommitFault fault_code
+) @inline {
+    committed.fault_code = fault_code;
+    committed.value = boundary_fallback_disallowed_error(interp, committed.fault_code);
+    committed.outcome = BOUNDARY_COMMIT_FALLBACK_DISALLOWED;
+    boundary_commit_set_selected_plan(
+        committed,
+        BOUNDARY_PLAN_ROUTE_FAIL_CLOSED,
+        boundary_commit_escape_failure_reason(fault_code)
+    );
+    boundary_txn_abort(txn);
+}
+
 fn void boundary_commit_escape_handle_releasing_scope(
     BoundaryCommitEscapeResult* committed,
     Value** result_io,
@@ -32,7 +65,8 @@ fn void boundary_commit_escape_handle_releasing_scope(
     bool allow_scope_splice,
     BoundaryTxn* txn,
     bool* commit_succeeded,
-    BoundaryReturnClassification* classification_io
+    BoundaryReturnClassification* classification_io,
+    BoundaryPlanDecision plan
 ) {
     PromotionContext local_ctx = {};
     PromotionContext* active_ctx = ctx;
@@ -51,13 +85,16 @@ fn void boundary_commit_escape_handle_releasing_scope(
     }
 
     Value* result = *result_io;
-    bool splice_rejected_for_commit = false;
-    BoundaryScopeTransferReason splice_reject_reason = BOUNDARY_SCOPE_TRANSFER_OK;
-    BoundaryCommitFault fallback_fault = BOUNDARY_COMMIT_FAULT_NONE;
     bool requires_escape_promotion =
-        classification_io.provenance == BOUNDARY_RETURN_OWNED_BY_RELEASING_TEMP;
+        plan.provenance == BOUNDARY_RETURN_OWNED_BY_RELEASING_TEMP;
 
-    if (requires_escape_promotion) {
+    if (plan.route == BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION ||
+        plan.route == BOUNDARY_PLAN_ROUTE_COMPATIBILITY_DESTINATION) {
+        bool allow_direct_destination =
+            requires_escape_promotion ||
+            (plan.route == BOUNDARY_PLAN_ROUTE_COMPATIBILITY_DESTINATION &&
+                releasing_scope.refcount != 1 &&
+                boundary_nonunique_destination_retry_allowed(result));
         BoundaryCommitDestinationPromotion destination_promotion =
             boundary_commit_try_destination_promotion(
                 result,
@@ -65,7 +102,8 @@ fn void boundary_commit_escape_handle_releasing_scope(
                 target_scope,
                 releasing_scope,
                 active_ctx,
-                true
+                plan.route,
+                allow_direct_destination
             );
         if (destination_promotion.committed) {
             committed.value = destination_promotion.value;
@@ -74,10 +112,8 @@ fn void boundary_commit_escape_handle_releasing_scope(
             committed.compatibility_path_used = !destination_promotion.stable_materialization_used;
             boundary_commit_set_selected_plan(
                 committed,
-                destination_promotion.stable_materialization_used
-                    ? BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION
-                    : BOUNDARY_PLAN_ROUTE_COMPATIBILITY_DESTINATION,
-                destination_promotion.stable_materialization_used
+                plan.route,
+                plan.route == BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION
                     ? BOUNDARY_PLAN_REASON_DESTINATION_COMMITTED_STABLE
                     : BOUNDARY_PLAN_REASON_DESTINATION_COMMITTED_COMPATIBILITY
             );
@@ -85,25 +121,35 @@ fn void boundary_commit_escape_handle_releasing_scope(
             if (commit_succeeded != null) *commit_succeeded = true;
             return;
         }
-        if (destination_promotion.fault_code != BOUNDARY_COMMIT_FAULT_NONE) {
-            fallback_fault = destination_promotion.fault_code;
+        BoundaryCommitFault promotion_fault = destination_promotion.fault_code;
+        if (promotion_fault == BOUNDARY_COMMIT_FAULT_NONE) {
+            promotion_fault = BOUNDARY_COMMIT_FAULT_FALLBACK_DISALLOWED;
         }
-    }
-
-    if (releasing_scope.refcount == 1) {
-        bool pre_aborted_ctx = active_ctx.aborted;
-        if (requires_escape_promotion) {
+        if (requires_escape_promotion && plan.transplant_candidate) {
+            bool pre_aborted_ctx = active_ctx.aborted;
             boundary_note_promotion_attempt();
             BoundaryScopeSwap promote_scope = boundary_scope_swap_begin(interp, releasing_scope);
-            defer boundary_scope_swap_end(interp, &promote_scope);
             result = boundary_promote_to_escape_ctx(result, interp, active_ctx);
+            boundary_scope_swap_end(interp, &promote_scope);
             *classification_io = boundary_classify_return_value(result, interp, target_scope, releasing_scope);
             *result_io = result;
-        }
-
-        if (active_ctx.aborted) {
+            if (active_ctx.aborted) {
+                BoundaryPromotionAbortReason abort_reason = BOUNDARY_PROMOTION_ABORT_BUDGET_EXHAUSTED;
+                if (pre_aborted_ctx || active_ctx.abort_reason != PROMOTION_ABORT_BUDGET_EXHAUSTED) {
+                    abort_reason = BOUNDARY_PROMOTION_ABORT_PRE_ABORTED_CTX;
+                }
+                boundary_note_promotion_abort(abort_reason);
+                boundary_commit_escape_fail_closed(
+                    committed,
+                    interp,
+                    txn,
+                    BOUNDARY_COMMIT_FAULT_PROMOTION_ABORTED
+                );
+                return;
+            }
             if (allow_scope_splice &&
-                classification_io.provenance == BOUNDARY_RETURN_OWNED_BY_RELEASING_ESCAPE) {
+                classification_io.provenance == BOUNDARY_RETURN_OWNED_BY_RELEASING_ESCAPE &&
+                boundary_should_promote(result, active_ctx, releasing_scope)) {
                 BoundaryTransplantProof splice_proof =
                     boundary_commit_build_splice_escape_root_proof(result, target_scope, releasing_scope, interp.global_env);
                 if (splice_proof.transfer.allowed) {
@@ -113,7 +159,6 @@ fn void boundary_commit_escape_handle_releasing_scope(
                         committed.value = result;
                         committed.outcome = BOUNDARY_COMMIT_SPLICED_RELEASING_SCOPE;
                         committed.releasing_scope_spliced = true;
-                        committed.compatibility_path_used = true;
                         boundary_commit_set_selected_plan(
                             committed,
                             BOUNDARY_PLAN_ROUTE_REGION_TRANSPLANT,
@@ -123,137 +168,71 @@ fn void boundary_commit_escape_handle_releasing_scope(
                         if (commit_succeeded != null) *commit_succeeded = true;
                         return;
                     }
-                    splice_rejected_for_commit = true;
-                    splice_reject_reason = splice_result.reason;
-                } else {
-                    splice_rejected_for_commit = true;
-                    splice_reject_reason = splice_proof.transfer.reason;
                 }
-            }
-            BoundaryPromotionAbortReason abort_reason = BOUNDARY_PROMOTION_ABORT_BUDGET_EXHAUSTED;
-            if (pre_aborted_ctx || active_ctx.abort_reason != PROMOTION_ABORT_BUDGET_EXHAUSTED) {
-                abort_reason = BOUNDARY_PROMOTION_ABORT_PRE_ABORTED_CTX;
-            }
-            boundary_note_promotion_abort(abort_reason);
-            committed.fault_code = BOUNDARY_COMMIT_FAULT_PROMOTION_ABORTED;
-            committed.value = boundary_fallback_disallowed_error(interp, committed.fault_code);
-            committed.outcome = BOUNDARY_COMMIT_FALLBACK_DISALLOWED;
-            boundary_commit_set_selected_plan(
-                committed,
-                BOUNDARY_PLAN_ROUTE_FAIL_CLOSED,
-                BOUNDARY_PLAN_REASON_PROMOTION_ABORTED
-            );
-            boundary_txn_abort(txn);
-            return;
-        }
-
-        if (allow_scope_splice &&
-            classification_io.provenance == BOUNDARY_RETURN_OWNED_BY_RELEASING_ESCAPE &&
-            boundary_should_promote(result, active_ctx, releasing_scope)) {
-            BoundaryTransplantProof splice_proof =
-                boundary_commit_build_splice_escape_root_proof(result, target_scope, releasing_scope, interp.global_env);
-            if (splice_proof.transfer.allowed) {
-                BoundaryScopeTransferResult splice_result =
-                    boundary_try_scope_splice_escapes_root_proof_result(target_scope, releasing_scope, result, &splice_proof);
-                if (splice_result.allowed) {
-                    committed.value = result;
-                    committed.outcome = BOUNDARY_COMMIT_SPLICED_RELEASING_SCOPE;
-                    committed.releasing_scope_spliced = true;
-                    committed.compatibility_path_used = true;
-                    boundary_commit_set_selected_plan(
-                        committed,
-                        BOUNDARY_PLAN_ROUTE_REGION_TRANSPLANT,
-                        BOUNDARY_PLAN_REASON_TRANSPLANT_COMMITTED
-                    );
-                    boundary_txn_commit(txn);
-                    if (commit_succeeded != null) *commit_succeeded = true;
-                    return;
-                }
-                splice_rejected_for_commit = true;
-                splice_reject_reason = splice_result.reason;
-            } else {
-                splice_rejected_for_commit = true;
-                splice_reject_reason = splice_proof.transfer.reason;
+                promotion_fault = BOUNDARY_COMMIT_FAULT_SPLICE_REJECTED;
             }
         }
+        if (plan.compatibility_candidate) {
+            BoundaryCommitDestinationPromotion compatibility_promotion =
+                boundary_commit_try_destination_promotion(
+                    result,
+                    interp,
+                    target_scope,
+                    releasing_scope,
+                    active_ctx,
+                    BOUNDARY_PLAN_ROUTE_COMPATIBILITY_DESTINATION,
+                    false
+                );
+            if (compatibility_promotion.committed) {
+                committed.value = compatibility_promotion.value;
+                committed.outcome = compatibility_promotion.outcome;
+                committed.compatibility_path_used = true;
+                boundary_commit_set_selected_plan(
+                    committed,
+                    BOUNDARY_PLAN_ROUTE_COMPATIBILITY_DESTINATION,
+                    BOUNDARY_PLAN_REASON_DESTINATION_COMMITTED_COMPATIBILITY
+                );
+                boundary_txn_commit(txn);
+                if (commit_succeeded != null) *commit_succeeded = true;
+                return;
+            }
+            if (compatibility_promotion.fault_code != BOUNDARY_COMMIT_FAULT_NONE) {
+                promotion_fault = compatibility_promotion.fault_code;
+            }
+        }
+        boundary_commit_escape_fail_closed(committed, interp, txn, promotion_fault);
+        return;
     }
 
-    if (releasing_scope.refcount != 1 &&
-        boundary_nonunique_destination_retry_allowed(result)) {
-        Value* destination_direct = boundary_promote_to_escape_ctx(result, interp, active_ctx);
-        if (!active_ctx.aborted &&
-            destination_direct != null &&
-            destination_direct != result &&
-            destination_direct.scope_gen == target_scope.escape_generation) {
-            committed.value = destination_direct;
-            committed.outcome = BOUNDARY_COMMIT_DESTINATION_DIRECT_PROMOTED;
-            committed.compatibility_path_used = true;
-            boundary_commit_set_selected_plan(
-                committed,
-                BOUNDARY_PLAN_ROUTE_COMPATIBILITY_DESTINATION,
-                BOUNDARY_PLAN_REASON_DESTINATION_COMMITTED_COMPATIBILITY
-            );
-            boundary_txn_commit(txn);
-            if (commit_succeeded != null) *commit_succeeded = true;
-            return;
+    if (plan.route == BOUNDARY_PLAN_ROUTE_REGION_TRANSPLANT &&
+        allow_scope_splice &&
+        releasing_scope.refcount == 1 &&
+        classification_io.provenance == BOUNDARY_RETURN_OWNED_BY_RELEASING_ESCAPE &&
+        boundary_should_promote(result, active_ctx, releasing_scope)) {
+        BoundaryTransplantProof splice_proof =
+            boundary_commit_build_splice_escape_root_proof(result, target_scope, releasing_scope, interp.global_env);
+        if (splice_proof.transfer.allowed) {
+            BoundaryScopeTransferResult splice_result =
+                boundary_try_scope_splice_escapes_root_proof_result(target_scope, releasing_scope, result, &splice_proof);
+            if (splice_result.allowed) {
+                committed.value = result;
+                committed.outcome = BOUNDARY_COMMIT_SPLICED_RELEASING_SCOPE;
+                committed.releasing_scope_spliced = true;
+                boundary_commit_set_selected_plan(
+                    committed,
+                    BOUNDARY_PLAN_ROUTE_REGION_TRANSPLANT,
+                    BOUNDARY_PLAN_REASON_TRANSPLANT_COMMITTED
+                );
+                boundary_txn_commit(txn);
+                if (commit_succeeded != null) *commit_succeeded = true;
+                return;
+            }
         }
+        boundary_commit_escape_fail_closed(committed, interp, txn, BOUNDARY_COMMIT_FAULT_SPLICE_REJECTED);
+        return;
     }
 
-    if (classification_io.provenance == BOUNDARY_RETURN_OWNED_BY_RELEASING_ESCAPE) {
-        BoundaryCommitDestinationPromotion destination_promotion =
-            boundary_commit_try_destination_promotion(
-                result,
-                interp,
-                target_scope,
-                releasing_scope,
-                active_ctx,
-                false
-            );
-        if (destination_promotion.committed) {
-            committed.value = destination_promotion.value;
-            committed.outcome = destination_promotion.outcome;
-            committed.stable_materialization_used = destination_promotion.stable_materialization_used;
-            committed.compatibility_path_used = !destination_promotion.stable_materialization_used;
-            boundary_commit_set_selected_plan(
-                committed,
-                destination_promotion.stable_materialization_used
-                    ? BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION
-                    : BOUNDARY_PLAN_ROUTE_COMPATIBILITY_DESTINATION,
-                destination_promotion.stable_materialization_used
-                    ? BOUNDARY_PLAN_REASON_DESTINATION_COMMITTED_STABLE
-                    : BOUNDARY_PLAN_REASON_DESTINATION_COMMITTED_COMPATIBILITY
-            );
-            boundary_txn_commit(txn);
-            if (commit_succeeded != null) *commit_succeeded = true;
-            return;
-        }
-        if (destination_promotion.fault_code != BOUNDARY_COMMIT_FAULT_NONE) {
-            fallback_fault = destination_promotion.fault_code;
-        }
-    }
-
-    (void)splice_reject_reason;
-    if (fallback_fault == BOUNDARY_COMMIT_FAULT_NONE && splice_rejected_for_commit) {
-        fallback_fault = BOUNDARY_COMMIT_FAULT_SPLICE_REJECTED;
-    }
-    if (fallback_fault == BOUNDARY_COMMIT_FAULT_NONE) {
-        fallback_fault = BOUNDARY_COMMIT_FAULT_FALLBACK_DISALLOWED;
-    }
-    committed.fault_code = fallback_fault;
-    committed.value = boundary_fallback_disallowed_error(interp, committed.fault_code);
-    committed.outcome = BOUNDARY_COMMIT_FALLBACK_DISALLOWED;
-    BoundaryPlanReason failure_reason = BOUNDARY_PLAN_REASON_DESTINATION_FAILED;
-    if (fallback_fault == BOUNDARY_COMMIT_FAULT_SPLICE_REJECTED) {
-        failure_reason = BOUNDARY_PLAN_REASON_TRANSPLANT_REJECTED;
-    } else if (fallback_fault == BOUNDARY_COMMIT_FAULT_FALLBACK_DISALLOWED) {
-        failure_reason = BOUNDARY_PLAN_REASON_FALLBACK_DISALLOWED;
-    }
-    boundary_commit_set_selected_plan(
-        committed,
-        BOUNDARY_PLAN_ROUTE_FAIL_CLOSED,
-        failure_reason
-    );
-    boundary_txn_abort(txn);
+    boundary_commit_escape_fail_closed(committed, interp, txn, BOUNDARY_COMMIT_FAULT_FALLBACK_DISALLOWED);
 }
 
 fn void boundary_commit_escape_handle_mixed_destination(

@@ -31,6 +31,9 @@ fn BoundaryPlanDecision boundary_plan_commit_escape(
                 plan.route = BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION;
                 plan.reason = BOUNDARY_PLAN_REASON_RELEASING_TEMP_STABLE_MATERIALIZATION;
                 plan.stable_materialization_candidate = true;
+                plan.transplant_candidate =
+                    allow_scope_splice && releasing_scope != null && releasing_scope.refcount == 1;
+                plan.compatibility_candidate = result.tag == CONS;
             } else {
                 plan.route = BOUNDARY_PLAN_ROUTE_COMPATIBILITY_DESTINATION;
                 plan.reason = BOUNDARY_PLAN_REASON_RELEASING_TEMP_COMPATIBILITY;
@@ -43,10 +46,18 @@ fn BoundaryPlanDecision boundary_plan_commit_escape(
                 plan.route = BOUNDARY_PLAN_ROUTE_REGION_TRANSPLANT;
                 plan.reason = BOUNDARY_PLAN_REASON_RELEASING_ESCAPE_TRANSPLANT_CANDIDATE;
                 plan.transplant_candidate = true;
+                plan.stable_materialization_candidate =
+                    boundary_value_tag_is_stable_materialization_candidate(result.tag);
             } else {
-                plan.route = BOUNDARY_PLAN_ROUTE_COMPATIBILITY_DESTINATION;
-                plan.reason = BOUNDARY_PLAN_REASON_RELEASING_ESCAPE_DESTINATION;
-                plan.compatibility_candidate = true;
+                if (boundary_value_tag_is_stable_materialization_candidate(result.tag)) {
+                    plan.route = BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION;
+                    plan.reason = BOUNDARY_PLAN_REASON_RELEASING_ESCAPE_DESTINATION;
+                    plan.stable_materialization_candidate = true;
+                } else {
+                    plan.route = BOUNDARY_PLAN_ROUTE_COMPATIBILITY_DESTINATION;
+                    plan.reason = BOUNDARY_PLAN_REASON_RELEASING_ESCAPE_DESTINATION;
+                    plan.compatibility_candidate = true;
+                }
             }
             return plan;
 
@@ -56,6 +67,12 @@ fn BoundaryPlanDecision boundary_plan_commit_escape(
             plan.compatibility_candidate = true;
             return plan;
     }
+}
+
+fn bool boundary_plan_route_is_releasing_scope(BoundaryPlanRoute route) @inline {
+    return route == BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION ||
+        route == BOUNDARY_PLAN_ROUTE_REGION_TRANSPLANT ||
+        route == BOUNDARY_PLAN_ROUTE_COMPATIBILITY_DESTINATION;
 }
 
 fn void boundary_commit_apply_initial_plan(

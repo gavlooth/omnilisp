@@ -116,9 +116,15 @@ fn void run_memory_lifetime_boundary_commit_escape_primary_tests(Interp* interp,
             .in_target_scope_chain = false,
             .in_releasing_scope = false,
         };
+        BoundaryReturnClassification escape_owned = {
+            .provenance = BOUNDARY_RETURN_OWNED_BY_RELEASING_ESCAPE,
+            .in_target_scope_chain = false,
+            .in_releasing_scope = true,
+        };
         BoundaryPlanDecision reuse_plan = boundary_plan_commit_escape(probe_scalar, reusable, true, null);
         BoundaryPlanDecision scalar_plan = boundary_plan_commit_escape(probe_scalar, temp_owned, true, null);
         BoundaryPlanDecision cons_plan = boundary_plan_commit_escape(probe_cons, temp_owned, true, null);
+        BoundaryPlanDecision escape_cons_plan = boundary_plan_commit_escape(probe_cons, escape_owned, false, null);
         BoundaryPlanDecision mixed_plan = boundary_plan_commit_escape(probe_scalar, mixed, true, null);
         bool ok = reuse_plan.route == BOUNDARY_PLAN_ROUTE_STABLE_PUBLISH_REUSE &&
                   reuse_plan.reason == BOUNDARY_PLAN_REASON_REUSABLE_IN_TARGET_CHAIN &&
@@ -129,6 +135,10 @@ fn void run_memory_lifetime_boundary_commit_escape_primary_tests(Interp* interp,
                   cons_plan.route == BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION &&
                   cons_plan.reason == BOUNDARY_PLAN_REASON_RELEASING_TEMP_STABLE_MATERIALIZATION &&
                   cons_plan.stable_materialization_candidate &&
+                  cons_plan.compatibility_candidate &&
+                  escape_cons_plan.route == BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION &&
+                  escape_cons_plan.reason == BOUNDARY_PLAN_REASON_RELEASING_ESCAPE_DESTINATION &&
+                  escape_cons_plan.stable_materialization_candidate &&
                   mixed_plan.route == BOUNDARY_PLAN_ROUTE_MIXED_DESTINATION &&
                   mixed_plan.reason == BOUNDARY_PLAN_REASON_MIXED_UNCERTAIN &&
                   mixed_plan.compatibility_candidate;
