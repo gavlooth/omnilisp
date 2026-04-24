@@ -364,7 +364,11 @@ fn bool stable_escape_materialize_finalize_closure(Interp* interp, StableEscapeP
 }
 
 fn Value* stable_escape_prepare_and_materialize_value(Interp* interp, Value* root,
-    main::ScopeRegion* target_scope, main::ScopeRegion* releasing_scope, PromotionContext* ctx) {
+    main::ScopeRegion* target_scope,
+    main::ScopeRegion* releasing_scope,
+    PromotionContext* ctx,
+    bool forced_no_splice_materialization = false
+) {
     if (interp == null || root == null || target_scope == null) return null;
     StableEscapePreparedGraphScratch scratch = {};
     scratch.global_env = interp.global_env;
@@ -408,7 +412,8 @@ fn Value* stable_escape_prepare_and_materialize_value(Interp* interp, Value* roo
     boundary_note_materialization_copy_debt_enabled(
         scratch.nodes[root_index].tag,
         scratch.node_count,
-        stable_escape_materialize_estimated_copy_bytes(&scratch)
+        stable_escape_materialize_estimated_copy_bytes(&scratch),
+        forced_no_splice_materialization
     );
     return result;
 }
@@ -420,7 +425,8 @@ fn BoundaryCommitDestinationPromotion boundary_commit_try_destination_promotion(
     main::ScopeRegion* releasing_scope,
     PromotionContext* active_ctx,
     BoundaryPlanRoute planned_route,
-    bool allow_direct_promotion
+    bool allow_direct_promotion,
+    bool forced_no_splice_materialization = false
 ) {
     BoundaryCommitDestinationPromotion promotion = {
         .value = result,
@@ -462,7 +468,8 @@ fn BoundaryCommitDestinationPromotion boundary_commit_try_destination_promotion(
             result,
             target_scope,
             releasing_scope,
-            active_ctx
+            active_ctx,
+            forced_no_splice_materialization
         );
         bool stable_materialized = destination_value != null;
         if (!active_ctx.aborted &&

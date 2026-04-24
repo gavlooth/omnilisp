@@ -17,9 +17,15 @@ struct BoundaryDecisionStats {
     usz stable_materialization_success;
     usz stable_materialization_node_count_total;
     usz stable_materialization_copy_bytes_total;
+    usz forced_no_splice_materialization_success;
+    usz forced_no_splice_materialization_node_count_total;
+    usz forced_no_splice_materialization_copy_bytes_total;
     usz[BOUNDARY_VALUE_TAG_COUNT] stable_materialization_success_by_tag;
     usz[BOUNDARY_VALUE_TAG_COUNT] stable_materialization_node_count_by_tag;
     usz[BOUNDARY_VALUE_TAG_COUNT] stable_materialization_copy_bytes_by_tag;
+    usz[BOUNDARY_VALUE_TAG_COUNT] forced_no_splice_materialization_success_by_tag;
+    usz[BOUNDARY_VALUE_TAG_COUNT] forced_no_splice_materialization_node_count_by_tag;
+    usz[BOUNDARY_VALUE_TAG_COUNT] forced_no_splice_materialization_copy_bytes_by_tag;
     usz scope_chain_scan_total;
     usz scope_chain_scan_with_hint;
     usz scope_chain_scan_fallback;
@@ -410,6 +416,32 @@ fn usz boundary_decision_materialization_copy_bytes_for_tag(
     return stats.stable_materialization_copy_bytes_by_tag[tag_idx];
 }
 
+fn usz boundary_decision_forced_no_splice_materialization_copy_bytes_for_tag(
+    BoundaryDecisionStats stats,
+    ValueTag tag
+) @inline {
+    usz tag_idx = (usz)tag;
+    if (tag_idx >= BOUNDARY_VALUE_TAG_COUNT) return 0;
+    return stats.forced_no_splice_materialization_copy_bytes_by_tag[tag_idx];
+}
+
+fn usz boundary_decision_optimizer_materialization_copy_bytes(BoundaryDecisionStats stats) @inline {
+    if (stats.stable_materialization_copy_bytes_total <= stats.forced_no_splice_materialization_copy_bytes_total) {
+        return 0;
+    }
+    return stats.stable_materialization_copy_bytes_total -
+        stats.forced_no_splice_materialization_copy_bytes_total;
+}
+
+fn usz boundary_decision_optimizer_materialization_copy_bytes_for_tag(
+    BoundaryDecisionStats stats,
+    ValueTag tag
+) @inline {
+    usz total = boundary_decision_materialization_copy_bytes_for_tag(stats, tag);
+    usz forced = boundary_decision_forced_no_splice_materialization_copy_bytes_for_tag(stats, tag);
+    return total <= forced ? 0 : total - forced;
+}
+
 fn void boundary_telemetry_inc_planned_route_tag(BoundaryPlanRoute route, ValueTag tag) @inline {
     if (!boundary_telemetry_enabled()) return;
     usz route_idx = (usz)route;
@@ -520,7 +552,8 @@ fn void boundary_note_materialization_copy_debt(usz node_count, usz estimated_co
 fn void boundary_note_materialization_copy_debt_by_tag(
     ValueTag root_tag,
     usz node_count,
-    usz estimated_copy_bytes
+    usz estimated_copy_bytes,
+    bool forced_no_splice
 ) @inline {
     if (!boundary_telemetry_enabled()) return;
     boundary_note_materialization_copy_debt(node_count, estimated_copy_bytes);
@@ -529,6 +562,13 @@ fn void boundary_note_materialization_copy_debt_by_tag(
     g_boundary_decision_stats.stable_materialization_success_by_tag[tag_idx]++;
     g_boundary_decision_stats.stable_materialization_node_count_by_tag[tag_idx] += node_count;
     g_boundary_decision_stats.stable_materialization_copy_bytes_by_tag[tag_idx] += estimated_copy_bytes;
+    if (!forced_no_splice) return;
+    g_boundary_decision_stats.forced_no_splice_materialization_success++;
+    g_boundary_decision_stats.forced_no_splice_materialization_node_count_total += node_count;
+    g_boundary_decision_stats.forced_no_splice_materialization_copy_bytes_total += estimated_copy_bytes;
+    g_boundary_decision_stats.forced_no_splice_materialization_success_by_tag[tag_idx]++;
+    g_boundary_decision_stats.forced_no_splice_materialization_node_count_by_tag[tag_idx] += node_count;
+    g_boundary_decision_stats.forced_no_splice_materialization_copy_bytes_by_tag[tag_idx] += estimated_copy_bytes;
 }
 
 fn void boundary_note_commit_decision(BoundaryCommitEscapeResult committed) @inline {
@@ -559,15 +599,15 @@ macro boundary_note_commit_decision_enabled(committed) {
     $endif
 }
 
-macro boundary_note_materialization_copy_debt_enabled(root_tag, node_count, estimated_copy_bytes) {
+macro boundary_note_materialization_copy_debt_enabled(root_tag, node_count, estimated_copy_bytes, forced_no_splice) {
     $if $feature(OMNI_BOUNDARY_INSTR_TRACE):
-        boundary_note_materialization_copy_debt_by_tag(root_tag, node_count, estimated_copy_bytes);
+        boundary_note_materialization_copy_debt_by_tag(root_tag, node_count, estimated_copy_bytes, forced_no_splice);
     $else
         $if $feature(OMNI_BOUNDARY_INSTR_BENCHMARK):
-            boundary_note_materialization_copy_debt_by_tag(root_tag, node_count, estimated_copy_bytes);
+            boundary_note_materialization_copy_debt_by_tag(root_tag, node_count, estimated_copy_bytes, forced_no_splice);
         $else
             $if $feature(OMNI_BOUNDARY_INSTR_COUNTERS):
-                boundary_note_materialization_copy_debt_by_tag(root_tag, node_count, estimated_copy_bytes);
+                boundary_note_materialization_copy_debt_by_tag(root_tag, node_count, estimated_copy_bytes, forced_no_splice);
             $endif
         $endif
     $endif

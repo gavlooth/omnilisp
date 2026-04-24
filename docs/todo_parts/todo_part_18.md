@@ -256,6 +256,27 @@ Source: `docs/plans/memory-boundary-proof-planner-roadmap-2026-04-24.md`.
   - negative-memory constraint: do not remove or rewrite the explicit no-splice
     closure rollback test to improve copy-debt counters.
 
+- [x] `MEM-BENCH-FORCED-NOSPLICE-001` split forced no-splice materialization from optimizer copy debt.
+  - classification: runtime observability, targeted telemetry correction.
+  - done 2026-04-24: boundary decision stats, runtime-memory-stats,
+    `OMNI_TEST_SUMMARY`, verbose boundary telemetry, and the telemetry
+    benchmark envelope now expose optimizer-addressable materialization copy
+    bytes separately from explicit forced-no-splice rollback coverage.
+  - validation: counters-enabled build; bounded container counters-enabled
+    `memory-lifetime-smoke` (`255 passed, 0 failed`) reported
+    `materialization_copy_bytes=208`,
+    `materialization_copy_bytes_optimizer=0`, and
+    `materialization_copy_bytes_forced_no_splice=208`; refreshed bounded
+    `memory-lifetime-bench` baseline reported all three materialization copy
+    counters at `0`; `scripts/check_memory_telemetry_benchmark_envelope.sh`
+    passed on the refreshed baseline log; normal build and bounded `basic`
+    passed.
+  - prerequisites: `MEM-BOUNDARY-CLOSURE-RESIDUAL-001` remains closed as
+    expected no-splice coverage.
+  - negative-memory constraint: do not suppress or delete the rollback
+    materialization; only subtract explicitly forced no-splice coverage from
+    optimizer-debt counters.
+
 ## Memory Boundary Telemetry Benchmarking — 2026-04-24
 
 Source: `docs/plans/memory-boundary-telemetry-benchmark-plan-2026-04-24.md`.

@@ -12,7 +12,7 @@ fn void boundary_dump_decision_stats_verbose(char[] label = "runtime") @noinline
     BoundaryDecisionStats stats = boundary_decision_stats_snapshot();
 
     io::eprintfn(
-        "[boundary][telemetry][%s] splice_attempted=%d splice_succeeded=%d promotion_attempted=%d copy_fallback_total=%d materialization_success=%d materialization_nodes=%d materialization_copy_bytes=%d scope_chain_scan_total=%d scope_chain_scan_with_hint=%d scope_chain_scan_fallback=%d scope_chain_scan_suppressed=%d graph_audit_invoked=%d graph_audit_skipped_rate=%d graph_audit_skipped_max_roots=%d",
+        "[boundary][telemetry][%s] splice_attempted=%d splice_succeeded=%d promotion_attempted=%d copy_fallback_total=%d materialization_success=%d materialization_nodes=%d materialization_copy_bytes=%d materialization_copy_bytes_optimizer=%d materialization_copy_bytes_forced_no_splice=%d scope_chain_scan_total=%d scope_chain_scan_with_hint=%d scope_chain_scan_fallback=%d scope_chain_scan_suppressed=%d graph_audit_invoked=%d graph_audit_skipped_rate=%d graph_audit_skipped_max_roots=%d",
         (ZString)label,
         (long)stats.splice_attempted,
         (long)stats.splice_succeeded,
@@ -21,6 +21,8 @@ fn void boundary_dump_decision_stats_verbose(char[] label = "runtime") @noinline
         (long)stats.stable_materialization_success,
         (long)stats.stable_materialization_node_count_total,
         (long)stats.stable_materialization_copy_bytes_total,
+        (long)boundary_decision_optimizer_materialization_copy_bytes(stats),
+        (long)stats.forced_no_splice_materialization_copy_bytes_total,
         (long)stats.scope_chain_scan_total,
         (long)stats.scope_chain_scan_with_hint,
         (long)stats.scope_chain_scan_fallback,
@@ -80,12 +82,14 @@ fn void boundary_dump_decision_stats_verbose(char[] label = "runtime") @noinline
         usz bytes = stats.stable_materialization_copy_bytes_by_tag[tag_idx];
         if (success == 0 && nodes == 0 && bytes == 0) continue;
         io::eprintfn(
-            "[boundary][telemetry][%s] materialization_tag tag=%s success=%d nodes=%d copy_bytes=%d",
+            "[boundary][telemetry][%s] materialization_tag tag=%s success=%d nodes=%d copy_bytes=%d optimizer_copy_bytes=%d forced_no_splice_copy_bytes=%d",
             (ZString)label,
             boundary_value_tag_name((ValueTag)tag_idx),
             (long)success,
             (long)nodes,
-            (long)bytes
+            (long)bytes,
+            (long)boundary_decision_optimizer_materialization_copy_bytes_for_tag(stats, (ValueTag)tag_idx),
+            (long)stats.forced_no_splice_materialization_copy_bytes_by_tag[tag_idx]
         );
     }
     for (usz i = 0; i < BOUNDARY_PLAN_REASON_COUNT; i++) {

@@ -222,6 +222,10 @@ fn void boundary_commit_escape_handle_releasing_scope(
             (plan.route == BOUNDARY_PLAN_ROUTE_COMPATIBILITY_DESTINATION &&
                 releasing_scope.refcount != 1 &&
                 boundary_nonunique_destination_retry_allowed(result));
+        bool forced_no_splice_materialization =
+            plan.route == BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION &&
+            plan.provenance == BOUNDARY_RETURN_OWNED_BY_RELEASING_ESCAPE &&
+            !allow_scope_splice;
         BoundaryCommitDestinationPromotion destination_promotion =
             boundary_commit_try_destination_promotion(
                 result,
@@ -230,7 +234,8 @@ fn void boundary_commit_escape_handle_releasing_scope(
                 releasing_scope,
                 active_ctx,
                 plan.route,
-                allow_direct_destination
+                allow_direct_destination,
+                forced_no_splice_materialization
             );
         if (destination_promotion.committed) {
             committed.value = destination_promotion.value;

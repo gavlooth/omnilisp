@@ -49,6 +49,71 @@ The historical content was split mechanically to keep individual files below the
 - Part 41: [.agents/session_report_parts/session_report_part_41.md](session_report_parts/session_report_part_41.md) (43 lines)
 - Part 42: [.agents/session_report_parts/session_report_part_42.md](session_report_parts/session_report_part_42.md) (710 lines)
 
+## 2026-04-24 18:05 CEST - Forced No-Splice Copy Telemetry Split
+
+- Objective attempted:
+  - Continue performance cleanup by eliminating or isolating the two remaining
+    materialization-copy signals from the memory-boundary telemetry.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `src/lisp/eval_boundary_telemetry.c3`
+  - `src/lisp/eval_boundary_commit_destination.c3`
+  - `src/lisp/eval_boundary_commit_escape_helpers.c3`
+  - `src/lisp/prim_runtime_memory_stats.c3`
+  - `src/lisp/tests_tests.c3`
+  - `docs/plans/memory-boundary-proof-planner-roadmap-2026-04-24.md`
+  - `docs/todo_parts/todo_part_18.md`
+- Code or configuration changes made:
+  - Added forced-no-splice materialization counters to boundary decision stats.
+  - Exposed optimizer-addressable materialization copy bytes separately in
+    runtime-memory-stats, `OMNI_TEST_SUMMARY`, `OMNI_MEM_TELEMETRY` JSON, and
+    verbose boundary telemetry.
+  - Routed `boundary_commit_escape(..., false)` releasing-ESCAPE
+    materialization into the forced-no-splice bucket.
+  - Updated the telemetry benchmark envelope to warn on
+    `materialization_copy_bytes_optimizer` and require zero forced-no-splice
+    bytes in the benchmark baseline.
+  - Refreshed `.agents/memory-boundary-telemetry-baseline-2026-04-24.log` and
+    its plan summary with the new fields.
+- Commands run:
+  - `c3c build --obj-out obj -D OMNI_BOUNDARY_INSTR_COUNTERS`
+  - `scripts/run_validation_container.sh env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_BOUNDARY_BENCH=1 OMNI_BOUNDARY_INSTR_COUNTERS=1 OMNI_LISP_TEST_SLICE=memory-lifetime-bench ./build/main --test-suite lisp`
+  - `scripts/check_memory_telemetry_benchmark_envelope.sh .agents/memory-boundary-telemetry-baseline-2026-04-24.log`
+  - `LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval "(let (s (runtime-memory-stats)) (and (>= (ref (ref s 'boundary-decisions) 'materialization-copy-bytes-optimizer) 0) (>= (ref (ref s 'boundary-decisions) 'materialization-copy-bytes-forced-no-splice) 0)))"`
+  - `c3c build --obj-out obj`
+  - `scripts/run_validation_container.sh env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=basic LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+  - `scripts/check_status_consistency.sh`
+  - `git diff --check`
+- Key results:
+  - Counters-enabled `memory-lifetime-smoke` passed with `255 passed, 0 failed`.
+  - Smoke summary isolated the residual copy bucket:
+    `materialization_copy_bytes=208`,
+    `materialization_copy_bytes_optimizer=0`, and
+    `materialization_copy_bytes_forced_no_splice=208`.
+  - Refreshed `memory-lifetime-bench` baseline passed and reported
+    `materialization_copy_bytes=0`,
+    `materialization_copy_bytes_optimizer=0`, and
+    `materialization_copy_bytes_forced_no_splice=0`.
+  - Normal build passed, bounded `basic` passed with `169 passed, 0 failed`,
+    status consistency passed, and `git diff --check` passed.
+  - The benchmark envelope passed on the refreshed baseline log.
+- Invalidated assumptions or failed approaches:
+  - `[INVALIDATED]` Do not treat the remaining `208` closure copy bytes in the
+    smoke slice as optimizer debt. The bytes come from explicit no-splice
+    rollback coverage; removing that test would weaken boundary correctness.
+- Current best recommendation or checkpoint:
+  - No optimizer-addressable stable-materialization copy bucket remains in the
+    measured smoke or benchmark profiles. Future work should start from real
+    workload evidence, allocator churn, or nonzero
+    `materialization_copy_bytes_optimizer`.
+- Unresolved issues:
+  - None from this slice.
+- Dependencies, blockers, or restart requirements:
+  - Runtime processes must be rebuilt/restarted to expose the new telemetry
+    fields; the local counters-enabled binary was rebuilt for validation.
+- Signature: GPT-5 Codex
+
 ## 2026-04-24 19:10 CEST - Memory Telemetry Envelope Recheck
 
 - Objective attempted:

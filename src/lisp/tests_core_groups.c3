@@ -458,6 +458,8 @@ fn void run_basic_runtime_memory_stats_tests(Interp* interp, int* pass, int* fai
         "       (>= (ref (ref s 'value-shape) 'array-construct-count) 0) "
         "       (>= (ref (ref s 'value-shape) 'ffi-handle-releasable-count) 0) "
         "       (>= (ref (ref s 'boundary-decisions) 'materialization-copy-bytes) 0) "
+        "       (>= (ref (ref s 'boundary-decisions) 'materialization-copy-bytes-optimizer) 0) "
+        "       (>= (ref (ref s 'boundary-decisions) 'materialization-copy-bytes-forced-no-splice) 0) "
         "       (>= (ref (ref s 'boundary-decisions) 'selected-fail-closed) 0)))",
         interp
     );

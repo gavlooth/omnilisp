@@ -1,5 +1,45 @@
 # Changelog Part 37
 
+## 2026-04-24 memory boundary forced no-splice telemetry split
+
+- Implemented and closed `MEM-BENCH-FORCED-NOSPLICE-001`.
+  - Boundary decision stats now track total stable-materialization copy bytes,
+    optimizer-addressable materialization copy bytes, and forced-no-splice
+    materialization copy bytes.
+  - `(runtime-memory-stats)`, `OMNI_TEST_SUMMARY suite=boundary_decisions`,
+    `OMNI_MEM_TELEMETRY` JSON, and verbose boundary telemetry expose the new
+    split.
+  - The telemetry benchmark envelope now warns on
+    `materialization_copy_bytes_optimizer` rather than the total bucket and
+    hard-checks that forced no-splice materialization remains zero in the
+    benchmark baseline.
+- Measured result from counters-enabled bounded `memory-lifetime-smoke`:
+  - `materialization_copy_bytes=208`
+  - `materialization_copy_bytes_optimizer=0`
+  - `materialization_copy_bytes_forced_no_splice=208`
+  - `materialization_copy_bytes_closure=208`
+  - `materialization_copy_bytes_optimizer_closure=0`
+  - `materialization_copy_bytes_forced_no_splice_closure=208`
+- Refreshed bounded `memory-lifetime-bench` baseline:
+  - `materialization_copy_bytes=0`
+  - `materialization_copy_bytes_optimizer=0`
+  - `materialization_copy_bytes_forced_no_splice=0`
+- Current best next optimization:
+  - No optimizer-addressable stable-materialization copy bucket remains in the
+    measured smoke or benchmark profiles. Do not remove the explicit
+    no-splice closure rollback regression to improve total-copy counters.
+- Validation:
+  - `c3c build --obj-out obj -D OMNI_BOUNDARY_INSTR_COUNTERS`
+  - bounded container counters-enabled `memory-lifetime-smoke`
+    (`255 passed, 0 failed`)
+  - refreshed bounded container `memory-lifetime-bench` baseline
+  - `scripts/check_memory_telemetry_benchmark_envelope.sh`
+  - direct `(runtime-memory-stats)` smoke for the new fields
+  - `c3c build --obj-out obj`
+  - bounded container normal `basic` (`169 passed, 0 failed`)
+  - `scripts/check_status_consistency.sh`
+  - `git diff --check`
+
 ## 2026-04-22 - ML-VK-040 Train Batch Normalization DataSpec
 
 - Closed `ML-VK-040-TRAIN-BN-001` by adding explicit stateful

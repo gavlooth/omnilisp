@@ -133,6 +133,7 @@ assert_eq "shape.shape_ok" "$(extract_field "$shape_line" "shape_ok")" "$OMNI_ME
 assert_eq "shape.closure_env_ok" "$(extract_field "$shape_line" "closure_env_ok")" "$OMNI_MEM_TELEM_EXPECT_SHAPE_CLOSURE_OK"
 assert_eq "shape.stable_passport_ok" "$(extract_field "$shape_line" "stable_passport_ok")" "$OMNI_MEM_TELEM_EXPECT_STABLE_PASSPORT_OK"
 assert_eq "boundary.splice_fail_total" "$(extract_field "$boundary_line" "splice_fail_total")" "0"
+assert_eq "boundary.materialization_copy_bytes_forced_no_splice" "$(extract_field "$boundary_line" "materialization_copy_bytes_forced_no_splice")" "0"
 
 assert_gt_zero "shape.temp_slow_delta" "$(extract_field "$shape_line" "temp_slow_delta")"
 assert_gt_zero "shape.escape_slow_delta" "$(extract_field "$shape_line" "escape_slow_delta")"
@@ -150,7 +151,7 @@ assert_gt_zero "shape.ffi_releasable_delta" "$(extract_field "$shape_line" "ffi_
 assert_gt_zero "shape.stable_stale_delta" "$(extract_field "$shape_line" "stable_stale_delta")"
 
 warn_nonzero "shape.materialization_copy_bytes_delta" "$(extract_field "$shape_line" "materialization_copy_bytes_delta")"
-warn_nonzero "boundary.materialization_copy_bytes" "$(extract_field "$boundary_line" "materialization_copy_bytes")"
+warn_nonzero "boundary.materialization_copy_bytes_optimizer" "$(extract_field "$boundary_line" "materialization_copy_bytes_optimizer")"
 
 warn_gt "decision.splice_ms" "$(extract_field "$decision_line" "splice_ms")" "$OMNI_MEM_TELEM_WARN_MAX_SPLICE_MS"
 warn_gt "decision.disallowed_ms" "$(extract_field "$decision_line" "disallowed_ms")" "$OMNI_MEM_TELEM_WARN_MAX_DISALLOWED_MS"

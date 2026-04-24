@@ -352,6 +352,28 @@ All optimizer-addressable stable-materialization copy debt identified by the
 tag counters is now reduced in the smoke slice; the remaining `208` copied
 bytes are the intentional no-splice closure rollback coverage.
 
+### Phase 14: Forced No-Splice Telemetry Split
+
+Closed 2026-04-24 by `MEM-BENCH-FORCED-NOSPLICE-001`: the boundary decision
+stats now split stable-materialization copy bytes into total bytes,
+optimizer-addressable bytes, and forced-no-splice bytes. The explicit
+closure rollback regression still materializes and copies `208` bytes by
+design, but the counters-enabled `memory-lifetime-smoke` summary now reports:
+
+- `materialization_copy_bytes=208`
+- `materialization_copy_bytes_optimizer=0`
+- `materialization_copy_bytes_forced_no_splice=208`
+- `materialization_copy_bytes_closure=208`
+- `materialization_copy_bytes_optimizer_closure=0`
+- `materialization_copy_bytes_forced_no_splice_closure=208`
+
+The refreshed bounded `memory-lifetime-bench` baseline remains free of
+optimizer-addressable copy debt:
+
+- `materialization_copy_bytes=0`
+- `materialization_copy_bytes_optimizer=0`
+- `materialization_copy_bytes_forced_no_splice=0`
+
 ## Validation Path
 
 Minimum validation per implementation phase:
