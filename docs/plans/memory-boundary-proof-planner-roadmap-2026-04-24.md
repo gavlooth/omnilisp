@@ -266,11 +266,27 @@ change:
 
 ### Phase 10: Closure Copy-Debt Reduction
 
-Open as `MEM-BOUNDARY-CLOSURE-COPY-001`: use the root-tag counters to reduce
-the new dominant closure stable-materialization bucket. The candidate path
-should inspect closure env detach/retain policy and transplant proof
-closure-env gates before changing any closure route; the invariant remains that
-closure env scopes and stable handles are not independent ownership authority.
+Closed 2026-04-24 by `MEM-BOUNDARY-CLOSURE-COPY-001`: TEMP closure roots with
+an explicit transplant candidate now use the same prepared-graph budget gate as
+`CONS` roots and try promotion into the releasing ESCAPE lane plus proof-backed
+region transplant before stable destination materialization. Closure env detach
+and type-signature clone policy still run through the existing promotion path;
+scope regions remain the lifetime owner.
+
+Measured result from counters-enabled bounded `memory-lifetime-smoke` after the
+change:
+
+- `materialization_copy_bytes=664`
+- `materialization_copy_bytes_cons=0`
+- `materialization_copy_bytes_closure=208`
+- `materialization_copy_bytes_array=400`
+- `materialization_copy_bytes_big_integer=56`
+- `selected_stable_materialize_closure=1`
+- `selected_transplant=10`
+
+The one remaining closure materialization is now a residual guarded by existing
+scope/proof constraints rather than the dominant bucket. The next copy-debt
+target is the array bucket.
 
 ## Validation Path
 
@@ -300,11 +316,11 @@ FFI, JIT/eval boundary, or mutation semantics.
 ## Next Checkpoint
 
 The proof-planner implementation queue in TODO Part 18 is closed through
-planner-owned commit migration, tag attribution, and `CONS` copy-debt
-reduction. The measured follow-up queue is now open on
-`MEM-BOUNDARY-CLOSURE-COPY-001`: counters-enabled `memory-lifetime-smoke` shows
-closure roots now dominate stable-materialization copy bytes (`1072/1528`)
-after the `CONS` bucket fell to zero.
+planner-owned commit migration, tag attribution, `CONS` copy-debt reduction,
+and closure copy-debt reduction. The measured follow-up queue is now open on
+`MEM-BOUNDARY-ARRAY-COPY-001`: counters-enabled `memory-lifetime-smoke` shows
+array roots now dominate stable-materialization copy bytes (`400/664`) after
+the `CONS` bucket fell to zero and the closure bucket fell to `208`.
 
 ## Agent Assignments
 

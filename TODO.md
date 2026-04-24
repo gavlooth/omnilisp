@@ -25,7 +25,7 @@ split gate applies to code files only.
 - Part 15: [docs/todo_parts/todo_part_15.md](docs/todo_parts/todo_part_15.md) (951 lines)
 - Part 16: [docs/todo_parts/todo_part_16.md](docs/todo_parts/todo_part_16.md) (261 lines)
 - Part 17: [docs/todo_parts/todo_part_17.md](docs/todo_parts/todo_part_17.md) (75 lines)
-- Part 18: [docs/todo_parts/todo_part_18.md](docs/todo_parts/todo_part_18.md) (195 lines)
+- Part 18: [docs/todo_parts/todo_part_18.md](docs/todo_parts/todo_part_18.md) (234 lines)
 
 ## Live Queue
 
@@ -34,11 +34,14 @@ split gate applies to code files only.
   Part 18.
 - The proof-driven memory-boundary optimizer roadmap in
   `docs/plans/memory-boundary-proof-planner-roadmap-2026-04-24.md` is closed in
-  Part 18 through planner-owned commit migration, tag attribution, and `CONS`
-  copy-debt reduction. The measured follow-up queue is now open on
-  `MEM-BOUNDARY-CLOSURE-COPY-001`: counters-enabled `memory-lifetime-smoke`
-  attributes the dominant remaining stable-materialization copy bucket to
-  closure roots (`1072/1528` copied bytes).
+  Part 18 through planner-owned commit migration, tag attribution, `CONS`
+  copy-debt reduction, and closure copy-debt reduction. The measured follow-up
+  queue is now open on `MEM-BOUNDARY-ARRAY-COPY-001`: counters-enabled
+  `memory-lifetime-smoke` attributes the dominant remaining
+  stable-materialization copy bucket to array roots (`400/664` copied bytes).
+  `MEM-BOUNDARY-CLOSURE-RESIDUAL-001` separately tracks the one remaining
+  closure materialization (`208` copied bytes) so it can be explained or
+  eliminated without keeping the completed closure reduction slice open.
 - No open stable-escape prepared-materialization rollout items remain in Part 16.
 - Recent closed stable-escape rollout history in Part 16 includes prepared
   `CONS`/`ARRAY`/dictionary/set/closure graph metadata, cyclic container

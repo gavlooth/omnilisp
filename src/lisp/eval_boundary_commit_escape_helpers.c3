@@ -55,13 +55,24 @@ fn void boundary_commit_escape_fail_closed(
     boundary_txn_abort(txn);
 }
 
-fn bool boundary_commit_cons_transplant_budget_available(
+fn bool boundary_commit_pre_materialize_transplant_tag_supported(ValueTag tag) @inline {
+    switch (tag) {
+        case CONS:
+        case CLOSURE:
+            return true;
+        default:
+            return false;
+    }
+}
+
+fn bool boundary_commit_pre_materialize_transplant_budget_available(
     Value* result,
     PromotionContext* active_ctx,
     Interp* interp,
     usz* out_prepared_node_count
 ) {
-    if (result == null || result.tag != CONS || interp == null) return false;
+    if (result == null || interp == null) return false;
+    if (!boundary_commit_pre_materialize_transplant_tag_supported(result.tag)) return false;
     StableEscapePreparedGraphScratch scratch = {};
     scratch.global_env = interp.global_env;
     usz root_index = STABLE_ESCAPE_PREPARED_INVALID_INDEX;
@@ -73,7 +84,7 @@ fn bool boundary_commit_cons_transplant_budget_available(
     return active_ctx.budget >= scratch.node_count;
 }
 
-fn bool boundary_commit_try_temp_cons_transplant(
+fn bool boundary_commit_try_temp_pre_materialize_transplant(
     BoundaryCommitEscapeResult* committed,
     Value** result_io,
     Interp* interp,
@@ -91,12 +102,12 @@ fn bool boundary_commit_try_temp_cons_transplant(
     if (plan.route != BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION ||
         !plan.transplant_candidate ||
         plan.provenance != BOUNDARY_RETURN_OWNED_BY_RELEASING_TEMP ||
-        result.tag != CONS) {
+        !boundary_commit_pre_materialize_transplant_tag_supported(result.tag)) {
         return false;
     }
 
     usz prepared_node_count = 0;
-    if (!boundary_commit_cons_transplant_budget_available(result, active_ctx, interp, &prepared_node_count)) {
+    if (!boundary_commit_pre_materialize_transplant_budget_available(result, active_ctx, interp, &prepared_node_count)) {
         return false;
     }
     (void)prepared_node_count;
@@ -186,7 +197,7 @@ fn void boundary_commit_escape_handle_releasing_scope(
     bool requires_escape_promotion =
         plan.provenance == BOUNDARY_RETURN_OWNED_BY_RELEASING_TEMP;
 
-    if (boundary_commit_try_temp_cons_transplant(
+    if (boundary_commit_try_temp_pre_materialize_transplant(
             committed,
             result_io,
             interp,

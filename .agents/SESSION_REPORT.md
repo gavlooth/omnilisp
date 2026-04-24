@@ -5525,6 +5525,70 @@ Re-audit notes:
 
 Signature: GPT-5 Codex
 
+## 2026-04-24 memory boundary closure copy-debt reduction
+
+Date/time: 2026-04-24 13:30:35 CEST
+
+Objective:
+- Implement `MEM-BOUNDARY-CLOSURE-COPY-001` after the `CONS` copy-debt
+  reduction made closure roots the dominant stable-materialization bucket.
+
+Changes made:
+- Generalized the pre-materialization transplant helper in
+  `src/lisp/eval_boundary_commit_escape_helpers.c3` from `CONS`-only to a
+  tag-aware gate that currently supports `CONS` and `CLOSURE`.
+- TEMP closure roots with explicit transplant candidacy now try prepared-graph
+  budget gating, promotion into the releasing ESCAPE lane, and proof-backed
+  region transplant before stable destination materialization.
+- Updated the typed TEMP closure regression in
+  `src/lisp/tests_memory_lifetime_boundary_commit_escape_primary_groups.c3` to
+  assert selected `REGION_TRANSPLANT` while preserving signature-clone
+  validation.
+- Updated `docs/plans/memory-boundary-proof-planner-roadmap-2026-04-24.md`,
+  `docs/todo_parts/todo_part_18.md`, `TODO.md`, and
+  `memory/changelog_parts/changelog_part_37.md`.
+
+Commands run:
+- C3 diagnostics for touched runtime/test files.
+- `c3c build --obj-out obj`
+- `scripts/run_validation_container.sh env LD_LIBRARY_PATH=build:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+- `c3c build --obj-out obj -D OMNI_BOUNDARY_INSTR_COUNTERS`
+- `scripts/run_validation_container.sh env LD_LIBRARY_PATH=build:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+- `scripts/run_validation_container.sh env LD_LIBRARY_PATH=build:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_BOUNDARY_VERBOSE_TELEMETRY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+- `scripts/run_validation_container.sh env LD_LIBRARY_PATH=build:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=basic ./build/main --test-suite lisp`
+- `git diff --check`
+- `scripts/check_status_consistency.sh`
+- `scripts/run_validation_container.sh valgrind --leak-check=full --error-exitcode=99 env LD_LIBRARY_PATH=build:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+- `c3c build --obj-out obj --sanitize=address`
+- `c3c build --obj-out obj`
+
+Key results:
+- Build passed.
+- Bounded normal `memory-lifetime-smoke` passed with `255 passed, 0 failed`.
+- Bounded counters-enabled `memory-lifetime-smoke` passed with
+  `255 passed, 0 failed`.
+- Bounded `basic` passed with `169 passed, 0 failed`.
+- Bounded Valgrind `memory-lifetime-smoke` passed with
+  `255 passed, 0 failed`.
+- Counters moved `materialization_copy_bytes_closure` from `1072` to `208`
+  and aggregate `materialization_copy_bytes` from `1528` to `664`.
+- The next dominant stable-materialization bucket is array roots
+  (`materialization_copy_bytes_array=400`).
+- `git diff --check` and `scripts/check_status_consistency.sh` passed.
+- ASAN was attempted, but local `c3c` rejected sanitizer mode before compiling.
+- Final normal rebuild passed, leaving `build/main` non-instrumented.
+
+Unresolved issues:
+- One selected stable-materialize closure root remains
+  (`selected_stable_materialize_closure=1`); tracked as
+  `MEM-BOUNDARY-CLOSURE-RESIDUAL-001`.
+
+Next actions:
+- Commit non-artifact changes.
+- Continue with `MEM-BOUNDARY-ARRAY-COPY-001` if the final gate stays clean.
+
+Signature: GPT-5 Codex
+
 ## 2026-04-24 memory boundary CONS copy-debt reduction
 
 Date/time: 2026-04-24 13:52 CEST

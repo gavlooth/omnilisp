@@ -179,19 +179,56 @@ Source: `docs/plans/memory-boundary-proof-planner-roadmap-2026-04-24.md`.
     materialization or hidden compatibility fallback; failed prepared/proof
     paths must remain explicit planner-selected outcomes.
 
-- [ ] `MEM-BOUNDARY-CLOSURE-COPY-001` reduce closure stable-materialization copy debt.
+- [x] `MEM-BOUNDARY-CLOSURE-COPY-001` reduce closure stable-materialization copy debt.
   - classification: runtime performance, structural optimization.
-  - task: design and implement the next low-copy route for closure roots
-    selected by stable materialization, using the measured tag counters as the
-    gating signal.
-  - why: after `MEM-BOUNDARY-CONS-COPY-001`, counters-enabled
-    `memory-lifetime-smoke` shows closure roots are the dominant remaining
-    stable-materialization bucket (`1072/1528` copied bytes).
-  - concrete next step: inspect `stable_escape_materialize_init_closure`,
-    `stable_escape_materialize_finalize_closure`, closure env detach/retain
-    policy, and transplant proof closure-env gates for a closure-specific route
-    that preserves env-copy rollback and no-TEMP-edge audit invariants.
+  - done 2026-04-24: TEMP closure roots selected for stable materialization
+    now pass through the prepared-graph budget gate and try promotion into the
+    releasing ESCAPE lane plus proof-backed region transplant before stable
+    destination materialization. Existing promotion code still owns closure
+    env detach/retain behavior and type-signature copying.
+  - validation: `c3c build --obj-out obj`; counters-enabled build
+    (`-D OMNI_BOUNDARY_INSTR_COUNTERS`); bounded container normal and
+    counters-enabled `memory-lifetime-smoke` (`255 passed, 0 failed` each).
+    Bounded container `basic` passed (`169 passed, 0 failed`); bounded
+    container Valgrind `memory-lifetime-smoke` passed (`255 passed, 0 failed`).
+    Counters moved `materialization_copy_bytes_closure` from `1072` to `208`
+    and aggregate `materialization_copy_bytes` from `1528` to `664`. ASAN was
+    attempted, but local `c3c` rejected sanitizer mode before compiling.
   - prerequisites: `MEM-BOUNDARY-CONS-COPY-001` must remain closed under the
     counters-enabled smoke command.
   - negative-memory constraint: do not treat closure env scopes or stable
     handles as ownership authority; scope regions remain the lifetime owner.
+
+- [ ] `MEM-BOUNDARY-ARRAY-COPY-001` reduce array stable-materialization copy debt.
+  - classification: runtime performance, structural optimization.
+  - task: design and implement the next low-copy route for array roots selected
+    by stable materialization, using the measured tag counters as the gating
+    signal.
+  - why: after `MEM-BOUNDARY-CLOSURE-COPY-001`, counters-enabled
+    `memory-lifetime-smoke` shows arrays are the dominant remaining
+    stable-materialization bucket (`400/664` copied bytes).
+  - concrete next step: inspect `stable_escape_materialize_init_array`,
+    `stable_escape_materialize_wire_collection`, array mutation epoch/passport
+    gates, and transplant proof edge traversal for an array-specific route that
+    preserves no-TEMP-edge audit invariants.
+  - prerequisites: `MEM-BOUNDARY-CLOSURE-COPY-001` must remain closed under the
+    counters-enabled smoke command.
+  - negative-memory constraint: do not bypass prepared-edge ordering or
+    mutation-epoch validation to force an array transplant.
+
+- [ ] `MEM-BOUNDARY-CLOSURE-RESIDUAL-001` explain or eliminate the remaining closure materialization.
+  - classification: runtime performance, targeted residual investigation.
+  - task: identify the one remaining selected stable-materialize closure root
+    reported by counters-enabled `memory-lifetime-smoke` after
+    `MEM-BOUNDARY-CLOSURE-COPY-001`.
+  - why: closure copy debt is no longer dominant, but the residual should be
+    either proven necessary under scope/proof constraints or moved to a
+    proof-backed low-copy route.
+  - concrete next step: run counters with verbose boundary telemetry and, if
+    needed, add temporary local tracing around
+    `boundary_commit_try_temp_pre_materialize_transplant` to distinguish
+    non-unique releasing scope, prepared-graph rejection, proof rejection, and
+    promotion-abort cases.
+  - prerequisites: keep closure env detach/retain rollback tests passing.
+  - negative-memory constraint: do not weaken child TEMP-edge proof rejection or
+    refcount-one scope-splice requirements to remove this residual.

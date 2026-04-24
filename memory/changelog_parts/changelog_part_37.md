@@ -4989,5 +4989,51 @@ Validation:
     (`255 passed, 0 failed`)
   - attempted `c3c build --obj-out obj --sanitize=address`; local `c3c`
     rejected sanitizer mode before compiling
+  - final normal rebuild with `c3c build --obj-out obj`
   - `git diff --check`
   - `scripts/check_status_consistency.sh`
+  - bounded container normal `basic` (`169 passed, 0 failed`)
+  - bounded container normal Valgrind `memory-lifetime-smoke`
+    (`255 passed, 0 failed`)
+  - attempted `c3c build --obj-out obj --sanitize=address`; local `c3c`
+    rejected sanitizer mode before compiling
+  - `git diff --check`
+  - `scripts/check_status_consistency.sh`
+
+## 2026-04-24 memory boundary closure copy-debt reduction
+
+- Implemented and closed `MEM-BOUNDARY-CLOSURE-COPY-001`.
+  - The pre-materialization transplant helper is now tag-aware and supports
+    both `CONS` and `CLOSURE` roots selected for stable destination
+    materialization with an explicit transplant candidate.
+  - TEMP closure roots now try prepared-graph budget gating, promotion into the
+    releasing ESCAPE lane, and proof-backed region transplant before stable
+    destination materialization.
+  - Closure env detach/retain policy and method-signature copying remain owned
+    by the existing promotion path; no closure env scope or stable handle
+    becomes lifetime authority.
+  - The typed TEMP closure regression now asserts selected `REGION_TRANSPLANT`
+    behavior while still proving the method signature was cloned into the
+    escaping closure.
+- Measured result from counters-enabled bounded `memory-lifetime-smoke`:
+  - before: `materialization_copy_bytes=1528`,
+    `materialization_copy_bytes_closure=1072`
+  - after: `materialization_copy_bytes=664`,
+    `materialization_copy_bytes_closure=208`
+  - new dominant bucket: `materialization_copy_bytes_array=400`
+  - residual closure materialization:
+    `selected_stable_materialize_closure=1`
+- Current best next optimization:
+  - `MEM-BOUNDARY-ARRAY-COPY-001` should target array root stable
+    materialization next; arrays account for roughly 60% of the remaining
+    measured copied bytes.
+  - `MEM-BOUNDARY-CLOSURE-RESIDUAL-001` should separately explain or eliminate
+    the one remaining closure materialization without weakening child
+    TEMP-edge proof or refcount-one splice requirements.
+- Validation:
+  - C3 diagnostics for touched runtime/test files
+  - `c3c build --obj-out obj`
+  - `c3c build --obj-out obj -D OMNI_BOUNDARY_INSTR_COUNTERS`
+  - bounded container normal `memory-lifetime-smoke` (`255 passed, 0 failed`)
+  - bounded container counters-enabled `memory-lifetime-smoke`
+    (`255 passed, 0 failed`)

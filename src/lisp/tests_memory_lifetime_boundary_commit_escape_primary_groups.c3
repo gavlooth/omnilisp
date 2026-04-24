@@ -391,7 +391,8 @@ fn void run_memory_lifetime_boundary_commit_escape_primary_tests(Interp* interp,
         }
     }
 
-    // Invariant: typed TEMP closure survivor materializes its signature into ESCAPE.
+    // Invariant: typed TEMP closure survivor transplants its promoted ESCAPE
+    // signature without falling through to stable destination materialization.
     {
         main::ScopeRegion* root_scope = interp.current_scope;
         main::ScopeRegion* target_scope = main::scope_create(root_scope);
@@ -399,7 +400,7 @@ fn void run_memory_lifetime_boundary_commit_escape_primary_tests(Interp* interp,
         if (target_scope == null || releasing_scope == null) {
             if (releasing_scope != null) main::scope_release(releasing_scope);
             if (target_scope != null) main::scope_release(target_scope);
-            io::printn("[FAIL] lifetime: boundary_commit_escape typed TEMP closure stable materialization");
+            io::printn("[FAIL] lifetime: boundary_commit_escape typed TEMP closure transplant");
             (*fail)++;
         } else {
             interp.current_scope = releasing_scope;
@@ -443,11 +444,12 @@ fn void run_memory_lifetime_boundary_commit_escape_primary_tests(Interp* interp,
                           dst_sig.has_val_literal != null &&
                           !dst_sig.has_val_literal[0];
             bool ok = setup_ok &&
-                      !committed.releasing_scope_spliced &&
+                      committed.releasing_scope_spliced &&
                       !committed.reused_in_target_chain &&
-                      committed.stable_materialization_used &&
+                      !committed.stable_materialization_used &&
                       !committed.compatibility_path_used &&
-                      committed.outcome == BOUNDARY_COMMIT_DESTINATION_DIRECT_PROMOTED &&
+                      committed.outcome == BOUNDARY_COMMIT_SPLICED_RELEASING_SCOPE &&
+                      committed.selected_route == BOUNDARY_PLAN_ROUTE_REGION_TRANSPLANT &&
                       committed.value != src &&
                       dst_closure != null &&
                       dst_closure != src.closure_val &&
@@ -464,12 +466,13 @@ fn void run_memory_lifetime_boundary_commit_escape_primary_tests(Interp* interp,
             }
 
             if (ok) {
-                emit_pass_literal("[PASS] lifetime: boundary_commit_escape typed TEMP closure stable materialization");
+                emit_pass_literal("[PASS] lifetime: boundary_commit_escape typed TEMP closure transplant");
                 (*pass)++;
             } else {
-                io::printfn("[FAIL] lifetime: boundary_commit_escape typed TEMP closure stable materialization (setup_ok=%s outcome=%d stable_materialized=%s compatibility=%s same=%s sig_ok=%s)",
+                io::printfn("[FAIL] lifetime: boundary_commit_escape typed TEMP closure transplant (setup_ok=%s outcome=%d selected=%d stable_materialized=%s compatibility=%s same=%s sig_ok=%s)",
                     setup_ok ? "yes" : "no",
                     (int)committed.outcome,
+                    (int)committed.selected_route,
                     committed.stable_materialization_used ? "yes" : "no",
                     committed.compatibility_path_used ? "yes" : "no",
                     committed.value == src ? "yes" : "no",
