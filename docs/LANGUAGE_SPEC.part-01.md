@@ -319,8 +319,12 @@ null?
 | `.[` | Parser token pattern used for postfix index parsing (`expr.[key]`) |
 | `.` | Dot for field/path access |
 | `^` | Type annotation prefix |
-| `[` `]` | Array literals, bracket attributes, and patterns |
+| `[` `]` | Array literals in expression position; declaration attribute clauses after `define`; patterns |
 | `{` `}` | Dictionary literals |
+
+Bracket meaning is position-sensitive. In expression position, `[ ... ]` is an
+Array literal. Immediately after `define`, `[ ... ]` is a declaration attribute
+clause, not an Array expression and not an argument evaluated at runtime.
 
 Slash (`/`) is part of ordinary symbol syntax. Names like `io/println`,
 `matrix/eigenpairs`, and `ml/plot` are single symbols, not module

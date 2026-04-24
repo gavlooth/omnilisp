@@ -5,7 +5,7 @@ Most features below are implemented (see Implementation Status at the end).
 
 ## Design Principles
 
-1. **Reuse existing constructs** - quote, metadata maps, define attributes
+1. **Reuse existing constructs** - quote, metadata maps, define attribute clauses
 2. **Type position vs value position** - context determines interpretation
 3. **Minimal new tokens** - no special syntax like `{T}` for generics
 4. **Lisp-like** - parentheses for application, including type application
@@ -15,6 +15,10 @@ Most features below are implemented (see Implementation Status at the end).
 ---
 
 ## Type System Syntax
+
+`[ ... ]` immediately after `define` is a declaration attribute clause. It is
+not an Array expression and is not evaluated as a runtime argument to `define`.
+Array literals use the same brackets only in expression position.
 
 ### 1.1 Type Annotations
 

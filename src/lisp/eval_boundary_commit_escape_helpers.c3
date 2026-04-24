@@ -59,6 +59,7 @@ fn bool boundary_commit_pre_materialize_transplant_tag_supported(ValueTag tag) @
     switch (tag) {
         case CONS:
         case CLOSURE:
+        case ARRAY:
             return true;
         default:
             return false;

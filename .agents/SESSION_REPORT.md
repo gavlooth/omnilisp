@@ -5525,6 +5525,96 @@ Re-audit notes:
 
 Signature: GPT-5 Codex
 
+## 2026-04-24 memory boundary array copy-debt reduction
+
+Date/time: 2026-04-24 14:05 CEST
+
+Objective:
+- Implement `MEM-BOUNDARY-ARRAY-COPY-001` after closure reduction made arrays
+  the dominant stable-materialization bucket.
+
+Changes made:
+- Added `ARRAY` to the prepared-graph budget/proof transplant gate in
+  `src/lisp/eval_boundary_commit_escape_helpers.c3`.
+- Updated the TEMP array regression in
+  `src/lisp/tests_memory_lifetime_boundary_commit_escape_primary_groups.c3` to
+  assert selected `REGION_TRANSPLANT`.
+- Fixed the regression to snapshot source payload identities before boundary
+  commit; after a successful splice, the TEMP source payload may be retired and
+  must not be dereferenced by the test.
+- Updated the roadmap, TODO index, TODO Part 18, and changelog part 37.
+- Kept the concurrent define-attribute-clause documentation edits in the
+  working copy and fixed their index counts before commit.
+
+Commands run:
+- C3 diagnostics for touched runtime/test files.
+- `c3c build --obj-out obj`
+- `scripts/run_validation_container.sh env LD_LIBRARY_PATH=build:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+- `c3c build --obj-out obj -D OMNI_BOUNDARY_INSTR_COUNTERS`
+- `scripts/run_validation_container.sh env LD_LIBRARY_PATH=build:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+- `scripts/run_validation_container.sh env LD_LIBRARY_PATH=build:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=basic ./build/main --test-suite lisp`
+- `git diff --check`
+- `scripts/check_status_consistency.sh`
+- `scripts/run_validation_container.sh valgrind --leak-check=full --error-exitcode=99 env LD_LIBRARY_PATH=build:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+- `c3c build --obj-out obj --sanitize=address`
+- `c3c build --obj-out obj`
+
+Key results:
+- Build passed.
+- Bounded normal `memory-lifetime-smoke` passed with `255 passed, 0 failed`.
+- Bounded counters-enabled `memory-lifetime-smoke` passed with
+  `255 passed, 0 failed`.
+- Bounded `basic` passed with `169 passed, 0 failed`.
+- Bounded Valgrind `memory-lifetime-smoke` passed with
+  `255 passed, 0 failed`.
+- Counters moved `materialization_copy_bytes_array` from `400` to `0` and
+  aggregate `materialization_copy_bytes` from `664` to `264`.
+- `git diff --check` and `scripts/check_status_consistency.sh` passed.
+- ASAN was attempted, but local `c3c` rejected sanitizer mode before compiling.
+- Final normal rebuild passed, leaving `build/main` non-instrumented.
+
+Unresolved issues:
+- One selected stable-materialize closure root remains
+  (`selected_stable_materialize_closure=1`, `208` copied bytes); tracked as
+  `MEM-BOUNDARY-CLOSURE-RESIDUAL-001`.
+
+Next actions:
+- Commit non-artifact changes.
+- Continue with `MEM-BOUNDARY-CLOSURE-RESIDUAL-001` if validation stays clean.
+
+Signature: GPT-5 Codex
+
+## 2026-04-24 define attribute clause wording
+
+Date/time: 2026-04-24 13:37:08 CEST
+
+Objective:
+- Record the surface decision that `[ ... ]` immediately after `define` is a
+  declaration attribute clause, not an Array expression or runtime argument.
+
+Changes made:
+- Updated language/syntax/reference docs to describe `define` attributes as
+  declaration metadata and preserve Array literal meaning only in expression
+  position.
+- Updated special-token tables and macro/type examples to avoid “bracket
+  attributes” or “array argument” framing.
+
+Commands run:
+- `rg` scan for ambiguous bracket/attribute wording.
+- `git diff --check`
+
+Key results:
+- Docs now consistently distinguish `define` attribute clauses from Array
+  literals.
+- Whitespace validation passed.
+
+Unresolved issues:
+- None for this docs wording slice.
+- Existing unrelated memory-boundary working-copy changes remain present and
+  were not reverted.
+
+Signature: GPT-5 Codex
+
 ## 2026-04-24 memory boundary closure copy-debt reduction
 
 Date/time: 2026-04-24 13:30:35 CEST

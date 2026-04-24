@@ -62,7 +62,11 @@
 (define (request {method url} body) ...)
 ```
 
-Note: `(define [...] ...)` with brackets is reserved for attribute syntax (`[type]`, `[struct]`, `[ffi lib]`, `[relation db]`, etc.). `[struct]` is an alias of `[type]`. Array destructuring is only available in `let` and `match`.
+Note: `(define [...] ...)` with brackets uses a declaration attribute clause
+(`[type]`, `[struct]`, `[ffi lib]`, `[relation db]`, etc.). The bracketed
+clause is parser/declaration metadata, not an Array literal and not a runtime
+argument to `define`. `[struct]` is an alias of `[type]`. Array destructuring
+is only available in `let` and `match`.
 
 ### 3.2.1 ADR: `define` Unification Is Canonical Syntax
 

@@ -288,6 +288,28 @@ The one remaining closure materialization is now a residual guarded by existing
 scope/proof constraints rather than the dominant bucket. The next copy-debt
 target is the array bucket.
 
+### Phase 11: Array Copy-Debt Reduction
+
+Closed 2026-04-24 by `MEM-BOUNDARY-ARRAY-COPY-001`: TEMP array roots with an
+explicit transplant candidate now pass through the prepared-graph budget gate
+and try promotion into the releasing ESCAPE lane plus proof-backed region
+transplant before stable destination materialization. The array regression
+snapshots source payload identities before boundary commit so it does not
+dereference retired TEMP source payloads after a successful splice.
+
+Measured result from counters-enabled bounded `memory-lifetime-smoke` after the
+change:
+
+- `materialization_copy_bytes=264`
+- `materialization_copy_bytes_cons=0`
+- `materialization_copy_bytes_array=0`
+- `materialization_copy_bytes_closure=208`
+- `materialization_copy_bytes_big_integer=56`
+- `selected_stable_materialize_array=0`
+- `selected_transplant=11`
+
+The next copy-debt target is the remaining closure residual.
+
 ## Validation Path
 
 Minimum validation per implementation phase:
@@ -317,10 +339,10 @@ FFI, JIT/eval boundary, or mutation semantics.
 
 The proof-planner implementation queue in TODO Part 18 is closed through
 planner-owned commit migration, tag attribution, `CONS` copy-debt reduction,
-and closure copy-debt reduction. The measured follow-up queue is now open on
-`MEM-BOUNDARY-ARRAY-COPY-001`: counters-enabled `memory-lifetime-smoke` shows
-array roots now dominate stable-materialization copy bytes (`400/664`) after
-the `CONS` bucket fell to zero and the closure bucket fell to `208`.
+closure copy-debt reduction, and array copy-debt reduction. The measured
+follow-up queue is now open on `MEM-BOUNDARY-CLOSURE-RESIDUAL-001`:
+counters-enabled `memory-lifetime-smoke` shows one remaining closure
+stable-materialization root (`208/264` copied bytes).
 
 ## Agent Assignments
 

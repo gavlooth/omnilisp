@@ -113,7 +113,7 @@ nil               ;; nil value
 | `.[` | Parser token used for postfix index parsing (`expr.[key]`) and leading-dot bracketed key expressions (`.[expr]`) |
 | `.` | Field/path access |
 | `^` | Type annotation prefix |
-| `[` `]` | Arrays, patterns, bracket attributes |
+| `[` `]` | Array literals in expression position; declaration attribute clauses after `define`; patterns |
 | `{` `}` | Dicts, metadata dictionaries |
 
 ---

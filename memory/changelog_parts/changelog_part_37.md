@@ -4997,6 +4997,45 @@ Validation:
     (`255 passed, 0 failed`)
   - attempted `c3c build --obj-out obj --sanitize=address`; local `c3c`
     rejected sanitizer mode before compiling
+  - final normal rebuild with `c3c build --obj-out obj`
+  - `git diff --check`
+  - `scripts/check_status_consistency.sh`
+
+## 2026-04-24 memory boundary array copy-debt reduction
+
+- Implemented and closed `MEM-BOUNDARY-ARRAY-COPY-001`.
+  - The pre-materialization transplant helper now includes `ARRAY` roots in the
+    same prepared-graph budget gate used by `CONS` and `CLOSURE`.
+  - TEMP array roots with explicit transplant candidacy now try promotion into
+    the releasing ESCAPE lane followed by proof-backed region transplant before
+    stable destination materialization.
+  - The TEMP array regression now asserts selected `REGION_TRANSPLANT` and
+    snapshots source payload identities before boundary commit so it does not
+    dereference retired TEMP source payloads after a successful splice.
+- Measured result from counters-enabled bounded `memory-lifetime-smoke`:
+  - before: `materialization_copy_bytes=664`,
+    `materialization_copy_bytes_array=400`
+  - after: `materialization_copy_bytes=264`,
+    `materialization_copy_bytes_array=0`
+  - remaining dominant bucket:
+    `materialization_copy_bytes_closure=208`
+- Current best next optimization:
+  - `MEM-BOUNDARY-CLOSURE-RESIDUAL-001` should explain or eliminate the one
+    remaining closure materialization without weakening child TEMP-edge proof
+    or refcount-one splice requirements.
+- Validation:
+  - C3 diagnostics for touched runtime/test files
+  - `c3c build --obj-out obj`
+  - `c3c build --obj-out obj -D OMNI_BOUNDARY_INSTR_COUNTERS`
+  - bounded container normal `memory-lifetime-smoke` (`255 passed, 0 failed`)
+  - bounded container counters-enabled `memory-lifetime-smoke`
+    (`255 passed, 0 failed`)
+  - bounded container normal `basic` (`169 passed, 0 failed`)
+  - bounded container normal Valgrind `memory-lifetime-smoke`
+    (`255 passed, 0 failed`)
+  - attempted `c3c build --obj-out obj --sanitize=address`; local `c3c`
+    rejected sanitizer mode before compiling
+  - final normal rebuild with `c3c build --obj-out obj`
   - `git diff --check`
   - `scripts/check_status_consistency.sh`
 

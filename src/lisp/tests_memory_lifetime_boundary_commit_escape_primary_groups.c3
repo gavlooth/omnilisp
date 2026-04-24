@@ -222,7 +222,7 @@ fn void run_memory_lifetime_boundary_commit_escape_primary_tests(Interp* interp,
         }
     }
 
-    // Invariant: TEMP array survivor materializes from prepared graph metadata.
+    // Invariant: TEMP array survivor transplants a prepared, promoted graph.
     {
         main::ScopeRegion* root_scope = interp.current_scope;
         main::ScopeRegion* target_scope = main::scope_create(root_scope);
@@ -230,7 +230,7 @@ fn void run_memory_lifetime_boundary_commit_escape_primary_tests(Interp* interp,
         if (target_scope == null || releasing_scope == null) {
             if (releasing_scope != null) main::scope_release(releasing_scope);
             if (target_scope != null) main::scope_release(target_scope);
-            io::printn("[FAIL] lifetime: boundary_commit_escape TEMP array stable materialization");
+            io::printn("[FAIL] lifetime: boundary_commit_escape TEMP array transplant");
             (*fail)++;
         } else {
             interp.current_scope = releasing_scope;
@@ -266,6 +266,9 @@ fn void run_memory_lifetime_boundary_commit_escape_primary_tests(Interp* interp,
             }
 
             usz base_commit = copy_to_parent_site_calls(COPY_SITE_RUN_JIT_RESULT);
+            Value* src_item0 = setup_ok ? src_arr.items[0] : null;
+            void* src_big_float_payload = setup_ok ? (void*)src_arr.items[2].big_float_val : null;
+            void* src_big_complex_payload = setup_ok ? (void*)src_arr.items[3].big_complex_val : null;
             PromotionContext ctx = {};
             boundary_promotion_context_begin(interp, &ctx, PROMOTION_CTX_BUDGET_RETURN);
             BoundaryCommitEscapeResult committed = {};
@@ -279,7 +282,7 @@ fn void run_memory_lifetime_boundary_commit_escape_primary_tests(Interp* interp,
                             dst_arr.items[0] != null &&
                             dst_arr.items[0].tag == STRING &&
                             dst_arr.items[0].str_len == 12 &&
-                            dst_arr.items[0] != src_arr.items[0] &&
+                            dst_arr.items[0] != src_item0 &&
                             dst_arr.items[0].scope_gen == target_scope.escape_generation &&
                             dst_arr.items[1] != null &&
                             dst_arr.items[1].tag == INT &&
@@ -288,19 +291,20 @@ fn void run_memory_lifetime_boundary_commit_escape_primary_tests(Interp* interp,
                             dst_arr.items[2] != null &&
                             dst_arr.items[2].tag == BIG_FLOAT &&
                             dst_arr.items[2].big_float_val != null &&
-                            dst_arr.items[2].big_float_val != src_arr.items[2].big_float_val &&
+                            (void*)dst_arr.items[2].big_float_val != src_big_float_payload &&
                             dst_arr.items[2].scope_gen == target_scope.escape_generation &&
                             dst_arr.items[3] != null &&
                             dst_arr.items[3].tag == BIG_COMPLEX &&
                             dst_arr.items[3].big_complex_val != null &&
-                            dst_arr.items[3].big_complex_val != src_arr.items[3].big_complex_val &&
+                            (void*)dst_arr.items[3].big_complex_val != src_big_complex_payload &&
                             dst_arr.items[3].scope_gen == target_scope.escape_generation;
             bool ok = setup_ok &&
-                      !committed.releasing_scope_spliced &&
+                      committed.releasing_scope_spliced &&
                       !committed.reused_in_target_chain &&
-                      committed.stable_materialization_used &&
+                      !committed.stable_materialization_used &&
                       !committed.compatibility_path_used &&
-                      committed.outcome == BOUNDARY_COMMIT_DESTINATION_DIRECT_PROMOTED &&
+                      committed.outcome == BOUNDARY_COMMIT_SPLICED_RELEASING_SCOPE &&
+                      committed.selected_route == BOUNDARY_PLAN_ROUTE_REGION_TRANSPLANT &&
                       committed.value != src &&
                       array_ok &&
                       committed.value.scope_gen == target_scope.escape_generation &&
@@ -316,12 +320,13 @@ fn void run_memory_lifetime_boundary_commit_escape_primary_tests(Interp* interp,
             }
 
             if (ok) {
-                emit_pass_literal("[PASS] lifetime: boundary_commit_escape TEMP array stable materialization");
+                emit_pass_literal("[PASS] lifetime: boundary_commit_escape TEMP array transplant");
                 (*pass)++;
             } else {
-                io::printfn("[FAIL] lifetime: boundary_commit_escape TEMP array stable materialization (setup_ok=%s outcome=%d stable_materialized=%s compatibility=%s commit_delta=%d same=%s)",
+                io::printfn("[FAIL] lifetime: boundary_commit_escape TEMP array transplant (setup_ok=%s outcome=%d selected=%d stable_materialized=%s compatibility=%s commit_delta=%d same=%s)",
                     setup_ok ? "yes" : "no",
                     (int)committed.outcome,
+                    (int)committed.selected_route,
                     committed.stable_materialization_used ? "yes" : "no",
                     committed.compatibility_path_used ? "yes" : "no",
                     (long)commit_delta,

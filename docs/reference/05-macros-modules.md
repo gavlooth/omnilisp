@@ -6,6 +6,13 @@
 
 ## 14. Macros
 
+Macro declarations use the `define` attribute clause. The bracketed clause is
+declaration metadata, not an Array literal:
+
+```lisp
+(define [macro] name ...)
+```
+
 ### Pattern-Based Macros
 
 ```lisp

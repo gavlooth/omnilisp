@@ -13,8 +13,8 @@
 | T_EOF | End of file | Reached end of input |
 | T_LPAREN | `(` | Left parenthesis for list forms |
 | T_RPAREN | `)` | Right parenthesis for list forms |
-| T_LBRACKET | `[` | Left bracket for array literals, patterns, attributes |
-| T_RBRACKET | `]` | Right bracket for array literals, patterns, attributes |
+| T_LBRACKET | `[` | Left bracket for array literals, patterns, and declaration attribute clauses |
+| T_RBRACKET | `]` | Right bracket for array literals, patterns, and declaration attribute clauses |
 | T_LBRACE | `{` | Left brace for dict literals, metadata dictionaries |
 | T_RBRACE | `}` | Right brace for dict literals, metadata dictionaries |
 | T_DOT_BRACKET | `.[` | Parser token pattern used while parsing postfix index syntax `expr.[key]`. |
@@ -171,7 +171,8 @@ Three branches required (no two-branch form).
 (define (f (^String x)) "string")
 (define (f x) "other")  ;; fallback
 
-;; Bracket attributes (NOT destructuring — [...] is always an attribute)
+;; Declaration attribute clause after define.
+;; This is NOT an Array expression and NOT destructuring.
 (define [macro] name
   (syntax-match
     (pattern1 (template ...))
@@ -191,6 +192,10 @@ Three branches required (no two-branch form).
 (define [union] (Name T) Variant1 (Variant2 T))
 (define [alias] Name TargetType)
 ```
+
+`[ ... ]` after `define` is declaration metadata consumed by the parser. It is
+not equivalent to passing an Array value to `define`. In expression position,
+`[ ... ]` remains the Array literal syntax.
 
 ### 3.5 `set!` - Variable Mutation
 

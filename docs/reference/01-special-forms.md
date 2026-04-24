@@ -43,9 +43,12 @@ sequence, returning the last:
 
 `(define (f x y) body)` desugars to `(define f (λ (x y) body))`.
 
-Brackets in `define` are reserved for attributes: `[type]`, `[macro]`,
-`[reader tag]`, `[abstract]`, `[union]`, `[alias]`, `[effect]`, `[schema]`,
-`[relation]`, `[ffi lib]`, `[ffi λ]`.
+Brackets immediately after `define` introduce a declaration attribute clause:
+`[type]`, `[macro]`, `[reader tag]`, `[abstract]`, `[union]`, `[alias]`,
+`[effect]`, `[schema]`, `[relation]`, `[ffi lib]`, `[ffi λ]`.
+
+The clause is not an Array expression and is not evaluated as an argument to
+`define`. In expression position, `[ ... ]` remains the Array literal syntax.
 
 ### `let` — Local Binding
 
