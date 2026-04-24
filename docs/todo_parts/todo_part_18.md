@@ -259,8 +259,13 @@ Source: `docs/plans/memory-boundary-proof-planner-roadmap-2026-04-24.md`.
 
 Source: `docs/plans/memory-boundary-telemetry-benchmark-plan-2026-04-24.md`.
 
-- [ ] `MEM-BENCH-OBSERVE-001` inventory current memory/boundary observability.
+- [x] `MEM-BENCH-OBSERVE-001` inventory current memory/boundary observability.
   - classification: static tooling/docs, targeted evidence inventory.
+  - done 2026-04-24: added
+    `docs/plans/memory-boundary-telemetry-signal-inventory-2026-04-24.md`,
+    mapping existing `BoundaryDecisionStats`, `runtime-memory-stats`,
+    `OMNI_TEST_SUMMARY` / `OMNI_BENCH_SUMMARY` lines, and profile scripts, plus
+    the missing counter fields needed by `MEM-BENCH-OBSERVE-002`.
   - task: map current boundary counters, benchmark summary lines,
     `runtime-memory-stats` fields, and boundary profile scripts into one
     table of existing signals and missing signals.

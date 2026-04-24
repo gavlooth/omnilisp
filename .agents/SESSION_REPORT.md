@@ -164,6 +164,51 @@ The historical content was split mechanically to keep individual files below the
   - No rebuild or runtime restart is required for this planning-only change.
 - Signature: GPT-5 Codex
 
+## 2026-04-24 17:40 CEST - Memory Telemetry Signal Inventory
+
+- Objective attempted:
+  - Continue the memory-boundary telemetry plan by completing
+    `MEM-BENCH-OBSERVE-001`.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `docs/plans/memory-boundary-telemetry-signal-inventory-2026-04-24.md`
+  - `docs/plans/memory-boundary-telemetry-benchmark-plan-2026-04-24.md`
+  - `docs/todo_parts/todo_part_18.md`
+  - `TODO.md`
+  - `docs/plans/README.md`
+  - `.agents/PLAN.md`
+- Code or configuration changes made:
+  - Added the signal inventory mapping current `BoundaryDecisionStats`,
+    `runtime-memory-stats`, test/benchmark summary lines, and boundary profile
+    scripts.
+  - Recorded missing counter families for allocator pressure, collection
+    shapes, payload sizes, closure env dimensions, wrapper crossings, and
+    stable passport invalidation reasons.
+  - Closed `MEM-BENCH-OBSERVE-001`; the remaining open lane is
+    `MEM-BENCH-OBSERVE-002` through `MEM-BENCH-OBSERVE-005`.
+- Commands run:
+  - `wc -l docs/todo_parts/todo_part_18.md`
+  - `git diff --check -- docs/plans/memory-boundary-telemetry-signal-inventory-2026-04-24.md docs/plans/memory-boundary-telemetry-benchmark-plan-2026-04-24.md docs/todo_parts/todo_part_18.md TODO.md docs/plans/README.md .agents/PLAN.md .agents/SESSION_REPORT.md`
+  - `scripts/check_status_consistency.sh`
+  - `rg -n "MEM-BENCH-OBSERVE-00[1-5]|telemetry-signal-inventory" docs/plans/memory-boundary-telemetry-signal-inventory-2026-04-24.md docs/plans/memory-boundary-telemetry-benchmark-plan-2026-04-24.md docs/todo_parts/todo_part_18.md TODO.md docs/plans/README.md .agents/PLAN.md .agents/SESSION_REPORT.md`
+- Key results:
+  - Existing observability is strong for boundary routes, splice/fallback
+    outcomes, stable materialization copy debt, and current benchmark timing.
+  - Existing observability is weak for allocator shape, collection
+    length/capacity growth, closure env dimensions, payload byte
+    distributions, opaque wrapper churn, and stable passport invalidation
+    reasons.
+- Invalidated assumptions or failed approaches:
+  - None.
+- Current best recommendation or checkpoint:
+  - Start `MEM-BENCH-OBSERVE-002` with low-overhead counters for allocator
+    pressure and value-shape dimensions behind existing instrumentation gates.
+- Unresolved issues:
+  - Runtime counter implementation has not started yet.
+- Dependencies, blockers, or restart requirements:
+  - No rebuild or runtime restart is required for this documentation-only slice.
+- Signature: GPT-5 Codex
+
 ## 2026-04-19 21:42 CEST - All Eligible Over-700 Files Split
 
 - Objective attempted:

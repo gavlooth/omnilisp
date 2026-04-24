@@ -1,7 +1,7 @@
 # Memory Boundary Telemetry Benchmark Plan - 2026-04-24
 
-Status: open planning lane for TODO items `MEM-BENCH-OBSERVE-001` through
-`MEM-BENCH-OBSERVE-005`.
+Status: open planning lane for TODO items `MEM-BENCH-OBSERVE-002` through
+`MEM-BENCH-OBSERVE-005`; `MEM-BENCH-OBSERVE-001` is complete.
 
 ## Active Hypothesis
 
@@ -129,11 +129,16 @@ baseline. The first envelope should gate on counters and correctness, with
 wide timing warnings only. Strict timing failure thresholds should wait until
 the benchmark is stable across repeated container runs.
 
+## Completed Slices
+
+- `MEM-BENCH-OBSERVE-001`: existing signal inventory is recorded in
+  `docs/plans/memory-boundary-telemetry-signal-inventory-2026-04-24.md`.
+
 ## Next Checkpoint
 
-The next decision point is completion of `MEM-BENCH-OBSERVE-001`: after the
-signal inventory, decide which counters can be added with low risk and which
-would require runtime memory-accounting changes.
+The next decision point is completion of `MEM-BENCH-OBSERVE-002`: add the
+lowest-risk missing counters from the signal inventory, then decide which
+workloads can emit meaningful benchmark summaries.
 
 ## Negative-Memory Constraints
 
