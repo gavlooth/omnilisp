@@ -5886,6 +5886,32 @@ Re-audit notes:
 
 Signature: GPT-5 Codex
 
+## 2026-04-24 17:47 CEST - Memory Telemetry Plan Status Reconciliation
+
+Objective:
+- Continue backlog/status cleanup by removing stale active-plan wording for the
+  already-closed memory-boundary telemetry evidence lane.
+
+Changes made:
+- Updated `docs/plans/README.md` to describe
+  `memory-boundary-telemetry-benchmark-plan-2026-04-24.md` as closed.
+- Updated `.agents/PLAN.md` so the telemetry benchmark plan is treated as a
+  closure record and benchmark entrypoint, not an active plan.
+- Added a changelog entry for the documentation reconciliation.
+
+Commands run:
+- `scripts/check_status_consistency.sh`
+- `git diff --check`
+
+Key results:
+- Status consistency remains green with TODO actionable count `0`.
+- Diff whitespace check passed.
+
+Unresolved issues:
+- None for this documentation reconciliation.
+
+Signature: GPT-5 Codex
+
 ## 2026-04-24 17:43 CEST - Fixed-Width Complex Closure Plan Reconciliation
 
 Objective:

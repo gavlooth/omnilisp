@@ -5147,14 +5147,20 @@ Validation:
   - unchecked checkbox scan over plans/TODO/session artifacts returned no rows
   - `scripts/check_status_consistency.sh`
   - `git diff --check`
-  - bounded container normal `basic` (`169 passed, 0 failed`)
-  - bounded container normal Valgrind `memory-lifetime-smoke`
-    (`255 passed, 0 failed`)
-  - attempted `c3c build --obj-out obj --sanitize=address`; local `c3c`
-    rejected sanitizer mode before compiling
-  - final normal rebuild with `c3c build --obj-out obj`
-  - `git diff --check`
+
+## 2026-04-24 memory telemetry plan status reconciliation
+
+- Reconciled memory-boundary telemetry plan status wording after the evidence
+  lane had already closed.
+  - `docs/plans/README.md` now describes
+    `memory-boundary-telemetry-benchmark-plan-2026-04-24.md` as closed, not
+    open.
+  - `.agents/PLAN.md` now treats the telemetry benchmark plan as a closure
+    record and benchmark entrypoint, not an active plan.
+- No runtime semantics changed.
+- Validation:
   - `scripts/check_status_consistency.sh`
+  - `git diff --check`
 
 ## 2026-04-24 memory boundary closure residual classification
 

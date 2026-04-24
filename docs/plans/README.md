@@ -79,12 +79,13 @@ The live backlog has been consolidated into `TODO.md` at the repo root.
   `MEM-BOUNDARY-EPOCH-001`, `MEM-BOUNDARY-TRANSPLANT-001`,
   `MEM-BOUNDARY-FFI-BRIDGE-001`, `MEM-BOUNDARY-COPY-DEBT-001`, and
   `MEM-BOUNDARY-PLAN-MIGRATE-001` are closed.
-- `memory-boundary-telemetry-benchmark-plan-2026-04-24.md`: open plan for
-  maximizing memory-boundary observability before further optimization. It
-  tracks low-overhead counter expansion, `memory-lifetime-bench` workload
-  expansion, first bounded baseline capture, and a counter-first
-  regression-envelope parser. The existing-signal inventory slice is closed in
-  `memory-boundary-telemetry-signal-inventory-2026-04-24.md`.
+- `memory-boundary-telemetry-benchmark-plan-2026-04-24.md`: closed plan for
+  memory-boundary observability before further optimization. It shipped
+  low-overhead counter expansion, `memory-lifetime-bench` workload expansion,
+  first bounded baseline capture, and a counter-first regression-envelope
+  parser. Future memory optimization should start from the baseline and
+  `scripts/check_memory_telemetry_benchmark_envelope.sh`, not from a live TODO
+  under this plan.
 - `vulkan-backend-decision-2026-04-16.md`: completed `TENSOR-100E` baseline note for
   portable explicit GPU execution behind the existing `Tensor` surface. Vulkan
   is runtime-optional, capability-gated, and owned through an Omni C ABI

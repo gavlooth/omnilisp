@@ -14,17 +14,16 @@ The historical content was split mechanically to keep individual files below the
 
 ## Current Checkpoint
 
-Date: 2026-04-24 15:44 CEST
+Date: 2026-04-24 17:47 CEST
 
 - Active hypothesis:
-  - The memory model migration is complete; the next useful memory work is
-    evidence collection, not more architecture migration.
+  - The memory model migration and memory-boundary telemetry evidence lanes are
+    closed. No active memory-boundary TODO remains.
 - Current approach:
   - The memory-boundary telemetry/benchmark evidence lane in `TODO.md` Part 18
     is closed through `MEM-BENCH-OBSERVE-005`.
-  - Use `docs/plans/memory-boundary-telemetry-benchmark-plan-2026-04-24.md`
-    as the active plan for maximizing observability before further
-    optimization.
+  - Treat `docs/plans/memory-boundary-telemetry-benchmark-plan-2026-04-24.md`
+    as a closure record and benchmark entrypoint, not an active plan.
   - `MEM-BENCH-OBSERVE-001` is closed with the current signal inventory in
     `docs/plans/memory-boundary-telemetry-signal-inventory-2026-04-24.md`.
   - `MEM-BENCH-OBSERVE-002` is closed with runtime counter coverage exposed
@@ -48,8 +47,8 @@ Date: 2026-04-24 15:44 CEST
     backlog change.
 - Next checkpoint:
   - No active memory-boundary telemetry TODO remains. Future memory
-    optimization work should start by running the bounded benchmark plus
-    `scripts/check_memory_telemetry_benchmark_envelope.sh`.
+    optimization work should open a new measured item after running the bounded
+    benchmark plus `scripts/check_memory_telemetry_benchmark_envelope.sh`.
 - Negative-memory constraints:
   - Do not reopen closed memory-boundary copy-debt work to chase the expected
     no-splice closure rollback coverage bucket.
