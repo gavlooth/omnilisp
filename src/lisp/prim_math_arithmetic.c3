@@ -5,15 +5,9 @@ import std::math;
 
 const double MATH_DOUBLE_FINITE_LIMIT = 1.7976931348623157e308;
 const double MATH_FLOAT32_FINITE_LIMIT = 3.4028234663852886e38;
-const double MATH_INT_MAX_DOUBLE = (double)long.max;
-const double MATH_INT_MIN_DOUBLE = (double)long.min;
 
 fn bool math_try_double_to_int(double v, long* out) @inline {
-    if (v != v) return false; // NaN
-    if (v > MATH_DOUBLE_FINITE_LIMIT || v < -MATH_DOUBLE_FINITE_LIMIT) return false;
-    if (v < MATH_INT_MIN_DOUBLE || v > MATH_INT_MAX_DOUBLE) return false;
-    *out = (long)v; // truncation toward zero
-    return true;
+    return omni_double_to_i64_trunc(v, out) != 0;
 }
 
 fn Value* math_int_from_double_or_raise(Interp* interp, double value, char[] op_name) {

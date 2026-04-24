@@ -4,8 +4,11 @@ module main;
 // Scope adoption (merge child memory into parent)
 // =============================================================================
 
+<*
+ @require parent != null
+ @require child != null
+*>
 fn void scope_splice_escapes(ScopeRegion* parent, ScopeRegion* child) {
-    if (child == null || parent == null) return;
     scope_guard_owner(parent, "scope_splice_escapes(parent)");
     scope_guard_owner(child, "scope_splice_escapes(child)");
     scope_invariant_distinct_scopes(parent, child);
@@ -110,6 +113,8 @@ fn void scope_splice_escapes(ScopeRegion* parent, ScopeRegion* child) {
  * Call at program shutdown.
  */
 fn void scope_freelist_cleanup() {
+    if (g_scope_global_mu_destroyed) return;
+
     scope_global_lock();
     ScopeRegion* s = g_scope_freelist;
     g_scope_freelist = null;
@@ -133,4 +138,6 @@ fn void scope_freelist_cleanup() {
         mem::free(chunk);
         chunk = next;
     }
+
+    scope_global_destroy_after_shutdown();
 }

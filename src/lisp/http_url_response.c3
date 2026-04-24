@@ -78,53 +78,61 @@ fn void? parse_url(char[] url, ParsedUrl* out) {
     if (pos < url.len) return INVALID_SYNTAX~;
 }
 
+fn bool http_request_append_bytes(char* buf, usz buf_size, usz* pos, char[] bytes) @inline {
+    if (buf == null || pos == null) return false;
+    if (*pos > buf_size || bytes.len > buf_size - *pos) return false;
+    for (usz i = 0; i < bytes.len; i++) buf[*pos + i] = bytes[i];
+    *pos += bytes.len;
+    return true;
+}
+
+fn bool http_request_append_char_slice(char* buf, usz buf_size, usz* pos, char* bytes, usz len) @inline {
+    if (bytes == null && len > 0) return false;
+    if (*pos > buf_size || len > buf_size - *pos) return false;
+    for (usz i = 0; i < len; i++) buf[*pos + i] = bytes[i];
+    *pos += len;
+    return true;
+}
+
 // Build HTTP/1.1 request string
 fn usz? build_request(char[] method, ParsedUrl* url, char[] headers, char[] body, char* buf, usz buf_size) {
     usz pos = 0;
 
     // Request line: GET /path HTTP/1.1\r\n
-    for (usz i = 0; i < method.len && pos < buf_size; i++) buf[pos++] = method[i];
-    if (pos < buf_size) buf[pos++] = ' ';
-    for (usz i = 0; i < url.path_len && pos < buf_size; i++) buf[pos++] = url.path[i];
-    char[] ver = " HTTP/1.1\r\n";
-    for (usz i = 0; i < ver.len && pos < buf_size; i++) buf[pos++] = ver[i];
+    if (!http_request_append_bytes(buf, buf_size, &pos, method)) return WRITE_FAILED~;
+    if (!http_request_append_bytes(buf, buf_size, &pos, " ")) return WRITE_FAILED~;
+    if (!http_request_append_char_slice(buf, buf_size, &pos, &url.path[0], url.path_len)) return WRITE_FAILED~;
+    if (!http_request_append_bytes(buf, buf_size, &pos, " HTTP/1.1\r\n")) return WRITE_FAILED~;
 
     // Host header
-    char[] host_hdr = "Host: ";
-    for (usz i = 0; i < host_hdr.len && pos < buf_size; i++) buf[pos++] = host_hdr[i];
-    for (usz i = 0; i < url.host_len && pos < buf_size; i++) buf[pos++] = url.host[i];
-    if (pos + 1 < buf_size) { buf[pos++] = '\r'; buf[pos++] = '\n'; }
+    if (!http_request_append_bytes(buf, buf_size, &pos, "Host: ")) return WRITE_FAILED~;
+    if (!http_request_append_char_slice(buf, buf_size, &pos, &url.host[0], url.host_len)) return WRITE_FAILED~;
+    if (!http_request_append_bytes(buf, buf_size, &pos, "\r\n")) return WRITE_FAILED~;
 
     // Connection: close
-    char[] conn = "Connection: close\r\n";
-    for (usz i = 0; i < conn.len && pos < buf_size; i++) buf[pos++] = conn[i];
+    if (!http_request_append_bytes(buf, buf_size, &pos, "Connection: close\r\n")) return WRITE_FAILED~;
 
     // User headers
     if (headers.len > 0) {
-        for (usz i = 0; i < headers.len && pos < buf_size; i++) buf[pos++] = headers[i];
-        if (pos + 1 < buf_size) { buf[pos++] = '\r'; buf[pos++] = '\n'; }
+        if (!http_request_append_bytes(buf, buf_size, &pos, headers)) return WRITE_FAILED~;
+        if (!http_request_append_bytes(buf, buf_size, &pos, "\r\n")) return WRITE_FAILED~;
     }
 
     // Content-Length for body
     if (body.len > 0) {
         char[32] cl_buf;  // buffer: build-string (DString candidate) — formats Content-Length header
-        usz cl_len = 0;
-        if (try cl_line = io::bprintf(&cl_buf, "Content-Length: %d\r\n", (int)body.len)) {
-            cl_len = cl_line.len;
+        if (try content_length_line = io::bprintf(&cl_buf, "Content-Length: %d\r\n", (int)body.len)) {
+            if (!http_request_append_bytes(buf, buf_size, &pos, content_length_line)) return WRITE_FAILED~;
         } else {
             return WRITE_FAILED~;
         }
-        for (usz i = 0; i < cl_len && pos < buf_size; i++) buf[pos++] = cl_buf[i];
     }
 
     // End of headers
-    if (pos + 1 < buf_size) { buf[pos++] = '\r'; buf[pos++] = '\n'; }
+    if (!http_request_append_bytes(buf, buf_size, &pos, "\r\n")) return WRITE_FAILED~;
 
     // Body
-    for (usz i = 0; i < body.len && pos < buf_size; i++) buf[pos++] = body[i];
-
-    // Buffer too small to hold the full request
-    if (pos >= buf_size) return WRITE_FAILED~;
+    if (!http_request_append_bytes(buf, buf_size, &pos, body)) return WRITE_FAILED~;
 
     return pos;
 }
@@ -154,23 +162,54 @@ fn Value* parse_response_oom(Interp* interp) @inline {
     return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "http: failed to allocate response payload");
 }
 
+fn Value* parse_response_malformed(Interp* interp) @inline {
+    return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-http-response", "http: malformed response");
+}
+
 // Parse HTTP response: extract status code, headers, body
 fn Value* parse_response(char[] response, Interp* interp) {
+    usz header_delim_start = response.len;
+    for (usz i = 0; i + 3 < response.len; i++) {
+        if (response[i] == '\r' && response[i+1] == '\n' && response[i+2] == '\r' && response[i+3] == '\n') {
+            header_delim_start = i;
+            break;
+        }
+    }
+    if (header_delim_start == response.len) return parse_response_malformed(interp);
+
+    usz status_line_end = response.len;
+    for (usz i = 0; i + 1 < response.len && i <= header_delim_start; i++) {
+        if (response[i] == '\r' && response[i+1] == '\n') {
+            status_line_end = i;
+            break;
+        }
+    }
+    if (status_line_end == response.len || status_line_end < 10) return parse_response_malformed(interp);
+
+    if (response[0] != 'H' || response[1] != 'T' || response[2] != 'T' || response[3] != 'P' || response[4] != '/') {
+        return parse_response_malformed(interp);
+    }
+
+    usz pos = 5;
+    while (pos < status_line_end && response[pos] != ' ') pos++;
+    if (pos == 5 || pos >= status_line_end) return parse_response_malformed(interp);
+    pos++;
+
+    if (pos + 2 >= status_line_end) return parse_response_malformed(interp);
+    if (response[pos] < '0' || response[pos] > '9' ||
+        response[pos + 1] < '0' || response[pos + 1] > '9' ||
+        response[pos + 2] < '0' || response[pos + 2] > '9') {
+        return parse_response_malformed(interp);
+    }
+
+    int status = ((int)(response[pos] - '0') * 100) +
+        ((int)(response[pos + 1] - '0') * 10) +
+        (int)(response[pos + 2] - '0');
+    pos += 3;
+    if (pos < status_line_end && response[pos] != ' ') return parse_response_malformed(interp);
+
     Value* result = make_hashmap_checked(interp, 8, "http: failed to allocate response payload");
     if (result == null || result.tag != HASHMAP) return parse_response_oom(interp);
-
-    // Find status code: "HTTP/1.1 200 OK\r\n"
-    usz pos = 0;
-    // Skip "HTTP/x.x "
-    while (pos < response.len && response[pos] != ' ') pos++;
-    if (pos < response.len) pos++;  // skip space
-
-    // Parse status code
-    int status = 0;
-    while (pos < response.len && response[pos] >= '0' && response[pos] <= '9') {
-        status = status * 10 + (int)(response[pos] - '0');
-        pos++;
-    }
 
     Value* status_key = parse_response_make_symbol_key(interp, "status");
     if (status_key == null || is_error(status_key)) return status_key;
@@ -178,28 +217,20 @@ fn Value* parse_response(char[] response, Interp* interp) {
         return parse_response_oom(interp);
     }
 
-    // Find end of headers: \r\n\r\n
-    usz header_end = 0;
-    for (usz i = 0; i + 3 < response.len; i++) {
-        if (response[i] == '\r' && response[i+1] == '\n' && response[i+2] == '\r' && response[i+3] == '\n') {
-            header_end = i + 4;
-            break;
-        }
-    }
+    usz header_end = header_delim_start + 4;
 
     // Headers as string
-    if (header_end > 0) {
-        Value* headers_key = parse_response_make_symbol_key(interp, "headers");
-        if (headers_key == null || is_error(headers_key)) return headers_key;
-        // Skip first line (status line)
-        usz hdr_start = 0;
-        while (hdr_start < header_end && !(response[hdr_start] == '\n')) hdr_start++;
-        if (hdr_start < header_end) hdr_start++;  // skip \n
-        Value* headers_value = make_string(interp, response[hdr_start..header_end - 5]);
-        if (headers_value == null || is_error(headers_value)) return headers_value;
-        if (!hashmap_set_checked(result.hashmap_val, headers_key, headers_value, interp)) {
-            return parse_response_oom(interp);
-        }
+    Value* headers_key = parse_response_make_symbol_key(interp, "headers");
+    if (headers_key == null || is_error(headers_key)) return headers_key;
+    usz hdr_start = status_line_end + 2;
+    char[] headers = "";
+    if (hdr_start < header_delim_start) {
+        headers = response[hdr_start..header_delim_start - 1];
+    }
+    Value* headers_value = make_string(interp, headers);
+    if (headers_value == null || is_error(headers_value)) return headers_value;
+    if (!hashmap_set_checked(result.hashmap_val, headers_key, headers_value, interp)) {
+        return parse_response_oom(interp);
     }
 
     // Body

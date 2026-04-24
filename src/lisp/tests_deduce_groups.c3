@@ -202,10 +202,13 @@ fn void run_deduce_core_runtime_block(Interp* interp, int* pass, int* fail) {
 fn void run_deduce_integrity_block(Interp* interp, int* pass, int* fail) {
     run_deduce_key_integrity_fact_tests(interp, pass, fail);
     run_deduce_check_integrity_fact_tests(interp, pass, fail);
+    run_deduce_fact_lmdb_read_failure_tests(interp, pass, fail);
+    run_deduce_fact_reference_scan_failure_tests(interp, pass, fail);
     run_deduce_rule_head_integrity_tests(interp, pass, fail);
     run_deduce_deferred_integrity_commit_tests(interp, pass, fail);
     run_deduce_reference_retract_integrity_tests(interp, pass, fail);
     run_deduce_reference_bulk_delete_integrity_tests(interp, pass, fail);
+    run_deduce_reference_scan_open_failure_tests(interp, pass, fail);
 }
 
 fn void run_deduce_command_surface_block(Interp* interp, int* pass, int* fail) {
@@ -217,6 +220,10 @@ fn void run_deduce_command_surface_block(Interp* interp, int* pass, int* fail) {
 }
 
 fn void run_deduce_parallel_block(Interp* interp, int* pass, int* fail) {
+    run_deduce_tuple_codec_empty_string_roundtrip_test(interp, pass, fail);
+    run_deduce_tuple_codec_time_point_truncation_rejection_test(interp, pass, fail);
+    run_deduce_tuple_codec_trailing_bytes_rejection_test(interp, pass, fail);
+    run_deduce_tuple_codec_oversized_string_rejection_test(interp, pass, fail);
     run_deduce_capacity_growth_overflow_guard_test(interp, pass, fail);
     run_deduce_parallel_component_delta_payload_roundtrip_test(interp, pass, fail);
     run_deduce_parallel_component_scratch_pass_test(interp, pass, fail);

@@ -37,6 +37,18 @@ fn lisp::Value* pika_eval_lisp_grammar_drift(lisp::Interp* interp) @inline {
     );
 }
 
+fn lisp::Value* pika_parse_lisp_tree_out_of_memory(lisp::Interp* interp) @inline {
+    return parser_raise(
+        interp,
+        "parser/parse-lisp-out-of-memory",
+        "pika/parse-lisp: out of memory while building parse tree"
+    );
+}
+
+fn bool pika_tree_value_ok(lisp::Value* value) @inline {
+    return value != null && value.tag != lisp::ValueTag.ERROR;
+}
+
 fn lisp::Value* prim_pika_parse_lisp(lisp::Value*[] args, lisp::Env* env, lisp::Interp* interp) {
     if (args.len < 1) {
         return parser_raise(interp, "parser/parse-lisp-expected-input", "pika/parse-lisp: expected input string");
@@ -50,8 +62,10 @@ fn lisp::Value* prim_pika_parse_lisp(lisp::Value*[] args, lisp::Env* env, lisp::
 
     ParserState st;
     int top_match = -1;
+    bool parsed = pika_parse_lisp_source(input, interp, &st, &top_match);
+    defer pika_release_parser_state(&st);
 
-    if (!pika_parse_lisp_source(input, interp, &st, &top_match)) {
+    if (!parsed) {
         if (top_match < 0) {
             return parser_raise(
                 interp,
@@ -84,7 +98,9 @@ fn lisp::Value* parse_tree_to_lisp_value(
     // Get rule name as symbol
     char[] rule_name = g.names[m.clause];
     lisp::SymbolId name_sym = interp.symbols.intern(rule_name);
+    if (name_sym == lisp::INVALID_SYMBOL_ID) return pika_parse_lisp_tree_out_of_memory(interp);
     lisp::Value* name_val = lisp::make_symbol(interp, name_sym);
+    if (!pika_tree_value_ok(name_val)) return pika_parse_lisp_tree_out_of_memory(interp);
 
     // Get matched text
     char[] matched_text = "";
@@ -92,6 +108,7 @@ fn lisp::Value* parse_tree_to_lisp_value(
         matched_text = input[m.first..m.last];
     }
     lisp::Value* text_val = lisp::make_string(interp, matched_text);
+    if (!pika_tree_value_ok(text_val)) return pika_parse_lisp_tree_out_of_memory(interp);
 
     // Get children
     int[] subs = get_submatches(st, match_idx);
@@ -100,13 +117,38 @@ fn lisp::Value* parse_tree_to_lisp_value(
     // Build children list (reverse order for cons)
     for (int i = (int)subs.len - 1; i >= 0; i--) {
         lisp::Value* child = parse_tree_to_lisp_value(st, g, subs[i], input, interp);
-        children = lisp::make_cons(interp, child, children);
+        if (!pika_tree_value_ok(child)) return child;
+        children = lisp::make_cons_or_error(
+            interp,
+            child,
+            children,
+            "pika/parse-lisp: out of memory while building parse tree"
+        );
+        if (!pika_tree_value_ok(children)) return pika_parse_lisp_tree_out_of_memory(interp);
     }
 
     // Build (name text children...)
-    lisp::Value* result = lisp::make_cons(interp, children, lisp::make_nil(interp));
-    result = lisp::make_cons(interp, text_val, result);
-    result = lisp::make_cons(interp, name_val, result);
+    lisp::Value* result = lisp::make_cons_or_error(
+        interp,
+        children,
+        lisp::make_nil(interp),
+        "pika/parse-lisp: out of memory while building parse tree"
+    );
+    if (!pika_tree_value_ok(result)) return pika_parse_lisp_tree_out_of_memory(interp);
+    result = lisp::make_cons_or_error(
+        interp,
+        text_val,
+        result,
+        "pika/parse-lisp: out of memory while building parse tree"
+    );
+    if (!pika_tree_value_ok(result)) return pika_parse_lisp_tree_out_of_memory(interp);
+    result = lisp::make_cons_or_error(
+        interp,
+        name_val,
+        result,
+        "pika/parse-lisp: out of memory while building parse tree"
+    );
+    if (!pika_tree_value_ok(result)) return pika_parse_lisp_tree_out_of_memory(interp);
 
     return result;
 }
@@ -169,6 +211,7 @@ fn lisp::Value* prim_pika_match_span(lisp::Value*[] args, lisp::Env* env, lisp::
 
     // Parse
     ParserState st = parse_simple(&grammar, input);
+    defer pika_release_parser_state(&st);
 
     // Find match for the specified rule at position 0
     int match_idx = find_match_at(&st, (String)rule_name, 0);
@@ -199,7 +242,9 @@ fn lisp::Value* prim_pika_eval_lisp(lisp::Value*[] args, lisp::Env* env, lisp::I
     char[] input = args[0].str_chars[:args[0].str_len];
     ParserState st;
     int top_match = -1;
-    if (!pika_parse_lisp_source(input, interp, &st, &top_match)) {
+    bool parsed = pika_parse_lisp_source(input, interp, &st, &top_match);
+    defer pika_release_parser_state(&st);
+    if (!parsed) {
         return pika_eval_lisp_grammar_drift(interp);
     }
 

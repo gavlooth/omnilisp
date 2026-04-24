@@ -55,6 +55,7 @@ fn int compile_clause_symbol_ref(GrammarCompiler* gc, lisp::Value* clause) {
     if (!gc_ensure_rule_capacity(gc)) return -1;
     gc.rule_names[gc.rule_count] = sym;
     gc.rule_indices[gc.rule_count] = placeholder;
+    gc.rule_declared[gc.rule_count] = false;
     gc.rule_count++;
     return placeholder;
 }

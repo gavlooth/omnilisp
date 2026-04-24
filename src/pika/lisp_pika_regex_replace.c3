@@ -4,7 +4,12 @@ import std::core::mem;
 import lisp;
 
 fn bool re_replace_has_global_flag(lisp::Value*[] args) @inline {
-    return args.len >= 4 && args[3].tag == lisp::ValueTag.SYMBOL;
+    return args.len == 4 && args[3].tag == lisp::ValueTag.SYMBOL;
+}
+
+fn bool re_replace_is_global_symbol(lisp::Interp* interp, lisp::Value* flag) @inline {
+    if (flag.tag != lisp::ValueTag.SYMBOL) return false;
+    return str_eq_c(interp.symbols.get_name(flag.sym_val), "global");
 }
 
 struct ReReplaceBuffer {
@@ -117,7 +122,10 @@ fn bool re_replace_first(ReReplaceBuffer* result, char[] pattern, char[] replace
 // (re-replace pattern replacement input) -> new string
 // (re-replace pattern replacement input 'global) -> replace all
 fn lisp::Value* prim_re_replace(lisp::Value*[] args, lisp::Env* env, lisp::Interp* interp) {
-    if (args.len < 3) return regex_raise(interp, "regex/re-replace-expected-pattern-replacement-input", "re-replace: expected (re-replace pattern replacement input ['global])");
+    if (args.len < 3 || args.len > 4) return regex_raise(interp, "regex/re-replace-expected-pattern-replacement-input", "re-replace: expected (re-replace pattern replacement input ['global])");
+    if (args.len == 4 && !re_replace_is_global_symbol(interp, args[3])) {
+        return regex_raise(interp, "regex/re-replace-invalid-mode", "re-replace: optional fourth argument must be 'global");
+    }
 
     lisp::Value* pattern_val = args[0];
     lisp::Value* replacement_val = args[1];

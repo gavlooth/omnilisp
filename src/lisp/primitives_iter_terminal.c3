@@ -1,8 +1,17 @@
 module lisp;
 
+import std::core::mem;
 import main;
 
 // Iterator terminal and collection-conversion primitives.
+const usz ITER_MATERIALIZE_INITIAL_CAPACITY = 32;
+
+struct IteratorMaterializedItems {
+    Value** items;
+    usz count;
+    usz capacity;
+}
+
 fn Value* iterator_promote_item_or_error(Value* value, Interp* interp) @inline {
     Value* promoted = boundary_promote_to_root(value, interp);
     if (promoted != null && promoted.tag == ERROR) return promoted;
@@ -22,6 +31,20 @@ fn bool iterator_wrapper_has_callable_thunk(Value* value) @inline {
         default:
             return false;
     }
+}
+
+fn bool iterator_materialization_is_known_unbounded(Value* iterator) {
+    if (iterator == null || iterator.tag != ITERATOR || iterator.iterator_val == null) return false;
+    Value* thunk = iterator.iterator_val;
+    if (thunk.tag != PARTIAL_PRIM || thunk.partial_val.func == null) return false;
+    PrimitiveFn func = thunk.partial_val.func;
+    if (func == &prim_iterator_range_from_thunk || func == &prim_iterator_repeat_thunk || func == &prim_iterator_cycle_thunk) {
+        return true;
+    }
+    if (func == &prim_iterator_map_thunk || func == &prim_iterator_filter_thunk) {
+        return iterator_materialization_is_known_unbounded(thunk.partial_val.second_arg);
+    }
+    return false;
 }
 
 <*
@@ -79,11 +102,32 @@ fn Value* iterator_require_arg(Value*[] args, char[] expected_msg, Value** itera
     return null;
 }
 
-fn Value* iterator_consume_items(Value* iterator, Value** items, usz* count_out, Interp* interp) {
-    usz count = 0;
+fn bool iterator_materialized_items_append(IteratorMaterializedItems* out, Value* item) {
+    if (out == null) return false;
+    if (out.count >= out.capacity) {
+        usz new_capacity = out.capacity == 0 ? ITER_MATERIALIZE_INITIAL_CAPACITY : out.capacity * 2;
+        if (new_capacity < out.capacity || new_capacity > usz.max / Value*.sizeof) return false;
+        Value** grown = out.items == null
+            ? (Value**)mem::malloc(Value*.sizeof * new_capacity)
+            : (Value**)mem::realloc(out.items, Value*.sizeof * new_capacity);
+        if (grown == null) return false;
+        out.items = grown;
+        out.capacity = new_capacity;
+    }
+    out.items[out.count++] = item;
+    return true;
+}
+
+fn Value* iterator_consume_items(Value* iterator, IteratorMaterializedItems* out, Interp* interp) {
+    if (out == null) return iterator_ctor_raise(interp, "runtime/out-of-memory", "iterator: failed to allocate materialization buffer");
+    *out = {};
+    if (iterator_materialization_is_known_unbounded(iterator)) {
+        return iterator_ctor_raise(interp, "iterator/materialization-unbounded", "iterator: cannot materialize a known unbounded iterator without take");
+    }
+
     Value* it = iterator;
 
-    while (count < ITER_BUFFER_MAX) {
+    while (true) {
         Value* pair = jit_apply_value(it.iterator_val, make_nil(interp), interp);
         if (pair == null) {
             return iterator_ctor_raise(interp, "type/arg-mismatch", "iterator: expected iterator pair");
@@ -94,14 +138,14 @@ fn Value* iterator_consume_items(Value* iterator, Value** items, usz* count_out,
             return iterator_ctor_raise(interp, "type/arg-mismatch", "iterator: expected iterator pair");
         }
 
-        items[count++] = car(pair);
+        if (!iterator_materialized_items_append(out, car(pair))) {
+            return iterator_ctor_raise(interp, "runtime/out-of-memory", "iterator: failed to allocate materialization buffer");
+        }
         Value* rest = null;
         Value* tail_err = iterator_tail_or_error(pair, "iterator: expected iterator tail", &rest, interp);
         if (tail_err != null) return tail_err;
         it = rest;
     }
-
-    *count_out = count;
     return null;
 }
 
@@ -113,14 +157,14 @@ fn Value* prim_collect(Value*[] args, Env* env, Interp* interp) {
     Value* parse_err = iterator_require_arg(args, "collect: expected iterator", &iterator, interp);
     if (parse_err != null) return parse_err;
 
-    Value*[ITER_BUFFER_MAX] items;
-    usz count = 0;
-    Value* consume_err = iterator_consume_items(iterator, &items[0], &count, interp);
+    IteratorMaterializedItems items;
+    Value* consume_err = iterator_consume_items(iterator, &items, interp);
+    defer if (items.items != null) mem::free(items.items);
     if (consume_err != null) return consume_err;
 
     Value* result = make_nil(interp);
-    for (isz i = (isz)count - 1; i >= 0; i--) {
-        Value* next = make_cons(interp, items[(usz)i], result);
+    for (isz i = (isz)items.count - 1; i >= 0; i--) {
+        Value* next = make_cons(interp, items.items[(usz)i], result);
         if (next == null || next.tag == ERROR) return next;
         result = next;
     }
@@ -135,18 +179,18 @@ fn Value* prim_to_array(Value*[] args, Env* env, Interp* interp) {
     Value* parse_err = iterator_require_arg(args, "to-array: expected iterator", &iterator, interp);
     if (parse_err != null) return parse_err;
 
-    Value*[ITER_BUFFER_MAX] items;
-    usz count = 0;
-    Value* consume_err = iterator_consume_items(iterator, &items[0], &count, interp);
+    IteratorMaterializedItems items;
+    Value* consume_err = iterator_consume_items(iterator, &items, interp);
+    defer if (items.items != null) mem::free(items.items);
     if (consume_err != null) return consume_err;
 
-    Value* arr = make_array_checked(interp, count, "to-array: failed to allocate result array");
+    Value* arr = make_array_checked(interp, items.count, "to-array: failed to allocate result array");
     if (arr == null || arr.tag != ARRAY) return arr;
-    for (usz i = 0; i < count; i++) {
-        Value* promoted = iterator_promote_item_or_error(items[i], interp);
+    for (usz i = 0; i < items.count; i++) {
+        Value* promoted = iterator_promote_item_or_error(items.items[i], interp);
         if (promoted == null || promoted.tag == ERROR) return promoted;
         arr.array_val.items[i] = promoted;
     }
-    arr.array_val.length = count;
+    arr.array_val.length = items.count;
     return arr;
 }

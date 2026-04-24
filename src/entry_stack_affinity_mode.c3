@@ -25,7 +25,8 @@ fn bool stack_affinity_append_str(char[] buf, usz* n, char[] src) {
 
 fn bool stack_affinity_append_shell_single_quote(char[] buf, usz* n, char* raw) {
     if (!stack_affinity_append_char(buf, n, '\'')) return false;
-    usz len = cstr_len(raw);
+    usz len = 0;
+    if (!cli_cstr_len(raw, &len)) return false;
     for (usz i = 0; i < len; i++) {
         char c = raw[i];
         if (c == '\'') {

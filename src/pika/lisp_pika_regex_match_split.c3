@@ -3,6 +3,40 @@ module pika;
 import std::core::mem;
 import lisp;
 
+int g_regex_force_result_string_alloc_fail_nth = 0;
+
+fn bool regex_result_string_should_force_alloc_fail() @inline {
+    if (g_regex_force_result_string_alloc_fail_nth <= 0) return false;
+    g_regex_force_result_string_alloc_fail_nth--;
+    return g_regex_force_result_string_alloc_fail_nth == 0;
+}
+
+fn lisp::Value* regex_make_string_or_error(lisp::Interp* interp, char[] text, char[] code, char[] message) {
+    if (regex_result_string_should_force_alloc_fail()) {
+        return regex_raise(interp, code, message);
+    }
+
+    lisp::Value* result = lisp::make_string(interp, text);
+    if (result == null || result.tag == lisp::ValueTag.ERROR) {
+        return regex_raise(interp, code, message);
+    }
+    return result;
+}
+
+fn lisp::Value* regex_make_cons_or_error(
+    lisp::Interp* interp,
+    lisp::Value* car,
+    lisp::Value* cdr,
+    char[] code,
+    char[] message
+) {
+    lisp::Value* result = lisp::make_cons_or_error(interp, car, cdr, message);
+    if (result == null || result.tag == lisp::ValueTag.ERROR) {
+        return regex_raise(interp, code, message);
+    }
+    return result;
+}
+
 // (re-match pattern input) -> matched-string or nil
 fn lisp::Value* prim_re_match(lisp::Value*[] args, lisp::Env* env, lisp::Interp* interp) {
     if (args.len < 2) {
@@ -28,7 +62,11 @@ fn lisp::Value* prim_re_match(lisp::Value*[] args, lisp::Env* env, lisp::Interp*
     }
 
     if (m.matched) {
-        return lisp::make_string(interp, m.view);
+        return regex_make_string_or_error(
+            interp,
+            m.view,
+            "regex/re-match-out-of-memory",
+            "re-match: failed to allocate result string");
     }
 
     return lisp::make_nil(interp);
@@ -58,7 +96,11 @@ fn lisp::Value* prim_re_fullmatch(lisp::Value*[] args, lisp::Env* env, lisp::Int
     }
 
     if (m.matched) {
-        return lisp::make_string(interp, m.view);
+        return regex_make_string_or_error(
+            interp,
+            m.view,
+            "regex/re-fullmatch-out-of-memory",
+            "re-fullmatch: failed to allocate result string");
     }
 
     return lisp::make_nil(interp);
@@ -91,8 +133,20 @@ fn lisp::Value* prim_re_find_all(lisp::Value*[] args, lisp::Env* env, lisp::Inte
 
     lisp::Value* result = lisp::make_nil(interp);
     for (int i = count - 1; i >= 0; i--) {
-        lisp::Value* s = lisp::make_string(interp, matches[i].view);
-        result = lisp::make_cons(interp, s, result);
+        lisp::Value* s = regex_make_string_or_error(
+            interp,
+            matches[i].view,
+            "regex/re-find-all-out-of-memory",
+            "re-find-all: failed to allocate result string");
+        if (s == null || s.tag == lisp::ValueTag.ERROR) return s;
+        lisp::Value* next = regex_make_cons_or_error(
+            interp,
+            s,
+            result,
+            "regex/re-find-all-out-of-memory",
+            "re-find-all: failed to allocate result list");
+        if (next == null || next.tag == lisp::ValueTag.ERROR) return next;
+        result = next;
     }
 
     return result;
@@ -126,17 +180,39 @@ fn lisp::Value* prim_re_split(lisp::Value*[] args, lisp::Env* env, lisp::Interp*
     int right = (int)input.len;
     lisp::Value* result = lisp::make_nil(interp);
     for (int i = count - 1; i >= 0; i--) {
-        int part_start = matches[i].end + 1;
-        if (part_start < right) {
-            char[] part = input[part_start..right - 1];
-            result = lisp::make_cons(interp, lisp::make_string(interp, part), result);
-        }
+        int part_start = matches[i].end < matches[i].start ? matches[i].start : matches[i].end + 1;
+        char[] part = part_start < right ? input[part_start..right - 1] : "";
+        lisp::Value* part_value = regex_make_string_or_error(
+            interp,
+            part,
+            "regex/re-split-out-of-memory",
+            "re-split: failed to allocate result string");
+        if (part_value == null || part_value.tag == lisp::ValueTag.ERROR) return part_value;
+        lisp::Value* next = regex_make_cons_or_error(
+            interp,
+            part_value,
+            result,
+            "regex/re-split-out-of-memory",
+            "re-split: failed to allocate result list");
+        if (next == null || next.tag == lisp::ValueTag.ERROR) return next;
+        result = next;
         right = matches[i].start;
     }
-    if (right > 0) {
-        char[] part = input[0..right - 1];
-        result = lisp::make_cons(interp, lisp::make_string(interp, part), result);
-    }
+    char[] part = right > 0 ? input[0..right - 1] : "";
+    lisp::Value* part_value = regex_make_string_or_error(
+        interp,
+        part,
+        "regex/re-split-out-of-memory",
+        "re-split: failed to allocate result string");
+    if (part_value == null || part_value.tag == lisp::ValueTag.ERROR) return part_value;
+    lisp::Value* next = regex_make_cons_or_error(
+        interp,
+        part_value,
+        result,
+        "regex/re-split-out-of-memory",
+        "re-split: failed to allocate result list");
+    if (next == null || next.tag == lisp::ValueTag.ERROR) return next;
+    result = next;
 
     return result;
 }

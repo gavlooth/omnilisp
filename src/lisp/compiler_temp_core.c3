@@ -95,6 +95,9 @@ fn usz Compiler.compile_to_temp_tail(Compiler* self, Expr* expr) {
         case E_OR:
             return self.compile_tail_or_flat(expr);
 
+        case E_WITH_MODULE:
+            return self.compile_with_module_open_flat_tail(expr);
+
         default:
             // Non-tail forms: just use compile_to_temp
             return self.compile_to_temp(expr);

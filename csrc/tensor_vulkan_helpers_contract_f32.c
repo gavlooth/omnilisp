@@ -40,11 +40,6 @@ int omni_tensor_backend_vulkan_contract_f32(
     if (shape_status != OMNI_TENSOR_VULKAN_SUCCESS) return shape_status;
     shape_status = omni_tensor_vulkan_dense_required_elements(right_rank, right_shape, right_strides, &right_count);
     if (shape_status != OMNI_TENSOR_VULKAN_SUCCESS) return shape_status;
-    if (left_count > SIZE_MAX / sizeof(float) || right_count > SIZE_MAX / sizeof(float) ||
-        out_element_count > SIZE_MAX / sizeof(float)) {
-        return OMNI_TENSOR_VULKAN_UNSUPPORTED;
-    }
-
     size_t contracted_count = 1;
     for (size_t axis_pos = 0; axis_pos < axis_count; axis_pos++) {
         size_t left_axis = left_axes[axis_pos];
@@ -96,9 +91,15 @@ int omni_tensor_backend_vulkan_contract_f32(
     if (expected_rank == 0) expected_count = 1;
     if (expected_count != out_element_count) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
 
-    size_t left_byte_len = left_count * sizeof(float);
-    size_t right_byte_len = right_count * sizeof(float);
-    size_t out_byte_len = out_element_count * sizeof(float);
+    size_t left_byte_len = 0;
+    size_t right_byte_len = 0;
+    size_t out_byte_len = 0;
+    int byte_status = omni_tensor_vulkan_checked_element_bytes(left_count, sizeof(float), &left_byte_len);
+    if (byte_status != OMNI_TENSOR_VULKAN_SUCCESS) return byte_status;
+    byte_status = omni_tensor_vulkan_checked_element_bytes(right_count, sizeof(float), &right_byte_len);
+    if (byte_status != OMNI_TENSOR_VULKAN_SUCCESS) return byte_status;
+    byte_status = omni_tensor_vulkan_checked_element_bytes(out_element_count, sizeof(float), &out_byte_len);
+    if (byte_status != OMNI_TENSOR_VULKAN_SUCCESS) return byte_status;
 
     if (out_element_count == 0) {
         return OMNI_TENSOR_VULKAN_SUCCESS;

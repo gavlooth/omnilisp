@@ -3,6 +3,17 @@ module lisp;
 import std::core::mem;
 import std::io;
 
+const long SCHEDULER_SLEEP_MS_MAX = (long)(uint.max / 1000);
+const long SCHEDULER_SLEEP_US_PER_MS = 1000;
+
+fn bool scheduler_sleep_ms_in_range(long ms) @inline {
+    return ms > 0 && ms <= SCHEDULER_SLEEP_MS_MAX;
+}
+
+fn uint scheduler_sleep_ms_to_usec(long ms) @inline {
+    return (uint)(ms * SCHEDULER_SLEEP_US_PER_MS);
+}
+
 fn void scheduler_async_noop_cb(void* handle) {
     // Intentionally empty; uv_async_send only wakes the loop.
     (void)handle;
@@ -73,6 +84,22 @@ fn void scheduler_release_custom_ctx(OffloadWork* work) {
     work.custom_free = null;
 }
 
+fn void scheduler_release_offload_work(OffloadWork* work) {
+    if (work == null) return;
+    if (work.shared != null) {
+        scheduler_release_shared(work.shared);
+        work.shared = null;
+    }
+    scheduler_release_custom_ctx(work);
+}
+
+fn void scheduler_release_offload_work_range(OffloadWork* works, usz start_index, usz end_index) {
+    if (works == null || start_index >= end_index) return;
+    for (usz i = start_index; i < end_index; i++) {
+        scheduler_release_offload_work(&works[i]);
+    }
+}
+
 fn void scheduler_set_offload_error(OffloadCompletion* completion, char[] message) {
     completion.kind = OFFLOAD_RES_ERROR;
     completion.error_len = message.len;
@@ -113,6 +140,17 @@ fn Value* scheduler_reject_non_cpu_offload_op(char[] op_name, Interp* interp) {
         "offload: op is internal-only; public offload/task-spawn are CPU-bound");
 }
 
+fn bool scheduler_arg_list_has_exact_count(Value* args, usz expected) {
+    Value* cur = args;
+    usz count = 0;
+    while (is_cons(cur)) {
+        count++;
+        if (count > expected) return false;
+        cur = cur.cons_val.cdr;
+    }
+    return count == expected && is_nil(cur);
+}
+
 fn Value* scheduler_build_offload_work(Value* job, OffloadWork* work, Interp* interp, bool allow_internal_io_ops) {
     if (!is_cons(job)) {
         return scheduler_raise(interp, "scheduler/offload-invalid-job", "offload: expected (op args...)");
@@ -136,6 +174,13 @@ fn Value* scheduler_build_offload_work(Value* job, OffloadWork* work, Interp* in
     work.custom_free = null;
 
     if (scheduler_str_eq(op_name, "sleep-ms")) {
+        if (!scheduler_arg_list_has_exact_count(arg_list, 1)) {
+            return scheduler_raise(
+                interp,
+                "scheduler/offload-invalid-sleep-ms",
+                "offload sleep-ms: expected exactly 1 argument"
+            );
+        }
         if (!is_cons(arg_list) || !is_int(arg_list.cons_val.car)) {
             return scheduler_raise(
                 interp,
@@ -143,12 +188,27 @@ fn Value* scheduler_build_offload_work(Value* job, OffloadWork* work, Interp* in
                 "offload sleep-ms: expected integer milliseconds"
             );
         }
+        long ms = arg_list.cons_val.car.int_val;
+        if (!scheduler_sleep_ms_in_range(ms)) {
+            return scheduler_raise(
+                interp,
+                "scheduler/offload-invalid-sleep-ms",
+                "offload sleep-ms: milliseconds must be positive and within scheduler range"
+            );
+        }
         work.op = OFFLOAD_SLEEP_MS;
-        work.int_arg = arg_list.cons_val.car.int_val;
+        work.int_arg = ms;
         return null;
     }
 
     if (scheduler_str_eq(op_name, "gzip") || scheduler_str_eq(op_name, "deflate")) {
+        if (!scheduler_arg_list_has_exact_count(arg_list, 1)) {
+            return scheduler_raise(
+                interp,
+                "scheduler/offload-invalid-compress-payload",
+                "offload compress: expected exactly 1 argument"
+            );
+        }
         if (!is_cons(arg_list) || !is_string(arg_list.cons_val.car)) {
             return scheduler_raise(
                 interp,
@@ -167,6 +227,13 @@ fn Value* scheduler_build_offload_work(Value* job, OffloadWork* work, Interp* in
         if (!allow_internal_io_ops) {
             return scheduler_reject_non_cpu_offload_op(op_name, interp);
         }
+        if (!scheduler_arg_list_has_exact_count(arg_list, 1)) {
+            return scheduler_raise(
+                interp,
+                "scheduler/offload-invalid-accept-fd",
+                "offload accept-fd: expected exactly 1 argument"
+            );
+        }
         if (!is_cons(arg_list) || !is_int(arg_list.cons_val.car)) {
             return scheduler_raise(
                 interp,
@@ -182,6 +249,13 @@ fn Value* scheduler_build_offload_work(Value* job, OffloadWork* work, Interp* in
     if (scheduler_str_eq(op_name, "tcp-connect")) {
         if (!allow_internal_io_ops) {
             return scheduler_reject_non_cpu_offload_op(op_name, interp);
+        }
+        if (!scheduler_arg_list_has_exact_count(arg_list, 2)) {
+            return scheduler_raise(
+                interp,
+                "scheduler/offload-invalid-tcp-connect",
+                "offload tcp-connect: expected exactly 2 arguments"
+            );
         }
         // (tcp-connect host port) — host is string, port is int
         if (!is_cons(arg_list) || !is_string(arg_list.cons_val.car)) {
@@ -216,6 +290,13 @@ fn Value* scheduler_build_offload_work(Value* job, OffloadWork* work, Interp* in
     if (scheduler_str_eq(op_name, "http-get")) {
         if (!allow_internal_io_ops) {
             return scheduler_reject_non_cpu_offload_op(op_name, interp);
+        }
+        if (!scheduler_arg_list_has_exact_count(arg_list, 1)) {
+            return scheduler_raise(
+                interp,
+                "scheduler/offload-invalid-http-get",
+                "offload http-get: expected exactly 1 argument"
+            );
         }
         // (http-get url) — url is a string like "https://host/path"
         if (!is_cons(arg_list) || !is_string(arg_list.cons_val.car)) {

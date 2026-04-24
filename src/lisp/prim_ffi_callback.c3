@@ -2,6 +2,7 @@ module lisp;
 
 import std::io;
 import std::core::mem;
+import std::atomic::types;
 import main;
 
 // =============================================================================
@@ -23,9 +24,14 @@ extern fn int omni_ffi_closure_alloc(int nargs, int* arg_types, int ret_type,
                                      void* user_data) @extern("omni_ffi_closure_alloc");
 extern fn void omni_ffi_closure_free(void* closure) @extern("omni_ffi_closure_free");
 extern fn int omni_ffi_test_callback_int_int(void* cb, int a, int b) @extern("omni_ffi_test_callback_int_int");
+extern fn int omni_ffi_test_callback_string_len(void* cb, char* text) @extern("omni_ffi_test_callback_string_len");
 extern fn int omni_ffi_call_null_arg_vectors_guard_for_tests() @extern("omni_ffi_call_null_arg_vectors_guard_for_tests");
 extern fn int omni_ffi_call_var_null_arg_vectors_guard_for_tests() @extern("omni_ffi_call_var_null_arg_vectors_guard_for_tests");
 extern fn int omni_ffi_closure_alloc_failure_clears_outputs_for_tests() @extern("omni_ffi_closure_alloc_failure_clears_outputs_for_tests");
+
+fn Value* ffi_callback_make_arg_cons(Interp* interp, Value* arg_val, Value* arg_list) @inline {
+    return make_cons_or_error(interp, arg_val, arg_list, "ffi-callback: failed to allocate callback argument list");
+}
 
 fn bool ffi_callback_value_to_type_tag(Value* value, Interp* interp, FfiTypeTag* out_tag, FfiHandlePolicy* out_policy) {
     if (value == null || interp == null || out_tag == null || out_policy == null) return false;
@@ -58,7 +64,10 @@ struct FfiCallbackContext {
     usz param_count;
     void* closure_handle;  // opaque handle for omni_ffi_closure_free
     void* code_ptr;        // C-callable function pointer
-    bool open;
+    types::Atomic{int} open;
+    types::Atomic{int} active_calls;
+    types::Atomic{int} finalize_requested;
+    types::Atomic{int} resources_released;
 }
 
 fn bool ffi_callback_callable(Value* v) @inline {
@@ -103,16 +112,24 @@ fn Value* ffi_callback_arg_to_value(void* arg_ptr, FfiTypeTag tag, Interp* inter
             return make_int(interp, *(long*)arg_ptr);
         case FFI_TYPE_UINT32:
             return make_int(interp, (long)*(uint*)arg_ptr);
-        case FFI_TYPE_UINT64:
-            return make_int(interp, (long)*(ulong*)arg_ptr);
+        case FFI_TYPE_UINT64: {
+            ulong value = *(ulong*)arg_ptr;
+            if (value > (ulong)long.max) {
+                return ffi_raise(interp, "ffi/range-error", "ffi-callback: UInt64 argument exceeds Integer range");
+            }
+            return make_int(interp, (long)value);
+        }
+        case FFI_TYPE_STRING: {
+            char* text = *(char**)arg_ptr;
+            if (text == null) return make_nil(interp);
+            return make_string(interp, text[:ffi_c_string_len(text)]);
+        }
         case FFI_TYPE_PTR:
-        case FFI_TYPE_STRING:
         case FFI_TYPE_BUFFER:
         case FFI_TYPE_STRUCT: {
             void* ptr = *(void**)arg_ptr;
             if (ptr == null) return make_nil(interp);
-            char[] name = tag == FFI_TYPE_STRING ? "ffi-callback-string"
-                        : tag == FFI_TYPE_BUFFER ? "ffi-callback-buffer"
+            char[] name = tag == FFI_TYPE_BUFFER ? "ffi-callback-buffer"
                         : tag == FFI_TYPE_STRUCT ? "ffi-callback-struct"
                         : "ffi-callback-ptr";
             return make_ffi_handle_ex(interp, ptr, name, null, false, false, null);
@@ -123,15 +140,23 @@ fn Value* ffi_callback_arg_to_value(void* arg_ptr, FfiTypeTag tag, Interp* inter
 }
 
 // Convert an Omni result Value to C and write to ret_ptr.
-fn void ffi_callback_value_to_c(Value* value, FfiTypeTag tag, void* ret_ptr) {
+fn void ffi_callback_value_to_c(Value* value, FfiTypeTag tag, void* ret_ptr, Interp* interp) {
     if (ret_ptr == null) return;
     switch (tag) {
         case FFI_TYPE_VOID:
             break;
         case FFI_TYPE_INT:
-        case FFI_TYPE_BOOL:
             if (value != null && value.tag == INT) {
                 *(long*)ret_ptr = value.int_val;
+            } else {
+                *(long*)ret_ptr = 0;
+            }
+            break;
+        case FFI_TYPE_BOOL:
+            if (value != null && value.tag == SYMBOL && interp != null && value.sym_val == interp.sym_true) {
+                *(long*)ret_ptr = 1;
+            } else if (value != null && value.tag == INT) {
+                *(long*)ret_ptr = value.int_val != 0 ? 1 : 0;
             } else {
                 *(long*)ret_ptr = 0;
             }
@@ -165,32 +190,32 @@ fn void ffi_callback_value_to_c(Value* value, FfiTypeTag tag, void* ret_ptr) {
             }
             break;
         case FFI_TYPE_UINT32:
-            if (value != null && value.tag == INT) {
+            if (value != null && value.tag == INT && value.int_val >= 0 && value.int_val <= (long)uint.max) {
                 *(uint*)ret_ptr = (uint)value.int_val;
             } else {
                 *(uint*)ret_ptr = 0;
             }
             break;
         case FFI_TYPE_UINT64:
-            if (value != null && value.tag == INT) {
+            if (value != null && value.tag == INT && value.int_val >= 0) {
                 *(ulong*)ret_ptr = (ulong)value.int_val;
             } else {
                 *(ulong*)ret_ptr = 0;
             }
             break;
         case FFI_TYPE_PTR:
-        case FFI_TYPE_STRING:
         case FFI_TYPE_BUFFER:
         case FFI_TYPE_STRUCT:
             if (value != null && value.tag == FFI_HANDLE && value.ffi_val != null) {
                 *(void**)ret_ptr = value.ffi_val.lib_handle;
-            } else if (value != null && value.tag == STRING) {
-                *(void**)ret_ptr = (void*)value.str_chars;
             } else if (value == null || value.tag == NIL) {
                 *(void**)ret_ptr = null;
             } else {
                 *(void**)ret_ptr = null;
             }
+            break;
+        case FFI_TYPE_STRING:
+            *(void**)ret_ptr = null;
             break;
     }
 }
@@ -204,28 +229,74 @@ fn void release_ffi_callback_owner_scope(FfiCallbackContext* ctx) {
     ctx.callback = null;
 }
 
-fn void ffi_callback_context_finalizer(void* raw) {
-    FfiCallbackContext* ctx = (FfiCallbackContext*)raw;
+fn void ffi_callback_release_resources(FfiCallbackContext* ctx) {
     if (ctx == null) return;
+    if (ctx.resources_released.add(1) != 0) return;
     if (ctx.closure_handle != null) {
         omni_ffi_closure_free(ctx.closure_handle);
         ctx.closure_handle = null;
     }
     release_ffi_callback_owner_scope(ctx);
+    ctx.interp = null;
+    ctx.code_ptr = null;
     if (ctx.param_types != null) {
         mem::free(ctx.param_types);
         ctx.param_types = null;
     }
-    mem::free(ctx);
 }
 
-// Dispatches a libffi closure callback into Omni.
+fn void ffi_callback_context_finalizer(void* raw) {
+    FfiCallbackContext* ctx = (FfiCallbackContext*)raw;
+    if (ctx == null) return;
+    ctx.open.store(0);
+    ctx.finalize_requested.store(1);
+    if (ctx.active_calls.load() == 0) {
+        ffi_callback_release_resources(ctx);
+    }
+    // Keep the small context tombstone allocated: foreign code may still hold a
+    // stale function pointer/user_data pair, and the open=false state makes it
+    // fail closed without reading freed context memory.
+}
+
+fn bool ffi_callback_try_enter_context(FfiCallbackContext* ctx) {
+    if (ctx == null) return false;
+    ctx.active_calls.add(1);
+    if (ctx.open.load() == 0 || ctx.callback == null || ctx.interp == null) {
+        ffi_callback_leave((void*)ctx);
+        return false;
+    }
+    if (!ffi_callback_callable(ctx.callback)) {
+        ffi_callback_leave((void*)ctx);
+        return false;
+    }
+    return true;
+}
+
+fn int ffi_callback_try_enter(void* user_data) @extern("omni_ffi_callback_try_enter") {
+    return ffi_callback_try_enter_context((FfiCallbackContext*)user_data) ? 1 : 0;
+}
+
+fn void ffi_callback_leave(void* user_data) @extern("omni_ffi_callback_leave") {
+    FfiCallbackContext* ctx = (FfiCallbackContext*)user_data;
+    if (ctx == null) return;
+    int previous = ctx.active_calls.add(-1);
+    if (previous <= 0) {
+        ctx.active_calls.store(0);
+        return;
+    }
+    if (previous == 1 && ctx.finalize_requested.load() != 0) {
+        ffi_callback_release_resources(ctx);
+    }
+}
+
+// Dispatches a libffi closure callback into Omni after the C helper has entered
+// the context through omni_ffi_callback_try_enter.
 fn void ffi_callback_dispatch(void* user_data, void* ret, void** args) @extern("omni_ffi_callback_dispatch") {
     FfiCallbackContext* ctx = (FfiCallbackContext*)user_data;
-    if (ctx == null || !ctx.open || ctx.callback == null || ctx.interp == null) return;
-    if (!ffi_callback_callable(ctx.callback)) return;
+    if (ctx == null || ctx.open.load() == 0 || ctx.callback == null || ctx.interp == null) return;
 
     Interp* interp = ctx.interp;
+    ffi_callback_value_to_c(null, ctx.return_type, ret, interp);
 
     // Build argument list
     Value* arg_list = make_nil(interp);
@@ -235,14 +306,15 @@ fn void ffi_callback_dispatch(void* user_data, void* ret, void** args) @extern("
             usz idx = i - 1;
             Value* arg_val = ffi_callback_arg_to_value(args[idx], ctx.param_types[idx], interp);
             if (arg_val == null || arg_val.tag == ERROR) return;
-            arg_list = make_cons(interp, arg_val, arg_list);
+            arg_list = ffi_callback_make_arg_cons(interp, arg_val, arg_list);
+            if (arg_list == null || arg_list.tag == ERROR) return;
         }
     }
 
     Value* result = jit_apply_multi_args(interp, ctx.callback, arg_list, ctx.param_count);
     if (result != null && result.tag == ERROR) return;
 
-    ffi_callback_value_to_c(result, ctx.return_type, ret);
+    ffi_callback_value_to_c(result, ctx.return_type, ret, interp);
 }
 
 // (ffi-callback lambda ['Type1 'Type2 ...] 'ReturnType)
@@ -321,6 +393,10 @@ fn Value* prim_ffi_callback(Value*[] args, Env* env, Interp* interp) {
             if (param_types != null) mem::free(param_types);
             return ffi_raise(interp, "ffi/type-mismatch", "ffi-callback: unsupported return type (expected symbol like 'Integer)");
         }
+        if (return_type == FFI_TYPE_STRING) {
+            if (param_types != null) mem::free(param_types);
+            return ffi_raise(interp, "ffi/unsupported", "ffi-callback: String returns are unsupported because callback return string ownership is not defined");
+        }
     } else {
         // Form: (ffi-callback lambda 'Type1 'Type2 ... 'ReturnType)
         param_count = args.len - 2;
@@ -346,6 +422,10 @@ fn Value* prim_ffi_callback(Value*[] args, Env* env, Interp* interp) {
             if (param_types != null) mem::free(param_types);
             return ffi_raise(interp, "ffi/type-mismatch", "ffi-callback: unsupported return type (expected symbol like 'Integer)");
         }
+        if (return_type == FFI_TYPE_STRING) {
+            if (param_types != null) mem::free(param_types);
+            return ffi_raise(interp, "ffi/unsupported", "ffi-callback: String returns are unsupported because callback return string ownership is not defined");
+        }
     }
 
     main::ScopeRegion* owner_scope = resolve_ffi_callback_owner_scope(callback_v, interp);
@@ -367,7 +447,10 @@ fn Value* prim_ffi_callback(Value*[] args, Env* env, Interp* interp) {
     ctx.return_type = return_type;
     ctx.param_types = param_types;
     ctx.param_count = param_count;
-    ctx.open = true;
+    ctx.open.store(1);
+    ctx.active_calls.store(0);
+    ctx.finalize_requested.store(0);
+    ctx.resources_released.store(0);
 
     // Allocate libffi closure
     int* c_arg_types = null;
@@ -420,6 +503,7 @@ fn Value* prim_ffi_callback(Value*[] args, Env* env, Interp* interp) {
     );
     if (handle == null) {
         omni_ffi_closure_free(ctx.closure_handle);
+        ctx.closure_handle = null;
         release_ffi_callback_owner_scope(ctx);
         if (param_types != null) mem::free(param_types);
         mem::free(ctx);
@@ -427,7 +511,9 @@ fn Value* prim_ffi_callback(Value*[] args, Env* env, Interp* interp) {
     }
 
     // Keepalive: ensure ffi_callback_dispatch is not DCE'd by the C3 compiler.
+    (void)ffi_callback_try_enter(null);
     ffi_callback_dispatch(null, null, null);
+    ffi_callback_leave(null);
 
     return handle;
 }

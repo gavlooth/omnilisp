@@ -34,7 +34,7 @@ fn Value* prim_random(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_random_int(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return primitive_arity_raise(interp, "random-int", "1 argument", args.len);
+    if (args.len != 1) return primitive_arity_raise(interp, "random-int", "1 argument", args.len);
     long n;
     if (args[0].tag == INT) { n = args[0].int_val; }
     else if (args[0].tag == DOUBLE) {
@@ -48,12 +48,18 @@ fn Value* prim_random_int(Value*[] args, Env* env, Interp* interp) {
         }
     }
     else { return primitive_arg_type_raise(interp, "random-int", 0, "number", args[0]); }
-    if (n <= 0) return make_int(interp, 0);
-
-    ulong buf;
-    if (!math_fill_random_bytes(&buf, ulong.sizeof)) {
-        return runtime_raise(interp, "runtime/evaluation-error", "random-int: failed to read random bytes");
+    if (n <= 0) {
+        return math_raise(interp, "type/range-error", "random-int: bound must be positive");
     }
-    long result = (long)(buf % (ulong)n);
-    return make_int(interp, result);
+
+    ulong bound = (ulong)n;
+    ulong threshold = (ulong.max - bound + (ulong)1) % bound;
+    while (true) {
+        ulong buf;
+        if (!math_fill_random_bytes(&buf, ulong.sizeof)) {
+            return runtime_raise(interp, "runtime/evaluation-error", "random-int: failed to read random bytes");
+        }
+        if (buf < threshold) continue;
+        return make_int(interp, (long)(buf % bound));
+    }
 }

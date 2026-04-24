@@ -161,6 +161,24 @@ fn void run_deduce_rule_validation_tests_more_tail_support_prelude_tests(Interp*
 
 fn void run_deduce_rule_validation_tests_more_tail_support_followup_tests(Interp* interp, int* pass, int* fail) {
     {
+        DeduceRuleSignature head_literal_sig = {};
+        head_literal_sig.head_term_count = 1;
+        bool head_literal_ok = !deduce_rule_signature_literals_supported(&head_literal_sig);
+
+        DeduceRuleSignature body_literal_sig = {};
+        body_literal_sig.body_term_total_count = 1;
+        bool body_literal_ok = !deduce_rule_signature_literals_supported(&body_literal_sig);
+
+        if (head_literal_ok && body_literal_ok) {
+            emit_pass_literal("[PASS] deduce rule signature literal validation rejects null literal arrays");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] deduce rule signature literal validation rejects null literal arrays");
+            (*fail)++;
+        }
+    }
+
+    {
         DeduceTupleSupportTable table = {};
         defer deduce_tuple_support_table_release(&table);
 

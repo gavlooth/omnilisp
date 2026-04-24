@@ -5,6 +5,8 @@ module main;
 // =============================================================================
 
 bool g_scope_force_chunk_alloc_oom = false;
+bool g_scope_force_dtor_alloc_oom = false;
+bool g_scope_force_escape_dtor_alloc_oom = false;
 
 /**
  * Allocate a new chunk with at least `min_bytes` of usable data space.
@@ -58,25 +60,32 @@ fn char* scope_chunk_data(ScopeChunk* chunk) @inline {
  * Register a destructor to run when this scope is destroyed.
  * The ScopeDtor struct itself is bump-allocated in the scope's chunks.
  */
-fn void scope_register_dtor(ScopeRegion* scope, void* ptr, ScopeDestructorFn func) {
+<* @require scope != null *>
+fn bool scope_register_dtor(ScopeRegion* scope, void* ptr, ScopeDestructorFn func) {
     scope_guard_owner(scope, "scope_register_dtor");
-    ScopeDtor* d = (ScopeDtor*)scope.alloc(ScopeDtor.sizeof);
-    assert(d != null, "scope_register_dtor: destructor alloc failed");
+    ScopeDtor* d = g_scope_force_dtor_alloc_oom
+        ? null
+        : (ScopeDtor*)scope.alloc(ScopeDtor.sizeof);
+    if (d == null) return false;
     d.ptr = ptr;
     d.func = func;
     d.next = scope.dtors;
     scope.dtors = d;
+    return true;
 }
 
 /**
  * Register a destructor to run when this scope's ESCAPE lane is destroyed.
  * The ScopeDtor struct itself is ESCAPE-lane allocated.
  */
-fn void scope_register_dtor_escape(ScopeRegion* scope, void* ptr, ScopeDestructorFn func) {
+<* @require scope != null *>
+fn bool scope_register_dtor_escape(ScopeRegion* scope, void* ptr, ScopeDestructorFn func) {
     scope_guard_owner(scope, "scope_register_dtor_escape");
     scope_assert_escape_tail_consistency(scope);
-    ScopeDtor* d = (ScopeDtor*)scope.alloc_escape(ScopeDtor.sizeof);
-    assert(d != null, "scope_register_dtor_escape: destructor alloc failed");
+    ScopeDtor* d = g_scope_force_escape_dtor_alloc_oom
+        ? null
+        : (ScopeDtor*)scope.alloc_escape(ScopeDtor.sizeof);
+    if (d == null) return false;
     d.ptr = ptr;
     d.func = func;
     ScopeDtor* previous_head = scope.escape_dtors;
@@ -86,6 +95,7 @@ fn void scope_register_dtor_escape(ScopeRegion* scope, void* ptr, ScopeDestructo
         scope.escape_dtors_tail = d;
     }
     scope_assert_escape_tail_consistency(scope);
+    return true;
 }
 
 fn void scope_noop_dtor(void* ptr) @inline {

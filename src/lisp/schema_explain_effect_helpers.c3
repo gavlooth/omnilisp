@@ -83,6 +83,12 @@ fn bool explain_expr_contains_resolve(Expr* expr) {
                 if (explain_expr_contains_resolve(expr.block.exprs[i])) return true;
             }
             return false;
+        case E_WITH_MODULE:
+            if (expr.with_module == null) return false;
+            for (usz i = 0; i < expr.with_module.body_count; i++) {
+                if (explain_expr_contains_resolve(expr.with_module.body[i])) return true;
+            }
+            return false;
         case E_CALL:
             if (explain_expr_contains_resolve(expr.call.func)) return true;
             for (usz i = 0; i < expr.call.arg_count; i++) {

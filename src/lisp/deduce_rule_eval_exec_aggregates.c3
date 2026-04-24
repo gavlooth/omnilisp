@@ -59,7 +59,7 @@ fn Value* deduce_aggregate_group_note_binding_with_polarity(
                 }
                 break;
             case DEDUCE_AGGREGATE_SUM:
-                if (!is_number(input) || is_fixed_complex(input) || input.tag == BIG_COMPLEX) {
+                if (!is_numeric_value(input) || is_fixed_complex(input) || input.tag == BIG_COMPLEX) {
                     return deduce_raise(interp, "deduce/aggregate-type-mismatch",
                         "deduce/analyze: sum aggregate expects numeric input");
                 }
@@ -67,35 +67,44 @@ fn Value* deduce_aggregate_group_note_binding_with_polarity(
                     state.initialized = true;
                     state.sum_is_double = !is_int(input);
                     state.sum_int_value = is_int(input) ? input.int_val : 0;
+                    state.sum_value = input;
                     if (!try_numeric_to_double(input, &state.sum_double_value)) {
-                        return deduce_raise(interp, "deduce/aggregate-type-mismatch",
-                            "deduce/analyze: sum aggregate expects real numeric input");
+                        state.sum_double_value = 0.0;
                     }
                     break;
                 }
                 if (!state.initialized) {
                     return deduce_raise(interp, "deduce/analyze-invalid-state", "deduce/analyze: aggregate sum underflow");
                 }
-                if (!state.sum_is_double && is_int(input)) {
-                    state.sum_int_value += delta * input.int_val;
+                Value*[2] sum_args;
+                sum_args[0] = state.sum_value != null
+                    ? state.sum_value
+                    : (state.sum_is_double ? make_double(interp, state.sum_double_value) : make_int(interp, state.sum_int_value));
+                sum_args[1] = input;
+                Value* sum_result = delta > 0
+                    ? prim_add(sum_args[..], null, interp)
+                    : prim_sub(sum_args[..], null, interp);
+                if (sum_result == null || sum_result.tag == ERROR) {
+                    return deduce_raise(interp, "deduce/aggregate-type-mismatch",
+                        "deduce/analyze: sum aggregate expects real numeric input");
+                }
+                state.sum_value = sum_result;
+                if (!state.sum_is_double && is_int(sum_result)) {
+                    state.sum_int_value = sum_result.int_val;
                     state.sum_double_value = (double)state.sum_int_value;
                 } else {
                     if (!state.sum_is_double) {
                         state.sum_double_value = (double)state.sum_int_value;
                         state.sum_is_double = true;
                     }
-                    double input_double = 0.0;
-                    if (!try_numeric_to_double(input, &input_double)) {
-                        return deduce_raise(interp, "deduce/aggregate-type-mismatch",
-                            "deduce/analyze: sum aggregate expects real numeric input");
-                    }
-                    state.sum_double_value += (double)delta * input_double;
+                    if (!try_numeric_to_double(sum_result, &state.sum_double_value)) state.sum_double_value = 0.0;
                 }
                 if (group.support_count == 0) {
                     state.initialized = false;
                     state.sum_is_double = false;
                     state.sum_int_value = 0;
                     state.sum_double_value = 0.0;
+                    state.sum_value = null;
                 }
                 break;
             case DEDUCE_AGGREGATE_MIN: {

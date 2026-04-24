@@ -158,6 +158,25 @@ fn bool deduce_query_expr_try_extract_row_column_ref(
                 out_column_index
             );
         }
+        case E_WITH_MODULE: {
+            Expr* tail = null;
+            Env* scoped_env = null;
+            if (!deduce_query_expr_try_open_with_module_tail_env(
+                    expr,
+                    capture_env,
+                    interp,
+                    &tail,
+                    &scoped_env
+                )) return false;
+            return deduce_query_expr_try_extract_row_column_ref(
+                tail,
+                row_param,
+                scoped_env,
+                rel,
+                interp,
+                out_column_index
+            );
+        }
         case E_CALL:
             break;
         default:

@@ -6,6 +6,26 @@ import main;
 
 fn void run_memory_lifetime_runtime_alloc_groups_data_parsing_tests(Interp* interp, int* pass, int* fail) {
     {
+        uint capacity = 0;
+        usz largest_double_hint_count = ((usz)uint.max + (usz)1) / (usz)4;
+        bool ok =
+            hashmap_capacity_hint_for_entry_count(0, &capacity) && capacity == 8 &&
+            hashmap_capacity_hint_for_entry_count(4, &capacity) && capacity == 8 &&
+            hashmap_capacity_hint_for_entry_count(8, &capacity) && capacity == 16 &&
+            hashmap_capacity_hint_for_entry_count(largest_double_hint_count, &capacity) &&
+            capacity == (uint)(largest_double_hint_count * (usz)2) &&
+            !hashmap_capacity_hint_for_entry_count(largest_double_hint_count + (usz)1, &capacity) &&
+            !hashmap_capacity_hint_for_entry_count(8, null);
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: data-format hashmap capacity hints fail closed");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] lifetime: data-format hashmap capacity hints fail closed");
+            (*fail)++;
+        }
+    }
+
+    {
         Value*[1] json_obj_args = { make_string(interp, "{\"a\":1}") };
         Value*[1] json_nested_args = { make_string(interp, "{\"a\":[1]}") };
         Value*[1] toml_table_args = { make_string(interp, "a = 1\n") };

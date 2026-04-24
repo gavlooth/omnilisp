@@ -68,3 +68,47 @@ fn void scheduler_init() {
 
     g_scheduler_initialized = true;
 }
+
+fn bool scheduler_shutdown() {
+    if (!g_scheduler_initialized) return true;
+
+    scheduler_clear_reliable_wakeup_queue();
+
+    bool loop_closed = true;
+    if (g_scheduler.uv_loop_ready && g_scheduler.uv_loop != null) {
+        if (g_scheduler.async_handle != null) {
+            uv_close(g_scheduler.async_handle, &scheduler_free_handle_cb);
+            g_scheduler.async_handle = null;
+            (void)uv_run(g_scheduler.uv_loop, UV_RUN_DEFAULT);
+        }
+        int close_rc = uv_loop_close(g_scheduler.uv_loop);
+        if (close_rc == 0) {
+            mem::free(g_scheduler.uv_loop);
+            g_scheduler.uv_loop = null;
+            g_scheduler.uv_loop_ready = false;
+        } else {
+            loop_closed = false;
+        }
+    }
+
+    if (!loop_closed) return false;
+
+    if (g_scheduler.reliable_wakeups.initialized) {
+        (void)g_scheduler.reliable_wakeups.mu.destroy();
+        g_scheduler.reliable_wakeups.initialized = false;
+    }
+    if (g_scheduler.thread_task_cv_ready) {
+        (void)g_scheduler.thread_task_cv.destroy();
+        g_scheduler.thread_task_cv_ready = false;
+    }
+    if (g_scheduler.thread_task_mu_ready) {
+        (void)g_scheduler.thread_task_mu.destroy();
+        g_scheduler.thread_task_mu_ready = false;
+    }
+    scheduler_shared_registry_shutdown();
+
+    g_scheduler = {};
+    g_scheduler_primary_domain = {};
+    g_scheduler_initialized = false;
+    return true;
+}

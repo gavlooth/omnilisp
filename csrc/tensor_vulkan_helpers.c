@@ -39,6 +39,37 @@ long g_omni_tensor_vulkan_solve_multi_dispatch_f64_call_count = 0;
 long g_omni_tensor_vulkan_solve_pivot_reduce_f64_call_count = 0;
 long g_omni_tensor_vulkan_solve_factor_stage_f64_call_count = 0;
 long g_omni_tensor_vulkan_solve_serial_f64_call_count = 0;
+
+static unsigned char omni_tensor_vulkan_copy_range_test_bytes[32];
+static OmniVulkanDeviceSize omni_tensor_vulkan_copy_range_test_offset = OMNI_VULKAN_WHOLE_SIZE;
+static OmniVulkanDeviceSize omni_tensor_vulkan_copy_range_test_size = OMNI_VULKAN_WHOLE_SIZE;
+
+static OmniVulkanResult omni_tensor_vulkan_copy_range_test_map(
+    OmniVulkanDevice device,
+    OmniVulkanDeviceMemory memory,
+    OmniVulkanDeviceSize offset,
+    OmniVulkanDeviceSize size,
+    OmniVulkanFlags flags,
+    void** data
+) {
+    (void)device;
+    (void)memory;
+    (void)flags;
+    omni_tensor_vulkan_copy_range_test_offset = offset;
+    omni_tensor_vulkan_copy_range_test_size = size;
+    if (data == NULL || offset > sizeof(omni_tensor_vulkan_copy_range_test_bytes) ||
+        size > sizeof(omni_tensor_vulkan_copy_range_test_bytes) - offset) {
+        return OMNI_TENSOR_VULKAN_INVALID;
+    }
+    *data = omni_tensor_vulkan_copy_range_test_bytes + offset;
+    return OMNI_VULKAN_SUCCESS;
+}
+
+static void omni_tensor_vulkan_copy_range_test_unmap(OmniVulkanDevice device, OmniVulkanDeviceMemory memory) {
+    (void)device;
+    (void)memory;
+}
+
 int omni_tensor_backend_vulkan_copy_range_to_host(
     const void* device_ptr,
     size_t offset,
@@ -55,11 +86,48 @@ int omni_tensor_backend_vulkan_copy_range_to_host(
     }
 
     void* mapped = NULL;
-    if (omni_vulkan_map_memory(device, handle->memory, 0, (OmniVulkanDeviceSize)handle->byte_len, 0, &mapped) != OMNI_VULKAN_SUCCESS || mapped == NULL) {
+    if (omni_vulkan_map_memory(device, handle->memory, (OmniVulkanDeviceSize)offset, (OmniVulkanDeviceSize)byte_len, 0, &mapped) != OMNI_VULKAN_SUCCESS || mapped == NULL) {
         return OMNI_TENSOR_VULKAN_COPY_FAILED;
     }
-    memcpy(host_ptr, (const unsigned char*)mapped + offset, byte_len);
+    memcpy(host_ptr, mapped, byte_len);
     omni_vulkan_unmap_memory(device, handle->memory);
+    return OMNI_TENSOR_VULKAN_SUCCESS;
+}
+
+int omni_tensor_backend_vulkan_copy_range_subrange_map_for_tests(void) {
+    for (size_t i = 0; i < sizeof(omni_tensor_vulkan_copy_range_test_bytes); i++) {
+        omni_tensor_vulkan_copy_range_test_bytes[i] = (unsigned char)(i + 1u);
+    }
+    omni_tensor_vulkan_copy_range_test_offset = OMNI_VULKAN_WHOLE_SIZE;
+    omni_tensor_vulkan_copy_range_test_size = OMNI_VULKAN_WHOLE_SIZE;
+
+    omni_vulkan_map_memory_fn saved_map = omni_vulkan_map_memory;
+    omni_vulkan_unmap_memory_fn saved_unmap = omni_vulkan_unmap_memory;
+    omni_vulkan_map_memory = omni_tensor_vulkan_copy_range_test_map;
+    omni_vulkan_unmap_memory = omni_tensor_vulkan_copy_range_test_unmap;
+
+    OmniTensorVulkanContext context = {0};
+    context.device = (OmniVulkanDevice)(uintptr_t)1u;
+    OmniTensorVulkanBuffer handle = {0};
+    handle.context = &context;
+    handle.memory = (OmniVulkanDeviceMemory)(uintptr_t)2u;
+    handle.byte_len = sizeof(omni_tensor_vulkan_copy_range_test_bytes);
+    atomic_init(&handle.ref_count, 1u);
+
+    unsigned char out[5] = {0};
+    int status = omni_tensor_backend_vulkan_copy_range_to_host(&handle, 17u, sizeof(out), out);
+
+    omni_vulkan_map_memory = saved_map;
+    omni_vulkan_unmap_memory = saved_unmap;
+
+    if (status != OMNI_TENSOR_VULKAN_SUCCESS) return status;
+    if (omni_tensor_vulkan_copy_range_test_offset != 17u ||
+        omni_tensor_vulkan_copy_range_test_size != sizeof(out)) {
+        return OMNI_TENSOR_VULKAN_INVALID;
+    }
+    for (size_t i = 0; i < sizeof(out); i++) {
+        if (out[i] != omni_tensor_vulkan_copy_range_test_bytes[17u + i]) return OMNI_TENSOR_VULKAN_COPY_FAILED;
+    }
     return OMNI_TENSOR_VULKAN_SUCCESS;
 }
 

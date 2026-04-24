@@ -210,6 +210,75 @@ fn void run_basic_control_flow_tests(Interp* interp, int* pass, int* fail) {
 }
 
 fn void run_basic_symbol_table_hardening_tests(Interp* interp, int* pass, int* fail) {
+    {
+        bool ok = !symbol_table_should_grow(6, 10)
+            && symbol_table_should_grow(7, 10)
+            && symbol_table_should_grow(usz.max, usz.max);
+        if (ok) {
+            emit_pass_literal("[PASS] symbol table load-factor check avoids overflow");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] symbol table load-factor check avoids overflow");
+            (*fail)++;
+        }
+    }
+
+    {
+        SymbolTable table = {};
+        table.init();
+        SymbolId anchor = table.intern("ceiling-anchor");
+        usz saved_count = table.count;
+
+        table.count = (usz)INVALID_SYMBOL_ID;
+        SymbolId failed = table.intern("ceiling-new");
+        bool ok = anchor != INVALID_SYMBOL_ID
+            && failed == INVALID_SYMBOL_ID
+            && table.count == (usz)INVALID_SYMBOL_ID
+            && scheduler_str_eq(table.get_name(anchor), "ceiling-anchor");
+        table.count = saved_count;
+
+        if (ok) {
+            emit_pass_literal("[PASS] symbol table refuses INVALID_SYMBOL_ID ceiling");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] symbol table refuses INVALID_SYMBOL_ID ceiling");
+            (*fail)++;
+        }
+        table.destroy();
+    }
+
+    {
+        SymbolTable table = {};
+        table.init();
+        SymbolEntry* saved_entries = table.entries;
+        SymbolId* saved_hash_index = table.hash_index;
+        usz saved_capacity = table.capacity;
+        usz saved_hash_capacity = table.hash_capacity;
+
+        table.capacity = (usz)INVALID_SYMBOL_ID / 2 + 1;
+        bool symbol_id_cap_rejected = !table.grow()
+            && table.entries == saved_entries
+            && table.hash_index == saved_hash_index;
+
+        table.capacity = saved_capacity;
+        table.hash_capacity = usz.max / SymbolId.sizeof;
+        bool hash_bytes_rejected = !table.grow()
+            && table.entries == saved_entries
+            && table.hash_index == saved_hash_index;
+
+        table.capacity = saved_capacity;
+        table.hash_capacity = saved_hash_capacity;
+        bool ok = symbol_id_cap_rejected && hash_bytes_rejected;
+        if (ok) {
+            emit_pass_literal("[PASS] symbol table grow rejects unchecked capacity bounds");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] symbol table grow rejects unchecked capacity bounds");
+            (*fail)++;
+        }
+        table.destroy();
+    }
+
     if (!symbol_table_fault_injection_enabled()) {
         emit_pass_literal("[PASS] symbol table fault-injection hardening skipped (enable OMNI_TEST_FAULT_INJECTION)");
         (*pass)++;
@@ -496,6 +565,24 @@ fn void run_basic_runtime_memory_stats_native_tests(Interp* interp, int* pass, i
     }
 }
 
+fn void run_basic_value_print_hardening_tests(Interp* interp, int* pass, int* fail) {
+    char[3] bytes = { 'a', (char)0, 'b' };
+    Value* v = make_string(interp, bytes[..]);
+    char[32] rendered = {};
+    usz len = v != null ? print_value_to_buf(v, &interp.symbols, &rendered[0], rendered.len) : 0;
+    bool ok = v != null &&
+        v.tag == STRING &&
+        scheduler_str_eq(rendered[:len], "\"a\\x00b\"");
+
+    if (ok) {
+        emit_pass_literal("[PASS] value printing escapes embedded NUL without truncation");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] value printing escapes embedded NUL without truncation");
+        (*fail)++;
+    }
+}
+
 fn void run_basic_tests(Interp* interp, int* pass, int* fail) {
     emit_test_section_banner("Basic Tests");
 
@@ -508,5 +595,6 @@ fn void run_basic_tests(Interp* interp, int* pass, int* fail) {
     run_basic_type_registry_hardening_tests(interp, pass, fail);
     run_basic_runtime_memory_stats_tests(interp, pass, fail);
     run_basic_runtime_memory_stats_native_tests(interp, pass, fail);
+    run_basic_value_print_hardening_tests(interp, pass, fail);
     run_basic_interp_storage_hardening_tests(interp, pass, fail);
 }

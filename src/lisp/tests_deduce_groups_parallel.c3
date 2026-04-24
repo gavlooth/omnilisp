@@ -13,6 +13,129 @@ fn bool deduce_test_component_delta_tuple_matches(DeduceDeltaTupleSet* set, usz 
     );
 }
 
+fn void run_deduce_tuple_codec_empty_string_roundtrip_test(Interp* interp, int* pass, int* fail) {
+    char[3] encoded_empty = { (char)3, 0, 0 };
+    Value*[1] decoded = {};
+    usz? decoded_count = decode_tuple(&encoded_empty[0], encoded_empty.len, decoded[..], interp);
+    bool ok = false;
+    if (catch err = decoded_count) {
+        ok = false;
+    } else {
+        ok = decoded_count == 1 &&
+             decoded[0] != null &&
+             decoded[0].tag == STRING &&
+             decoded[0].str_len == 0;
+    }
+
+    if (ok) {
+        emit_pass_literal("[PASS] deduce tuple codec preserves empty string values");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] deduce tuple codec preserves empty string values");
+        (*fail)++;
+    }
+}
+
+fn void run_deduce_tuple_codec_time_point_truncation_rejection_test(Interp* interp, int* pass, int* fail) {
+    char[33] truncated = {};
+    truncated[0] = (char)5;
+    Value*[1] decoded = {};
+    usz? decoded_count = decode_tuple(&truncated[0], truncated.len, decoded[..], interp);
+    bool rejected = false;
+    if (catch err = decoded_count) {
+        rejected = true;
+    }
+
+    if (rejected) {
+        emit_pass_literal("[PASS] deduce tuple codec rejects truncated time-point payloads");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] deduce tuple codec rejects truncated time-point payloads");
+        (*fail)++;
+    }
+}
+
+fn void run_deduce_tuple_codec_trailing_bytes_rejection_test(Interp* interp, int* pass, int* fail) {
+    char[10] encoded = { (char)1, 7, 0, 0, 0, 0, 0, 0, 0, 99 };
+    Value*[1] decoded = {};
+    usz? decoded_count = decode_tuple(&encoded[0], encoded.len, decoded[..], interp);
+    bool rejected = false;
+    if (catch err = decoded_count) {
+        rejected = true;
+    }
+
+    if (rejected) {
+        emit_pass_literal("[PASS] deduce tuple codec rejects trailing bytes");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] deduce tuple codec rejects trailing bytes");
+        (*fail)++;
+    }
+}
+
+fn void run_deduce_tuple_codec_oversized_string_rejection_test(Interp* interp, int* pass, int* fail) {
+    usz oversized_len = DEDUCE_TUPLE_MAX_STRING_BYTES + 1;
+    char* bytes = (char*)mem::malloc(oversized_len);
+    if (bytes == null) {
+        io::printn("[FAIL] deduce tuple codec rejects oversized strings without truncation");
+        (*fail)++;
+        return;
+    }
+    defer mem::free(bytes);
+
+    for (usz i = 0; i < oversized_len; i++) bytes[i] = 'a';
+    bytes[DEDUCE_TUPLE_MAX_STRING_BYTES] = 'b';
+
+    Value max_string = {};
+    max_string.tag = STRING;
+    max_string.str_chars = bytes;
+    max_string.str_len = DEDUCE_TUPLE_MAX_STRING_BYTES;
+    Value*[1] max_values = { &max_string };
+
+    usz? max_size = deduce_tuple_encoded_size(max_values[..]);
+    bool max_supported = deduce_value_supported_by_tuple_codec(&max_string);
+    bool max_sized = false;
+    if (catch err = max_size) {
+        max_sized = false;
+    } else {
+        max_sized = max_size == DEDUCE_TUPLE_MAX_STRING_BYTES + 3;
+    }
+
+    Value oversized = {};
+    oversized.tag = STRING;
+    oversized.str_chars = bytes;
+    oversized.str_len = oversized_len;
+    Value*[1] oversized_values = { &oversized };
+
+    usz? oversized_size = deduce_tuple_encoded_size(oversized_values[..]);
+    bool size_rejected = false;
+    if (catch err = oversized_size) {
+        size_rejected = true;
+    }
+
+    char[16] small_buf = {};
+    usz? encoded_len = encode_tuple(oversized_values[..], small_buf[..], small_buf.len);
+    bool encode_rejected = false;
+    if (catch err = encoded_len) {
+        encode_rejected = true;
+    }
+
+    bool validation_rejected = !deduce_value_supported_by_tuple_codec(&oversized);
+    bool ok = max_supported &&
+              max_sized &&
+              size_rejected &&
+              encode_rejected &&
+              validation_rejected;
+
+    if (ok) {
+        emit_pass_literal("[PASS] deduce tuple codec rejects oversized strings without truncation");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] deduce tuple codec rejects oversized strings without truncation");
+        (*fail)++;
+    }
+}
+
 fn void run_deduce_capacity_growth_overflow_guard_test(Interp* interp, int* pass, int* fail) {
     Relation rel = {};
     DeduceDb db = {};
@@ -186,6 +309,18 @@ fn bool deduce_test_component_delta_set_has_tuple(DeduceDeltaTupleSet* set, char
 }
 
 fn void run_deduce_parallel_component_scratch_pass_test(Interp* interp, int* pass, int* fail) {
+    test_error_contains(
+        interp,
+        "[PASS] deduce fact! rejects unsupported tuple values",
+        "(block "
+        "  (define ddb-parallel-scratch-pass (deduce 'open 'memory)) "
+        "  (define [relation ddb-parallel-scratch-pass] edge-parallel-scratch-pass (src) (dst)) "
+        "  (deduce 'fact! edge-parallel-scratch-pass 1 '(2)))",
+        "fact!: unsupported tuple value",
+        pass,
+        fail
+    );
+
     EvalResult r = run(
         "(block "
         "  (define ddb-parallel-scratch-pass (deduce 'open 'memory)) "

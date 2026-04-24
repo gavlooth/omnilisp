@@ -2,6 +2,9 @@ module lisp;
 
 import std::core::mem;
 
+// Test seam: force fact reference scan termination down the storage-error path.
+bool g_deduce_force_fact_reference_scan_end_fail = false;
+
 fn Value* deduce_assert_fact_check_reference_integrity(
     Relation* rel,
     MdbTxn* txn,
@@ -111,12 +114,12 @@ fn Value* deduce_assert_fact_check_reference_integrity(
     while (rc == MDB_SUCCESS) {
         usz? decoded_count = decode_tuple((char*)existing_key.mv_data, existing_key.mv_size, decoded, interp);
         if (catch err = decoded_count) {
-            rc = mdb_cursor_get(cursor, &existing_key, &existing_data, MDB_NEXT);
-            continue;
+            return deduce_raise(interp, "deduce/fact-reference-integrity-scan-failed",
+                "fact!: reference integrity tuple decode failed");
         }
         if (decoded_count != target_schema.arity) {
-            rc = mdb_cursor_get(cursor, &existing_key, &existing_data, MDB_NEXT);
-            continue;
+            return deduce_raise(interp, "deduce/fact-reference-integrity-scan-failed",
+                "fact!: reference integrity tuple arity mismatch");
         }
         if (target_pos < decoded.len &&
             deduce_compare_value(decoded[target_pos], tuple_vals[local_pos]) == 0) {
@@ -127,6 +130,10 @@ fn Value* deduce_assert_fact_check_reference_integrity(
     }
 
     if (found) return null;
+    if (g_deduce_force_fact_reference_scan_end_fail || rc != MDB_NOTFOUND) {
+        return deduce_raise(interp, "deduce/fact-reference-integrity-scan-failed",
+            "fact!: reference integrity scan failed");
+    }
 
     Value* data = deduce_build_reference_integrity_payload(
         rel, tuple_vals, ref_constraint.local_column, local_pos, ref_constraint, "reference-missing", interp);

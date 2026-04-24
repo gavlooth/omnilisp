@@ -49,6 +49,86 @@ fn void run_deduce_admin_surface_demand_core_tests(Interp* interp, int* pass, in
         interp,
         run(
             "(block "
+            "  (define db-admin-goal-directed-query-demand-with-module-plain (deduce 'open 'memory)) "
+            "  (define [relation db-admin-goal-directed-query-demand-with-module-plain] gd-edge-qdwmp (src) (dst)) "
+            "  (define [relation db-admin-goal-directed-query-demand-with-module-plain] gd-reach-qdwmp (src) (dst)) "
+            "  (deduce/rule! db-admin-goal-directed-query-demand-with-module-plain '(gd-reach-qdwmp ?x ?y) '(gd-edge-qdwmp ?x ?y)) "
+            "  (deduce/rule! db-admin-goal-directed-query-demand-with-module-plain '(gd-reach-qdwmp ?x ?z) '(gd-edge-qdwmp ?x ?y) '(gd-reach-qdwmp ?y ?z)) "
+            "  (deduce/analyze db-admin-goal-directed-query-demand-with-module-plain) "
+            "  (deduce/fact! gd-edge-qdwmp 1 2) "
+            "  (deduce/fact! gd-edge-qdwmp 2 3) "
+            "  (deduce/fact! gd-edge-qdwmp 10 11) "
+            "  (define selected "
+            "    (deduce/query gd-reach-qdwmp "
+            "      (lambda (row) (with math (= (ref row 'dst) (abs (- 0 3))))))) "
+            "  (define reach-stats (deduce/stats gd-reach-qdwmp)) "
+            "  (define analyze-after (deduce/analyze db-admin-goal-directed-query-demand-with-module-plain)) "
+            "  (and "
+            "    (= (length selected) 2) "
+            "    (= (foldl (lambda (acc row) (+ acc (ref row 'src))) 0 selected) 3) "
+            "    (= (ref (car selected) 'dst) 3) "
+            "    (= (ref reach-stats 'dirty-self) true) "
+            "    (= (ref reach-stats 'last-goal-directed-read-execution-path) 'ephemeral-head-demand-query) "
+            "    (= (ref reach-stats 'last-goal-directed-read-surface) 'query) "
+            "    (= (ref reach-stats 'last-goal-directed-read-selector-rule-index) nil) "
+            "    (= (ref reach-stats 'last-goal-directed-read-requested-bound-count) 1) "
+            "    (= (car (ref reach-stats 'last-goal-directed-read-requested-bound-positions)) 1) "
+            "    (= (ref analyze-after 'last-goal-directed-read-execution-path) 'ephemeral-head-demand-query) "
+            "    (= (ref analyze-after 'last-goal-directed-read-relation) 'gd-reach-qdwmp) "
+            "    (= (ref analyze-after 'last-goal-directed-read-selector-rule-index) nil)))",
+            interp
+        ),
+        "[PASS] plain deduce query preserves equality demand extraction through with math",
+        "[FAIL] plain deduce query preserves equality demand extraction through with math",
+        pass,
+        fail
+    );
+
+    deduce_query_test_expect_true(
+        interp,
+        run(
+            "(block "
+            "  (define db-admin-goal-directed-query-demand-with-module-selector (deduce 'open 'memory)) "
+            "  (define [relation db-admin-goal-directed-query-demand-with-module-selector] gd-edge-qdwms (src) (dst)) "
+            "  (define [relation db-admin-goal-directed-query-demand-with-module-selector] gd-reach-qdwms (src) (dst)) "
+            "  (deduce/rule! db-admin-goal-directed-query-demand-with-module-selector '(gd-reach-qdwms ?x ?y) '(gd-edge-qdwms ?x ?y)) "
+            "  (deduce/rule! db-admin-goal-directed-query-demand-with-module-selector '(gd-reach-qdwms ?x ?z) '(gd-edge-qdwms ?x ?y) '(gd-reach-qdwms ?y ?z)) "
+            "  (deduce/analyze db-admin-goal-directed-query-demand-with-module-selector) "
+            "  (deduce/fact! gd-edge-qdwms 1 2) "
+            "  (deduce/fact! gd-edge-qdwms 2 3) "
+            "  (deduce/fact! gd-edge-qdwms 10 11) "
+            "  (define selected "
+            "    (deduce/query gd-reach-qdwms "
+            "      (lambda (row) (with math (= (ref row 'dst) (abs (- 0 3))))) "
+            "      1 "
+            "      'semi-naive)) "
+            "  (define reach-stats (deduce/stats gd-reach-qdwms)) "
+            "  (define analyze-after (deduce/analyze db-admin-goal-directed-query-demand-with-module-selector)) "
+            "  (and "
+            "    (= (length selected) 2) "
+            "    (= (foldl (lambda (acc row) (+ acc (ref row 'src))) 0 selected) 3) "
+            "    (= (ref (car selected) 'dst) 3) "
+            "    (= (ref reach-stats 'dirty-self) true) "
+            "    (= (ref reach-stats 'last-goal-directed-read-execution-path) 'ephemeral-head-demand-query) "
+            "    (= (ref reach-stats 'last-goal-directed-read-surface) 'query) "
+            "    (= (ref reach-stats 'last-goal-directed-read-selector-rule-index) 1) "
+            "    (= (ref reach-stats 'last-goal-directed-read-requested-bound-count) 1) "
+            "    (= (car (ref reach-stats 'last-goal-directed-read-requested-bound-positions)) 1) "
+            "    (= (ref analyze-after 'last-goal-directed-read-execution-path) 'ephemeral-head-demand-query) "
+            "    (= (ref analyze-after 'last-goal-directed-read-relation) 'gd-reach-qdwms) "
+            "    (= (ref analyze-after 'last-goal-directed-read-selector-rule-index) 1)))",
+            interp
+        ),
+        "[PASS] selector-scoped deduce query preserves equality demand extraction through with math",
+        "[FAIL] selector-scoped deduce query preserves equality demand extraction through with math",
+        pass,
+        fail
+    );
+
+    deduce_query_test_expect_true(
+        interp,
+        run(
+            "(block "
             "  (define db-admin-goal-directed-query-demand-captured (deduce 'open 'memory)) "
             "  (define [relation db-admin-goal-directed-query-demand-captured] gd-edge-qdc (src) (dst)) "
             "  (define [relation db-admin-goal-directed-query-demand-captured] gd-reach-qdc (src) (dst)) "

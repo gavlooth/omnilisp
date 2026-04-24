@@ -63,11 +63,14 @@ fn bool scheduler_offload_tls_write(long tls_raw, SharedHandle* data_blob, Offlo
         return false;
     }
 
-    char[] data = "";
-    if (!scheduler_project_shared(data_blob, &data)) {
+    char* data_heap = null;
+    usz data_len = 0;
+    if (!scheduler_copy_shared_bytes_owned(data_blob, &data_heap, &data_len)) {
         scheduler_set_offload_error(completion, "tls-write: missing payload");
         return false;
     }
+    defer mem::free(data_heap);
+    char[] data = data_heap[:data_len];
 
     omni_tls_clear_last_error();
     int status = br_sslio_write_all(th.sslio_ctx, data.ptr, data.len);

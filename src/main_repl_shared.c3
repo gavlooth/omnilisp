@@ -5,24 +5,12 @@ import std::io;
 import libc;
 import lisp;
 
-extern fn int repl_shared_access(char* path, int mode) @extern("access");
-extern fn char* repl_shared_getcwd(char* buf, usz size) @extern("getcwd");
-
-const int REPL_SHARED_PATH_EXISTS = 0;
-
 enum ReplFileReadKind {
     REPL_FILE_READ_OK,
     REPL_FILE_READ_NOT_FOUND,
     REPL_FILE_READ_PERMISSION_DENIED,
     REPL_FILE_READ_PATH_FAILURE,
     REPL_FILE_READ_GENERIC_FAILURE,
-}
-
-fn usz repl_shared_cstr_len(char* text) @inline {
-    usz len = 0;
-    if (text == null) return 0;
-    while (len < 4096 && text[len] != 0) len++;
-    return len;
 }
 
 fn void repl_json_print_hex_byte(char c) @inline {
@@ -129,67 +117,6 @@ fn char[] repl_file_read_kind_reason(ReplFileReadKind kind) {
     }
 }
 
-fn bool repl_shared_copy_project_root(char* project_dir, char[] root_buf, usz* root_len_out) {
-    if (project_dir == null) {
-        char* cwd = repl_shared_getcwd(&root_buf[0], root_buf.len);
-        if (cwd == null) return false;
-        usz root_len = repl_shared_cstr_len(cwd);
-        while (root_len > 1 && root_buf[root_len - 1] == '/') {
-            root_len--;
-        }
-        root_buf[root_len] = 0;
-        *root_len_out = root_len;
-        return true;
-    }
-
-    usz root_len = 0;
-    while (project_dir[root_len] != 0) {
-        if (root_len >= root_buf.len - 1) return false;
-        root_buf[root_len] = project_dir[root_len];
-        root_len++;
-    }
-    while (root_len > 1 && root_buf[root_len - 1] == '/') {
-        root_len--;
-    }
-    root_buf[root_len] = 0;
-    *root_len_out = root_len;
-    return true;
-}
-
-fn bool repl_shared_build_project_path(char[] path_buf, usz* path_len_out, char* root, usz root_len, char[] suffix) {
-    usz pos = 0;
-    for (usz i = 0; i < root_len; i++) {
-        if (pos >= path_buf.len - 1) return false;
-        path_buf[pos++] = root[i];
-    }
-    if (root_len > 0 && root[root_len - 1] != '/') {
-        if (pos >= path_buf.len - 1) return false;
-        path_buf[pos++] = '/';
-    }
-    for (usz i = 0; i < suffix.len; i++) {
-        if (pos >= path_buf.len - 1) return false;
-        path_buf[pos++] = suffix[i];
-    }
-    path_buf[pos] = 0;
-    *path_len_out = pos;
-    return true;
-}
-
 fn bool repl_shared_resolve_project_main_path(char* project_dir, char[] main_path_buf, usz* main_path_len_out) {
-    char[1024] root_buf = {};
-    usz root_len = 0;
-    if (!repl_shared_copy_project_root(project_dir, root_buf[..], &root_len)) {
-        return false;
-    }
-
-    char[1280] toml_path_buf = {};
-    usz toml_path_len = 0;
-    if (!repl_shared_build_project_path(toml_path_buf[..], &toml_path_len, &root_buf[0], root_len, "omni.toml")) {
-        return false;
-    }
-    if (repl_shared_access(&toml_path_buf[0], REPL_SHARED_PATH_EXISTS) != 0) {
-        return false;
-    }
-
-    return repl_shared_build_project_path(main_path_buf, main_path_len_out, &root_buf[0], root_len, "src/main.omni");
+    return repl_resolve_project_main_path(project_dir, main_path_buf, main_path_len_out);
 }

@@ -84,7 +84,11 @@ fn bool path_move_to_parent(char[] repo_root_buf, usz* len_io) {
 fn bool resolve_build_repo_root(char* argv0, char[] repo_root_buf, usz* repo_root_len_out) {
     char* env_root = c_getenv("OMNI_REPO_ROOT");
     if (env_root != null && env_root[0] != 0) {
-        usz env_len = cstr_len(env_root);
+        usz env_len = 0;
+        if (!cli_cstr_len(env_root, &env_len)) {
+            (void)print_cli_cstr_too_long("OMNI_REPO_ROOT");
+            return false;
+        }
         if (env_len > 0 && env_len < repo_root_buf.len) {
             for (usz i = 0; i < env_len; i++) repo_root_buf[i] = env_root[i];
             repo_root_buf[env_len] = 0;
@@ -102,7 +106,7 @@ fn bool resolve_build_repo_root(char* argv0, char[] repo_root_buf, usz* repo_roo
         repo_root_buf[n] = 0;
     } else {
         if (argv0 == null || argv0[0] == 0) return false;
-        n = cstr_len(argv0);
+        if (!cli_cstr_len(argv0, &n)) return false;
         if (n == 0 || n >= repo_root_buf.len) return false;
         for (usz i = 0; i < n; i++) repo_root_buf[i] = argv0[i];
         repo_root_buf[n] = 0;
@@ -131,7 +135,8 @@ fn bool resolve_build_repo_root(char* argv0, char[] repo_root_buf, usz* repo_roo
 }
 
 fn char* derive_default_output_name(char* input_file, char[] default_out) {
-    usz input_len = cstr_len(input_file);
+    usz input_len = 0;
+    if (!cli_cstr_len(input_file, &input_len)) return null;
     isz last_dot = -1;
     isz last_slash = -1;
     for (usz i = 0; i < input_len; i++) {
@@ -153,7 +158,11 @@ fn bool validate_output_target_path(char* output_path_cstr, EntryFileWriteKind* 
     if (kind_out != null) *kind_out = ENTRY_FILE_WRITE_GENERIC_FAILURE;
     if (output_path_cstr == null || output_path_cstr[0] == 0) return false;
 
-    char[] output_path = output_path_cstr[:cstr_len(output_path_cstr)];
+    char[] output_path;
+    if (!cli_cstr_slice(output_path_cstr, &output_path)) {
+        if (kind_out != null) *kind_out = ENTRY_FILE_WRITE_PATH_FAILURE;
+        return false;
+    }
     if (output_path.len == 0) {
         if (kind_out != null) *kind_out = ENTRY_FILE_WRITE_PATH_FAILURE;
         return false;

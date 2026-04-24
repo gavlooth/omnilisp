@@ -124,9 +124,19 @@ fn char[] macro_validate_emitted_form(Value* val, Interp* interp, usz depth = 0)
         } else if ((uint)sym == (uint)interp.sym_let) {
             if (!macro_list_has_exact_arity(rest, 2)) return "malformed emitted form: let expects bindings and body";
         } else if ((uint)sym == (uint)interp.sym_define) {
-            if (!macro_list_has_exact_arity(rest, 2)) return "malformed emitted form: define expects name and value";
-            Value* name_v = rest.cons_val.car;
-            if (name_v == null || name_v.tag != SYMBOL) return "malformed emitted form: define name must be a symbol";
+            Value* name_v = is_cons(rest) ? rest.cons_val.car : null;
+            bool ffi_flat = name_v != null && macro_value_name_text(name_v, interp, "ffi");
+            if (name_v != null && (name_v.tag == ARRAY || name_v.tag == CONS) && vte_is_ffi_annotation(name_v, interp)) {
+                if (!macro_list_has_min_arity(rest, 3)) return "malformed emitted form: ffi define expects annotation and body";
+            } else if (ffi_flat) {
+                if (!macro_list_has_min_arity(rest, 4)) return "malformed emitted form: ffi define expects annotation and body";
+            } else if (!macro_list_has_exact_arity(rest, 2)) {
+                if (!macro_list_has_min_arity(rest, 2)) return "malformed emitted form: define expects name and value";
+            }
+            if (name_v == null) return "malformed emitted form: define name must be a symbol";
+            if (macro_list_has_exact_arity(rest, 2) && name_v.tag != SYMBOL && name_v.tag != ARRAY) {
+                return "malformed emitted form: define name must be a symbol";
+            }
         } else if ((uint)sym == (uint)interp.sym_set) {
             if (!macro_list_has_exact_arity(rest, 2)) return "malformed emitted form: set! expects name and value";
             Value* name_v = rest.cons_val.car;

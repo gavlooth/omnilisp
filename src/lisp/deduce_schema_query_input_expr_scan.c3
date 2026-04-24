@@ -1,5 +1,41 @@
 module lisp;
 
+fn bool deduce_query_expr_try_open_with_module_tail_env(
+    Expr* expr,
+    Env* capture_env,
+    Interp* interp,
+    Expr** out_tail,
+    Env** out_env
+) {
+    if (expr == null || expr.tag != E_WITH_MODULE || expr.with_module == null ||
+        interp == null || out_tail == null || out_env == null) return false;
+    *out_tail = null;
+    *out_env = null;
+    if (expr.with_module.body == null || expr.with_module.body_count == 0) return false;
+
+    Expr* tail = expr.with_module.body[expr.with_module.body_count - 1];
+    if (tail == null) return false;
+
+    ExprImport spec = expr.with_module.import_expr;
+    Module* mod = null;
+    EvalResult load_result = load_import_target_module_spec(&spec, spec.name, interp, &mod);
+    if (load_result.error.has_error || mod == null) return false;
+
+    Env* parent_env = capture_env != null ? capture_env : interp.global_env;
+    if (parent_env == null) return false;
+    Env* scoped_env = make_env(interp, parent_env);
+    if (scoped_env == null) return false;
+
+    spec.import_all = true;
+    spec.import_count = 0;
+    EvalResult bind_result = bind_import_symbols_spec(&spec, scoped_env, mod, interp);
+    if (bind_result.error.has_error) return false;
+
+    *out_tail = tail;
+    *out_env = scoped_env;
+    return true;
+}
+
 fn bool deduce_query_expr_contains_row_param(Expr* expr, SymbolId row_param) {
     if (expr == null) return false;
     switch (expr.tag) {
@@ -71,6 +107,12 @@ fn bool deduce_query_expr_contains_row_param(Expr* expr, SymbolId row_param) {
         case E_LAMBDA:
             if (expr.lambda.body == null) return false;
             return deduce_query_expr_contains_row_param(expr.lambda.body, row_param);
+        case E_WITH_MODULE:
+            if (expr.with_module == null || expr.with_module.body == null) return false;
+            for (usz i = 0; i < expr.with_module.body_count; i++) {
+                if (deduce_query_expr_contains_row_param(expr.with_module.body[i], row_param)) return true;
+            }
+            return false;
         default:
             return false;
     }

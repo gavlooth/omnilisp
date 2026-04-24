@@ -555,6 +555,8 @@ expr        = literal | symbol | path | quoted | quasiquoted | reader_tag
 literal     = integer | radix_integer | float | string ;
 integer     = [ "-" ] digit { digit } ;
 radix_integer = ("#x" | "#X") [ "-" ] hex_digit { hex_digit }
+(* hex radix alpha digits are uppercase A through F; lowercase symbol-like
+   forms such as #xface, #b101tag, and #o777tag are reader tags. *)
               | ("#b" | "#B") [ "-" ] bin_digit { bin_digit }
               | ("#o" | "#O") [ "-" ] oct_digit { oct_digit } ;
 float       = [ "-" ] digit { digit } "." digit { digit } ;

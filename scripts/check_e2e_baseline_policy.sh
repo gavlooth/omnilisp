@@ -28,6 +28,23 @@ fail() {
   exit 1
 }
 
+review_rule_has_required_doc() {
+  local review_rule="$1"
+  [[ "$review_rule" == *"memory/CHANGELOG.md"* || "$review_rule" == *"docs/areas/types-dispatch.md"* ]]
+}
+
+check_review_rule_self_test() {
+  review_rule_has_required_doc "review memory/CHANGELOG.md before changing this baseline" \
+    || fail "review-rule self-test rejected memory/CHANGELOG.md"
+  review_rule_has_required_doc "review docs/areas/types-dispatch.md before changing this baseline" \
+    || fail "review-rule self-test rejected docs/areas/types-dispatch.md"
+  review_rule_has_required_doc "review memory/CHANGELOG.md and docs/areas/types-dispatch.md" \
+    || fail "review-rule self-test rejected both required docs"
+  if review_rule_has_required_doc "review docs/areas/memory-runtime.md only"; then
+    fail "review-rule self-test accepted a row without an approved review document"
+  fi
+}
+
 check_lisp_runtime_manifest_parity() {
   mapfile -t expected_lisp_sources < <(
     find src/lisp -maxdepth 1 -type f -name '*.c3' ! -name 'tests_*.c3' | sort
@@ -130,6 +147,12 @@ if [[ "${1:-}" == "--stage3-source-parity" ]]; then
   exit 0
 fi
 
+if [[ "${1:-}" == "--self-test-review-rule" ]]; then
+  check_review_rule_self_test
+  echo "OK: baseline review-rule self-test passed."
+  exit 0
+fi
+
 for file in "$runner" "$manifest" "$metadata"; do
   [[ -f "$file" ]] || fail "missing required file: $file"
 done
@@ -188,7 +211,7 @@ while IFS=$'\t' read -r diff_key owner_area review_rule note extra; do
   if [[ -z "$review_rule" ]]; then
     printf 'blank_review\t%s\n' "$line_no" >> "$tmp_dir/metadata_issues.txt"
   fi
-  if [[ "$review_rule" != *"memory/CHANGELOG.md"* || "$review_rule" != *"docs/areas/types-dispatch.md"* ]]; then
+  if ! review_rule_has_required_doc "$review_rule"; then
     printf 'bad_review_rule\t%s\t%s\n' "$line_no" "$diff_key" >> "$tmp_dir/metadata_issues.txt"
   fi
 done < <(tail -n +2 "$metadata")

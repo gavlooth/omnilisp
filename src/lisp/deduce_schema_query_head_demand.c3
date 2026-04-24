@@ -78,7 +78,9 @@ fn Value* deduce_query_scan_relation_in_txn(
 
     DeduceTupleIterator it = {};
     if (!deduce_tuple_iterator_open_in_txn(&it, rel, interp, txn, null, 0, false, {}, {}, false)) {
-        return make_nil(interp);
+        Value* open_err = deduce_tuple_iterator_error(&it);
+        if (open_err != null) return open_err;
+        return deduce_raise(interp, "deduce/query-invalid-state", "deduce-query: invalid iterator state");
     }
     defer deduce_tuple_iterator_close(&it);
 
@@ -104,5 +106,7 @@ fn Value* deduce_query_scan_relation_in_txn(
             filtered_rev = make_cons(interp, row, filtered_rev);
         }
     }
+    Value* scan_err = deduce_tuple_iterator_error(&it);
+    if (scan_err != null) return scan_err;
     return deduce_reverse_list(filtered_rev, interp);
 }

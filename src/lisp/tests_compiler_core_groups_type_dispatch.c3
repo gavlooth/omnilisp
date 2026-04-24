@@ -320,6 +320,20 @@ fn void run_compiler_group_type_dispatch_bridge_tests(Interp* interp, usz* pass,
         else    { (*fail)++; io::printn("[FAIL] Compiler: path selective alias import keeps symbol binding"); }
     }
 
+    // Scoped module open lowers to local aliases and module-export lookups.
+    {
+        char[] code = compile_to_c3("(with math (< (abs (- (+ (sin 0.0) (cos 0.0)) 1.0)) 0.000001))", interp);
+        bool ok = str_contains(code, "aot::lookup_module_export(\"math\", \"abs\")")
+            && str_contains(code, "aot::lookup_module_export(\"math\", \"sin\")")
+            && str_contains(code, "aot::lookup_module_export(\"math\", \"cos\")")
+            && !str_contains(code, "lookup_prim(\"abs\")")
+            && !str_contains(code, "lookup_prim(\"sin\")")
+            && !str_contains(code, "lookup_prim(\"cos\")")
+            && !str_contains(code, "unsupported expr type");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: scoped module open lowers through local aliases"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: scoped module open lowers through local aliases"); }
+    }
+
     // Inline import 'all remains static no-op because inline module exports are already global.
     {
         char[] code = compile_to_c3(
@@ -365,7 +379,7 @@ fn void run_compiler_group_type_dispatch_bridge_tests(Interp* interp, usz* pass,
     // Non-top-level import keeps runtime bridge side effects in expression lowering.
     {
         char[] code = compile_to_c3("(block (import external_mod) 0)", interp);
-        bool ok = str_contains(code, "(void)aot::import_module(\"external_mod\", \"\", false, false)")
+        bool ok = str_contains(code, "aot::import_module(\"external_mod\", \"\", false, false)")
             && !str_contains(code, "import: inline module")
             && !str_contains(code, "aot::eval_serialized_expr")
             && !str_contains(code, "unsupported expr type");
@@ -376,7 +390,7 @@ fn void run_compiler_group_type_dispatch_bridge_tests(Interp* interp, usz* pass,
     // Non-top-level import 'all keeps runtime bridge side effects and import-all flag.
     {
         char[] code = compile_to_c3("(block (import external_mod 'all) 0)", interp);
-        bool ok = str_contains(code, "(void)aot::import_module(\"external_mod\", \"\", false, true)")
+        bool ok = str_contains(code, "aot::import_module(\"external_mod\", \"\", false, true)")
             && !str_contains(code, "import: inline module")
             && !str_contains(code, "aot::eval_serialized_expr")
             && !str_contains(code, "unsupported expr type");
@@ -387,7 +401,7 @@ fn void run_compiler_group_type_dispatch_bridge_tests(Interp* interp, usz* pass,
     // Non-top-level path import 'all keeps runtime bridge side effects and import-all flag.
     {
         char[] code = compile_to_c3("(block (import \"pkg/math.omni\" 'all) 0)", interp);
-        bool ok = str_contains(code, "(void)aot::import_module(\"pkg/math.omni\", \"pkg/math.omni\", true, true)")
+        bool ok = str_contains(code, "aot::import_module(\"pkg/math.omni\", \"pkg/math.omni\", true, true)")
             && !str_contains(code, "aot::eval_serialized_expr")
             && !str_contains(code, "unsupported expr type");
         if (ok) { (*pass)++; compiler_print_pass("Compiler: non-top-level path import all keeps runtime bridge side effects"); }
@@ -397,7 +411,7 @@ fn void run_compiler_group_type_dispatch_bridge_tests(Interp* interp, usz* pass,
     // Non-top-level selective alias import preserves runtime alias binding.
     {
         char[] code = compile_to_c3("(block (import external_mod (sum 'as plus)) 0)", interp);
-        bool ok = str_contains(code, "(void)aot::import_module(\"external_mod\", \"\", false, false)")
+        bool ok = str_contains(code, "aot::import_module(\"external_mod\", \"\", false, false)")
             && str_contains(code, "aot::define_var(\"plus\", aot::lookup_var(\"sum\"))")
             && !str_contains(code, "aot::eval_serialized_expr")
             && !str_contains(code, "unsupported expr type");
@@ -408,7 +422,7 @@ fn void run_compiler_group_type_dispatch_bridge_tests(Interp* interp, usz* pass,
     // Non-top-level path selective import preserves runtime binding.
     {
         char[] code = compile_to_c3("(block (import \"pkg/math.omni\" (sum)) 0)", interp);
-        bool ok = str_contains(code, "(void)aot::import_module(\"pkg/math.omni\", \"pkg/math.omni\", true, false)")
+        bool ok = str_contains(code, "aot::import_module(\"pkg/math.omni\", \"pkg/math.omni\", true, false)")
             && str_contains(code, "aot::define_var(\"sum\", aot::lookup_var(\"sum\"))")
             && !str_contains(code, "aot::eval_serialized_expr")
             && !str_contains(code, "unsupported expr type");
@@ -419,7 +433,7 @@ fn void run_compiler_group_type_dispatch_bridge_tests(Interp* interp, usz* pass,
     // Non-top-level path selective alias import preserves runtime alias binding.
     {
         char[] code = compile_to_c3("(block (import \"pkg/math.omni\" (sum 'as plus)) 0)", interp);
-        bool ok = str_contains(code, "(void)aot::import_module(\"pkg/math.omni\", \"pkg/math.omni\", true, false)")
+        bool ok = str_contains(code, "aot::import_module(\"pkg/math.omni\", \"pkg/math.omni\", true, false)")
             && str_contains(code, "aot::define_var(\"plus\", aot::lookup_var(\"sum\"))")
             && !str_contains(code, "aot::eval_serialized_expr")
             && !str_contains(code, "unsupported expr type");
@@ -433,7 +447,7 @@ fn void run_compiler_group_type_dispatch_bridge_tests(Interp* interp, usz* pass,
             "(module imod-block-sel (export v) (define v 1)) (block (import imod-block-sel (v)) 0)",
             interp
         );
-        bool ok = str_contains(code, "(void)aot::import_module(\"imod-block-sel\", \"\", false, false)")
+        bool ok = str_contains(code, "aot::import_module(\"imod-block-sel\", \"\", false, false)")
             && str_contains(code, "aot::define_var(\"v\", aot::lookup_var(\"v\"))")
             && !str_contains(code, "aot::eval_serialized_expr")
             && !str_contains(code, "unsupported expr type");
@@ -447,7 +461,7 @@ fn void run_compiler_group_type_dispatch_bridge_tests(Interp* interp, usz* pass,
             "(module imod-block-sel-alias (export v) (define v 1)) (block (import imod-block-sel-alias (v 'as vv)) 0)",
             interp
         );
-        bool ok = str_contains(code, "(void)aot::import_module(\"imod-block-sel-alias\", \"\", false, false)")
+        bool ok = str_contains(code, "aot::import_module(\"imod-block-sel-alias\", \"\", false, false)")
             && str_contains(code, "aot::define_var(\"vv\", aot::lookup_var(\"v\"))")
             && !str_contains(code, "aot::eval_serialized_expr")
             && !str_contains(code, "unsupported expr type");
@@ -462,7 +476,7 @@ fn void run_compiler_group_type_dispatch_bridge_tests(Interp* interp, usz* pass,
             interp
         );
         bool ok = str_contains(code, "import: inline module")
-            && !str_contains(code, "(void)aot::import_module(\"imod-block-all\"")
+            && !str_contains(code, "aot::import_module(\"imod-block-all\"")
             && !str_contains(code, "aot::eval_serialized_expr")
             && !str_contains(code, "unsupported expr type");
         if (ok) { (*pass)++; compiler_print_pass("Compiler: non-top-level inline import all lowers as static no-op"); }
@@ -476,7 +490,7 @@ fn void run_compiler_group_type_dispatch_bridge_tests(Interp* interp, usz* pass,
             interp
         );
         bool ok = str_contains(code, "import: inline module")
-            && !str_contains(code, "(void)aot::import_module(\"imod-block\"")
+            && !str_contains(code, "aot::import_module(\"imod-block\"")
             && !str_contains(code, "aot::eval_serialized_expr")
             && !str_contains(code, "unsupported expr type");
         if (ok) { (*pass)++; compiler_print_pass("Compiler: non-top-level inline import lowers as static no-op"); }

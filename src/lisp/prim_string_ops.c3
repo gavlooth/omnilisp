@@ -37,12 +37,19 @@ fn Value* prim_string_index_of(Value*[] args, Env* env, Interp* interp) {
     char[] needle = args[1].str_chars[:args[1].str_len];
     if (needle.len == 0) return make_int(interp, 0);
     if (needle.len > haystack.len) return make_int(interp, -1);
-    for (usz i = 0; i <= haystack.len - needle.len; i++) {
+    usz byte_pos = 0;
+    usz cp_idx = 0;
+    while (byte_pos + needle.len <= haystack.len) {
         bool match = true;
         for (usz j = 0; j < needle.len; j++) {
-            if (haystack[i + j] != needle[j]) { match = false; break; }
+            if (haystack[byte_pos + j] != needle[j]) { match = false; break; }
         }
-        if (match) return make_int(interp, (long)i);
+        if (match) return make_int(interp, (long)cp_idx);
+
+        usz cplen = utf8_codepoint_len(haystack[byte_pos]);
+        if (byte_pos + cplen > haystack.len) cplen = haystack.len - byte_pos;
+        byte_pos += cplen;
+        cp_idx++;
     }
     return make_int(interp, -1);
 }
@@ -108,8 +115,13 @@ fn Value* prim_char_at(Value*[] args, Env* env, Interp* interp) {
 fn Value* prim_string_repeat(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2 || args[0].tag != STRING || !is_int(args[1])) return string_raise(interp, "type/arg-mismatch", "string-repeat: expected string and int");
     long n = args[1].int_val;
-    if (n <= 0) return make_string(interp, "");
-    StringVal* builder = strval_new(args[0].str_len * (usz)n);
+    if (n <= 0 || args[0].str_len == 0) return make_string(interp, "");
+    usz repeat_count = (usz)n;
+    if (args[0].str_len > usz.max / repeat_count) {
+        return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "string-repeat: output size overflow");
+    }
+    usz output_len = args[0].str_len * repeat_count;
+    StringVal* builder = strval_new(output_len);
     if (builder == null) {
         return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "string-repeat: failed to allocate builder");
     }
@@ -129,7 +141,7 @@ fn Value* prim_string_repeat(Value*[] args, Env* env, Interp* interp) {
 *>
 fn Value* prim_string_length(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_string(args[0])) {
-        return make_int(interp, 0);
+        return string_raise(interp, args.len < 1 ? "type/arity" : "type/arg-mismatch", "string-length: expected string argument");
     }
     // Count UTF-8 codepoints, not bytes
     usz cp_len = utf8_strlen(args[0].str_chars[:args[0].str_len]);
@@ -141,7 +153,7 @@ fn Value* prim_string_length(Value*[] args, Env* env, Interp* interp) {
 *>
 fn Value* prim_string_byte_length(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_string(args[0])) {
-        return make_int(interp, 0);
+        return string_raise(interp, args.len < 1 ? "type/arity" : "type/arg-mismatch", "string-byte-length: expected string argument");
     }
     return make_int(interp, (long)args[0].str_len);
 }

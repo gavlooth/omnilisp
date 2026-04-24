@@ -1,6 +1,6 @@
 module main;
 
-const String[199] AOT_RUNTIME_LISP_SOURCES_PART0 = {
+const String[210] AOT_RUNTIME_LISP_SOURCES_PART0 = {
     "src/lisp/aot.c3",
     "src/lisp/aot_runtime_bridge.c3",
     "src/lisp/aot_runtime_bridge_closure.c3",
@@ -200,4 +200,15 @@ const String[199] AOT_RUNTIME_LISP_SOURCES_PART0 = {
     "src/lisp/deduce_rule_eval_analyze_payload_result.c3",
     "src/lisp/deduce_rule_eval_analyze_payload_tail.c3",
     "src/lisp/deduce_rule_eval_analyze_plan_metadata.c3",
+    "src/lisp/c_api_string_boundary.c3",
+    "src/lisp/eval_boundary_planner.c3",
+    "src/lisp/ffi_bridge_boundary.c3",
+    "src/lisp/macros_builtin_str.c3",
+    "src/lisp/parser_with_module.c3",
+    "src/lisp/stable_escape_epoch.c3",
+    "src/lisp/stable_escape_prepare_graph_buffers.c3",
+    "src/lisp/stable_escape_store.c3",
+    "src/lisp/stable_escape_store_passport.c3",
+    "src/lisp/symbol_lambda_helpers.c3",
+    "src/lisp/value_boundary_ownership_policy.c3",
 };

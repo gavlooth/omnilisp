@@ -25,6 +25,169 @@ fn void run_memory_lifetime_runtime_alloc_groups_core_tests(Interp* interp, int*
     }
 
     {
+        main::ScopeRegion* saved_scope = interp.current_scope;
+        main::ScopeRegion* oom_scope = main::scope_create(saved_scope);
+        bool setup_ok = oom_scope != null;
+        Value* int_fail = null;
+        if (setup_ok) {
+            interp.current_scope = oom_scope;
+            void* filled = oom_scope.alloc(main::SCOPE_CHUNK_INITIAL);
+            setup_ok = filled != null;
+            bool saved_chunk_oom = main::g_scope_force_chunk_alloc_oom;
+            main::g_scope_force_chunk_alloc_oom = true;
+            int_fail = setup_ok ? make_int(interp, 42) : null;
+            main::g_scope_force_chunk_alloc_oom = saved_chunk_oom;
+            interp.current_scope = saved_scope;
+            main::scope_release(oom_scope);
+        }
+
+        bool ok = setup_ok &&
+            runtime_alloc_error_matches(int_fail, "runtime/out-of-memory");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: core scalar value allocation OOM fails closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: core scalar value allocation OOM fails closed (setup_ok=%s result=%s)",
+                setup_ok ? "yes" : "no",
+                runtime_alloc_error_text(int_fail));
+            (*fail)++;
+            if (oom_scope != null && interp.current_scope == oom_scope) {
+                interp.current_scope = saved_scope;
+                main::scope_release(oom_scope);
+            }
+        }
+    }
+
+    {
+        bool saved_dtor_oom = main::g_scope_force_dtor_alloc_oom;
+        main::g_scope_force_dtor_alloc_oom = true;
+        Value* string_fail = make_string(interp, "dtor registration oom");
+        Value* error_fail = make_error(interp, "error dtor registration oom");
+        Env* env_fail = make_env(interp, null);
+        main::g_scope_force_dtor_alloc_oom = saved_dtor_oom;
+
+        bool ok =
+            runtime_alloc_error_matches(string_fail, "out of memory while allocating string") &&
+            runtime_alloc_error_matches(error_fail, "runtime/out-of-memory") &&
+            env_fail == null;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: core destructor registration OOM fails closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: core destructor registration OOM fails closed (string=%s error=%s env=%s)",
+                runtime_alloc_error_text(string_fail),
+                runtime_alloc_error_text(error_fail),
+                env_fail == null ? "null" : "value");
+            (*fail)++;
+        }
+    }
+
+    {
+        main::ScopeRegion* saved_scope = interp.current_scope;
+        main::ScopeRegion* oom_scope = main::scope_create(saved_scope);
+        bool setup_ok = oom_scope != null;
+        Env* env_alloc_fail = null;
+        if (setup_ok) {
+            interp.current_scope = oom_scope;
+            void* filled = oom_scope.alloc(main::SCOPE_CHUNK_INITIAL);
+            setup_ok = filled != null;
+            bool saved_chunk_oom = main::g_scope_force_chunk_alloc_oom;
+            main::g_scope_force_chunk_alloc_oom = true;
+            env_alloc_fail = setup_ok ? make_env(interp, null) : null;
+            main::g_scope_force_chunk_alloc_oom = saved_chunk_oom;
+            interp.current_scope = saved_scope;
+            main::scope_release(oom_scope);
+        }
+
+        bool ok = setup_ok && env_alloc_fail == null;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: env allocation OOM fails closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: env allocation OOM fails closed (setup_ok=%s result=%s)",
+                setup_ok ? "yes" : "no",
+                env_alloc_fail == null ? "null" : "value");
+            (*fail)++;
+            if (oom_scope != null && interp.current_scope == oom_scope) {
+                interp.current_scope = saved_scope;
+                main::scope_release(oom_scope);
+            }
+        }
+    }
+
+    {
+        bool saved_escape_dtor_oom = main::g_scope_force_escape_dtor_alloc_oom;
+        bool saved_escape_mode = interp.escape_env_mode;
+        interp.escape_env_mode = true;
+        main::g_scope_force_escape_dtor_alloc_oom = true;
+        Env* env_escape_fail = make_env(interp, null);
+        main::g_scope_force_escape_dtor_alloc_oom = saved_escape_dtor_oom;
+        interp.escape_env_mode = saved_escape_mode;
+
+        bool ok = env_escape_fail == null;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: escape env destructor registration OOM fails closed");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] lifetime: escape env destructor registration OOM fails closed");
+            (*fail)++;
+        }
+    }
+
+    {
+        bool saved_dtor_oom = main::g_scope_force_dtor_alloc_oom;
+        main::g_scope_force_dtor_alloc_oom = true;
+        Value* closure_fail = make_closure_no_param(interp, null, interp.global_env);
+        Value* closure_param_fail = make_closure(
+            interp,
+            interp.symbols.intern("__closure_param_dtor_oom"),
+            null,
+            interp.global_env);
+        main::g_scope_force_dtor_alloc_oom = saved_dtor_oom;
+
+        bool ok =
+            (runtime_alloc_error_matches(closure_fail, "closure: failed to register destructor") ||
+             runtime_alloc_error_matches(closure_fail, "runtime/out-of-memory")) &&
+            (runtime_alloc_error_matches(closure_param_fail, "closure: failed to register destructor") ||
+             runtime_alloc_error_matches(closure_param_fail, "runtime/out-of-memory"));
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: closure destructor registration OOM fails closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: closure destructor registration OOM fails closed (no_param=%s param=%s)",
+                runtime_alloc_error_text(closure_fail),
+                runtime_alloc_error_text(closure_param_fail));
+            (*fail)++;
+        }
+    }
+
+    {
+        Continuation* k = interp.alloc_lisp_continuation();
+        bool saved_wrapper_oom = g_value_force_make_continuation_wrapper_alloc_fail;
+        g_value_force_make_continuation_wrapper_alloc_fail = true;
+        Value* cont_fail = k != null ? make_continuation(interp, k) : null;
+        g_value_force_make_continuation_wrapper_alloc_fail = saved_wrapper_oom;
+        interp_discard_lisp_continuation(interp, k);
+
+        bool ok = k != null &&
+            runtime_alloc_error_matches(cont_fail, "continuation: failed to allocate wrapper");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: continuation wrapper allocation OOM fails closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: continuation wrapper allocation OOM fails closed (k=%s result=%s)",
+                k == null ? "null" : "value",
+                runtime_alloc_error_text(cont_fail));
+            (*fail)++;
+        }
+    }
+
+    {
         Value*[1] fs_stat_args = { make_string(interp, "/tmp") };
         Value*[1] fs_readdir_args = { make_string(interp, "/tmp") };
 

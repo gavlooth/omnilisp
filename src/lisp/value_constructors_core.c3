@@ -3,7 +3,9 @@ module lisp;
 import main;
 
 bool g_value_force_make_string_alloc_fail = false;
+bool g_value_force_make_continuation_wrapper_alloc_fail = false;
 int g_value_force_closure_scope_alloc_fail_nth = 0;
+Value g_value_static_oom_error;
 
 fn void* value_alloc_closure_payload(main::ScopeRegion* scope, usz size) @inline {
     if (scope == null) return null;
@@ -18,8 +20,31 @@ fn void* value_alloc_closure_payload(main::ScopeRegion* scope, usz size) @inline
 // SECTION 2: VALUE CONSTRUCTORS (Core Surface)
 // =============================================================================
 
+fn Value* make_static_out_of_memory_error(char[] detail) {
+    (void)detail;
+    char[] msg = "runtime/out-of-memory: failed to allocate error value";
+    g_value_static_oom_error.tag = ERROR;
+    g_value_static_oom_error.scope_gen = 0;
+    g_value_static_oom_error.continuation_boundary_owned = false;
+    g_value_static_oom_error.string_heap_owned = false;
+    g_value_static_oom_error.str_chars = (char*)msg.ptr;
+    g_value_static_oom_error.str_len = msg.len;
+    return &g_value_static_oom_error;
+}
+
+fn Value* make_runtime_out_of_memory_error(Interp* interp, char[] detail) {
+    Value* fail = interp.alloc_value();
+    if (fail == null) return make_static_out_of_memory_error(detail);
+    fail.tag = ERROR;
+    fail.str_chars = (char*)detail.ptr;
+    fail.str_len = detail.len;
+    fail.string_heap_owned = false;
+    return fail;
+}
+
 fn Value* make_string_alloc_error(Interp* interp) {
     Value* fail = interp.alloc_value();
+    if (fail == null) return make_static_out_of_memory_error("out of memory while allocating string");
     fail.tag = ERROR;
     char[] msg = "out of memory while allocating string";
     fail.str_chars = (char*)msg.ptr;
@@ -31,6 +56,7 @@ fn Value* make_string_alloc_error(Interp* interp) {
 <* @ensure return != null *>
 fn Value* make_nil(Interp* interp) @inline {
     Value* v = interp.alloc_value();
+    if (v == null) return make_runtime_out_of_memory_error(interp, "runtime/out-of-memory: failed to allocate nil value");
     v.tag = NIL;
     return v;
 }
@@ -38,6 +64,7 @@ fn Value* make_nil(Interp* interp) @inline {
 <* @ensure return != null *>
 fn Value* make_void(Interp* interp) @inline {
     Value* v = interp.alloc_value();
+    if (v == null) return make_runtime_out_of_memory_error(interp, "runtime/out-of-memory: failed to allocate void value");
     v.tag = VOID;
     return v;
 }
@@ -45,6 +72,7 @@ fn Value* make_void(Interp* interp) @inline {
 <* @ensure return != null *>
 fn Value* make_int(Interp* interp, long n) @inline {
     Value* v = interp.alloc_value();
+    if (v == null) return make_runtime_out_of_memory_error(interp, "runtime/out-of-memory: failed to allocate integer value");
     v.tag = INT;
     v.int_val = n;
     return v;
@@ -53,6 +81,7 @@ fn Value* make_int(Interp* interp, long n) @inline {
 <* @ensure return != null *>
 fn Value* make_double(Interp* interp, double d) @inline {
     Value* v = interp.alloc_value();
+    if (v == null) return make_runtime_out_of_memory_error(interp, "runtime/out-of-memory: failed to allocate float value");
     v.tag = DOUBLE;
     v.double_val = d;
     return v;
@@ -61,6 +90,7 @@ fn Value* make_double(Interp* interp, double d) @inline {
 <* @ensure return != null *>
 fn Value* make_float32(Interp* interp, float f) @inline {
     Value* v = interp.alloc_value();
+    if (v == null) return make_runtime_out_of_memory_error(interp, "runtime/out-of-memory: failed to allocate float32 value");
     v.tag = FLOAT32;
     v.float32_val = f;
     return v;
@@ -69,6 +99,7 @@ fn Value* make_float32(Interp* interp, float f) @inline {
 <* @ensure return != null *>
 fn Value* make_complex128(Interp* interp, double real, double imag) @inline {
     Value* v = interp.alloc_value();
+    if (v == null) return make_runtime_out_of_memory_error(interp, "runtime/out-of-memory: failed to allocate complex value");
     v.tag = COMPLEX128;
     v.complex128_val.real = real;
     v.complex128_val.imag = imag;
@@ -78,6 +109,7 @@ fn Value* make_complex128(Interp* interp, double real, double imag) @inline {
 <* @ensure return != null *>
 fn Value* make_complex64(Interp* interp, float real, float imag) @inline {
     Value* v = interp.alloc_value();
+    if (v == null) return make_runtime_out_of_memory_error(interp, "runtime/out-of-memory: failed to allocate complex64 value");
     v.tag = COMPLEX64;
     v.complex64_val.real = real;
     v.complex64_val.imag = imag;
@@ -98,8 +130,15 @@ fn Value* make_string(Interp* interp, char[] str) {
     }
 
     Value* v = interp.alloc_value();
+    if (v == null) {
+        mem::free(chars);
+        return make_string_alloc_error(interp);
+    }
     v.tag = STRING;
-    main::scope_register_dtor(interp.current_scope, (void*)v, &scope_dtor_value);
+    if (!main::scope_register_dtor(interp.current_scope, (void*)v, &scope_dtor_value)) {
+        mem::free(chars);
+        return make_string_alloc_error(interp);
+    }
     v.str_chars = chars;
     v.string_heap_owned = true;
     for (usz i = 0; i < len; i++) {
@@ -121,8 +160,15 @@ fn Value* make_string_owned(Interp* interp, char* owned_chars, usz len) {
     }
 
     Value* v = interp.alloc_value();
+    if (v == null) {
+        mem::free(owned_chars);
+        return make_string_alloc_error(interp);
+    }
     v.tag = STRING;
-    main::scope_register_dtor(interp.current_scope, (void*)v, &scope_dtor_value);
+    if (!main::scope_register_dtor(interp.current_scope, (void*)v, &scope_dtor_value)) {
+        mem::free(owned_chars);
+        return make_string_alloc_error(interp);
+    }
     v.str_chars = owned_chars;
     v.str_len = len;
     v.string_heap_owned = true;
@@ -135,6 +181,7 @@ fn Value* make_string_owned(Interp* interp, char* owned_chars, usz len) {
 <* @ensure return != null *>
 fn Value* make_symbol(Interp* interp, SymbolId sym) @inline {
     Value* v = interp.alloc_value();
+    if (v == null) return make_runtime_out_of_memory_error(interp, "runtime/out-of-memory: failed to allocate symbol value");
     v.tag = SYMBOL;
     v.sym_val = sym;
     return v;
@@ -239,6 +286,7 @@ fn Value* make_cons(Interp* interp, Value* car, Value* cdr) @inline {
 
     // Normal path: allocate in current_scope
     Value* v = interp.alloc_value();
+    if (v == null) return make_runtime_out_of_memory_error(interp, "runtime/out-of-memory: failed to allocate cons cell");
     v.tag = CONS;
     v.cons_val.car = car;
     v.cons_val.cdr = cdr;
@@ -257,8 +305,11 @@ fn Value* make_closure(Interp* interp, SymbolId param, Expr* body, Env* env) {
     params[0] = param;
 
     Value* v = interp.alloc_value();
+    if (v == null) return runtime_raise(interp, "runtime/out-of-memory", "closure: failed to allocate closure value");
     v.tag = CLOSURE;
-    main::scope_register_dtor(interp.current_scope, (void*)v, &scope_dtor_closure);
+    if (!main::scope_register_dtor(interp.current_scope, (void*)v, &scope_dtor_closure)) {
+        return runtime_raise(interp, "runtime/out-of-memory", "closure: failed to register destructor");
+    }
     v.closure_val = closure;
     v.closure_val.scope_gen = interp.current_scope.generation;
     v.closure_val.env_scope = null;
@@ -282,8 +333,11 @@ fn Value* make_closure_no_param(Interp* interp, Expr* body, Env* env) {
     }
 
     Value* v = interp.alloc_value();
+    if (v == null) return runtime_raise(interp, "runtime/out-of-memory", "closure: failed to allocate closure value");
     v.tag = CLOSURE;
-    main::scope_register_dtor(interp.current_scope, (void*)v, &scope_dtor_closure);
+    if (!main::scope_register_dtor(interp.current_scope, (void*)v, &scope_dtor_closure)) {
+        return runtime_raise(interp, "runtime/out-of-memory", "closure: failed to register destructor");
+    }
     v.closure_val = closure;
     v.closure_val.scope_gen = interp.current_scope.generation;
     v.closure_val.env_scope = null;
@@ -301,7 +355,8 @@ fn Value* make_closure_no_param(Interp* interp, Expr* body, Env* env) {
 }
 
 fn Value* make_continuation(Interp* interp, Continuation* k) @inline {
-    Value* v = interp.alloc_value();
+    Value* v = g_value_force_make_continuation_wrapper_alloc_fail ? null : interp.alloc_value();
+    if (v == null) return runtime_raise(interp, "runtime/out-of-memory", "continuation: failed to allocate wrapper");
     v.tag = CONTINUATION;
     // No dtor registered — lifecycle managed by effect handlers (reset/shift/handle).
     // Scope dtor would fire too early (before handler is done with the context).
@@ -323,6 +378,7 @@ fn Value* make_time_point(
     int tz_offset
 ) {
     Value* v = interp.alloc_value();
+    if (v == null) return make_runtime_out_of_memory_error(interp, "runtime/out-of-memory: failed to allocate time point value");
     v.tag = TIME_POINT;
     v.time_point_val.year = year;
     v.time_point_val.month = month;

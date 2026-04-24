@@ -191,7 +191,7 @@ fn void repl_server_connection_destroy(ReplServerConnection* conn) {
         }
         mem::free(conn.sessions);
     }
-    repl_server_worker_clear_queued_commands(&conn.worker);
+    repl_server_worker_destroy(&conn.worker);
     repl_server_output_destroy(&conn.output);
     *conn = {};
 }

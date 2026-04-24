@@ -7,6 +7,7 @@
 #include <math.h>
 #include <pthread.h>
 #include <stdint.h>
+#include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -101,6 +102,14 @@ static int omni_tensor_vulkan_group_count_1d(size_t element_count, uint32_t loca
     size_t group_count = (element_count - 1u) / (size_t)local_size + 1u;
     if (group_count > (size_t)UINT32_MAX) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
     *out_group_count = (uint32_t)group_count;
+    return OMNI_TENSOR_VULKAN_SUCCESS;
+}
+
+static int omni_tensor_vulkan_checked_element_bytes(size_t element_count, size_t element_size, size_t* out_byte_len) {
+    if (out_byte_len == NULL || element_size == 0u) return OMNI_TENSOR_VULKAN_INVALID;
+    *out_byte_len = 0u;
+    if (element_count > SIZE_MAX / element_size) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
+    *out_byte_len = element_count * element_size;
     return OMNI_TENSOR_VULKAN_SUCCESS;
 }
 
@@ -714,7 +723,7 @@ typedef struct OmniTensorVulkanBuffer {
     OmniVulkanBuffer buffer;
     OmniVulkanDeviceMemory memory;
     size_t byte_len;
-    uint32_t ref_count;
+    atomic_uint ref_count;
 } OmniTensorVulkanBuffer;
 
 typedef struct OmniTensorVulkanStorageBufferDescriptor {

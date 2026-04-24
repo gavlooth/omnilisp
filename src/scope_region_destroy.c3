@@ -95,8 +95,10 @@ fn void scope_destroy(ScopeRegion* scope) {
     }
 }
 
+<*
+ @require scope != null
+*>
 fn void scope_destroy_owned_descendants(ScopeRegion* scope) {
-    if (scope == null) return;
     scope_guard_owner(scope, "scope_destroy_owned_descendants");
     uint saved_refcount = scope.refcount;
     scope.refcount = uint.max;

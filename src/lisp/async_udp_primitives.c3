@@ -39,7 +39,11 @@ fn Value* prim_udp_bind(Value*[] args, Env* env, Interp* interp) {
             return io_raise(interp, "io/udp-bind-expected-handle-host-port", "udp-bind: expected (udp-bind handle host port)");
         }
         port_v = car(packed);
-    } else if (args.len >= 3) {
+        packed = cdr(packed);
+        if (!is_nil(packed)) {
+            return io_raise(interp, "io/udp-bind-expected-handle-host-port", "udp-bind: expected (udp-bind handle host port)");
+        }
+    } else if (args.len == 3) {
         handle_v = args[0];
         host_v = args[1];
         port_v = args[2];
@@ -106,7 +110,11 @@ fn Value* prim_udp_send(Value*[] args, Env* env, Interp* interp) {
             return io_raise(interp, "io/udp-send-expected-handle-host-port-data", "udp-send: expected (udp-send handle host port data)");
         }
         data_v = car(packed);
-    } else if (args.len >= 4) {
+        packed = cdr(packed);
+        if (!is_nil(packed)) {
+            return io_raise(interp, "io/udp-send-expected-handle-host-port-data", "udp-send: expected (udp-send handle host port data)");
+        }
+    } else if (args.len == 4) {
         handle_v = args[0];
         host_v = args[1];
         port_v = args[2];
@@ -154,26 +162,45 @@ fn Value* prim_udp_send(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_udp_recv(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) {
+    Value* handle_v = null;
+    Value* max_bytes_v = null;
+
+    if (args.len == 1 && is_cons(args[0])) {
+        Value* packed = args[0];
+        handle_v = car(packed);
+        packed = cdr(packed);
+        if (is_cons(packed)) {
+            max_bytes_v = car(packed);
+            packed = cdr(packed);
+        }
+        if (!is_nil(packed)) {
+            return io_raise(interp, "io/udp-recv-expected-handle", "udp-recv: expected (udp-recv handle [max-bytes])");
+        }
+    } else if (args.len >= 1 && args.len <= 2) {
+        handle_v = args[0];
+        if (args.len == 2) max_bytes_v = args[1];
+    } else {
         return io_raise(interp, "io/udp-recv-expected-handle", "udp-recv: expected (udp-recv handle [max-bytes])");
     }
 
-    UdpHandle* uh = get_udp_handle(args[0]);
-    if (uh == null || !uh.open || uh.fd < 0) {
-        return io_raise(interp, "io/udp-recv-invalid-handle", "udp-recv: invalid or closed handle");
-    }
-
     usz max_bytes = 4096;
-    if (args.len >= 2) {
-        if (!is_int(args[1])) {
+    if (max_bytes_v != null) {
+        if (!is_int(max_bytes_v)) {
             return io_raise(interp, "io/udp-recv-max-bytes-not-integer", "udp-recv: max-bytes must be an integer");
         }
-        long n = args[1].int_val;
+        long n = max_bytes_v.int_val;
         if (n <= 0) {
             return io_raise(interp, "io/udp-recv-max-bytes-invalid", "udp-recv: max-bytes must be > 0");
         }
         max_bytes = (usz)n;
-        if (max_bytes > 65536) max_bytes = 65536;
+        if (max_bytes > 65536) {
+            return io_raise(interp, "io/udp-recv-max-bytes-too-large", "udp-recv: max-bytes must be <= 65536");
+        }
+    }
+
+    UdpHandle* uh = get_udp_handle(handle_v);
+    if (uh == null || !uh.open || uh.fd < 0) {
+        return io_raise(interp, "io/udp-recv-invalid-handle", "udp-recv: invalid or closed handle");
     }
 
     // Async bridge: in scheduler-managed fiber context, use libuv readiness

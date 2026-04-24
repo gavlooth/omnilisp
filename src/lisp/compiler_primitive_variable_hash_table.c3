@@ -7,7 +7,7 @@ import main;
 // SECTION 1b: PRIMITIVE VARIABLE HASH TABLE
 // =============================================================================
 
-const usz PRIM_HASH_SIZE = 512;  // Power of 2, keeps current primitive load comfortably below 50%
+const usz PRIM_HASH_SIZE = 1024;  // Power of 2, keeps primitive resolver probes bounded.
 struct PrimHashEntry {
     SymbolId key;
     char[]   emit;
@@ -59,6 +59,7 @@ fn void init_prim_hash(Interp* interp) {
     init_prim_hash_arithmetic_and_comparison(st);
     init_prim_hash_core_and_strings(st);
     init_prim_hash_files_and_misc(st);
+    init_prim_hash_runtime_parity_families(st);
     init_prim_hash_collections_math_bitwise(st);
     if (g_prim_hash_init_failed) g_prim_hash_initialized = false;
 }

@@ -5,6 +5,11 @@ import std::io;
 const ulong STACK_CLONE_LOW56_MASK = (ulong.max >> 8);
 const ulong STACK_CLONE_TOPBYTE_MASK = ~STACK_CLONE_LOW56_MASK;
 
+struct StackCloneResidualSourceWords {
+    usz raw_words;
+    usz low56_only_words;
+}
+
 fn bool stack_clone_is_source_stack_ptr_raw(ulong value, usz src_lo, usz src_hi) @inline {
     usz addr = (usz)value;
     return addr >= src_lo && addr < src_hi;
@@ -15,6 +20,23 @@ fn bool stack_clone_is_source_stack_ptr_low56(ulong value, usz src_lo, usz src_h
     ulong lo = (ulong)src_lo & STACK_CLONE_LOW56_MASK;
     ulong hi = (ulong)src_hi & STACK_CLONE_LOW56_MASK;
     return low >= lo && low < hi;
+}
+
+fn bool stack_clone_signed_address_delta(usz dst, usz src, long* out_delta) @inline {
+    if (out_delta == null) return false;
+    *out_delta = 0;
+
+    if (dst >= src) {
+        usz diff = dst - src;
+        if (diff > (usz)long.max) return false;
+        *out_delta = (long)diff;
+        return true;
+    }
+
+    usz diff = src - dst;
+    if (diff > (usz)long.max) return false;
+    *out_delta = -(long)diff;
+    return true;
 }
 
 fn ulong stack_clone_relocate_ptr_if_needed(ulong value, usz src_lo, usz src_hi, long delta) @inline {
@@ -76,19 +98,30 @@ fn usz stack_clone_relocate_active_stack_words(usz dst_rsp, usz active_bytes, us
     return relocated;
 }
 
-fn usz stack_clone_count_source_stack_words(usz dst_rsp, usz active_bytes, usz src_lo, usz src_hi) {
-    if (active_bytes < ulong.sizeof) return 0;
+fn StackCloneResidualSourceWords stack_clone_classify_residual_source_stack_words(usz dst_rsp, usz active_bytes, usz src_lo, usz src_hi) {
+    StackCloneResidualSourceWords residual;
+    residual.raw_words = 0;
+    residual.low56_only_words = 0;
+    if (active_bytes < ulong.sizeof) return residual;
+
     usz word_count = active_bytes / ulong.sizeof;
     ulong* words = (ulong*)(ulong)dst_rsp;
-    usz remaining = 0;
     for (usz i = 0; i < word_count; i++) {
         ulong value = words[i];
-        if (stack_clone_is_source_stack_ptr_raw(value, src_lo, src_hi) ||
-            stack_clone_is_source_stack_ptr_low56(value, src_lo, src_hi)) {
-            remaining++;
+        if (stack_clone_is_source_stack_ptr_raw(value, src_lo, src_hi)) {
+            residual.raw_words++;
+        } else if (stack_clone_is_source_stack_ptr_low56(value, src_lo, src_hi)) {
+            residual.low56_only_words++;
         }
     }
-    return remaining;
+    return residual;
+}
+
+fn bool stack_clone_residual_source_stack_words_fail_closed(StackCloneResidualSourceWords residual) @inline {
+    // Raw source-stack addresses are true clone-isolation hazards. Low-56-only
+    // matches are classified separately because top-byte metadata or integer
+    // payloads can share source-stack low bits after the relocation pass.
+    return residual.raw_words > 0;
 }
 
 fn bool stack_clone_trace_enabled() @inline {
@@ -138,6 +171,11 @@ fn StackCtx* stack_ctx_clone(StackCtx* source, StackPool* pool) {
     usz dst_hi = (usz)clone.stack.stack_top;
     usz dst_lo = (usz)clone.stack.base + GUARD_SIZE;
     usz copy_dst = full_stack_clone ? dst_lo : (dst_hi - copy_bytes);
+    long delta = 0;
+    if (!stack_clone_signed_address_delta(copy_dst, copy_src, &delta)) {
+        stack_ctx_destroy(clone, pool);
+        return null;
+    }
     stack_raw_copy((void*)copy_dst, (void*)copy_src, copy_bytes);
 
     // Copy register context and relocate stack pointers into the cloned stack.
@@ -149,7 +187,6 @@ fn StackCtx* stack_ctx_clone(StackCtx* source, StackPool* pool) {
     clone.asan_fake_stack = null;
     clone.defer_count = 0;
 
-    long delta = (long)(copy_dst - copy_src);
     usz dst_rsp = (usz)((long)source.ctx.rsp + delta);
     usz relocated_ctx_fields = stack_clone_relocate_ctx_stack_pointers(&clone.ctx, src_lo, src_hi, delta);
 
@@ -179,11 +216,23 @@ fn StackCtx* stack_ctx_clone(StackCtx* source, StackPool* pool) {
     usz scan_dst = full_stack_clone ? dst_lo : dst_rsp;
     usz scan_bytes = full_stack_clone ? clone.stack.usable_size : copy_bytes;
     usz relocated_stack_words = stack_clone_relocate_active_stack_words(scan_dst, scan_bytes, src_lo, src_hi, delta);
-    usz remaining_source_words = stack_clone_count_source_stack_words(scan_dst, scan_bytes, src_lo, src_hi);
+    StackCloneResidualSourceWords residual_source_words = stack_clone_classify_residual_source_stack_words(scan_dst, scan_bytes, src_lo, src_hi);
+
+    if (stack_clone_residual_source_stack_words_fail_closed(residual_source_words)) {
+        if (stack_clone_trace_enabled()) {
+            io::printfn(
+                "stack-clone: residual source-stack pointer validation failed raw=%d low56_false_positive=%d",
+                (int)residual_source_words.raw_words,
+                (int)residual_source_words.low56_only_words
+            );
+        }
+        stack_ctx_destroy(clone, pool);
+        return null;
+    }
 
     if (stack_clone_trace_enabled()) {
         io::printfn(
-            "stack-clone: full=%d src=[%p,%p) dst=[%p,%p) src_rsp=%p dst_rsp=%p delta=%d ctx_reloc=%d word_reloc=%d word_src_remain=%d src_rbp=%p clone_rbp=%p",
+            "stack-clone: full=%d src=[%p,%p) dst=[%p,%p) src_rsp=%p dst_rsp=%p delta=%d ctx_reloc=%d word_reloc=%d word_src_raw=%d word_low56_false_positive=%d src_rbp=%p clone_rbp=%p",
             full_stack_clone ? 1 : 0,
             (void*)src_lo,
             (void*)src_hi,
@@ -194,7 +243,8 @@ fn StackCtx* stack_ctx_clone(StackCtx* source, StackPool* pool) {
             (int)delta,
             (int)relocated_ctx_fields,
             (int)relocated_stack_words,
-            (int)remaining_source_words,
+            (int)residual_source_words.raw_words,
+            (int)residual_source_words.low56_only_words,
             (void*)source.ctx.rbp,
             (void*)clone.ctx.rbp
         );

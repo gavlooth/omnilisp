@@ -88,6 +88,33 @@ fn Value* expand_template(Value* tmpl, MatchResult* bindings, Interp* interp, Ge
     }
 }
 
+fn Value* expand_template_splice_target(
+    Value* var_sym,
+    Value* remaining,
+    MatchResult* bindings,
+    Interp* interp,
+    GensymTable* gensyms,
+    CapturedBinding* captured,
+    usz captured_count
+) {
+    if (var_sym == null || var_sym.tag != SYMBOL) {
+        return make_error(interp, "macro template splice target must be a symbol");
+    }
+
+    Value* spliced = null;
+    bool has_binding = template_lookup_binding(bindings, var_sym.sym_val, &spliced);
+    if (!has_binding) {
+        return make_error(interp, "macro template splice target has no binding");
+    }
+    if (!is_nil(spliced) && !is_cons(spliced)) {
+        return make_error(interp, "macro template splice target must be a list");
+    }
+
+    Value* expanded_rest = expand_template_list(remaining, bindings, interp, gensyms, captured, captured_count);
+    if (expanded_rest != null && expanded_rest.tag == ERROR) return expanded_rest;
+    return append_values(spliced, expanded_rest, interp);
+}
+
 /**
  * Expand a template list, handling ".." splice.
  * When we see (.. var rest...) in a list, we splice var's bound value.
@@ -106,22 +133,37 @@ fn Value* expand_template_list(Value* list, MatchResult* bindings, Interp* inter
         }
         Value* var_sym = rest_after_dotdot.cons_val.car;
         Value* remaining = rest_after_dotdot.cons_val.cdr;
-        if (var_sym == null || var_sym.tag != SYMBOL) {
-            return make_error(interp, "macro template splice target must be a symbol");
-        }
+        return expand_template_splice_target(
+            var_sym,
+            remaining,
+            bindings,
+            interp,
+            gensyms,
+            captured,
+            captured_count
+        );
+    }
 
-        Value* spliced = null;
-        bool has_binding = template_lookup_binding(bindings, var_sym.sym_val, &spliced);
-        if (!has_binding) {
-            return make_error(interp, "macro template splice target has no binding");
+    if (head != null && head.tag == CONS && head.cons_val.car != null &&
+        head.cons_val.car.tag == SYMBOL && head.cons_val.car.sym_val == interp.sym_dotdot) {
+        Value* rest_after_dotdot = head.cons_val.cdr;
+        if (!is_cons(rest_after_dotdot)) {
+            return make_error(interp, "macro template splice requires a following symbol");
         }
-        if (!is_nil(spliced) && !is_cons(spliced)) {
-            return make_error(interp, "macro template splice target must be a list");
+        Value* var_sym = rest_after_dotdot.cons_val.car;
+        Value* after_var = rest_after_dotdot.cons_val.cdr;
+        if (!is_nil(after_var)) {
+            return make_error(interp, "macro template splice expects exactly one symbol argument");
         }
-
-        Value* expanded_rest = expand_template_list(remaining, bindings, interp, gensyms, captured, captured_count);
-        if (expanded_rest != null && expanded_rest.tag == ERROR) return expanded_rest;
-        return append_values(spliced, expanded_rest, interp);
+        return expand_template_splice_target(
+            var_sym,
+            list.cons_val.cdr,
+            bindings,
+            interp,
+            gensyms,
+            captured,
+            captured_count
+        );
     }
 
     Value* expanded_car = expand_template(head, bindings, interp, gensyms, captured, captured_count);

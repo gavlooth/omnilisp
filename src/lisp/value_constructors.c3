@@ -287,8 +287,12 @@ fn Value* make_ffi_handle_ex_with_descriptor(
 
 fn Value* make_error(Interp* interp, char[] msg) {
     Value* v = interp.alloc_value();
+    if (v == null) return make_static_out_of_memory_error(msg);
     v.tag = ERROR;
-    main::scope_register_dtor(interp.current_scope, (void*)v, &scope_dtor_value);
+    v.string_heap_owned = false;
+    if (!main::scope_register_dtor(interp.current_scope, (void*)v, &scope_dtor_value)) {
+        return make_static_out_of_memory_error(msg);
+    }
     usz len = msg.len;
     usz cap = len + 1;
     if (cap < 32) cap = 32;
@@ -299,7 +303,6 @@ fn Value* make_error(Interp* interp, char[] msg) {
     if (v.str_chars == null) {
         v.str_len = fallback.len;
         v.str_chars = (char*)fallback.ptr;
-        v.string_heap_owned = false;
         return v;
     }
     v.string_heap_owned = true;

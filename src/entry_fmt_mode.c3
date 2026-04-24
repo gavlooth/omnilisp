@@ -20,7 +20,8 @@ fn int run_fmt_mode(int argc, char** argv, int fmt_idx) {
         return print_unexpected_mode_arg("--fmt", extra);
     }
 
-    char[] input_path = input_file[:cstr_len(input_file)];
+    char[] input_path;
+    if (!cli_cstr_slice(input_file, &input_path)) return print_cli_cstr_too_long("--fmt input file");
     if (try source = io::file::load_temp((String)input_path)) {
         FmtFormatResult formatted_result = formatted_text(source);
         if (!formatted_result.ok) return print_fmt_structure_error(input_file);
@@ -32,28 +33,9 @@ fn int run_fmt_mode(int argc, char** argv, int fmt_idx) {
         }
 
         if (write) {
-            if (try file = io::file::open((String)input_path, "w")) {
-                char[] remaining = formatted;
-                bool write_ok = true;
-                while (write_ok && remaining.len > 0) {
-                    usz? written_opt = file.write(remaining);
-                    if (catch err = written_opt) {
-                        write_ok = false;
-                        break;
-                    }
-                    if (written_opt == 0) {
-                        write_ok = false;
-                        break;
-                    }
-                    remaining = remaining[written_opt..];
-                }
-                if (catch err = file.close()) write_ok = false;
-                if (!write_ok) {
-                    return print_fmt_write_error(input_file);
-                }
-                return 0;
-            }
-            return print_fmt_write_error(input_file);
+            EntryFileWriteKind write_kind = ENTRY_FILE_WRITE_GENERIC_FAILURE;
+            if (!entry_write_text_atomic(input_path, formatted, &write_kind)) return print_fmt_write_error(input_file);
+            return 0;
         }
 
         io::print((String)formatted);

@@ -154,6 +154,88 @@ fn void run_scheduler_os_thread_null_completion_fail_closed_boundary_tests(Inter
         pass,
         fail
     );
+
+    run_scheduler_os_thread_cancel_start_handle_cleanup_failure_test(interp, pass, fail);
+}
+
+fn void scheduler_test_noop_thread_entry(void* ctx) {
+    (void)ctx;
+}
+
+fn void run_scheduler_os_thread_cancel_start_handle_cleanup_failure_test(Interp* interp, int* pass, int* fail) {
+    // Invariant: cancel-start completion allocation failure must drop any
+    // joinable thread handle before the entry is cleared.
+    SchedulerBoundarySnapshot saved = scheduler_capture_runtime_boundary_snapshot(interp);
+
+    bool ok = true;
+    char[] failed_phase = "";
+
+    scheduler_init();
+    usz saved_fiber_count = g_scheduler.fiber_count;
+    usz saved_current_fiber_id = g_scheduler.current_fiber_id;
+    bool saved_running = g_scheduler.running;
+    uint saved_os_thread_generation_seed = g_scheduler.os_thread_generation_seed;
+    int saved_force_fail = g_scheduler_force_transition_completion_alloc_fail_nth;
+
+    usz thread_id = scheduler_alloc_os_thread();
+    uint generation = 0;
+    void* thread_handle = null;
+    if (thread_id == NO_OS_THREAD ||
+        !scheduler_get_os_thread_generation(thread_id, &generation) ||
+        generation == 0) {
+        ok = false;
+        failed_phase = "alloc";
+    } else {
+        thread_handle = omni_uv_thread_new();
+        if (thread_handle == null) {
+            ok = false;
+            failed_phase = "handle";
+        } else if (omni_uv_thread_start(thread_handle, &scheduler_test_noop_thread_entry, null) != 0) {
+            ok = false;
+            failed_phase = "start";
+            omni_uv_thread_free(thread_handle);
+            thread_handle = null;
+        } else {
+            OsThreadEntry* entry = &g_scheduler.os_threads[thread_id];
+            entry.cancel_requested = true;
+            entry.thread_created = true;
+            entry.thread_handle = thread_handle;
+
+            g_scheduler_force_transition_completion_alloc_fail_nth = 1;
+            bool began = scheduler_try_begin_os_thread(thread_id, generation);
+            g_scheduler_force_transition_completion_alloc_fail_nth = saved_force_fail;
+
+            bool dropped = !scheduler_os_thread_exists(thread_id, generation);
+            bool handle_cleared = g_scheduler.os_threads[thread_id].thread_handle == null;
+            bool state_ok = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
+            ok = !began && dropped && handle_cleared && state_ok;
+            if (!began) {
+                failed_phase = "begin";
+            } else if (!dropped || !handle_cleared) {
+                failed_phase = "drop";
+            } else if (!state_ok) {
+                failed_phase = "boundary";
+            }
+        }
+    }
+
+    if (thread_id != NO_OS_THREAD && scheduler_os_thread_exists(thread_id, generation)) {
+        scheduler_drop_os_thread(thread_id, generation);
+    }
+    g_scheduler_force_transition_completion_alloc_fail_nth = saved_force_fail;
+    g_scheduler.running = saved_running;
+    g_scheduler.current_fiber_id = saved_current_fiber_id;
+    g_scheduler.fiber_count = saved_fiber_count;
+    g_scheduler.os_thread_generation_seed = saved_os_thread_generation_seed;
+
+    scheduler_test_finish_phase(
+        ok,
+        failed_phase,
+        "[PASS] scheduler os-thread cancel-start handle cleanup failure",
+        "[FAIL] scheduler os-thread cancel-start handle cleanup failure (%s)",
+        pass,
+        fail
+    );
 }
 
 fn void run_scheduler_waiter_take_does_not_strand_blocked_fiber_boundary_tests(Interp* interp, int* pass, int* fail) {

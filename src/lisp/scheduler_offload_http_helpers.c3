@@ -57,6 +57,12 @@ fn bool scheduler_append_offload_response_chunk(
     OffloadCompletion* completion
 ) {
     if (chunk_len == 0) return true;
+    if (*len_ref >= ASYNC_IO_HTTP_RESPONSE_READ_MAX_BYTES ||
+            chunk_len > ASYNC_IO_HTTP_RESPONSE_READ_MAX_BYTES - *len_ref) {
+        scheduler_discard_offload_response_buffer(buf_ref, len_ref, cap_ref);
+        scheduler_set_offload_error(completion, "offload http-get: response too large");
+        return false;
+    }
     if (chunk_len > usz.max - *len_ref) {
         scheduler_discard_offload_response_buffer(buf_ref, len_ref, cap_ref);
         scheduler_set_offload_error(completion, "offload http-get: response too large");
@@ -71,6 +77,11 @@ fn bool scheduler_append_offload_response_chunk(
 
     for (usz i = 0; i < chunk_len; i++) (*buf_ref)[*len_ref + i] = chunk[i];
     *len_ref = next_len;
+    if (http_response_declares_over_read_cap((*buf_ref)[:*len_ref], ASYNC_IO_HTTP_RESPONSE_READ_MAX_BYTES)) {
+        scheduler_discard_offload_response_buffer(buf_ref, len_ref, cap_ref);
+        scheduler_set_offload_error(completion, "offload http-get: response too large");
+        return false;
+    }
     return true;
 }
 

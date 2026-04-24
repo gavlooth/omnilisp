@@ -140,6 +140,63 @@ fn void run_deduce_rule_head_integrity_tests(Interp* interp, int* pass, int* fai
         fail
     );
 
+    {
+        bool ok = false;
+        EvalResult setup_result = run(
+            "(block "
+            "  (define db-deferred-ref-open-fail (deduce 'open 'memory)) "
+            "  (define [relation db-deferred-ref-open-fail] users-deferred-ref-open-fail (key id) (name)) "
+            "  (define [relation db-deferred-ref-open-fail] audit-deferred-ref-open-fail (ref users-deferred-ref-open-fail id user-id) (action)) "
+            "  (deduce 'fact! users-deferred-ref-open-fail 7 \"Ada\") "
+            "  (deduce 'fact! audit-deferred-ref-open-fail 7 \"login\") "
+            "  true)",
+            interp
+        );
+        Value* users_val = interp.global_env.lookup(interp.symbols.intern("users-deferred-ref-open-fail"));
+        if (!setup_result.error.has_error &&
+            users_val != null &&
+            users_val.tag == FFI_HANDLE &&
+            users_val.ffi_val != null &&
+            users_val.ffi_val.lib_handle != null) {
+            Relation* users = (Relation*)users_val.ffi_val.lib_handle;
+            DeduceDb* db = users.db;
+            if (db != null && db.relation_schemas != null) {
+                SymbolId saved_name = (SymbolId)0;
+                DeduceRelationSchema* audit_schema = null;
+                for (usz i = 0; i < db.relation_schema_count; i++) {
+                    DeduceRelationSchema* schema = &db.relation_schemas[i];
+                    if (schema.reference_constraint_count > 0 &&
+                        schema.reference_constraints != null &&
+                        schema.reference_constraints[0].target_relation == users.name) {
+                        audit_schema = schema;
+                        saved_name = schema.name;
+                        schema.name = interp.symbols.intern("__deduce_missing_deferred_source_for_scan");
+                        break;
+                    }
+                }
+
+                EvalResult r = run(
+                    "(block "
+                    "  (define tx (deduce 'block db-deferred-ref-open-fail 'write-deferred)) "
+                    "  (deduce 'retract! tx users-deferred-ref-open-fail 7 \"Ada\") "
+                    "  (handle (deduce 'commit tx) (raise payload payload)))",
+                    interp
+                );
+                if (audit_schema != null) audit_schema.name = saved_name;
+                ok = !r.error.has_error &&
+                     deduce_test_payload_code_equals(interp, r.value, "deduce/deferred-integrity-scan-failed");
+                run_clear_stale_raise_state(interp);
+            }
+        }
+        if (ok) {
+            emit_pass_literal("[PASS] deduce deferred commit fails closed when reference source cannot open");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] deduce deferred commit fails closed when reference source cannot open");
+            (*fail)++;
+        }
+    }
+
     deduce_test_expect_true_symbol(
         interp,
         "(block "
@@ -284,6 +341,35 @@ fn void run_deduce_deferred_integrity_commit_tests(Interp* interp, int* pass, in
         pass,
         fail
     );
+
+    {
+        bool saved_force = g_deduce_force_deferred_integrity_scan_end_fail;
+        g_deduce_force_deferred_integrity_scan_end_fail = true;
+        EvalResult r = run(
+            "(block "
+            "  (define db-deferred-scan-fail (deduce 'open 'memory)) "
+            "  (define [relation db-deferred-scan-fail] rel-deferred-scan-fail (key id) (name)) "
+            "  (define tx (deduce 'block db-deferred-scan-fail 'write-deferred)) "
+            "  (deduce 'fact! tx rel-deferred-scan-fail 1 \"Ada\") "
+            "  (handle (deduce 'commit tx) (raise payload payload)))",
+            interp
+        );
+        g_deduce_force_deferred_integrity_scan_end_fail = saved_force;
+        EvalResult count_r = run("(deduce 'count rel-deferred-scan-fail)", interp);
+        bool ok = !r.error.has_error &&
+                  deduce_test_payload_code_equals(interp, r.value, "deduce/deferred-integrity-scan-failed") &&
+                  !count_r.error.has_error &&
+                  is_int(count_r.value) &&
+                  count_r.value.int_val == 0;
+        run_clear_stale_raise_state(interp);
+        if (ok) {
+            emit_pass_literal("[PASS] deduce deferred commit fails closed when fact snapshot scan fails");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] deduce deferred commit fails closed when fact snapshot scan fails");
+            (*fail)++;
+        }
+    }
 
     deduce_test_expect_true_symbol(
         interp,

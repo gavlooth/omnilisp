@@ -96,6 +96,24 @@ fn bool deduce_query_expr_try_extract_control_flow_literal_value(
                 out_value
             );
         }
+        case E_WITH_MODULE: {
+            Expr* tail = null;
+            Env* scoped_env = null;
+            if (!deduce_query_expr_try_open_with_module_tail_env(
+                    expr,
+                    capture_env,
+                    interp,
+                    &tail,
+                    &scoped_env
+                )) return false;
+            return deduce_query_expr_try_extract_literal_value(
+                tail,
+                row_param,
+                scoped_env,
+                interp,
+                out_value
+            );
+        }
         default:
             return false;
     }

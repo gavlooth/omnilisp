@@ -41,7 +41,9 @@ fn Value* prim_tls_read(Value*[] args, Env* env, Interp* interp) {
             return tls_raise_async(interp, "io/tls-read-max-bytes-invalid", "tls-read: max-bytes must be > 0");
         }
         max_bytes = (usz)requested;
-        if (max_bytes > 65536) max_bytes = 65536;
+        if (max_bytes > 65536) {
+            return tls_raise_async(interp, "io/tls-read-max-bytes-too-large", "tls-read: max-bytes must be <= 65536");
+        }
     }
 
     Value* runtime_err = tls_require_async_runtime(

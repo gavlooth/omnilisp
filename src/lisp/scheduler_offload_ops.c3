@@ -3,11 +3,14 @@ module lisp;
 import std::io;
 
 fn bool scheduler_offload_read_file(SharedHandle* path_blob, OffloadCompletion* completion) {
-    char[] path = "";
-    if (!scheduler_project_shared(path_blob, &path)) {
+    char* path_heap = null;
+    usz path_len = 0;
+    if (!scheduler_copy_shared_bytes_owned(path_blob, &path_heap, &path_len)) {
         scheduler_set_offload_error(completion, "offload read-file: missing/invalid path");
         return false;
     }
+    defer mem::free(path_heap);
+    char[] path = path_heap[:path_len];
 
     char* content_buf = null;
     usz content_len = 0;
@@ -112,11 +115,14 @@ fn bool scheduler_build_atomic_temp_path(
 }
 
 fn bool scheduler_offload_write_file(SharedHandle* payload_blob, OffloadCompletion* completion) {
-    char[] payload = "";
-    if (!scheduler_project_shared(payload_blob, &payload)) {
+    char* payload_heap = null;
+    usz payload_len = 0;
+    if (!scheduler_copy_shared_bytes_owned(payload_blob, &payload_heap, &payload_len)) {
         scheduler_set_offload_error(completion, "offload write-file: missing payload");
         return false;
     }
+    defer mem::free(payload_heap);
+    char[] payload = payload_heap[:payload_len];
 
     char[] path = "";
     char[] content = "";
@@ -142,8 +148,15 @@ fn bool scheduler_offload_write_file(SharedHandle* payload_blob, OffloadCompleti
 
     usz written = 0;
     bool write_ok = true;
-    while (written < content.len) {
-        long n = omni_uv_fs_write(fd, content.ptr + written, content.len - written);
+    usz max_chunk = omni_uv_fs_max_buf_len();
+    if (max_chunk == 0) {
+        write_ok = false;
+        scheduler_set_offload_error(completion, "offload write-file: write failed");
+    }
+    while (write_ok && written < content.len) {
+        usz remaining = content.len - written;
+        usz chunk_len = remaining > max_chunk ? max_chunk : remaining;
+        long n = omni_uv_fs_write(fd, content.ptr + written, chunk_len);
         if (n <= 0) {
             write_ok = false;
             scheduler_set_offload_error_with_status(completion, "offload write-file: write failed", (int)n);
@@ -177,11 +190,14 @@ fn bool scheduler_offload_write_file(SharedHandle* payload_blob, OffloadCompleti
 }
 
 fn bool scheduler_offload_file_exists(SharedHandle* path_blob, OffloadCompletion* completion) {
-    char[] path = "";
-    if (!scheduler_project_shared(path_blob, &path)) {
+    char* path_heap = null;
+    usz path_len = 0;
+    if (!scheduler_copy_shared_bytes_owned(path_blob, &path_heap, &path_len)) {
         scheduler_set_offload_error(completion, "offload file-exists: missing/invalid path");
         return false;
     }
+    defer mem::free(path_heap);
+    char[] path = path_heap[:path_len];
 
     ulong size_out = 0;
     uint mode_out = 0;
@@ -211,8 +227,15 @@ fn OffloadCompletion* scheduler_execute_offload(OffloadWork work) {
 
     switch (work.op) {
         case OFFLOAD_SLEEP_MS:
-            if (work.int_arg > 0) c_usleep((uint)(work.int_arg * 1000));
-            completion.kind = OFFLOAD_RES_NIL;
+            if (scheduler_sleep_ms_in_range(work.int_arg)) {
+                c_usleep(scheduler_sleep_ms_to_usec(work.int_arg));
+                completion.kind = OFFLOAD_RES_NIL;
+            } else {
+                scheduler_set_offload_error(
+                    completion,
+                    "offload sleep-ms: milliseconds must be positive and within scheduler range"
+                );
+            }
         case OFFLOAD_GZIP:
             scheduler_offload_compress(true, work.shared, completion);
         case OFFLOAD_DEFLATE:

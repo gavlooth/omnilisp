@@ -100,6 +100,8 @@ fn void scope_reset_temp_lane(ScopeRegion* scope) {
     scope.limit = scope.bump + keep.capacity;
 
     scope.dtors = null;
+    scope.alloc_bytes = 0;
+    scope.alloc_count = 0;
     scope_assert_escape_tail_consistency(scope);
 }
 

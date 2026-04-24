@@ -104,8 +104,8 @@ These support user extension via method tables.
 | `values` | 1 | Collection |
 | `has?` | 2 | Collection |
 | `remove!` | 2 | Collection |
-| `sort` | 1 | Sorting |
-| `sort-by` | 2 | Sorting |
+| `sort` | 1 | Sort a proper list of numbers/strings |
+| `sort-by` | 2 | Sort a proper list with a two-argument or curried comparator; positive numeric or truthy means left moves after right, while `nil` and `false` are false |
 | `string-append` | variadic | String |
 | `str` | 1 | String interpolation macro for string literals with `{expr}` holes |
 | `string-contains?` | 2 | String |
@@ -161,7 +161,7 @@ These support user extension via method tables.
 | Name | Arity | Description |
 |------|-------|-------------|
 | `fs-open` | variadic | Open file handle with mode/options |
-| `fs-read` | 2 | Read bytes/chars from handle |
+| `fs-read` | 2 | Read up to 8 MiB from a handle in one call |
 | `fs-write` | 2 | Write bytes/chars to handle |
 | `fs-close` | 1 | Close file handle |
 | `fs-stat` | 1 | File metadata lookup |
@@ -183,7 +183,7 @@ not exported.
 | `string-length` | 1 | Codepoint length |
 | `string-byte-length` | 1 | Byte length |
 | `string-trim` | 1 | Trim whitespace |
-| `string-index-of` | 2 | Find index |
+| `string-index-of` | 2 | Find zero-based codepoint index |
 | `string-replace` | 3 | Replace occurrences |
 | `char-at` | 2 | Char at index |
 | `string-repeat` | 2 | Repeat N times |
@@ -607,8 +607,8 @@ that require importing a detachable Pika package.
 | `uuid` | 1 | Validate and return a canonical UUID string; reader tag form is `#uuid "..."` |
 | `toml-parse` | 1-2 | Parse TOML string (optional options list: `((check-utf8 false))`)
 | `toml` | 1-2 | Alias for `toml-parse`; reader tag form is `#toml "..."` |
-| `csv-parse` | 1-2 | Parse CSV text into rows (`delimiter` string or option list including `strict`; strict/default enforces RFC-4180 CRLF row endings) |
-| `csv-emit` | 1-2 | Emit rows as CSV text (`delimiter`, `line-ending`, `quote-char`, `quote-style`, `nil-as`, `strict`; strict/default line ending is `\\r\\n`) |
+| `csv-parse` | 1-2 | Parse CSV text into rows (`delimiter` must be a one-codepoint string; option list may include `strict`; strict/default enforces RFC-4180 CRLF row endings) |
+| `csv-emit` | 1-2 | Emit rows as CSV text (`delimiter`/`quote-char` must be one-codepoint strings; `line-ending`, `quote-style`, `nil-as`, `strict`; strict/default line ending is `\\r\\n` and rejects `quote-style 'none` when raw cells contain delimiter, quote char, CR, or LF) |
 
 **Compression:**
 
@@ -628,15 +628,15 @@ that require importing a detachable Pika package.
 | Name | Arity | Description |
 |------|-------|-------------|
 | `__raw-tcp-connect` | 2 | Raw TCP connect |
-| `__raw-tcp-listen` | variadic | Raw TCP listen |
+| `__raw-tcp-listen` | 2-3 | Raw TCP listen |
 | `__raw-tcp-accept` | 1 | Raw TCP accept |
-| `__raw-tcp-read` | variadic | Raw TCP read |
+| `__raw-tcp-read` | 1-3 | Raw TCP read |
 | `__raw-tcp-write` | 2 | Raw TCP write |
 | `__raw-tcp-close` | 1 | Raw TCP close |
 | `__raw-udp-socket` | 0 | Raw UDP socket create |
-| `__raw-udp-bind` | variadic | Raw UDP bind |
-| `__raw-udp-send` | variadic | Raw UDP send |
-| `__raw-udp-recv` | variadic | Raw UDP receive |
+| `__raw-udp-bind` | 3 | Raw UDP bind |
+| `__raw-udp-send` | 4 | Raw UDP send |
+| `__raw-udp-recv` | 1-2 | Raw UDP receive |
 | `__raw-udp-close` | 1 | Raw UDP close |
 | `__raw-pipe-connect` | 1 | Raw Unix socket connect |
 | `__raw-pipe-listen` | 1 | Raw Unix socket listen |

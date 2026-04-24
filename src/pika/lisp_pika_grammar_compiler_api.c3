@@ -53,9 +53,17 @@ fn bool parse_rule_definition(GrammarCompiler* gc, lisp::Value* rule_def, lisp::
 }
 
 fn void gc_register_rule(GrammarCompiler* gc, lisp::Interp* interp, lisp::SymbolId rule_name, int clause_idx) {
-    int existing = gc.find_rule(rule_name);
-    if (existing >= 0) {
+    int existing_slot = gc.find_rule_slot(rule_name);
+    if (existing_slot >= 0) {
+        if (gc.rule_declared[existing_slot]) {
+            gc_set_error(gc, "parser/grammar-duplicate-rule", "pika/grammar: duplicate rule name");
+            return;
+        }
+
+        int existing = gc.rule_indices[existing_slot];
         gc.rb.rules[existing].clause = gc.rb.rules[clause_idx].clause;
+        gc.rb.rules[clause_idx].clause = mk_fail();
+        gc.rule_declared[existing_slot] = true;
         if (gc.start_rule_index < 0) gc.start_rule_index = existing;
         return;
     }
@@ -64,27 +72,49 @@ fn void gc_register_rule(GrammarCompiler* gc, lisp::Interp* interp, lisp::Symbol
     if (!gc_ensure_rule_capacity(gc)) return;
     gc.rule_names[gc.rule_count] = rule_name;
     gc.rule_indices[gc.rule_count] = clause_idx;
+    gc.rule_declared[gc.rule_count] = true;
     gc.rule_count++;
     if (gc.start_rule_index < 0) gc.start_rule_index = clause_idx;
 }
 
-fn lisp::Value* finalize_named_grammar(lisp::Interp* interp, lisp::SymbolId grammar_name, GrammarCompiler* gc) {
+fn bool gc_has_unresolved_rule(GrammarCompiler* gc) {
+    for (int i = 0; i < gc.rule_count; i++) {
+        if (!gc.rule_declared[i]) return true;
+    }
+    return false;
+}
+
+fn lisp::Value* finalize_named_grammar(lisp::Interp* interp, lisp::SymbolId grammar_name, GrammarCompiler* gc, bool* builder_payloads_moved) {
     if (gc.rb.len == 0) {
         return parser_raise(interp, "parser/grammar-no-rules", "pika/grammar: grammar has no rules");
     }
     if (gc.start_rule_index < 0) {
         return parser_raise(interp, "parser/grammar-no-rules", "pika/grammar: grammar has no rules");
     }
+    if (gc_has_unresolved_rule(gc)) {
+        return parser_raise(interp, "parser/grammar-undefined-rule", "pika/grammar: unresolved rule reference");
+    }
+    if (named_grammar_exists(grammar_name)) {
+        return parser_raise(interp, "parser/grammar-duplicate-name", "pika/grammar: grammar name is already defined");
+    }
 
     String[] starts = mem::new_array(String, 1);
+    defer mem::free(starts.ptr);
     starts[0] = gc.rb.rules[gc.start_rule_index].name;
     Grammar grammar = make_grammar(starts, gc.rb.to_array());
+    *builder_payloads_moved = true;
     int start_clause = find_name_index(&grammar, starts[0]);
     if (start_clause < 0) {
+        regex_release_grammar_allocations(&grammar);
         return parser_raise(interp, "parser/grammar-missing-start-rule", "pika/grammar: failed to resolve start rule");
     }
 
-    if (!store_named_grammar(grammar_name, grammar, start_clause)) {
+    bool duplicate_name = false;
+    if (!store_named_grammar(grammar_name, grammar, start_clause, &duplicate_name)) {
+        regex_release_grammar_allocations(&grammar);
+        if (duplicate_name) {
+            return parser_raise(interp, "parser/grammar-duplicate-name", "pika/grammar: grammar name is already defined");
+        }
         return parser_raise(interp, "parser/grammar-oom", "pika/grammar: failed to grow grammar table");
     }
     return lisp::make_symbol(interp, grammar_name);
@@ -110,9 +140,11 @@ fn lisp::Value* prim_pika_grammar(lisp::Value*[] args, lisp::Env* env, lisp::Int
     // Initialize compiler
     GrammarCompiler gc;
     gc.init(interp);
-    defer mem::free(gc.rb.rules.ptr);
+    bool grammar_transferred = false;
+    defer regex_release_rule_builder(&gc.rb, grammar_transferred);
     defer if (gc.rule_names != null) mem::free(gc.rule_names);
     defer if (gc.rule_indices != null) mem::free(gc.rule_indices);
+    defer if (gc.rule_declared != null) mem::free(gc.rule_declared);
     if (gc.has_error) {
         return parser_raise(interp, gc.error_code, gc.error_message);
     }
@@ -130,6 +162,7 @@ fn lisp::Value* prim_pika_grammar(lisp::Value*[] args, lisp::Env* env, lisp::Int
         int clause_idx = compile_clause(&gc, clause);
         if (gc.has_error) return parser_raise(interp, gc.error_code, gc.error_message);
         gc_register_rule(&gc, interp, rule_name, clause_idx);
+        if (gc.has_error) return parser_raise(interp, gc.error_code, gc.error_message);
     }
-    return finalize_named_grammar(interp, grammar_name, &gc);
+    return finalize_named_grammar(interp, grammar_name, &gc, &grammar_transferred);
 }

@@ -20,14 +20,28 @@ fn usz Compiler.compile_when_unless_if(Compiler* self, Expr* expr, bool when_for
     } else if (branch_count == 1) {
         branch = expr.call.args[1];
     } else {
-        branch = self.interp.alloc_expr();
-        assert(branch != null, "compile_when_unless_if: failed to allocate block expression");
+        branch = (Expr*)ast_arena_alloc(&self.interp.ast_arena, Expr.sizeof);
+        if (branch == null) {
+            self.set_compile_error("compiler: out of memory while allocating when/unless synthetic block expression");
+            return usz.max;
+        }
         branch.tag = E_BLOCK;
         branch.block = (ExprBlock*)ast_arena_alloc(&self.interp.ast_arena, ExprBlock.sizeof);
-        assert(branch.block != null, "compile_when_unless_if: failed to allocate block payload");
+        if (branch.block == null) {
+            self.set_compile_error("compiler: out of memory while allocating when/unless synthetic block payload");
+            return usz.max;
+        }
         branch.block.expr_count = branch_count;
-        branch.block.exprs = (Expr**)ast_arena_alloc(&self.interp.ast_arena, Expr*.sizeof * branch_count);
-        assert(branch.block.exprs != null || branch_count == 0, "compile_when_unless_if: failed to allocate block expressions");
+        usz exprs_size = 0;
+        if (!compiler_checked_mul_usz(Expr*.sizeof, branch_count, &exprs_size)) {
+            self.set_compile_error("compiler: when/unless synthetic block expression array size overflow");
+            return usz.max;
+        }
+        branch.block.exprs = (Expr**)ast_arena_alloc(&self.interp.ast_arena, exprs_size);
+        if (branch.block.exprs == null) {
+            self.set_compile_error("compiler: out of memory while allocating when/unless synthetic block expressions");
+            return usz.max;
+        }
         for (usz i = 0; i < branch_count; i++) {
             branch.block.exprs[i] = expr.call.args[i + 1];
         }
@@ -49,6 +63,7 @@ fn usz Compiler.compile_call_flat(Compiler* self, Expr* expr) {
     if (self.call_is_explain_thunked(expr)) {
         usz explain_r = self.compile_explain_flat(expr);
         if (explain_r != usz.max) return explain_r;
+        if (self.has_error) return usz.max;
     }
 
     if (arg_count >= 1) {
@@ -58,6 +73,7 @@ fn usz Compiler.compile_call_flat(Compiler* self, Expr* expr) {
 
     if (arg_count == 0) {
         usz func_r = self.compile_to_temp(expr.call.func);
+        if (self.has_error || func_r == usz.max) return usz.max;
         usz id = self.next_result();
         self.emit_temp_decl(id);
         self.emit(" = aot::apply_multi(");
@@ -66,11 +82,14 @@ fn usz Compiler.compile_call_flat(Compiler* self, Expr* expr) {
         return id;
     }
 
-    usz[] arg_temps = self.compile_call_arg_temps(expr.call.args, arg_count);
+    usz[] arg_temps = {};
+    if (!self.compile_call_arg_temps(expr.call.args, arg_count, &arg_temps)) return usz.max;
     defer mem::free(arg_temps.ptr);
 
     usz func_r = self.compile_to_temp(expr.call.func);
+    if (self.has_error || func_r == usz.max) return usz.max;
     usz args_list = self.build_arg_list_from_temps(arg_temps, arg_count);
+    if (args_list == usz.max) return usz.max;
 
     usz id = self.next_result();
     self.emit_temp_decl(id);
@@ -90,6 +109,7 @@ fn usz Compiler.compile_call_tail_flat(Compiler* self, Expr* expr) {
     if (self.call_is_explain_thunked(expr)) {
         usz explain_r = self.compile_explain_flat(expr);
         if (explain_r != usz.max) return explain_r;
+        if (self.has_error) return usz.max;
     }
 
     // Special cases: list/dict build data structures, delegate to non-tail version
@@ -100,11 +120,14 @@ fn usz Compiler.compile_call_tail_flat(Compiler* self, Expr* expr) {
 
     if (arg_count == 0) return self.compile_zero_arg_tail_call(expr);
 
-    usz[] arg_temps = self.compile_call_arg_temps(expr.call.args, arg_count);
+    usz[] arg_temps = {};
+    if (!self.compile_call_arg_temps(expr.call.args, arg_count, &arg_temps)) return usz.max;
     defer mem::free(arg_temps.ptr);
 
     usz func_r = self.compile_to_temp(expr.call.func);
+    if (self.has_error || func_r == usz.max) return usz.max;
     usz args_list = self.build_arg_list_from_temps(arg_temps, arg_count);
+    if (args_list == usz.max) return usz.max;
 
     usz id = self.next_result();
     self.emit_temp_decl(id);
@@ -120,7 +143,9 @@ fn usz Compiler.compile_call_tail_flat(Compiler* self, Expr* expr) {
 
 fn usz Compiler.compile_app_flat(Compiler* self, Expr* expr) {
     usz func_r = self.compile_to_temp(expr.app.func);
+    if (self.has_error || func_r == usz.max) return usz.max;
     usz arg_r = self.compile_to_temp(expr.app.arg);
+    if (self.has_error || arg_r == usz.max) return usz.max;
     usz id = self.next_result();
     self.emit_temp_decl(id);
     self.emit(" = aot::invoke(");
@@ -133,7 +158,9 @@ fn usz Compiler.compile_app_flat(Compiler* self, Expr* expr) {
 
 fn usz Compiler.compile_app_tail_flat(Compiler* self, Expr* expr) {
     usz func_r = self.compile_to_temp(expr.app.func);
+    if (self.has_error || func_r == usz.max) return usz.max;
     usz arg_r = self.compile_to_temp(expr.app.arg);
+    if (self.has_error || arg_r == usz.max) return usz.max;
     usz id = self.next_result();
     self.emit_temp_decl(id);
     self.emit(" = aot::invoke_tail(");

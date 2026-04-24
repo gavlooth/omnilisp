@@ -371,6 +371,7 @@ fn Value* stable_escape_prepare_and_materialize_value(Interp* interp, Value* roo
 ) {
     if (interp == null || root == null || target_scope == null) return null;
     StableEscapePreparedGraphScratch scratch = {};
+    defer stable_escape_prepare_graph_scratch_free(&scratch);
     scratch.global_env = interp.global_env;
     usz root_index = STABLE_ESCAPE_PREPARED_INVALID_INDEX;
     if (!stable_escape_prepare_graph_node(&scratch, root, &root_index)) return null;
@@ -385,7 +386,10 @@ fn Value* stable_escape_prepare_and_materialize_value(Interp* interp, Value* roo
     if (build_scope == null) return null;
     defer boundary_destination_build_scope_abort(&build_scope);
 
-    Value*[STABLE_ESCAPE_PREPARED_MAX_NODES] materialized;
+    if (scratch.node_count > usz.max / Value*.sizeof) return null;
+    Value** materialized = (Value**)mem::malloc(Value*.sizeof * scratch.node_count);
+    if (materialized == null) return null;
+    defer mem::free(materialized);
     for (usz i = 0; i < scratch.node_count; i++) materialized[i] = null;
     for (usz i = 0; i < scratch.node_count; i++) {
         Value* dst = stable_escape_materialize_alloc_value(interp, true);
@@ -396,8 +400,8 @@ fn Value* stable_escape_prepare_and_materialize_value(Interp* interp, Value* roo
     }
 
     for (usz i = 0; i < scratch.node_count; i++) {
-        if (!stable_escape_materialize_wire_collection(interp, &scratch, &materialized[0], i)) return null;
-        if (!stable_escape_materialize_wire_hashmap_like(interp, &scratch, &materialized[0], i)) return null;
+        if (!stable_escape_materialize_wire_collection(interp, &scratch, materialized, i)) return null;
+        if (!stable_escape_materialize_wire_hashmap_like(interp, &scratch, materialized, i)) return null;
     }
     for (usz i = 0; i < scratch.node_count; i++) {
         if (!stable_escape_materialize_finalize_closure(interp, &scratch.nodes[i], materialized[i])) return null;

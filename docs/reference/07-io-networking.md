@@ -245,7 +245,9 @@ bundle resolution order is: `OMNI_TLS_CA_FILE`, `SSL_CERT_FILE`, then common
 system CA bundle paths (`/etc/ssl/certs/ca-certificates.crt`, etc.).
 Optional `resume-session?` accepts `true` or `false` as the final argument.
 When `true`, Omni caches a BearSSL client session per hostname in-process and
-tries session resumption on future `tls-connect` calls for that host.
+tries session resumption on future `tls-connect` calls for that host. The
+native cache is bounded to 64 host entries and evicts the least-recently used
+entry when full.
 
 Descriptive aliases are available:
 `tls-connect`, `tls-server-wrap`,
@@ -277,6 +279,9 @@ private key path.
 
 (await hf)   ;; => response dict
 ```
+
+Direct HTTP reads fail closed with `io/http-response-too-large` if the response
+exceeds the runtime response buffer cap.
 
 ### Timer
 

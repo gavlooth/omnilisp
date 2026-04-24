@@ -13,6 +13,7 @@ source scripts/c3c_limits.sh
 : "${OMNI_GLOBAL_GATES_LISP_SLICES:=basic memory-lifetime-smoke memory-lifetime-policy allocator-validation list-closure arithmetic-comparison string-type diagnostics jit-policy advanced escape-scope limit-busting tco-recycling closure-lifecycle pika unicode compression data-format json async reader-dispatch schema deduce scheduler http atomic compiler}"
 : "${OMNI_GLOBAL_GATES_INCLUDE_LIFETIME_SOAK:=0}"
 : "${OMNI_GLOBAL_GATES_INCLUDE_ALLOCATOR_BENCH:=0}"
+: "${OMNI_GLOBAL_GATES_INCLUDE_MEMORY_LIFETIME_BENCH:=0}"
 : "${OMNI_GLOBAL_GATES_INCLUDE_FTXUI_SMOKE:=1}"
 : "${OMNI_GLOBAL_GATES_SKIP_UNSUPPORTED_ASAN:=1}"
 : "${OMNI_GLOBAL_GATES_TEST_QUIET:=1}"
@@ -93,7 +94,7 @@ run_suite() {
         *) lisp_slices="${lisp_slices} allocator-bench" ;;
       esac
     fi
-    if [[ "$OMNI_GLOBAL_GATES_INCLUDE_ALLOCATOR_BENCH" == "1" ]]; then
+    if [[ "$OMNI_GLOBAL_GATES_INCLUDE_MEMORY_LIFETIME_BENCH" == "1" ]]; then
       case " ${lisp_slices} " in
         *" memory-lifetime-bench "*) ;;
         *) lisp_slices="${lisp_slices} memory-lifetime-bench" ;;
@@ -164,7 +165,7 @@ if [[ "$OMNI_HARD_MEM_CAP_METHOD" == "docker" ]]; then
   docker_default_image="$(omni_default_validation_image)"
   echo "docker cap profile: image=${OMNI_DOCKER_IMAGE:-$docker_default_image} cpus=${effective_docker_cpus} pids=${OMNI_DOCKER_PIDS_LIMIT:-512} timeout=${OMNI_DOCKER_TIMEOUT_SEC:-0}s monitor=${OMNI_DOCKER_MONITOR:-1}"
 fi
-echo "lisp slices: ${OMNI_GLOBAL_GATES_LISP_SLICES} include_lifetime_soak=${OMNI_GLOBAL_GATES_INCLUDE_LIFETIME_SOAK} include_allocator_bench=${OMNI_GLOBAL_GATES_INCLUDE_ALLOCATOR_BENCH}"
+echo "lisp slices: ${OMNI_GLOBAL_GATES_LISP_SLICES} include_lifetime_soak=${OMNI_GLOBAL_GATES_INCLUDE_LIFETIME_SOAK} include_allocator_bench=${OMNI_GLOBAL_GATES_INCLUDE_ALLOCATOR_BENCH} include_memory_lifetime_bench=${OMNI_GLOBAL_GATES_INCLUDE_MEMORY_LIFETIME_BENCH}"
 echo ""
 
 echo "=== Stage 0: file size gate ==="

@@ -74,24 +74,9 @@ foreach (item : time_text) {
 }
 
 fn void Compiler.serialize_int_value_to_buf(Compiler* self, long n, List{char}* buf) {
-    if (n < 0) {
-        buf.push('-');
-        n = -n;
-    }
-    if (n == 0) {
-        buf.push('0');
-        return;
-    }
-
     char[32] digits;
-    usz dpos = 0;
-    while (n > 0 && dpos < 31) {
-        digits[dpos++] = (char)('0' + (n % 10));
-        n /= 10;
-    }
-    for (isz di = (isz)dpos - 1; di >= 0; di--) {
-        buf.push(digits[(usz)di]);
-    }
+    char[] rendered = int_to_string(n, digits[..]);
+    self.buf_append(buf, rendered);
 }
 
 fn void Compiler.serialize_double_value_to_buf(Compiler* self, double n, List{char}* buf) {

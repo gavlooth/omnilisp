@@ -64,6 +64,64 @@ fn void run_jit_policy_case(char[] name, JitPolicyTestFn test_fn, Interp* interp
     test_fn(interp, pass, fail);
 }
 
+fn Value* jit_policy_audit_026_raw_arity_probe(Value*[] args, Env* env, Interp* interp) {
+    return make_int(interp, (long)args.len);
+}
+
+fn void run_jit_policy_fixed_arity_raw_effect_payload_arity_gate_test(Interp* interp, int* pass, int* fail) {
+    Value* fixed_prim = make_primitive(interp, "__raw-audit-026-fixed", &jit_policy_audit_026_raw_arity_probe, 2);
+    Value* variadic_prim = make_primitive(interp, "__raw-audit-026-variadic", &jit_policy_audit_026_raw_arity_probe, -1);
+    Value* payload = make_cons(
+        interp,
+        make_int(interp, 1),
+        make_cons(
+            interp,
+            make_int(interp, 2),
+            make_cons(interp, make_int(interp, 3), make_nil(interp))
+        )
+    );
+
+    Value* fixed_result = fixed_prim != null && payload != null
+        ? jit_signal_call_fast_path_primitive_list_preserving_error(interp, fixed_prim, payload)
+        : null;
+    Value* variadic_result = variadic_prim != null && payload != null
+        ? jit_signal_call_fast_path_primitive_list_preserving_error(interp, variadic_prim, payload)
+        : null;
+
+    bool fixed_rejected = fixed_result != null && fixed_result.tag == ERROR;
+    bool variadic_preserved = variadic_result != null && variadic_result.tag == INT;
+
+    if (fixed_rejected && variadic_preserved) {
+        emit_pass_literal("[PASS] jit policy: fixed-arity raw effect packed payload arity gate");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] jit policy: fixed-arity raw effect packed payload arity gate (fixed_tag=%d variadic_tag=%d variadic_value=%d)",
+            fixed_result != null ? (int)fixed_result.tag : -1,
+            variadic_result != null ? (int)variadic_result.tag : -1,
+            variadic_result != null && variadic_result.tag == INT ? (int)variadic_result.int_val : -1
+        );
+        (*fail)++;
+    }
+}
+
+fn void run_jit_policy_with_module_continuation_scan_test(Interp* interp, int* pass, int* fail) {
+    Expr* perform_ast = parse_for_jit("(+ 1 (with math (signal audit/ask 41)))", interp);
+    Expr* shift_ast = parse_for_jit("(+ 1 (with math (capture k k)))", interp);
+    bool ok = perform_ast != null &&
+              shift_ast != null &&
+              expr_contains_perform(perform_ast) &&
+              expr_contains_shift(shift_ast);
+
+    if (ok) {
+        emit_pass_literal("[PASS] jit policy: continuation scan traverses scoped module open bodies");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] jit policy: continuation scan traverses scoped module open bodies");
+        (*fail)++;
+    }
+}
+
 fn void run_jit_policy_tests(Interp* interp, int* pass, int* fail) {
     emit_test_section_banner("JIT Policy Tests");
 
@@ -91,6 +149,8 @@ fn void run_jit_policy_tests(Interp* interp, int* pass, int* fail) {
         run_jit_policy_case("boundary-reset", &run_jit_policy_boundary_reset_test, interp, pass, fail);
         run_jit_policy_case("stale-raise-scrub", &run_jit_policy_stale_raise_scrub_test, interp, pass, fail);
         run_jit_policy_case("variadic-no-fallback", &run_jit_policy_variadic_no_fallback_test, interp, pass, fail);
+        run_jit_policy_case("fixed-arity-raw-effect-payload-arity-gate", &run_jit_policy_fixed_arity_raw_effect_payload_arity_gate_test, interp, pass, fail);
+        run_jit_policy_case("with-module-continuation-scan", &run_jit_policy_with_module_continuation_scan_test, interp, pass, fail);
         run_jit_policy_case("match-binding-growth-failure", &run_jit_policy_match_binding_growth_failure_test, interp, pass, fail);
         run_jit_policy_case("multi-arg-binding-growth-failure", &run_jit_policy_multi_arg_binding_growth_failure_test, interp, pass, fail);
         run_jit_policy_case("tail-constructor-escape-opcode", &run_jit_policy_tail_constructor_escape_opcode_test, interp, pass, fail);
@@ -118,8 +178,11 @@ fn void run_jit_policy_tests(Interp* interp, int* pass, int* fail) {
         run_jit_policy_case("pending-raise-payload-alloc-failure", &run_jit_policy_pending_raise_payload_alloc_failure_test, interp, pass, fail);
         run_jit_policy_case("dispatch-payload-alloc-failure-does-not-preseed-raise", &run_jit_policy_dispatch_payload_alloc_failure_does_not_preseed_raise_test, interp, pass, fail);
         run_jit_policy_case("handle-continuation-alloc-failure", &run_jit_policy_handle_continuation_alloc_failure_test, interp, pass, fail);
+        run_jit_policy_case("continuation-wrapper-alloc-failure", &run_jit_policy_continuation_wrapper_alloc_failure_test, interp, pass, fail);
         run_jit_policy_case("handler-arg-list-alloc-failure", &run_jit_policy_handler_arg_list_alloc_failure_test, interp, pass, fail);
         run_jit_policy_case("handle-clause-bind-failure-releases-continuation", &run_jit_policy_handle_clause_bind_failure_releases_continuation_test, interp, pass, fail);
+        run_jit_policy_case("signal-suspend-failure-clears-handler-state", &run_jit_policy_signal_suspend_failure_clears_handler_state_test, interp, pass, fail);
+        run_jit_policy_case("shift-suspend-failure-discards-continuation", &run_jit_policy_shift_suspend_failure_discards_continuation_test, interp, pass, fail);
         run_jit_policy_case("multi-arg-malformed-list-fails-closed", &run_jit_policy_multi_arg_malformed_list_fails_closed_test, interp, pass, fail);
         run_jit_policy_case("quasiquote-cons-alloc-failure", &run_jit_policy_quasiquote_cons_alloc_failure_test, interp, pass, fail);
         run_jit_policy_case("variadic-rest-list-alloc-failure", &run_jit_policy_variadic_rest_list_alloc_failure_test, interp, pass, fail);

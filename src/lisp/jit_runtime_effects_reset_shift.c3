@@ -101,6 +101,10 @@ fn Value* jit_shift_value(Interp* interp, Value* body) {
     k.ctx = current;
     k.is_coroutine_based = true;
     Value* k_val = make_continuation(interp, k);
+    if (k_val == null || k_val.tag == ERROR) {
+        interp_discard_lisp_continuation(interp, k);
+        return k_val != null ? k_val : make_error(interp, "capture: failed to allocate continuation wrapper");
+    }
 
     rstate.shifted = true;
     rstate.shift_body = body;
@@ -113,6 +117,7 @@ fn Value* jit_shift_value(Interp* interp, Value* body) {
         rstate.shifted = false;
         rstate.shift_body = null;
         rstate.shift_k = null;
+        interp_discard_lisp_continuation(interp, k);
         restore_interp_state_preserve_raise(interp, &saved);
         return raise_error_with_payload_names(
             interp, "runtime", "runtime/suspend-scope-guard", "stack engine: failed to register suspend scope guard"

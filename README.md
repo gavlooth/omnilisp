@@ -142,12 +142,18 @@ Canonical naming is preferred in all surface docs and examples.
 
 ```bash
 # full integration build
-c3c build
+OMNI_HOST_TOOLCHAIN_LIB_PATH="${OMNI_HOST_TOOLCHAIN_LIB_PATH:-/usr/local/lib}"
+LIBRARY_PATH="$OMNI_HOST_TOOLCHAIN_LIB_PATH${LIBRARY_PATH:+:$LIBRARY_PATH}" c3c build
 
 # run the repo-local main binary directly
 # installed/user-facing CLI examples elsewhere in the docs use `omni`
-LD_LIBRARY_PATH=/usr/local/lib ./build/main
+LD_LIBRARY_PATH="$OMNI_HOST_TOOLCHAIN_LIB_PATH${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ./build/main
 ```
+
+`project.json` searches `build`, `/usr/local/lib`, and `deps/lib` for native
+link dependencies such as `lightning`, `replxx`, `omni_chelpers`, and
+`omni_ftxui`. Set `OMNI_HOST_TOOLCHAIN_LIB_PATH` when those libraries live in a
+different local toolchain prefix, for example `$HOME/.local/lib`.
 
 For routine iteration, prefer the fast dev build:
 
@@ -156,7 +162,7 @@ For routine iteration, prefer the fast dev build:
 scripts/build_fast_dev.sh
 
 # run the lean dev binary
-LD_LIBRARY_PATH=/usr/local/lib ./build/dev-fast/main-dev --eval '(+ 1 2)'
+LD_LIBRARY_PATH="$OMNI_HOST_TOOLCHAIN_LIB_PATH${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ./build/dev-fast/main-dev --eval '(+ 1 2)'
 ```
 
 If you are explicitly not working on the deduce runtime, there is a narrower
@@ -164,7 +170,7 @@ optional profile:
 
 ```bash
 scripts/build_fast_nodeduce_dev.sh
-LD_LIBRARY_PATH=/usr/local/lib ./build/dev-fast-nodeduce/main-dev-nodeduce --eval '(+ 1 2)'
+LD_LIBRARY_PATH="$OMNI_HOST_TOOLCHAIN_LIB_PATH${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ./build/dev-fast-nodeduce/main-dev-nodeduce --eval '(+ 1 2)'
 ```
 
 Current local baseline on this repo:

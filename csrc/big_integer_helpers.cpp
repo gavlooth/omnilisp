@@ -1,6 +1,7 @@
 #include <boost/multiprecision/cpp_int.hpp>
 
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <limits>
@@ -80,6 +81,59 @@ cpp_int apply_binary(const cpp_int& lhs, const cpp_int& rhs, int op) {
 
 bool valid_binary_op(int op) {
     return op >= 1 && op <= 10;
+}
+
+int compare_nonnegative_integer_to_positive_double(const cpp_int& lhs, double rhs) {
+    std::uint64_t bits = 0;
+    std::memcpy(&bits, &rhs, sizeof(bits));
+    int exponent_bits = static_cast<int>((bits >> 52) & 0x7ffu);
+    std::uint64_t fraction = bits & ((std::uint64_t{1} << 52) - 1);
+
+    cpp_int significand = 0;
+    int shift = 0;
+    if (exponent_bits == 0) {
+        if (fraction == 0) {
+            if (lhs == 0) return 0;
+            return 1;
+        }
+        significand = fraction;
+        shift = -1074;
+    } else {
+        significand = (cpp_int(1) << 52) + fraction;
+        shift = exponent_bits - 1023 - 52;
+    }
+
+    if (shift >= 0) {
+        cpp_int rhs_int = significand << shift;
+        if (lhs < rhs_int) return -1;
+        if (lhs > rhs_int) return 1;
+        return 0;
+    }
+
+    cpp_int scaled_lhs = lhs << (-shift);
+    if (scaled_lhs < significand) return -1;
+    if (scaled_lhs > significand) return 1;
+    return 0;
+}
+
+int compare_integer_to_double(const cpp_int& lhs, double rhs) {
+    if (std::isnan(rhs)) return 2;
+    if (std::isinf(rhs)) return rhs > 0.0 ? -1 : 1;
+    if (rhs == 0.0) {
+        if (lhs < 0) return -1;
+        if (lhs > 0) return 1;
+        return 0;
+    }
+
+    bool rhs_negative = std::signbit(rhs);
+    if (!rhs_negative) {
+        if (lhs < 0) return -1;
+        return compare_nonnegative_integer_to_positive_double(lhs, rhs);
+    }
+
+    if (lhs >= 0) return 1;
+    cpp_int lhs_abs = -lhs;
+    return -compare_nonnegative_integer_to_positive_double(lhs_abs, -rhs);
 }
 
 } // namespace
@@ -192,6 +246,41 @@ int omni_big_integer_compare_i64(const void* lhs, long rhs) {
     if (*left < right) return -1;
     if (*left > right) return 1;
     return 0;
+}
+
+int omni_big_integer_compare_double(const void* lhs, double rhs) {
+    try {
+        const cpp_int* left = as_big_integer_const(lhs);
+        if (left == nullptr) return 2;
+        return compare_integer_to_double(*left, rhs);
+    } catch (...) {
+        return 2;
+    }
+}
+
+int omni_i64_compare_double(long lhs, double rhs) {
+    try {
+        return compare_integer_to_double(cpp_int(lhs), rhs);
+    } catch (...) {
+        return 2;
+    }
+}
+
+int omni_double_to_i64_trunc(double value, long* out) {
+    if (out == nullptr || !std::isfinite(value)) return 0;
+
+    double truncated = std::trunc(value);
+    double max_exclusive = std::ldexp(1.0, 63);
+    double min_inclusive = -max_exclusive;
+    if (truncated < min_inclusive || truncated >= max_exclusive) return 0;
+
+    if (truncated == min_inclusive) {
+        *out = std::numeric_limits<long>::min();
+        return 1;
+    }
+
+    *out = static_cast<long>(truncated);
+    return 1;
 }
 
 void* omni_big_integer_binary(const void* lhs, const void* rhs, int op) {

@@ -1,9 +1,47 @@
 module lisp;
 
+import std::io;
 import main;
 
 fn Value* runtime_effects_raise(Interp* interp, char[] code, char[] message) @inline {
     return raise_error_with_payload_names(interp, "runtime", code, message, null);
+}
+
+fn void jit_signal_clear_handler_state(HandleEffectState* hstate) @inline {
+    if (hstate == null) return;
+    hstate.signaled = false;
+    hstate.signal_tag = (SymbolId)0;
+    hstate.signal_arg = null;
+}
+
+fn char[] jit_signal_fast_path_primitive_name(Primitive* prim) @inline {
+    if (prim == null) return "effect fast path primitive";
+    usz len = 0;
+    while (len < prim.name.len && prim.name[len] != 0) len++;
+    if (len == 0) return "effect fast path primitive";
+    return prim.name[:len];
+}
+
+fn Value* jit_signal_fast_path_fixed_arity_gate(Interp* interp, Value* fp_prim, usz argc) {
+    int fp_arity = fp_prim.prim_val.arity;
+    if (fp_arity < 0 || (usz)fp_arity == argc) return null;
+
+    char[64] expected_buf;
+    char[] expected = "registered fixed arity";
+    if (try formatted = io::bprintf(
+        &expected_buf,
+        "%d argument%s",
+        fp_arity,
+        fp_arity == 1 ? "" : "s"
+    )) {
+        expected = formatted;
+    }
+    return primitive_arity_raise(
+        interp,
+        jit_signal_fast_path_primitive_name(fp_prim.prim_val),
+        expected,
+        argc
+    );
 }
 
 fn Value* jit_signal_call_fast_path_primitive_preserving_error(Interp* interp, Value* fp_prim, Value* arg) @inline {
@@ -33,6 +71,8 @@ fn Value* jit_signal_call_fast_path_primitive_list_preserving_error(Interp* inte
         }
         argc++;
     }
+
+    if (Value* arity_err = jit_signal_fast_path_fixed_arity_gate(interp, fp_prim, argc)) return arity_err;
 
     if (argc > usz.max / Value*.sizeof) {
         return runtime_effects_raise(interp, "runtime/fast-path-out-of-memory", "effect fast path: out of memory while staging args");
@@ -88,6 +128,7 @@ fn bool jit_signal_try_resume_handler(Interp* interp, main::StackCtx* current, S
             SavedInterpState saved;
             save_interp_state(interp, &saved);
             if (!suspend_with_scope_guard(current, interp.current_scope)) {
+                jit_signal_clear_handler_state(hstate);
                 restore_interp_state_preserve_raise(interp, &saved);
                 *out_result = raise_error_with_payload_names(
                     interp,
@@ -132,6 +173,7 @@ fn bool jit_signal_try_resume_handler_or_strict_boundary(
                 SavedInterpState saved;
                 save_interp_state(interp, &saved);
                 if (!suspend_with_scope_guard(current, interp.current_scope)) {
+                    jit_signal_clear_handler_state(hstate);
                     restore_interp_state_preserve_raise(interp, &saved);
                     *out_result = raise_error_with_payload_names(
                         interp,

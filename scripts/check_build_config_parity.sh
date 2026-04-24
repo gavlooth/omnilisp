@@ -44,4 +44,14 @@ grep -q -F 'OMNI_RUNTIME_TOOLCHAIN_LIB_PATH' scripts/run_e2e.sh \
 grep -q -F 'OMNI_AOT_LINK_LIBRARY_PATH' src/entry_build_backend_compile.c3 \
   || fail "AOT backend no longer exposes the link library path override"
 
+grep -q -F '"${CC:-cc}"' scripts/build_omni_chelpers.sh \
+  || fail "C helper builds no longer honor CC with a cc fallback"
+
+grep -q -F '"${CXX:-c++}"' scripts/build_omni_chelpers.sh \
+  || fail "C++ helper builds no longer honor CXX with a c++ fallback"
+
+if grep -Eq '^[[:space:]]*cc([[:space:]]|$)' scripts/build_omni_chelpers.sh; then
+  fail "C helper builds hardcode cc instead of honoring CC"
+fi
+
 echo "OK: build configuration parity checks passed."

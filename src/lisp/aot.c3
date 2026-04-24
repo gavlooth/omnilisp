@@ -17,7 +17,6 @@ fn bool aot_init() {
     main::thread_registry_init();
     g_aot_interp = (lisp::Interp*)mem::malloc(lisp::Interp.sizeof);
     if (g_aot_interp == null) {
-        main::thread_registry_shutdown();
         return false;
     }
     g_aot_interp.init();
@@ -25,7 +24,6 @@ fn bool aot_init() {
         g_aot_interp.destroy();
         mem::free(g_aot_interp);
         g_aot_interp = null;
-        main::thread_registry_shutdown();
         return false;
     }
     g_aot_interp.flags.jit_enabled = true;
@@ -38,6 +36,18 @@ fn void aot_shutdown() {
         mem::free(g_aot_interp);
         g_aot_interp = null;
     }
+}
+
+fn bool aot_process_init() {
+    if (!aot_init()) {
+        main::thread_registry_shutdown();
+        return false;
+    }
+    return true;
+}
+
+fn void aot_process_shutdown() {
+    aot_shutdown();
     main::thread_registry_shutdown();
 }
 

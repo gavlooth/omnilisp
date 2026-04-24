@@ -11,16 +11,25 @@ fn OffloadCompletion* scheduler_make_os_thread_alloc_failure_completion() {
 fn bool scheduler_try_begin_os_thread(usz thread_id, uint generation) {
     if (thread_id >= MAX_OS_THREADS || !g_scheduler.thread_task_mu_ready) return false;
     g_scheduler.thread_task_mu.lock();
-    defer g_scheduler.thread_task_mu.unlock();
 
     OsThreadEntry* entry = &g_scheduler.os_threads[thread_id];
-    if (!entry.active) return false;
-    if (!scheduler_os_thread_generation_matches(entry, generation)) return false;
+    if (!entry.active) {
+        g_scheduler.thread_task_mu.unlock();
+        return false;
+    }
+    if (!scheduler_os_thread_generation_matches(entry, generation)) {
+        g_scheduler.thread_task_mu.unlock();
+        return false;
+    }
 
-    if (entry.state == OS_THREAD_DONE || entry.state == OS_THREAD_CANCELLED) return false;
+    if (entry.state == OS_THREAD_DONE || entry.state == OS_THREAD_CANCELLED) {
+        g_scheduler.thread_task_mu.unlock();
+        return false;
+    }
     if (entry.cancel_requested) {
         usz waiter_fiber_id = entry.waiter_fiber_id;
         uint waiter_wake_epoch = entry.waiter_wake_epoch;
+        void* thread_handle = null;
         entry.cancel_requested = false;
         scheduler_transition_take_waiter(
             &waiter_fiber_id,
@@ -32,16 +41,26 @@ fn bool scheduler_try_begin_os_thread(usz thread_id, uint generation) {
             entry.completion = scheduler_make_os_thread_cancel_completion();
         }
         if (entry.completion == null) {
+            if (entry.thread_created && entry.thread_handle != null) {
+                thread_handle = entry.thread_handle;
+            }
             *entry = {};
-            scheduler_publish_os_thread_cancel_locked(waiter_fiber_id, waiter_wake_epoch);
+            g_scheduler.thread_task_mu.unlock();
+            if (thread_handle != null) {
+                (void)omni_uv_thread_detach_handle(thread_handle);
+                omni_uv_thread_free(thread_handle);
+            }
+            scheduler_publish_os_thread_cancel_unlocked(waiter_fiber_id, waiter_wake_epoch);
             return false;
         }
         entry.state = OS_THREAD_CANCELLED;
-        scheduler_publish_os_thread_cancel_locked(waiter_fiber_id, waiter_wake_epoch);
+        g_scheduler.thread_task_mu.unlock();
+        scheduler_publish_os_thread_cancel_unlocked(waiter_fiber_id, waiter_wake_epoch);
         return false;
     }
 
     entry.state = OS_THREAD_RUNNING;
+    g_scheduler.thread_task_mu.unlock();
     return true;
 }
 
@@ -83,8 +102,16 @@ fn void scheduler_complete_os_thread(usz thread_id, uint generation, OffloadComp
             &completion,
             "thread cancelled"
         )) {
+            void* thread_handle = null;
+            if (entry.thread_created && entry.thread_handle != null) {
+                thread_handle = entry.thread_handle;
+            }
             *entry = {};
             g_scheduler.thread_task_mu.unlock();
+            if (thread_handle != null) {
+                (void)omni_uv_thread_detach_handle(thread_handle);
+                omni_uv_thread_free(thread_handle);
+            }
             scheduler_publish_os_thread_cancel_unlocked(waiter_fiber_id, waiter_wake_epoch);
             return;
         }

@@ -28,7 +28,10 @@ fn char* find_test_suite_arg(int argc, char** argv, int test_idx) {
 }
 
 fn char[] test_suite_display_name(char* suite_name) {
-    return suite_name == null ? "all" : suite_name[:cstr_len(suite_name)];
+    if (suite_name == null) return "all";
+    usz len = 0;
+    if (!cli_cstr_len(suite_name, &len)) return "<overlong>";
+    return suite_name[:len];
 }
 
 fn void print_test_suite_invalid_json(char* suite_name) {
@@ -187,6 +190,13 @@ fn int run_test_mode() {
 }
 
 fn int run_test_mode_with_self_for_suite(char* self_exe, char* suite_name, bool json) {
+    if (suite_name != null) {
+        usz suite_name_len = 0;
+        if (!cli_cstr_len(suite_name, &suite_name_len)) {
+            return print_cli_cstr_too_long("--test-suite name", json);
+        }
+    }
+
     if (json) {
         return run_test_mode_for_suite_json(suite_name, self_exe);
     }

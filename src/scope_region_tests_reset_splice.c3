@@ -78,6 +78,8 @@ fn ScopeRegionTestCounts run_scope_region_reset_splice_tests() {
                   s.escape_dtors != null &&
                   s.escape_dtors_tail != null &&
                   s.escape_chunks_tail != null &&
+                  s.alloc_bytes == 0 &&
+                  s.alloc_count == 0 &&
                   escape_ptr != null &&
                   is_in_scope(escape_ptr, s) &&
                   temp_ptr != null;

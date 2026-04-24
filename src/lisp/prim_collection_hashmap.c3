@@ -22,6 +22,21 @@ fn bool hashmap_normalize_capacity(uint requested, uint* out) @inline {
     return true;
 }
 
+fn bool hashmap_capacity_hint_for_entry_count(usz count, uint* out) @inline {
+    if (out == null) return false;
+    usz requested = 8;
+    if (count >= 8) {
+        if (count > usz.max / (usz)2) return false;
+        requested = count * (usz)2;
+    }
+    if (requested > (usz)uint.max) return false;
+    uint requested_u = (uint)requested;
+    uint normalized = 0;
+    if (!hashmap_normalize_capacity(requested_u, &normalized)) return false;
+    *out = requested_u;
+    return true;
+}
+
 // Collection primitives: length + hashmap/dict core.
 fn Value* dict_ctor_type_raise(Interp* interp, char[] code, char[] message) @inline {
     return raise_error_with_payload_names(interp, "type", code, message, null);

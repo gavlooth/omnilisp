@@ -15,6 +15,13 @@ struct JsonPointerToken {
     char[] text;
     bool ok;
     bool owned;
+    bool allocation_failed;
+}
+
+bool g_json_pointer_force_decode_alloc_fail = false;
+
+fn void json_pointer_force_decode_alloc_fail_for_test(bool enabled) {
+    g_json_pointer_force_decode_alloc_fail = enabled;
 }
 
 fn JsonPointerToken json_pointer_decode_token(char[] token) {
@@ -22,6 +29,7 @@ fn JsonPointerToken json_pointer_decode_token(char[] token) {
     result.text = token;
     result.ok = true;
     result.owned = false;
+    result.allocation_failed = false;
 
     bool has_escape = false;
     for (usz i = 0; i < token.len; i++) {
@@ -32,9 +40,10 @@ fn JsonPointerToken json_pointer_decode_token(char[] token) {
     }
     if (!has_escape) return result;
 
-    char* out = (char*)mem::malloc(token.len);
+    char* out = g_json_pointer_force_decode_alloc_fail ? null : (char*)mem::malloc(token.len);
     if (out == null) {
         result.ok = false;
+        result.allocation_failed = true;
         return result;
     }
 
@@ -79,6 +88,34 @@ fn void json_pointer_token_release(JsonPointerToken* token) {
     }
 }
 
+fn SymbolId json_pointer_lookup_existing_symbol(SymbolTable* symbols, char[] name) {
+    if (symbols == null || symbols.entries == null || symbols.hash_index == null) return INVALID_SYMBOL_ID;
+    if (symbols.capacity == 0 || symbols.hash_capacity == 0 || name.ptr == null) return INVALID_SYMBOL_ID;
+    if (name.len > SYMBOL_MAX_NAME_LEN) return INVALID_SYMBOL_ID;
+
+    usz h = hash_symbol(name);
+    usz mask = symbols.hash_capacity - 1;
+    for (usz probe = 0; probe < symbols.hash_capacity; probe++) {
+        usz slot = (h + probe) & mask;
+        SymbolId sid = symbols.hash_index[slot];
+        if (sid == INVALID_SYMBOL_ID) return INVALID_SYMBOL_ID;
+
+        usz idx = (usz)sid;
+        if (idx >= symbols.count) return INVALID_SYMBOL_ID;
+        if (symbols.entries[idx].len != name.len) continue;
+
+        bool match = true;
+        for (usz j = 0; j < name.len; j++) {
+            if (symbols.entries[idx].name[j] != name[j]) {
+                match = false;
+                break;
+            }
+        }
+        if (match) return sid;
+    }
+    return INVALID_SYMBOL_ID;
+}
+
 fn bool json_pointer_parse_array_index(char[] token, usz* out_idx) {
     if (token.len == 0) return false;
 
@@ -114,7 +151,7 @@ fn Value* json_pointer_lookup(Value* value, char[] token, Interp* interp) {
         Value* by_string = hashmap_get(map, key_v);
         if (by_string != null) return by_string;
 
-        SymbolId token_sym = interp.symbols.intern(token);
+        SymbolId token_sym = json_pointer_lookup_existing_symbol(&interp.symbols, token);
         if (token_sym == INVALID_SYMBOL_ID) return make_nil(interp);
         Value* by_symbol = make_symbol(interp, token_sym);
         return hashmap_get(map, by_symbol);

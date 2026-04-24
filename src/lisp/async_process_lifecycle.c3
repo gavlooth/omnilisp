@@ -19,6 +19,14 @@ fn void close_process_handle(ProcessHandle* ph) {
     ph.uv_process = null;
 }
 
+fn void process_handle_store_wait_status(ProcessHandle* ph, int pid, int exit_code, int term_signal) {
+    if (ph == null) return;
+    ph.wait_pid = pid;
+    ph.wait_exit_code = exit_code;
+    ph.wait_term_signal = term_signal;
+    ph.wait_status_ready = true;
+}
+
 fn OffloadCompletion* process_wait_offload_callback(OffloadWork work) {
     ProcessWaitOffloadCtx* wait_ctx = (ProcessWaitOffloadCtx*)work.custom_ctx;
 

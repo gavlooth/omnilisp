@@ -215,6 +215,34 @@ fn int ui_ftxui_plot_marker_from_props(Value* props, Interp* interp) {
     return OMNI_FTXUI_PLOT_MARKER_POINT;
 }
 
+fn Value* ui_ftxui_plot_read_y_bound(Value* zoom, Interp* interp, char[] key, int* has_value, double* out_value) {
+    if (has_value == null || out_value == null) return ftxui_raise(interp, "ui/invalid-argument", "ui-ftxui: missing plot zoom state");
+    *has_value = 0;
+    *out_value = 0.0;
+    if (zoom == null) return null;
+    Value* value = ui_ftxui_dict_get(zoom, key, interp);
+    if (value == null) return null;
+    if (!is_number(value)) return ftxui_raise(interp, "ui/invalid-argument", "ui-ftxui: plot y zoom bounds must be finite numbers");
+    double numeric = to_double(value);
+    if (!conversion_double_is_finite(numeric)) return ftxui_raise(interp, "ui/invalid-argument", "ui-ftxui: plot y zoom bounds must be finite numbers");
+    *has_value = 1;
+    *out_value = numeric;
+    return null;
+}
+
+fn Value* ui_ftxui_plot_apply_y_zoom(Value* props, OmniFtxuiPlotOptions* options, Interp* interp) {
+    if (options == null) return ftxui_raise(interp, "ui/invalid-argument", "ui-ftxui: missing plot options");
+    Value* zoom = ui_ftxui_dict_get(props, "zoom", interp);
+    if (zoom == null) return null;
+    if (zoom.tag != HASHMAP) return ftxui_raise(interp, "ui/invalid-argument", "ui-ftxui: plot zoom must be a Dictionary");
+    if (Value* err = ui_ftxui_plot_read_y_bound(zoom, interp, "y-min", &options.has_y_min, &options.y_min)) return err;
+    if (Value* err = ui_ftxui_plot_read_y_bound(zoom, interp, "y-max", &options.has_y_max, &options.y_max)) return err;
+    if (options.has_y_min != 0 && options.has_y_max != 0 && options.y_min > options.y_max) {
+        return ftxui_raise(interp, "ui/invalid-argument", "ui-ftxui: plot y-min must be less than or equal to y-max");
+    }
+    return null;
+}
+
 fn Value* ui_ftxui_plot_create_component(
     UiFtxuiRunState* state,
     OmniFtxuiPlotOptions* options,
@@ -310,6 +338,11 @@ fn Value* ui_ftxui_lower_typed_graph(
     options.x_values = data.x_values;
     options.x_count = data.x_count;
     options.marker = ui_ftxui_plot_marker_from_props(props, interp);
+    err = ui_ftxui_plot_apply_y_zoom(props, &options, interp);
+    if (err != null) {
+        ui_ftxui_plot_free_data(&data);
+        return err;
+    }
     return ui_ftxui_plot_create_component(state, &options, &data, out_component, interp);
 }
 

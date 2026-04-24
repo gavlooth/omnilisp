@@ -84,6 +84,7 @@ extern fn int omni_uv_process_poll(
 ) @extern("omni_uv_process_poll");
 extern fn int omni_uv_process_wait(void* process, int* exit_status_out, int* term_signal_out) @extern("omni_uv_process_wait");
 extern fn int omni_uv_process_kill(void* process, int sig) @extern("omni_uv_process_kill");
+extern fn int omni_uv_process_max_signal() @extern("omni_uv_process_max_signal");
 extern fn int omni_uv_process_pid(void* process) @extern("omni_uv_process_pid");
 extern fn void omni_uv_process_close(void* process) @extern("omni_uv_process_close");
 extern fn void omni_uv_process_debug_reset_counters() @extern("omni_uv_process_debug_reset_counters");

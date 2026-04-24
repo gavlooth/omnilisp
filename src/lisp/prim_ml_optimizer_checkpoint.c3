@@ -103,7 +103,7 @@ fn Value* prim_ml_save_optimizer(Value*[] args, Env* env, Interp* interp) {
 *>
 fn Value* prim_ml_load_optimizer(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) return primitive_arity_raise(interp, "ml/load-optimizer", "1 argument: JSON checkpoint string or path", args.len);
-    Value* payload = nn_ckpt_parse_root(args[0], interp, "optimizer");
+    Value* payload = nn_ckpt_parse_root(args[0], interp, "optimizer", "ml/load-optimizer", "ml/load-optimizer: failed to read checkpoint path");
     if (payload == null || payload.tag == ERROR) return payload;
     Value* bundle = nn_ckpt_decode_value(payload, interp);
     if (bundle == null || bundle.tag == ERROR) return bundle;

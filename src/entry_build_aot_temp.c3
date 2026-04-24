@@ -54,6 +54,8 @@ fn bool write_aot_temp_file(char[] c3_code, char[] temp_path_buf, usz* path_len_
         usz path_len = 0;
         if (!make_aot_temp_path(temp_path_buf, &path_len)) break;
         if (try file = io::file::open((String)temp_path_buf[:path_len], "wx")) {
+            bool keep_temp = false;
+            defer if (!keep_temp) entry_cleanup_staged_text(temp_path_buf[:path_len]);
             char[] remaining = c3_code;
             bool write_ok = true;
             EntryFileWriteKind write_kind = ENTRY_FILE_WRITE_GENERIC_FAILURE;
@@ -79,6 +81,7 @@ fn bool write_aot_temp_file(char[] c3_code, char[] temp_path_buf, usz* path_len_
                 return false;
             }
             *path_len_out = path_len;
+            keep_temp = true;
             return true;
         }
         if (libc::errno() != EEXIST) {

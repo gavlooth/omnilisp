@@ -51,21 +51,35 @@ fn Value* prim_iterator_from_tensor(Value*[] args, Env* env, Interp* interp) {
 *>
 fn Value* prim_iterator_range_from(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) return iterator_ctor_raise(interp, "type/arity", "__iterator-range-from: expected 1 argument");
-    if (args[0] == null || !is_int(args[0])) {
+    if (args[0] == null || !is_exact_integer_value(args[0])) {
         return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-range-from: expected integer");
     }
     return iterator_range_from_value(args[0], interp);
+}
+
+fn Value* iterator_range_next_value(Value* current, Interp* interp) {
+    Value* one = make_int(interp, 1);
+    if (one == null || one.tag == ERROR) return one;
+    if (current.tag == INT && current.int_val < long.max) return make_int(interp, current.int_val + 1);
+    if (current.tag == INT) {
+        Value* wide = make_big_integer_from_i64(interp, current.int_val);
+        if (wide == null || wide.tag == ERROR) return wide;
+        return big_integer_binary_values(interp, wide, one, BIG_INTEGER_OP_ADD, "range-from: failed to allocate BigInteger state");
+    }
+    return big_integer_binary_values(interp, current, one, BIG_INTEGER_OP_ADD, "range-from: failed to allocate BigInteger state");
 }
 
 <*
 @require interp != null
 *>
 fn Value* prim_iterator_range_from_thunk(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || args[0] == null || !is_int(args[0])) {
+    if (args.len < 1 || args[0] == null || !is_exact_integer_value(args[0])) {
         return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-range-from: expected integer state");
     }
     Value* current = args[0];
-    return iterator_make_pair_or_propagate(current, iterator_range_from_value(make_int(interp, current.int_val + 1), interp), interp);
+    Value* next_value = iterator_range_next_value(current, interp);
+    if (next_value == null || next_value.tag == ERROR) return next_value;
+    return iterator_make_pair_or_propagate(current, iterator_range_from_value(next_value, interp), interp);
 }
 
 <*

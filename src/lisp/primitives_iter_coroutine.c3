@@ -2,7 +2,6 @@ module lisp;
 
 import main;
 
-const usz ITER_BUFFER_MAX = 4096;
 int g_iterator_force_cons_alloc_fail_nth = 0;
 
 fn Value* iterator_ctor_raise(Interp* interp, char[] code, char[] message) @inline {

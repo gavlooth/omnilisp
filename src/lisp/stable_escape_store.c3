@@ -6,8 +6,8 @@ import std::thread;
 import main;
 
 const usz STABLE_ESCAPE_STORE_CAPACITY = 512;
-const usz STABLE_ESCAPE_PREPARED_MAX_NODES = 64;
-const usz STABLE_ESCAPE_PREPARED_MAX_EDGES = 256;
+const usz STABLE_ESCAPE_PREPARED_INITIAL_NODES = 64;
+const usz STABLE_ESCAPE_PREPARED_INITIAL_EDGES = 256;
 const usz STABLE_ESCAPE_PREPARED_INVALID_INDEX = usz.max;
 const uint STABLE_GRAPH_PASSPORT_POLICY_OWNER_SCOPE_CHAIN = 0x1;
 const uint STABLE_GRAPH_PASSPORT_POLICY_PREPARED_GRAPH = 0x2;
@@ -35,14 +35,16 @@ struct StableEscapePreparedNode {
 }
 
 struct StableEscapePreparedGraphScratch {
-    StableEscapePreparedNode[STABLE_ESCAPE_PREPARED_MAX_NODES] nodes;
-    Value*[STABLE_ESCAPE_PREPARED_MAX_NODES] seen_values;
-    usz[STABLE_ESCAPE_PREPARED_MAX_NODES] seen_node_indices;
-    usz[STABLE_ESCAPE_PREPARED_MAX_EDGES] edges;
+    StableEscapePreparedNode* nodes;
+    Value** seen_values;
+    usz* seen_node_indices;
+    usz* edges;
     Env* global_env;
     uint risk_flags;
     usz seen_count;
+    usz node_capacity;
     usz node_count;
+    usz edge_capacity;
     usz edge_count;
 }
 
@@ -100,49 +102,6 @@ fn uint stable_escape_store_next_generation(uint current) @inline {
     return current + 1;
 }
 
-fn StableEscapePreparedNode stable_escape_prepared_scalar_node(Value* value) @inline {
-    return {
-        .tag = value.tag,
-        .source = value,
-        .child_offset = STABLE_ESCAPE_PREPARED_INVALID_INDEX,
-        .child_count = 0
-    };
-}
-
-fn bool stable_escape_prepare_graph_append_edge(
-    StableEscapePreparedGraphScratch* scratch,
-    usz node_index
-) @inline {
-    if (scratch == null) return false;
-    if (scratch.edge_count >= STABLE_ESCAPE_PREPARED_MAX_EDGES) return false;
-    scratch.edges[scratch.edge_count++] = node_index;
-    return true;
-}
-
-fn usz stable_escape_prepared_find_seen_node(
-    StableEscapePreparedGraphScratch* scratch,
-    Value* value
-) @inline {
-    if (scratch == null || value == null) return STABLE_ESCAPE_PREPARED_INVALID_INDEX;
-    foreach (i, seen_value : scratch.seen_values[0:scratch.seen_count]) {
-        if (seen_value == value) return scratch.seen_node_indices[i];
-    }
-    return STABLE_ESCAPE_PREPARED_INVALID_INDEX;
-}
-
-fn bool stable_escape_prepared_register_seen(
-    StableEscapePreparedGraphScratch* scratch,
-    Value* value,
-    usz node_index
-) @inline {
-    if (scratch == null || value == null) return false;
-    if (scratch.seen_count >= STABLE_ESCAPE_PREPARED_MAX_NODES) return false;
-    scratch.seen_values[scratch.seen_count] = value;
-    scratch.seen_node_indices[scratch.seen_count] = node_index;
-    scratch.seen_count++;
-    return true;
-}
-
 fn bool stable_escape_env_binding_value_count(Env* env, Env* stop_at, usz* out_count) {
     if (out_count == null) return false;
     usz count = 0;
@@ -171,9 +130,9 @@ fn bool stable_escape_prepare_env_binding_values(
     usz* out_count
 ) {
     if (scratch == null || out_offset == null || out_count == null) return false;
-    usz* child_indices = (usz*)mem::malloc(usz.sizeof * STABLE_ESCAPE_PREPARED_MAX_EDGES);
-    if (child_indices == null) return false;
-    defer mem::free(child_indices);
+    usz* child_indices = null;
+    usz child_capacity = 0;
+    defer if (child_indices != null) mem::free(child_indices);
     usz child_count = 0;
     usz env_depth = 0;
     Env* cur = env;
@@ -184,10 +143,9 @@ fn bool stable_escape_prepare_env_binding_values(
         for (usz i = 0; i < cur.binding_count; i++) {
             Value* binding_value = cur.bindings[i].value;
             if (binding_value == null) continue;
-            if (child_count >= STABLE_ESCAPE_PREPARED_MAX_EDGES) return false;
             usz child_index = STABLE_ESCAPE_PREPARED_INVALID_INDEX;
             if (!stable_escape_prepare_graph_node(scratch, binding_value, &child_index, depth + env_depth)) return false;
-            child_indices[child_count++] = child_index;
+            if (!stable_escape_prepare_graph_append_index(&child_indices, &child_count, &child_capacity, child_index)) return false;
         }
         cur = cur.parent;
     }
@@ -217,13 +175,12 @@ fn bool stable_escape_prepare_graph_node(
         return true;
     }
 
-    if (scratch.node_count >= STABLE_ESCAPE_PREPARED_MAX_NODES) return false;
-
     switch (value.tag) {
         case CLOSURE:
             if (value.closure_val == null) return false;
             scratch.risk_flags |= STABLE_GRAPH_PASSPORT_RISK_MUTABLE_GRAPH | STABLE_GRAPH_PASSPORT_RISK_ENV_CAPTURE;
-            usz closure_index = scratch.node_count++;
+            usz closure_index = STABLE_ESCAPE_PREPARED_INVALID_INDEX;
+            if (!stable_escape_prepare_graph_reserve_node(scratch, &closure_index)) return false;
             scratch.nodes[closure_index] = {
                 .tag = CLOSURE,
                 .source = value,
@@ -248,7 +205,8 @@ fn bool stable_escape_prepare_graph_node(
             return true;
         case CONS:
             scratch.risk_flags |= STABLE_GRAPH_PASSPORT_RISK_MUTABLE_GRAPH;
-            usz node_index = scratch.node_count++;
+            usz node_index = STABLE_ESCAPE_PREPARED_INVALID_INDEX;
+            if (!stable_escape_prepare_graph_reserve_node(scratch, &node_index)) return false;
             scratch.nodes[node_index] = {
                 .tag = CONS,
                 .source = value,
@@ -272,7 +230,8 @@ fn bool stable_escape_prepare_graph_node(
         case ARRAY:
             if (value.array_val == null) return false;
             scratch.risk_flags |= STABLE_GRAPH_PASSPORT_RISK_MUTABLE_GRAPH;
-            usz array_index = scratch.node_count++;
+            usz array_index = STABLE_ESCAPE_PREPARED_INVALID_INDEX;
+            if (!stable_escape_prepare_graph_reserve_node(scratch, &array_index)) return false;
             scratch.nodes[array_index] = {
                 .tag = ARRAY,
                 .source = value,
@@ -282,30 +241,36 @@ fn bool stable_escape_prepare_graph_node(
             scratch.nodes[array_index].mutation_epoch = stable_graph_value_mutation_epoch(value);
             if (!stable_escape_prepared_register_seen(scratch, value, array_index)) return false;
 
-            if (value.array_val.length > STABLE_ESCAPE_PREPARED_MAX_EDGES) return false;
-            usz* array_child_indices = (usz*)mem::malloc(usz.sizeof * STABLE_ESCAPE_PREPARED_MAX_EDGES);
-            if (array_child_indices == null) return false;
-            defer mem::free(array_child_indices);
+            usz* array_child_indices = null;
+            usz array_child_count = 0;
+            usz array_child_capacity = 0;
+            defer if (array_child_indices != null) mem::free(array_child_indices);
             for (usz i = 0; i < value.array_val.length; i++) {
                 usz child_index = STABLE_ESCAPE_PREPARED_INVALID_INDEX;
                 if (!stable_escape_prepare_graph_node(scratch, value.array_val.items[i], &child_index, depth + 1)) {
                     return false;
                 }
-                array_child_indices[i] = child_index;
+                if (!stable_escape_prepare_graph_append_index(
+                    &array_child_indices,
+                    &array_child_count,
+                    &array_child_capacity,
+                    child_index
+                )) return false;
             }
             usz child_offset = scratch.edge_count;
-            for (usz i = 0; i < value.array_val.length; i++) {
+            for (usz i = 0; i < array_child_count; i++) {
                 if (!stable_escape_prepare_graph_append_edge(scratch, array_child_indices[i])) return false;
             }
             scratch.nodes[array_index].child_offset =
-                value.array_val.length > 0 ? child_offset : STABLE_ESCAPE_PREPARED_INVALID_INDEX;
-            scratch.nodes[array_index].child_count = value.array_val.length;
+                array_child_count > 0 ? child_offset : STABLE_ESCAPE_PREPARED_INVALID_INDEX;
+            scratch.nodes[array_index].child_count = array_child_count;
             *out_index = array_index;
             return true;
         case HASHMAP:
             if (value.hashmap_val == null || value.hashmap_val.entries == null) return false;
             scratch.risk_flags |= STABLE_GRAPH_PASSPORT_RISK_MUTABLE_GRAPH;
-            usz hashmap_index = scratch.node_count++;
+            usz hashmap_index = STABLE_ESCAPE_PREPARED_INVALID_INDEX;
+            if (!stable_escape_prepare_graph_reserve_node(scratch, &hashmap_index)) return false;
             scratch.nodes[hashmap_index] = {
                 .tag = HASHMAP,
                 .source = value,
@@ -316,20 +281,19 @@ fn bool stable_escape_prepare_graph_node(
             if (!stable_escape_prepared_register_seen(scratch, value, hashmap_index)) return false;
 
             HashMap* map = value.hashmap_val;
-            usz* pair_child_indices = (usz*)mem::malloc(usz.sizeof * STABLE_ESCAPE_PREPARED_MAX_EDGES);
-            if (pair_child_indices == null) return false;
-            defer mem::free(pair_child_indices);
+            usz* pair_child_indices = null;
             usz pair_child_count = 0;
+            usz pair_child_capacity = 0;
+            defer if (pair_child_indices != null) mem::free(pair_child_indices);
             for (uint i = 0; i < map.capacity; i++) {
                 HashEntry* entry = &map.entries[i];
                 if (entry.key == null) continue;
-                if (pair_child_count > STABLE_ESCAPE_PREPARED_MAX_EDGES - (usz)2) return false;
                 usz key_index = STABLE_ESCAPE_PREPARED_INVALID_INDEX;
                 usz value_index = STABLE_ESCAPE_PREPARED_INVALID_INDEX;
                 if (!stable_escape_prepare_graph_node(scratch, entry.key, &key_index, depth + 1)) return false;
                 if (!stable_escape_prepare_graph_node(scratch, entry.value, &value_index, depth + 1)) return false;
-                pair_child_indices[pair_child_count++] = key_index;
-                pair_child_indices[pair_child_count++] = value_index;
+                if (!stable_escape_prepare_graph_append_index(&pair_child_indices, &pair_child_count, &pair_child_capacity, key_index)) return false;
+                if (!stable_escape_prepare_graph_append_index(&pair_child_indices, &pair_child_count, &pair_child_capacity, value_index)) return false;
             }
             usz pair_child_offset = scratch.edge_count;
             for (usz i = 0; i < pair_child_count; i++) {
@@ -343,7 +307,8 @@ fn bool stable_escape_prepare_graph_node(
         case SET:
             if (value.hashmap_val == null || value.hashmap_val.entries == null) return false;
             scratch.risk_flags |= STABLE_GRAPH_PASSPORT_RISK_MUTABLE_GRAPH;
-            usz set_index = scratch.node_count++;
+            usz set_index = STABLE_ESCAPE_PREPARED_INVALID_INDEX;
+            if (!stable_escape_prepare_graph_reserve_node(scratch, &set_index)) return false;
             scratch.nodes[set_index] = {
                 .tag = SET,
                 .source = value,
@@ -354,17 +319,21 @@ fn bool stable_escape_prepare_graph_node(
             if (!stable_escape_prepared_register_seen(scratch, value, set_index)) return false;
 
             HashMap* set_map = value.hashmap_val;
-            usz* member_child_indices = (usz*)mem::malloc(usz.sizeof * STABLE_ESCAPE_PREPARED_MAX_EDGES);
-            if (member_child_indices == null) return false;
-            defer mem::free(member_child_indices);
+            usz* member_child_indices = null;
             usz member_child_count = 0;
+            usz member_child_capacity = 0;
+            defer if (member_child_indices != null) mem::free(member_child_indices);
             for (uint i = 0; i < set_map.capacity; i++) {
                 HashEntry* entry = &set_map.entries[i];
                 if (entry.key == null) continue;
-                if (member_child_count >= STABLE_ESCAPE_PREPARED_MAX_EDGES) return false;
                 usz member_index = STABLE_ESCAPE_PREPARED_INVALID_INDEX;
                 if (!stable_escape_prepare_graph_node(scratch, entry.key, &member_index, depth + 1)) return false;
-                member_child_indices[member_child_count++] = member_index;
+                if (!stable_escape_prepare_graph_append_index(
+                    &member_child_indices,
+                    &member_child_count,
+                    &member_child_capacity,
+                    member_index
+                )) return false;
             }
             usz member_child_offset = scratch.edge_count;
             for (usz i = 0; i < member_child_count; i++) {
@@ -377,41 +346,13 @@ fn bool stable_escape_prepare_graph_node(
             return true;
         default:
             if (boundary_alias_value_has_child_payload(value)) return false;
-            usz scalar_index = scratch.node_count++;
+            usz scalar_index = STABLE_ESCAPE_PREPARED_INVALID_INDEX;
+            if (!stable_escape_prepare_graph_reserve_node(scratch, &scalar_index)) return false;
             scratch.nodes[scalar_index] = stable_escape_prepared_scalar_node(value);
             if (!stable_escape_prepared_register_seen(scratch, value, scalar_index)) return false;
             *out_index = scalar_index;
             return true;
     }
-}
-
-fn StableEscapePreparedNode* stable_escape_prepare_graph_heap_copy(
-    StableEscapePreparedGraphScratch* scratch
-) {
-    if (scratch == null || scratch.node_count == 0) return null;
-    if (scratch.node_count > usz.max / StableEscapePreparedNode.sizeof) return null;
-
-    StableEscapePreparedNode* prepared_nodes =
-        (StableEscapePreparedNode*)mem::malloc(StableEscapePreparedNode.sizeof * scratch.node_count);
-    if (prepared_nodes == null) return null;
-    foreach (i, node : scratch.nodes[0:scratch.node_count]) {
-        prepared_nodes[i] = node;
-    }
-    return prepared_nodes;
-}
-
-fn usz* stable_escape_prepare_graph_edges_heap_copy(
-    StableEscapePreparedGraphScratch* scratch
-) {
-    if (scratch == null || scratch.edge_count == 0) return null;
-    if (scratch.edge_count > usz.max / usz.sizeof) return null;
-
-    usz* prepared_edges = (usz*)mem::malloc(usz.sizeof * scratch.edge_count);
-    if (prepared_edges == null) return null;
-    foreach (i, edge : scratch.edges[0:scratch.edge_count]) {
-        prepared_edges[i] = edge;
-    }
-    return prepared_edges;
 }
 
 fn StableEscapeStore* stable_escape_store_from_interp(Interp* interp) @inline {
@@ -742,21 +683,21 @@ fn bool stable_escape_store_prepare_value(
     if (interp == null || root == null || out_handle == null) return false;
 
     StableEscapePreparedGraphScratch scratch = {};
+    defer stable_escape_prepare_graph_scratch_free(&scratch);
     scratch.global_env = interp.global_env;
     usz root_index = STABLE_ESCAPE_PREPARED_INVALID_INDEX;
     if (!stable_escape_prepare_graph_node(&scratch, root, &root_index)) return false;
-
-    StableEscapePreparedNode* prepared_nodes = stable_escape_prepare_graph_heap_copy(&scratch);
-    if (prepared_nodes == null) return false;
-    usz* prepared_edges = stable_escape_prepare_graph_edges_heap_copy(&scratch);
-    if (scratch.edge_count > 0 && prepared_edges == null) {
-        mem::free(prepared_nodes);
+    if (root_index >= scratch.node_count) {
         return false;
     }
-    if (root_index >= scratch.node_count) {
-        if (prepared_edges != null) mem::free(prepared_edges);
-        mem::free(prepared_nodes);
-        return false;
+
+    StableEscapePreparedNode* prepared_nodes = scratch.nodes;
+    usz* prepared_edges = scratch.edge_count > 0 ? scratch.edges : null;
+    scratch.nodes = null;
+    scratch.node_capacity = 0;
+    if (prepared_edges != null) {
+        scratch.edges = null;
+        scratch.edge_capacity = 0;
     }
 
     if (!stable_escape_store_publish_entry(

@@ -10,14 +10,39 @@ import std::core::mem;
 @require interp != null
 *>
 fn Value* prim_tcp_connect(Value*[] args, Env* env, Interp* interp) {
-    // fault: lisp::ARITY_MISMATCH
-    if (args.len < 2) return io_raise(interp, "io/tcp-connect-expected-host-port", "tcp-connect: expected (tcp-connect host port)");
-    // fault: lisp::EXPECTED_STRING
-    if (!is_string(args[0])) return io_raise(interp, "io/tcp-connect-host-not-string", "tcp-connect: host must be a string");
-    // fault: lisp::EXPECTED_INT
-    if (!is_int(args[1])) return io_raise(interp, "io/tcp-connect-port-not-integer", "tcp-connect: port must be an integer");
+    Value* host_v = null;
+    Value* port_v = null;
+    if (args.len == 1 && is_cons(args[0])) {
+        Value* packed = args[0];
+        if (is_nil(cdr(packed)) && is_cons(car(packed))) {
+            packed = car(packed);
+        }
+        host_v = car(packed);
+        packed = cdr(packed);
+        if (is_cons(packed)) {
+            port_v = car(packed);
+            packed = cdr(packed);
+            if (!is_nil(packed)) {
+                return io_raise(interp, "io/tcp-connect-expected-host-port", "tcp-connect: expected (tcp-connect host port)");
+            }
+        } else if (!is_nil(packed)) {
+            port_v = packed;
+        } else {
+            return io_raise(interp, "io/tcp-connect-expected-host-port", "tcp-connect: expected (tcp-connect host port)");
+        }
+    } else if (args.len == 2) {
+        host_v = args[0];
+        port_v = args[1];
+    } else {
+        return io_raise(interp, "io/tcp-connect-expected-host-port", "tcp-connect: expected (tcp-connect host port)");
+    }
 
-    long raw_port = args[1].int_val;
+    // fault: lisp::EXPECTED_STRING
+    if (!is_string(host_v)) return io_raise(interp, "io/tcp-connect-host-not-string", "tcp-connect: host must be a string");
+    // fault: lisp::EXPECTED_INT
+    if (!is_int(port_v)) return io_raise(interp, "io/tcp-connect-port-not-integer", "tcp-connect: port must be an integer");
+
+    long raw_port = port_v.int_val;
     if (raw_port < 0 || raw_port > 65535) {
         return io_raise(interp, "io/tcp-connect-invalid-port", "tcp-connect: port must be between 0 and 65535");
     }
@@ -41,7 +66,7 @@ fn Value* prim_tcp_connect(Value*[] args, Env* env, Interp* interp) {
     }
 
     Value*[1] dns_args;
-    dns_args[0] = args[0];
+    dns_args[0] = host_v;
     Value* resolved = prim_dns_resolve(dns_args[..], null, interp);
     if (resolved == null || resolved.tag == ERROR) return resolved;
     if (!is_string(resolved)) {

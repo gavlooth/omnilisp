@@ -4,13 +4,99 @@ import std::io;
 import std::core::mem;
 import main;
 
+fn usz scheduler_test_count_active_shared_handles() {
+    if (!scheduler_shared_registry_ensure_ready()) return usz.max;
+    SharedRegistry* registry = &g_scheduler.shared_registry;
+    usz count = 0;
+    registry.mu.lock();
+    defer registry.mu.unlock();
+    for (usz i = 0; i < SHARED_REGISTRY_CAPACITY; i++) {
+        if (registry.entries[i].active) count++;
+    }
+    return count;
+}
+
+fn usz scheduler_test_count_active_os_threads() {
+    if (!g_scheduler.thread_task_mu_ready) return usz.max;
+    usz count = 0;
+    g_scheduler.thread_task_mu.lock();
+    defer g_scheduler.thread_task_mu.unlock();
+    for (usz i = 0; i < MAX_OS_THREADS; i++) {
+        if (g_scheduler.os_threads[i].active) count++;
+    }
+    return count;
+}
+
+fn void scheduler_expect_batch_error_releases_shared(
+    Interp* interp,
+    char[] label,
+    char[] expr,
+    char[] expected,
+    int* pass,
+    int* fail
+) {
+    scheduler_init();
+    scheduler_shared_registry_drain_retired(SHARED_RETIRED_QUEUE_CAPACITY);
+    usz shared_before = scheduler_test_count_active_shared_handles();
+    EvalResult r = run(expr, interp);
+    scheduler_shared_registry_drain_retired(SHARED_RETIRED_QUEUE_CAPACITY);
+    usz shared_after = scheduler_test_count_active_shared_handles();
+    bool ok = r.error.has_error &&
+              str_starts_with(r.error.message[:256], expected) &&
+              shared_before == shared_after;
+
+    if (ok) {
+        io::printfn("[PASS] %s", (ZString)label);
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] %s (error=%s shared_before=%d shared_after=%d)",
+            (ZString)label,
+            r.error.has_error ? (ZString)r.error.message[:256] : (ZString)"<none>",
+            (int)shared_before,
+            (int)shared_after
+        );
+        (*fail)++;
+    }
+}
+
+fn void scheduler_expect_thread_batch_result_oom_drains_os_threads(
+    Interp* interp,
+    int* pass,
+    int* fail
+) {
+    scheduler_init();
+    usz threads_before = scheduler_test_count_active_os_threads();
+    int saved_force = g_scheduler_force_thread_spawn_batch_results_alloc_fail_nth;
+    g_scheduler_force_thread_spawn_batch_results_alloc_fail_nth = 1;
+    EvalResult r = run("(__raw-thread-spawn-batch '((sleep-ms 1) (sleep-ms 1)))", interp);
+    g_scheduler_force_thread_spawn_batch_results_alloc_fail_nth = saved_force;
+    usz threads_after = scheduler_test_count_active_os_threads();
+    bool ok = r.error.has_error &&
+              str_starts_with(r.error.message[:256], "thread-spawn-batch: out of memory") &&
+              threads_before == threads_after;
+
+    if (ok) {
+        emit_pass_literal("[PASS] thread-spawn batch result scratch OOM drains OS work");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] thread-spawn batch result scratch OOM drains OS work (error=%s threads_before=%d threads_after=%d)",
+            r.error.has_error ? (ZString)r.error.message[:256] : (ZString)"<none>",
+            (int)threads_before,
+            (int)threads_after
+        );
+        (*fail)++;
+    }
+}
+
 fn void run_scheduler_offload_batch_primitive_tests(Interp* interp, int* pass, int* fail) {
     void* saved_async = null;
     scheduler_test_prepare_no_async(&saved_async);
     defer scheduler_test_cleanup_no_async(saved_async);
 
     EvalResult r = run(
-        "(block (define v (__raw-offload-batch '((sleep-ms 0) (sleep-ms 0)))) "
+        "(block (define v (__raw-offload-batch '((sleep-ms 1) (sleep-ms 1)))) "
         "       (and (pair? v) "
         "            (pair? (cdr v)) "
         "            (null? (cdr (cdr v))) "
@@ -46,6 +132,13 @@ fn void run_scheduler_offload_batch_primitive_tests(Interp* interp, int* pass, i
         }
         (*fail)++;
     }
+
+    test_error_contains(interp, "offload batch sleep-ms rejects trailing arg",
+        "(__raw-offload-batch '((sleep-ms 1 'ignored)))",
+        "offload sleep-ms: expected exactly 1 argument", pass, fail);
+    test_error_contains(interp, "offload batch gzip rejects trailing arg",
+        "(__raw-offload-batch '((gzip \"payload\" 'ignored)))",
+        "offload compress: expected exactly 1 argument", pass, fail);
 }
 
 fn void run_scheduler_task_spawn_batch_primitive_tests(Interp* interp, int* pass, int* fail) {
@@ -54,7 +147,7 @@ fn void run_scheduler_task_spawn_batch_primitive_tests(Interp* interp, int* pass
     defer scheduler_test_cleanup_no_async(saved_async);
 
     EvalResult r = run(
-        "(block (define hs (__raw-task-spawn-batch '((sleep-ms 0) (sleep-ms 0)))) "
+        "(block (define hs (__raw-task-spawn-batch '((sleep-ms 1) (sleep-ms 1)))) "
         "       (and (pair? hs) "
         "            (pair? (cdr hs)) "
         "            (null? (cdr (cdr hs))) "
@@ -90,6 +183,45 @@ fn void run_scheduler_task_spawn_batch_primitive_tests(Interp* interp, int* pass
         }
         (*fail)++;
     }
+
+    test_error_contains(interp, "task-spawn batch sleep-ms rejects trailing arg",
+        "(__raw-task-spawn-batch '((sleep-ms 1 'ignored)))",
+        "offload sleep-ms: expected exactly 1 argument", pass, fail);
+    test_error_contains(interp, "task-spawn batch gzip rejects trailing arg",
+        "(__raw-task-spawn-batch '((gzip \"payload\" 'ignored)))",
+        "offload compress: expected exactly 1 argument", pass, fail);
+    scheduler_expect_batch_error_releases_shared(
+        interp,
+        "task-spawn batch parse failure releases parsed shared payload",
+        "(__raw-task-spawn-batch '((gzip \"payload\") (sleep-ms 1 'ignored)))",
+        "offload sleep-ms: expected exactly 1 argument",
+        pass,
+        fail
+    );
+
+    int saved_task_ids_force = g_scheduler_force_task_spawn_batch_task_ids_alloc_fail_nth;
+    g_scheduler_force_task_spawn_batch_task_ids_alloc_fail_nth = 1;
+    scheduler_expect_batch_error_releases_shared(
+        interp,
+        "task-spawn batch task-id scratch OOM releases parsed shared payload",
+        "(__raw-task-spawn-batch '((gzip \"payload\")))",
+        "task-spawn-batch: out of memory",
+        pass,
+        fail
+    );
+    g_scheduler_force_task_spawn_batch_task_ids_alloc_fail_nth = saved_task_ids_force;
+
+    int saved_generations_force = g_scheduler_force_task_spawn_batch_generations_alloc_fail_nth;
+    g_scheduler_force_task_spawn_batch_generations_alloc_fail_nth = 1;
+    scheduler_expect_batch_error_releases_shared(
+        interp,
+        "task-spawn batch generation scratch OOM releases parsed shared payload",
+        "(__raw-task-spawn-batch '((gzip \"payload\")))",
+        "task-spawn-batch: out of memory",
+        pass,
+        fail
+    );
+    g_scheduler_force_task_spawn_batch_generations_alloc_fail_nth = saved_generations_force;
 }
 
 fn void run_scheduler_thread_spawn_batch_primitive_tests(Interp* interp, int* pass, int* fail) {
@@ -98,7 +230,7 @@ fn void run_scheduler_thread_spawn_batch_primitive_tests(Interp* interp, int* pa
     defer scheduler_test_cleanup_no_async(saved_async);
 
     EvalResult r = run(
-        "(block (define v (__raw-thread-spawn-batch '((sleep-ms 0) (sleep-ms 0)))) "
+        "(block (define v (__raw-thread-spawn-batch '((sleep-ms 1) (sleep-ms 1)))) "
         "       (and (pair? v) "
         "            (pair? (cdr v)) "
         "            (null? (cdr (cdr v))) "
@@ -134,6 +266,34 @@ fn void run_scheduler_thread_spawn_batch_primitive_tests(Interp* interp, int* pa
         }
         (*fail)++;
     }
+
+    test_error_contains(interp, "thread-spawn batch sleep-ms rejects trailing arg",
+        "(__raw-thread-spawn-batch '((sleep-ms 1 'ignored)))",
+        "offload sleep-ms: expected exactly 1 argument", pass, fail);
+    test_error_contains(interp, "thread-spawn batch gzip rejects trailing arg",
+        "(__raw-thread-spawn-batch '((gzip \"payload\" 'ignored)))",
+        "offload compress: expected exactly 1 argument", pass, fail);
+    scheduler_expect_batch_error_releases_shared(
+        interp,
+        "thread-spawn batch parse failure releases parsed shared payload",
+        "(__raw-thread-spawn-batch '((gzip \"payload\") (sleep-ms 1 'ignored)))",
+        "offload sleep-ms: expected exactly 1 argument",
+        pass,
+        fail
+    );
+
+    int saved_handles_force = g_scheduler_force_thread_spawn_batch_handles_alloc_fail_nth;
+    g_scheduler_force_thread_spawn_batch_handles_alloc_fail_nth = 1;
+    scheduler_expect_batch_error_releases_shared(
+        interp,
+        "thread-spawn batch handle scratch OOM releases parsed shared payload",
+        "(__raw-thread-spawn-batch '((gzip \"payload\")))",
+        "thread-spawn-batch: out of memory",
+        pass,
+        fail
+    );
+    g_scheduler_force_thread_spawn_batch_handles_alloc_fail_nth = saved_handles_force;
+    scheduler_expect_thread_batch_result_oom_drains_os_threads(interp, pass, fail);
 }
 
 fn void run_scheduler_os_thread_work_admit_failure_release_tests(Interp* interp, int* pass, int* fail) {
@@ -240,11 +400,11 @@ fn void run_scheduler_batch_result_list_alloc_failure_tests(Interp* interp, int*
     usz tasks_before = scheduler_test_count_active_thread_tasks();
     int saved_force = g_scheduler_force_result_list_cons_alloc_fail_nth;
     g_scheduler_force_result_list_cons_alloc_fail_nth = 1;
-    EvalResult offload_r = run("(__raw-offload-batch '((sleep-ms 0) (sleep-ms 0)))", interp);
+    EvalResult offload_r = run("(__raw-offload-batch '((sleep-ms 1) (sleep-ms 1)))", interp);
     g_scheduler_force_result_list_cons_alloc_fail_nth = 1;
-    EvalResult task_r = run("(__raw-task-spawn-batch '((sleep-ms 0) (sleep-ms 0)))", interp);
+    EvalResult task_r = run("(__raw-task-spawn-batch '((sleep-ms 1) (sleep-ms 1)))", interp);
     g_scheduler_force_result_list_cons_alloc_fail_nth = 1;
-    EvalResult thread_r = run("(__raw-thread-spawn-batch '((sleep-ms 0) (sleep-ms 0)))", interp);
+    EvalResult thread_r = run("(__raw-thread-spawn-batch '((sleep-ms 1) (sleep-ms 1)))", interp);
     g_scheduler_force_result_list_cons_alloc_fail_nth = saved_force;
     usz tasks_after = scheduler_test_count_active_thread_tasks();
 

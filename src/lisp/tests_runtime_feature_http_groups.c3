@@ -1,8 +1,24 @@
 module lisp;
 
 
+import std::core::mem;
 import std::io;
 
+
+fn bool http_parse_error_message_matches(Value* value, char[] expected) @inline {
+    return value != null &&
+        value.tag == ERROR &&
+        value.str_len == expected.len &&
+        value.str_chars[:value.str_len] == expected;
+}
+
+fn bool http_test_slice_equals(char[] actual, char[] expected) {
+    if (actual.len != expected.len) return false;
+    for (usz i = 0; i < expected.len; i++) {
+        if (actual[i] != expected[i]) return false;
+    }
+    return true;
+}
 
 fn void run_http_request_fiber_path_test(Interp* interp, int* pass, int* fail) {
     test_truthy(interp, "http-request in fiber via libuv tcp path",
@@ -183,6 +199,36 @@ fn void run_http_tests(Interp* interp, int* pass, int* fail) {
     }
 
     {
+        ParsedUrl parsed = {};
+        bool ok = true;
+        if (catch err = parse_url("http://h/p", &parsed)) ok = false;
+        char[] expected = "GET /p HTTP/1.1\r\nHost: h\r\nConnection: close\r\n\r\n";
+        char[128] exact_buf = {};
+        char[128] short_buf = {};
+        usz? exact_len = build_request("GET", &parsed, "", "", &exact_buf, expected.len);
+        usz? short_len = build_request("GET", &parsed, "", "", &short_buf, expected.len - 1);
+        bool exact_ok = ok;
+        bool short_failed = false;
+        if (catch err = exact_len) {
+            exact_ok = false;
+        } else {
+            exact_ok = exact_ok &&
+                exact_len == expected.len &&
+                http_test_slice_equals(exact_buf[:exact_len], expected);
+        }
+        if (catch err = short_len) {
+            short_failed = true;
+        }
+        if (exact_ok && short_failed) {
+            emit_pass_literal("[PASS] http request builder requires complete CRLF separators");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] http request builder requires complete CRLF separators");
+            (*fail)++;
+        }
+    }
+
+    {
         Value* parsed = parse_response("HTTP/1.1 200 OK\r\nX-Test: yes\r\nConnection: close\r\n\r\nbody", interp);
         Value* headers_key = make_symbol(interp, interp.symbols.intern("headers"));
         Value* body_key = make_symbol(interp, interp.symbols.intern("body"));
@@ -209,6 +255,62 @@ fn void run_http_tests(Interp* interp, int* pass, int* fail) {
                 headers_v != null && is_string(headers_v) && headers_v.str_len > 0 ? (int)headers_v.str_chars[headers_v.str_len - 1] : -1,
                 body_v != null && is_string(body_v) ? (int)body_v.str_len : -1
             );
+            (*fail)++;
+        }
+    }
+
+    {
+        Value* parsed = parse_response("HTTP/1.1 204 No Content\r\n\r\n", interp);
+        Value* headers_key = make_symbol(interp, interp.symbols.intern("headers"));
+        Value* headers_v = parsed != null && parsed.tag == HASHMAP && parsed.hashmap_val != null
+            ? hashmap_get(parsed.hashmap_val, headers_key)
+            : null;
+        bool ok = headers_v != null && is_string(headers_v) && headers_v.str_len == 0;
+        if (ok) {
+            emit_pass_literal("[PASS] http response parser accepts empty header block");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] http response parser accepts empty header block (tag=%d headers_len=%d)",
+                parsed != null ? (int)parsed.tag : -1,
+                headers_v != null && is_string(headers_v) ? (int)headers_v.str_len : -1
+            );
+            (*fail)++;
+        }
+    }
+
+    {
+        char[] expected = "http: malformed response";
+        Value* empty = parse_response("", interp);
+        Value* missing_digits = parse_response("HTTP/1.1 OK\r\nX-Test: yes\r\n\r\nbody", interp);
+        Value* missing_terminator = parse_response("HTTP/1.1 200 OK\r\nX-Test: yes\r\nbody", interp);
+        Value* malformed_status_line = parse_response("NOTHTTP 200 OK\r\nX-Test: yes\r\n\r\nbody", interp);
+        bool ok = http_parse_error_message_matches(empty, expected) &&
+            http_parse_error_message_matches(missing_digits, expected) &&
+            http_parse_error_message_matches(missing_terminator, expected) &&
+            http_parse_error_message_matches(malformed_status_line, expected);
+        if (ok) {
+            emit_pass_literal("[PASS] http response parser rejects malformed responses fail closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] http response parser rejects malformed responses fail closed (empty=%d missing_digits=%d missing_terminator=%d status_line=%d)",
+                empty != null ? (int)empty.tag : -1,
+                missing_digits != null ? (int)missing_digits.tag : -1,
+                missing_terminator != null ? (int)missing_terminator.tag : -1,
+                malformed_status_line != null ? (int)malformed_status_line.tag : -1
+            );
+            (*fail)++;
+        }
+    }
+
+    {
+        char[] oversized_declared = "HTTP/1.1 200 OK\r\nContent-Length: 65536\r\nConnection: close\r\n\r\nx";
+        if (http_response_declares_over_read_cap(oversized_declared, ASYNC_IO_HTTP_RESPONSE_READ_MAX_BYTES)) {
+            emit_pass_literal("[PASS] http response cap checker rejects oversized Content-Length");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] http response cap checker rejects oversized Content-Length");
             (*fail)++;
         }
     }
@@ -294,6 +396,36 @@ fn void run_http_tests(Interp* interp, int* pass, int* fail) {
         "    (and (= res.status 200) (= res.body \"ok\"))))) "
         "  (await hf))",
         pass, fail);
+
+    {
+        char[] oversized_declared = "HTTP/1.1 200 OK\r\nContent-Length: 65536\r\nConnection: close\r\n\r\nx";
+        char* response_buf = null;
+        usz response_len = 0;
+        usz response_cap = 0;
+        OffloadCompletion completion = {};
+        bool append_ok = scheduler_append_offload_response_chunk(
+            &response_buf,
+            &response_len,
+            &response_cap,
+            &oversized_declared[0],
+            oversized_declared.len,
+            &completion
+        );
+        bool ok = !append_ok && response_buf == null && response_len == 0 &&
+            completion.kind == OFFLOAD_RES_ERROR &&
+            completion.error_msg != null &&
+            completion.error_msg[:completion.error_len] == "offload http-get: response too large";
+        if (completion.error_msg != null) mem::free(completion.error_msg);
+        if (response_buf != null) mem::free(response_buf);
+
+        if (ok) {
+            emit_pass_literal("[PASS] http offload response accumulator rejects oversized Content-Length");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] http offload response accumulator rejects oversized Content-Length");
+            (*fail)++;
+        }
+    }
 
     run_group_isolated(&run_http_request_fiber_path_test, pass, fail);
 

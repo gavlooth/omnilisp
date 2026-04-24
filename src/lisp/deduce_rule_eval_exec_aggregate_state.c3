@@ -8,6 +8,7 @@ struct DeduceAggregateTermState {
     long   count_value;
     long   sum_int_value;
     double sum_double_value;
+    Value* sum_value;
     Value* extremum_value;
 }
 

@@ -3,8 +3,10 @@ module pika;
 struct CompiledRegex {
     Grammar grammar;
     int start_clause;
+    int active_refs;
     bool anchored_start;
     bool anchored_end;
+    bool cached;
     bool valid;
     char[256] error;
 }

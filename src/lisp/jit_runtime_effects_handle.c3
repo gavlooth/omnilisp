@@ -111,6 +111,10 @@ fn Value* jit_handle_run_signals(Interp* interp, main::StackCtx* ctx, HandleEffe
         k.is_coroutine_based = true;
         k.handle_state = state;
         Value* k_val = make_continuation(interp, k);
+        if (k_val == null || k_val.tag == ERROR) {
+            interp_discard_lisp_continuation(interp, k);
+            return k_val != null ? k_val : make_error(interp, "handle: failed to allocate continuation wrapper");
+        }
         Value* pair = make_list2_or_error(interp, k_val, state.signal_arg, "handle: failed to construct handler args");
         if (pair.tag == ERROR) {
             interp_discard_lisp_continuation(interp, k);

@@ -2,6 +2,13 @@
 
 long g_omni_tensor_vulkan_contract_scalar_chain_dispatch_call_count = 0;
 
+int omni_tensor_backend_vulkan_checked_element_bytes_overflow_guard_for_tests(void) {
+    size_t bytes = 123u;
+    int status = omni_tensor_vulkan_checked_element_bytes((SIZE_MAX / 2u) + 1u, 2u, &bytes);
+    if (status != OMNI_TENSOR_VULKAN_UNSUPPORTED) return status;
+    return bytes == 0u ? OMNI_TENSOR_VULKAN_SUCCESS : OMNI_TENSOR_VULKAN_INVALID;
+}
+
 long omni_tensor_backend_vulkan_contract_scalar_chain_dispatch_call_count(void) {
     return g_omni_tensor_vulkan_contract_scalar_chain_dispatch_call_count;
 }
@@ -289,9 +296,15 @@ int omni_tensor_backend_vulkan_contract_scalar_chain_f32(
     if (status != OMNI_TENSOR_VULKAN_SUCCESS) return status;
     if (out_element_count == 0) return OMNI_TENSOR_VULKAN_SUCCESS;
 
-    size_t left_byte_len = left_count * sizeof(float);
-    size_t right_byte_len = right_count * sizeof(float);
-    size_t out_byte_len = out_element_count * sizeof(float);
+    size_t left_byte_len = 0;
+    size_t right_byte_len = 0;
+    size_t out_byte_len = 0;
+    int byte_status = omni_tensor_vulkan_checked_element_bytes(left_count, sizeof(float), &left_byte_len);
+    if (byte_status != OMNI_TENSOR_VULKAN_SUCCESS) return byte_status;
+    byte_status = omni_tensor_vulkan_checked_element_bytes(right_count, sizeof(float), &right_byte_len);
+    if (byte_status != OMNI_TENSOR_VULKAN_SUCCESS) return byte_status;
+    byte_status = omni_tensor_vulkan_checked_element_bytes(out_element_count, sizeof(float), &out_byte_len);
+    if (byte_status != OMNI_TENSOR_VULKAN_SUCCESS) return byte_status;
     OmniTensorVulkanBuffer* left = (OmniTensorVulkanBuffer*)left_device_ptr;
     OmniTensorVulkanBuffer* right = (OmniTensorVulkanBuffer*)right_device_ptr;
     OmniTensorVulkanContext* context = left->context;

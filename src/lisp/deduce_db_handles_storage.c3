@@ -4,10 +4,10 @@ import std::core::mem;
 
 fn bool deduce_value_supported_by_tuple_codec(Value* v) @inline {
     if (v == null || v.tag == NIL) return true;
+    if (v.tag == STRING) return deduce_tuple_string_len_supported(v.str_len);
     return v.tag == INT ||
         v.tag == DOUBLE ||
         v.tag == FLOAT32 ||
-        v.tag == STRING ||
         v.tag == SYMBOL ||
         v.tag == TIME_POINT;
 }

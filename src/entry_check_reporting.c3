@@ -51,7 +51,7 @@ fn int print_check_usage() {
 
 fn void print_json_hex_byte(char c) {
     char[] hex = "0123456789abcdef";
-    uint byte = (uint)c;
+    uint byte = (uint)c & 0xFF;
     io::printf("%c%c", hex[(usz)((byte >> 4) & 0xF)], hex[(usz)(byte & 0xF)]);
 }
 
@@ -69,8 +69,8 @@ fn void print_json_escaped_bytes(char[] value) {
             case '\t':
                 io::print("\\t");
             default:
-                uint byte = (uint)c;
-                if (byte < 0x20 || byte >= 0x7f) {
+                uint byte = (uint)c & 0xFF;
+                if (byte < 0x20) {
                     io::print("\\u00");
                     print_json_hex_byte(c);
                 } else {

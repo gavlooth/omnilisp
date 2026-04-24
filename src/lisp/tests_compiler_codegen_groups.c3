@@ -343,14 +343,56 @@ fn void run_compiler_group_quasiquote_macro_tests(Interp* interp, usz* pass_out,
         );
     }
 
-    // 51. Stdlib functions (when, unless) compiled from STDLIB_PRELUDE
+    // 51. Stdlib when/unless macro surface accepts variadic bodies.
     {
-        char[] code = compile_to_c3("42", interp);
-        bool ok = str_contains(code, "when") && str_contains(code, "unless");
+        char[] code = compile_to_c3("(block (when true 1 2) (unless false 3 4))", interp);
+        bool ok = compiler_code_contains_all(code, {"make_int(2)", "make_int(4)"}) &&
+                  compiler_code_contains_none(code, {"unsupported", "called value is Integer"});
         compiler_test_finish_bool(
             ok,
-            "Compiler: stdlib functions compiled",
-            "[FAIL] Compiler: stdlib functions compiled",
+            "Compiler: stdlib when/unless macros compile variadic bodies",
+            "[FAIL] Compiler: stdlib when/unless macros compile variadic bodies",
+            &pass,
+            &fail
+        );
+    }
+
+    // 51a. Stdlib macro parity expands before AOT analysis/lowering.
+    {
+        char[] code = compile_to_c3(
+            "(block "
+            "  (branch (false 1) (true 2) (_ 3)) "
+            "  (let ({name} {'name nil}) (with-defaults name \"anon\" name)) "
+            "  (checkpoint (stream-yield 9)))",
+            interp
+        );
+        bool ok = compiler_code_contains_all(code, {"make_int(2)", "make_int(9)"}) &&
+                  compiler_code_contains_none(code, {"branch(", "with_defaults", "stream_yield", "unsupported"});
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: stdlib branch/default/stream macros expand before lowering",
+            "[FAIL] Compiler: stdlib branch/default/stream macros expand before lowering",
+            &pass,
+            &fail
+        );
+    }
+
+    // 51b. Compiler macro expansion does not publish compile-only macros.
+    {
+        SymbolId temp_macro = interp.symbols.intern("aot-temp-macro");
+        usz before_idx = lookup_macro_index(temp_macro, interp);
+        char[] code = compile_to_c3(
+            "(define [macro] aot-temp-macro (syntax-match ([] (template 42)))) (aot-temp-macro)",
+            interp
+        );
+        usz after_idx = lookup_macro_index(temp_macro, interp);
+        bool ok = before_idx == after_idx &&
+                  compiler_code_contains_all(code, {"make_int(42)"}) &&
+                  compiler_code_contains_none(code, {"aot_temp_macro", "unsupported"});
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: AOT macro expansion state is isolated",
+            "[FAIL] Compiler: AOT macro expansion state is isolated",
             &pass,
             &fail
         );
@@ -403,6 +445,95 @@ fn void run_compiler_group_missing_numeric_symbol_tests(Interp* interp, usz* pas
         bool ok = compiler_code_contains_all(code, {"lookup_prim(\"equal?\")"})
             && compiler_code_contains_none(code, {"unsupported"});
         compiler_test_finish_bool(ok, "Compiler: equal?", "[FAIL] Compiler: equal?", pass, fail);
+    }
+
+    // 56a. Data reader primitives resolve through the AOT primitive table.
+    {
+        char[] code = compile_to_c3("(block (hex \"ff0a\") (uuid \"550e8400-e29b-41d4-a716-446655440000\"))", interp);
+        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"hex\")", "lookup_prim(\"uuid\")"})
+            && compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(ok, "Compiler: hex/uuid data primitive AOT lookup", "[FAIL] Compiler: hex/uuid data primitive AOT lookup", pass, fail);
+    }
+
+    // 56b. Reader data tags remain ordinary calls before AOT primitive lookup.
+    {
+        char[] code = compile_to_c3("(block #hex \"ff0a\" #uuid \"550e8400-e29b-41d4-a716-446655440000\")", interp);
+        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"hex\")", "lookup_prim(\"uuid\")"})
+            && compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(ok, "Compiler: #hex/#uuid reader tags use AOT primitive lookup", "[FAIL] Compiler: #hex/#uuid reader tags use AOT primitive lookup", pass, fail);
+    }
+
+    // 56c. Runtime primitive families remain in AOT primitive resolver parity.
+    {
+        char[] code = compile_to_c3(
+            "(block "
+            "  foreign-release "
+            "  ffi-callback "
+            "  runtime-memory-stats "
+            "  deduce/query "
+            "  __raw-http-get "
+            "  __raw-tcp-read "
+            "  __raw-tls-connect "
+            "  __iterator-range-from "
+            "  __ui-ftxui-session-read-event)",
+            interp
+        );
+        bool ok = compiler_code_contains_all(code, {
+                "lookup_prim(\"foreign-release\")",
+                "lookup_prim(\"ffi-callback\")",
+                "lookup_prim(\"runtime-memory-stats\")",
+                "lookup_prim(\"deduce/query\")",
+                "lookup_prim(\"__raw-http-get\")",
+                "lookup_prim(\"__raw-tcp-read\")",
+                "lookup_prim(\"__raw-tls-connect\")",
+                "lookup_prim(\"__iterator-range-from\")",
+                "lookup_prim(\"__ui-ftxui-session-read-event\")"
+            }) &&
+            compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: runtime primitive family AOT resolver parity",
+            "[FAIL] Compiler: runtime primitive family AOT resolver parity",
+            pass,
+            fail
+        );
+    }
+
+    // 56d. Pure-Lisp stdlib functions are present in AOT prelude globals.
+    {
+        char[] code = compile_to_c3(
+            "(block "
+            "  (find (lambda (x) (= x 2)) (list 1 2 3)) "
+            "  (partition (lambda (x) (> x 1)) (list 1 2 3)) "
+            "  (default nil 9) "
+            "  (force (delay (lambda (ignored) 42))) "
+            "  (stream-take 2 (checkpoint (block (stream-yield 1) (stream-yield 2) nil))))",
+            interp
+        );
+        bool ok = compiler_code_contains_all(code, {
+                "Value* find;",
+                "Value* partition;",
+                "Value* _omni_default;",
+                "Value* delay;",
+                "Value* force;",
+                "Value* stream_take;"
+            }) &&
+            compiler_code_contains_none(code, {
+                "unsupported",
+                "find(",
+                "partition(",
+                "default(",
+                "delay(",
+                "force(",
+                "stream_take("
+            });
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: pure-Lisp stdlib function parity globals",
+            "[FAIL] Compiler: pure-Lisp stdlib function parity globals",
+            pass,
+            fail
+        );
     }
 }
 

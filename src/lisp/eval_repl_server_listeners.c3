@@ -13,6 +13,51 @@ struct ReplServerClientThreadCtx {
     bool tcp_transport;
 }
 
+struct ReplServerClientThreadList {
+    void** handles;
+    usz count;
+    usz capacity;
+}
+
+fn void repl_server_join_client_thread(void* thread_handle) {
+    if (thread_handle == null) return;
+    (void)omni_uv_thread_join_handle(thread_handle);
+    omni_uv_thread_free(thread_handle);
+}
+
+fn bool repl_server_client_threads_reserve_one(ReplServerClientThreadList* threads) {
+    if (threads == null) return false;
+    if (threads.count < threads.capacity) return true;
+    usz new_capacity = threads.capacity == 0 ? (usz)8 : threads.capacity * 2;
+    if (new_capacity <= threads.capacity || new_capacity > usz.max / void*.sizeof) return false;
+    void** new_handles = (void**)mem::malloc(void*.sizeof * new_capacity);
+    if (new_handles == null) return false;
+    for (usz i = 0; i < threads.count; i++) {
+        new_handles[i] = threads.handles[i];
+    }
+    if (threads.handles != null) mem::free(threads.handles);
+    threads.handles = new_handles;
+    threads.capacity = new_capacity;
+    return true;
+}
+
+fn void repl_server_client_threads_append_reserved(ReplServerClientThreadList* threads, void* thread_handle) {
+    if (threads == null || thread_handle == null || threads.count >= threads.capacity) return;
+    threads.handles[threads.count++] = thread_handle;
+}
+
+fn void repl_server_join_client_threads(ReplServerClientThreadList* threads) {
+    if (threads == null) return;
+    for (usz i = 0; i < threads.count; i++) {
+        repl_server_join_client_thread(threads.handles[i]);
+        threads.handles[i] = null;
+    }
+    if (threads.handles != null) mem::free(threads.handles);
+    threads.handles = null;
+    threads.count = 0;
+    threads.capacity = 0;
+}
+
 fn bool repl_server_tcp_host_is_loopback(char[] host) {
     if (host.len == 0) return false;
     return is_localhost_name(host) ||
@@ -26,9 +71,6 @@ fn void repl_server_client_thread_entry(void* ctx_ptr) {
 
     @pool_init(mem, 65536)
     {
-        main::thread_registry_init();
-        defer main::thread_registry_shutdown();
-
         int client_fd = ctx.client_fd;
         bool preload_project = ctx.preload_project;
         char* preload_project_dir = ctx.preload_project_dir;
@@ -51,15 +93,17 @@ fn void repl_server_client_thread_entry(void* ctx_ptr) {
     };
 }
 
-fn bool repl_server_start_client_thread(
+fn bool repl_server_start_client_thread_impl(
     int client_fd,
     bool tcp_transport,
     bool preload_project = false,
     char* preload_project_dir = null,
     bool auth_required = false,
-    char* auth_token = null
+    char* auth_token = null,
+    void** thread_handle_out = null
 ) {
     if (client_fd < 0) return false;
+    if (thread_handle_out == null) return false;
     ReplServerClientThreadCtx* ctx = (ReplServerClientThreadCtx*)mem::malloc(ReplServerClientThreadCtx.sizeof);
     if (ctx == null) return false;
     *ctx = {
@@ -82,13 +126,28 @@ fn bool repl_server_start_client_thread(
         return false;
     }
 
-    int detach_status = omni_uv_thread_detach_handle(thread_handle);
-    if (detach_status == 0) {
-        omni_uv_thread_free(thread_handle);
-    } else {
-        io::eprintfn("WARNING: REPL server client handler detach failed; thread handle retained by OS until exit");
-    }
+    *thread_handle_out = thread_handle;
     return true;
+}
+
+fn bool repl_server_start_joinable_client_thread(
+    int client_fd,
+    bool tcp_transport,
+    void** thread_handle_out,
+    bool preload_project = false,
+    char* preload_project_dir = null,
+    bool auth_required = false,
+    char* auth_token = null
+) {
+    return repl_server_start_client_thread_impl(
+        client_fd,
+        tcp_transport,
+        preload_project,
+        preload_project_dir,
+        auth_required,
+        auth_token,
+        thread_handle_out
+    );
 }
 
 fn void repl_server_reject_client_start_failure(int client_fd, bool socket_write) {
@@ -112,6 +171,8 @@ fn int repl_server_socket(char* socket_path, bool preload_project = false, char*
 
     main::thread_registry_init();
     defer main::thread_registry_shutdown();
+    ReplServerClientThreadList client_threads = {};
+    defer repl_server_join_client_threads(&client_threads);
 
     int listener_fd = -1;
     if (omni_unix_socket_listen_fd(socket_path, REPL_SERVER_LISTEN_BACKLOG, &listener_fd) < 0 || listener_fd < 0) {
@@ -139,15 +200,24 @@ fn int repl_server_socket(char* socket_path, bool preload_project = false, char*
             }
             return 1;
         }
-        if (!repl_server_start_client_thread(
+        if (!repl_server_client_threads_reserve_one(&client_threads)) {
+            repl_server_reject_client_start_failure(client_fd, true);
+            c_close_fd(client_fd);
+            continue;
+        }
+        void* client_thread = null;
+        if (!repl_server_start_joinable_client_thread(
             client_fd,
             false,
+            &client_thread,
             preload_project,
             preload_project_dir
         )) {
             repl_server_reject_client_start_failure(client_fd, true);
             c_close_fd(client_fd);
+            continue;
         }
+        repl_server_client_threads_append_reserved(&client_threads, client_thread);
     }
 
     return 0;
@@ -178,6 +248,8 @@ fn int repl_server_tcp(char* host, int port, bool preload_project = false, char*
 
     main::thread_registry_init();
     defer main::thread_registry_shutdown();
+    ReplServerClientThreadList client_threads = {};
+    defer repl_server_join_client_threads(&client_threads);
 
     int listener_fd = -1;
     if (omni_uv_tcp_listen_fd(host, port, REPL_SERVER_LISTEN_BACKLOG, &listener_fd) != 0 || listener_fd < 0) {
@@ -195,6 +267,7 @@ fn int repl_server_tcp(char* host, int port, bool preload_project = false, char*
         main::repl_emit_cli_error_json("io/write-failed", "failed to write .omni-repl-port for TCP REPL server");
         return 1;
     }
+    defer repl_server_unlink_tcp_port_file();
 
     while (listener_fd >= 0) {
         int client_fd = c_accept(listener_fd, null, null);
@@ -207,9 +280,16 @@ fn int repl_server_tcp(char* host, int port, bool preload_project = false, char*
             }
             return 1;
         }
-        if (!repl_server_start_client_thread(
+        if (!repl_server_client_threads_reserve_one(&client_threads)) {
+            repl_server_reject_client_start_failure(client_fd, true);
+            c_close_fd(client_fd);
+            continue;
+        }
+        void* client_thread = null;
+        if (!repl_server_start_joinable_client_thread(
             client_fd,
             true,
+            &client_thread,
             preload_project,
             preload_project_dir,
             true,
@@ -217,7 +297,9 @@ fn int repl_server_tcp(char* host, int port, bool preload_project = false, char*
         )) {
             repl_server_reject_client_start_failure(client_fd, true);
             c_close_fd(client_fd);
+            continue;
         }
+        repl_server_client_threads_append_reserved(&client_threads, client_thread);
     }
 
     return 0;

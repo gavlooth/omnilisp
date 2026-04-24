@@ -260,9 +260,16 @@ Omni can create C-callable callbacks from lambdas using `ffi-callback`:
 2. Parameter type symbols (as a list/array, or as individual arguments)
 3. A return type symbol
 
-Supported type symbols: `'Integer`, `'Double`, `'String`, `'ForeignHandle`,
+Supported parameter type symbols: `'Integer`, `'Double`, `'String`,
+`'ForeignHandle`, `'Boolean`, `'Void`, `'Float32`, `'Int32`, `'Int64`,
+`'UInt32`, `'UInt64`, `'Buffer`, `'Struct`. Callback `'String` parameters are
+copied from NUL-terminated `char*` inputs into ordinary Omni `String` values.
+
+Supported return type symbols: `'Integer`, `'Double`, `'ForeignHandle`,
 `'Boolean`, `'Void`, `'Float32`, `'Int32`, `'Int64`, `'UInt32`, `'UInt64`,
-`'Buffer`, `'Struct`.
+`'Buffer`, `'Struct`. Callback `'String` returns are rejected until an explicit
+C-side ownership/release contract exists; Omni does not expose raw region-owned
+string storage as a returned `char*`.
 
 The result is a `ForeignHandle` wrapping a C function pointer. When C code
 invokes it, libffi marshals arguments into Omni values, calls the lambda, and

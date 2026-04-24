@@ -5427,3 +5427,317 @@ Validation:
   - bounded container normal `memory-lifetime-smoke` (`255 passed, 0 failed`)
   - bounded container counters-enabled `memory-lifetime-smoke`
     (`255 passed, 0 failed`)
+
+## 2026-04-24 - Fix stable escape store accessor race condition
+
+- Closed `AUDIT-MEM-STABLE-ESCAPE-ACCESSOR-RACE-001`.
+- Added `stable_escape_store_acquire_entry(...)` and
+  `stable_escape_store_release_entry(...)` locked lookup helpers.
+- The acquire helper validates handle kind, generation, root, owner scope,
+  and prepared node liveness under one `store.mu` lock acquisition.
+- Updated all six accessors to use the new helper instead of calling
+  `stable_escape_store_handle_is_alive(...)` (which releases the lock) and
+  then separately reacquiring the lock to read the slot:
+  - `stable_escape_store_resolve_value`
+  - `stable_escape_store_prepared_node_count`
+  - `stable_escape_store_prepared_root_index`
+  - `stable_escape_store_prepared_node_child_count`
+  - `stable_escape_store_prepared_node_tag`
+  - `stable_escape_store_prepared_node_child`
+- This eliminates the window where a concurrent `retire` or `reset` could
+  invalidate or reuse the slot between validation and read.
+- Validation:
+  - `c3c build --obj-out obj`
+  - bounded container `memory-lifetime-smoke` (`169 passed, 0 failed`)
+  - `git diff --check`
+
+## 2026-04-25 - I/O boundary audit remediation slice
+
+- Addressed I/O boundary audit findings in the process/network/filesystem/HTTP
+  scope without editing `AUDIT.md`.
+- `AUDIT-027` implementation state:
+  - `__raw-tcp-listen` now rejects direct and packed payloads with trailing
+    arguments before DNS, bind, or listen side effects.
+  - `__raw-udp-bind` and `__raw-udp-send` now reject direct and packed trailing
+    arguments before socket side effects.
+  - Existing current-tree `tcp-read` and `udp-recv` argument parsers already
+    reject excess direct and packed payloads; focused regressions were added
+    for the remaining network raw arity paths.
+- `AUDIT-028` implementation state:
+  - Native libuv filesystem read/write helpers now chunk requests at the
+    libuv `uv_buf_t.len` width instead of narrowing `size_t` to `unsigned int`.
+  - `fs-write` and async `write-file` both bound each native write call through
+    the shared max-buffer helper.
+  - A debug max-buffer override was added so focused tests can exercise the
+    chunking path with small payloads instead of allocating multi-GB strings.
+- `AUDIT-044` implementation state:
+  - Direct HTTP reads now pass remaining capacity to TCP/TLS reads and raise
+    `io/http-response-too-large` if the fixed cap is reached while more bytes
+    remain, instead of returning a silently truncated prefix.
+- `AUDIT-107` implementation state:
+  - Process handles now cache completed wait status before the libuv process
+    handle is closed.
+  - A subsequent `process-wait` on the same handle can materialize the cached
+    status if the first result allocation failed after the OS wait completed.
+- `AUDIT-135` implementation state:
+  - The libuv TCP connect/listen native helpers now parse both IPv4 and IPv6
+    numeric addresses, using `uv_ip6_addr` for colon-containing addresses.
+  - This removes the immediate IPv6-rendered-DNS to IPv4-only-TCP helper
+    mismatch, though broad IPv6 runtime validation remains environment
+    dependent.
+- Validation:
+  - C3 LSP diagnostics passed for all touched C3 implementation and test files.
+  - `cc -fsyntax-only -Ideps/src/libuv/include csrc/uv_helpers.c` passed.
+  - `cc -fsyntax-only -Ideps/src/libuv/include csrc/uv_helpers_tcp.c` passed.
+  - `LIBRARY_PATH=/home/christos/.local/lib c3c build` is blocked by unrelated
+    pre-existing compile errors in
+    `src/lisp/tests_advanced_io_effect_ffi_ffi_surface_groups.c3` involving
+    unqualified `FFI_TYPE_UINT32` / `FFI_TYPE_UINT64` and missing
+    `omni_ffi_callback_try_enter`; that FFI surface is outside this worker's
+    ownership scope.
+- Runtime status: focused async/http/process/network tests were not executed
+  from this slice because the current workspace cannot produce a fresh
+  `build/main` until the unrelated FFI test compile errors are resolved.
+
+## 2026-04-25 - Audit 161-171 lifecycle, FFI, JIT, and compiler closure
+
+- Closed audit findings `AUDIT-161` through `AUDIT-171`.
+- Runtime lifecycle:
+  - Detached REPL client and worker thread exits no longer call
+    process-wide `thread_registry_shutdown`; REPL process entry points retain
+    final registry cleanup.
+  - Async REPL client-thread tests now keep joinable thread handles and join
+    them before returning.
+  - Reusable `aot_init` / `aot_shutdown` now manage only the AOT interpreter.
+    Generated executables use `aot_process_init` / `aot_process_shutdown` for
+    process-owned final registry cleanup.
+  - Compiler tests no longer shut down the process scope registry before the
+    outer test runner destroys its interpreter.
+- Native/FFI hardening:
+  - Returned TCP, pipe, Unix-socket, and process helper descriptors are marked
+    `FD_CLOEXEC`.
+  - Native libffi type mapping now rejects unsupported tags before libffi prep
+    or call entry.
+  - Rejected callback entry zeroes the native return slot before returning.
+- JIT/effects hardening:
+  - `jit_shift_impl` fails closed and discards allocated continuations on
+    wrapper/env setup or suspend failure.
+  - Signal resume failure clears handler signal state before returning the
+    structured error.
+- Compiler/static metadata:
+  - Pattern allocation now returns null on AST arena exhaustion and conversion
+    callers propagate failure.
+  - Lost module-publication reacquire paths roll back the recorded publication
+    before returning.
+  - FFI manifest and startup preload walkers recurse into scoped module open
+    bodies.
+  - Compiler import tests now assert checked import result emission instead of
+    stale `(void)aot::import_module(...)` side effects.
+- Validation:
+  - `cc -fsyntax-only` for touched native helpers and
+    `tests/native/uv_helper_cloexec_test.c`
+  - `scripts/build_omni_chelpers.sh`
+  - native `uv_helper_cloexec_test`
+  - `LIBRARY_PATH=/home/christos/.local/lib c3c --threads 1 build --obj-out obj`
+  - `OMNI_LISP_TEST_SLICE=compiler` (`326 passed, 0 failed`)
+  - `OMNI_LISP_TEST_SLICE=async` (`93 passed, 0 failed`)
+  - `OMNI_LISP_TEST_SLICE=advanced
+    OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system` (`177 passed, 0 failed`)
+  - `OMNI_LISP_TEST_SLICE=jit-policy
+    OMNI_JIT_POLICY_FILTER=handle-continuation-alloc-failure,signal-suspend-failure-clears-handler-state`
+    (`2 passed, 0 failed`)
+  - `OMNI_LISP_TEST_SLICE=advanced
+    OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module`
+    (`2131 passed, 0 failed`)
+
+## 2026-04-25 - Reaudit 172-182 closure
+
+- Closed follow-up reaudit findings `AUDIT-172` through `AUDIT-182`.
+- Runtime lifecycle and scheduler:
+  - Live socket/TCP REPL servers retain joinable client handles and join clients
+    before final process registry shutdown.
+  - Value/AOT shift suspend failure now discards the captured continuation.
+  - OS-thread cancel-start failure now detaches/frees a retained joinable handle
+    instead of zeroing the entry while losing native ownership.
+- Compiler and AOT metadata:
+  - AOT global collection now descends into scoped module open bodies.
+  - CLI compile FFI sidecar manifest walkers now descend into scoped module open
+    bodies.
+  - Generated startup FFI preload now checks declaration results and shuts down
+    before returning `1` on preload errors.
+- FFI and native C-string boundaries:
+  - Direct variadic FFI packing rejects unsupported tags instead of mapping them
+    to null pointers.
+  - Direct fixed/variadic FFI string packing rejects embedded NUL bytes.
+  - Process-spawn command/argv/env and DNS hostnames reject embedded NUL bytes
+    before heap C-string duplication.
+- Deduce fail-closed hardening:
+  - Tuple encoding now rejects unsupported tags instead of encoding them as nil.
+  - `fact!` pre-validates tuple values and returns
+    `deduce/fact-unsupported-value` for unsupported values.
+  - Rule-signature literal validation rejects nonzero literal counts backed by
+    null literal arrays.
+- Validation:
+  - `LIBRARY_PATH=/home/christos/.local/lib c3c --threads 1 build --obj-out obj`
+  - `OMNI_LISP_TEST_SLICE=compiler` (`328 passed, 0 failed`)
+  - `OMNI_LISP_TEST_SLICE=async` (`93 passed, 0 failed`)
+  - `OMNI_LISP_TEST_SLICE=jit-policy
+    OMNI_JIT_POLICY_FILTER=handle-continuation-alloc-failure,signal-suspend-failure-clears-handler-state`
+    (`2 passed, 0 failed`)
+  - `OMNI_LISP_TEST_SLICE=scheduler` (`141 passed, 0 failed`)
+  - `OMNI_LISP_TEST_SLICE=advanced
+    OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system` (`177 passed, 0 failed`)
+  - `OMNI_LISP_TEST_SLICE=deduce OMNI_DEDUCE_GROUP_FILTER=parallel`
+    (`8 passed, 0 failed`)
+  - `OMNI_LISP_TEST_SLICE=deduce OMNI_DEDUCE_GROUP_FILTER=command-surface`
+    (`102 passed, 0 failed`)
+  - `OMNI_LISP_TEST_SLICE=deduce OMNI_DEDUCE_GROUP_FILTER=rule-validation`
+    (`79 passed, 0 failed`)
+- Known validation limitation:
+  - The full deduce slice is still blocked on this host by restart subprocesses
+    that launch `./build/main` without the local `liblightning` runtime search
+    path. Parent runs failed with nine restart-subprocess loader errors, not
+    assertion failures in the touched deduce logic.
+
+## 2026-04-25 - Audit 172-182 negative-path coverage addendum
+
+- Added targeted regressions for the final reaudit coverage gaps:
+  - REPL client-start failure protocol rejection.
+  - JIT value/AOT shift suspend failure continuation discard.
+  - Scheduler OS-thread cancel-start joinable-handle cleanup.
+  - Direct FFI unsupported variadic values and embedded-NUL string packing.
+  - Process-spawn command/argv/env embedded-NUL rejection.
+  - DNS embedded-NUL hostname rejection.
+  - Deduce unsupported fact tuple values and malformed rule-signature literal
+    arrays.
+- DNS embedded-NUL validation now runs before fiber/loop availability checks so
+  invalid C-boundary input reports the boundary error deterministically.
+- Invalidated source-literal `"\0"` as an embedded-NUL test strategy for these
+  paths; tests now construct Omni strings containing an explicit `(char)0`.
+- Validation:
+  - `LIBRARY_PATH=/home/christos/.local/lib c3c --threads 1 build --obj-out obj`
+  - `OMNI_LISP_TEST_SLICE=advanced
+    OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system` (`180 passed, 0 failed`)
+  - `OMNI_LISP_TEST_SLICE=advanced
+    OMNI_ADVANCED_GROUP_FILTER=advanced-effect-union-limit`
+    (`86 passed, 0 failed`)
+  - `OMNI_LISP_TEST_SLICE=async` (`95 passed, 0 failed`)
+  - `OMNI_LISP_TEST_SLICE=jit-policy
+    OMNI_JIT_POLICY_FILTER=continuation-wrapper-alloc-failure,signal-suspend-failure-clears-handler-state,shift-suspend-failure-discards-continuation`
+    (`3 passed, 0 failed`)
+  - `OMNI_LISP_TEST_SLICE=scheduler` (`142 passed, 0 failed`)
+  - `OMNI_LISP_TEST_SLICE=deduce
+    OMNI_DEDUCE_GROUP_FILTER=parallel_component_scratch_pass,rule-validation`
+    (`80 passed, 0 failed`)
+  - `rg -n "Status: Open" AUDIT.md AUDIT_2.md` reported no matches.
+  - `git diff --check`
+
+## 2026-04-25 - Audit 183-191 remediation wave
+
+- Closed additional parallel reaudit findings:
+  - Deduce tuple decoder time-point payload bounds now require the full kind
+    byte plus eight `i32` fields before decoding.
+  - FFI callbacks now convert Omni Boolean returns to native C boolean returns
+    and pre-zero typed native return slots before any early error path.
+  - Compile FFI sidecar manifests now scan macro-expanded ASTs, preserve
+    macro-emitted `[ffi ...]` declarations, remove stale no-FFI sidecars, and
+    preserve extended ABI tag names in embedded contract metadata.
+  - Scheduler OS-thread cancel completion OOM cleanup now detaches/frees a
+    retained native thread handle before dropping the entry.
+  - TCP REPL server startup now unlinks `.omni-repl-port` on exit/failure after
+    publication, and REPL output writes fail closed if the output mutex is not
+    ready; ready mutexes are destroyed on teardown.
+- Test correction:
+  - The Deduce unsupported tuple-value regression now makes the failing
+    `deduce 'fact!` call the final expression, matching Omni's current
+    error-value/block evaluation semantics while still proving the fact
+    contract rejects unsupported tuple values.
+- Validation:
+  - `LIBRARY_PATH=/home/christos/.local/lib c3c --threads 1 build --obj-out obj`
+  - `OMNI_LISP_TEST_SLICE=compiler
+    OMNI_COMPILER_GROUP_FILTER=existing-feature` (`331 passed, 0 failed`)
+  - `OMNI_LISP_TEST_SLICE=deduce OMNI_DEDUCE_GROUP_FILTER=parallel`
+    (`10 passed, 0 failed`)
+  - `OMNI_LISP_TEST_SLICE=advanced
+    OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system` (`182 passed, 0 failed`)
+  - `OMNI_LISP_TEST_SLICE=scheduler` (`142 passed, 0 failed`)
+  - `OMNI_LISP_TEST_SLICE=async` (`95 passed, 0 failed`)
+
+## 2026-04-25 - Audit 192-201 remediation wave
+
+- Closed additional parallel reaudit findings:
+  - Empty compile inputs and no-FFI compiles now remove stale compile sidecar
+    manifests.
+  - AOT global collection descends into nested executable control-flow forms.
+  - Startup FFI preload and compile sidecar manifest walkers descend into nested
+    executable control-flow forms.
+  - Deduce `fact!` idempotency lookups now fail closed on LMDB read errors
+    instead of treating them as missing rows.
+  - Deduce retract/clear/drop reference scans now fail closed when source DBIs
+    cannot open, tuples cannot decode, tuple arity mismatches, or cursor scans
+    end with non-`MDB_NOTFOUND` errors.
+  - `ffi-async-call` rejects `Buffer` arguments before worker handoff.
+  - Direct variadic FFI promotes Omni `Float32` arguments to C `double`.
+  - REPL worker teardown now shuts down and destroys the worker mutex and
+    condition variable.
+  - Scheduler state has an explicit process-exit shutdown path.
+  - Deduce restart tests preserve caller `LD_LIBRARY_PATH` when spawning
+    `./build/main`.
+- Added direct Deduce fail-closed regressions for the new `fact!` LMDB
+  read-failure branch and the reference-source-open failure branch.
+- Reaudit:
+  - Mini-agent compiler/AOT, FFI, and lifecycle tracks reported no findings.
+  - Mini-agent Deduce track reported a low coverage gap; the direct fail-closed
+    regressions above close that gap.
+- Validation:
+  - `LIBRARY_PATH=/home/christos/.local/lib c3c --threads 1 build --obj-out obj`
+  - `OMNI_LISP_TEST_SLICE=compiler` (`335 passed, 0 failed`)
+  - `OMNI_LISP_TEST_SLICE=deduce` (`411 passed, 0 failed`)
+  - `OMNI_LISP_TEST_SLICE=deduce OMNI_DEDUCE_GROUP_FILTER=integrity`
+    (`36 passed, 0 failed`)
+  - `OMNI_LISP_TEST_SLICE=advanced
+    OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system` (`184 passed, 0 failed`)
+  - `scripts/check_status_consistency.sh` passed.
+  - `rg -n "Status: (Open|Reopened|Pending)" AUDIT.md AUDIT_2.md`
+    reported no matches.
+  - `git diff --check` passed.
+  - `OMNI_LISP_TEST_SLICE=async` (`96 passed, 0 failed`)
+  - `OMNI_LISP_TEST_SLICE=scheduler` (`143 passed, 0 failed`)
+  - `rg -n "Status: Open" AUDIT.md AUDIT_2.md` reported no matches.
+  - `git diff --check`
+- Known validation limitation:
+  - The broad unfiltered advanced slice still has pre-existing iterator
+    boundary failures outside this remediation wave, so this wave used the
+    targeted advanced FFI group as its FFI validation signal.
+
+## 2026-04-25 - Audit 202-207 follow-up remediation wave
+
+- Closed the next parallel reaudit findings:
+  - Deduce deferred commit fact/reference snapshot validation now fails closed
+    on tuple decode errors, tuple arity mismatches, source DBI open failures,
+    and non-EOF cursor termination.
+  - Deduce fact reference lookups now distinguish scan/decode/arity failures
+    from clean referential-integrity misses.
+  - Embedded AOT FFI contract JSON now recurses through nested executable forms,
+    matching startup preload and compile sidecar discovery.
+  - Compile no-FFI/empty stale sidecar cleanup now reports unlink failures
+    instead of succeeding with stale `.ffi-manifest.json` artifacts still in
+    place.
+  - REPL clone-start event failure now closes the newly created session before
+    returning.
+  - `main` now preserves existing non-zero exits but reports successful commands
+    as failed if scheduler shutdown itself fails.
+- Added regressions for nested embedded FFI contract discovery, stale sidecar
+  unlink failure, deferred Deduce scan failure, deferred reference source-open
+  failure, and fact reference scan failure.
+- Validation:
+  - `LIBRARY_PATH=/home/christos/.local/lib c3c --threads 1 build --obj-out obj`
+  - `OMNI_LISP_TEST_SLICE=compiler
+    OMNI_COMPILER_GROUP_FILTER=existing-feature` (`336 passed, 0 failed`)
+  - `OMNI_LISP_TEST_SLICE=deduce OMNI_DEDUCE_GROUP_FILTER=integrity`
+    (`39 passed, 0 failed`)
+  - `OMNI_LISP_TEST_SLICE=deduce` (`414 passed, 0 failed`)
+  - `OMNI_LISP_TEST_SLICE=async` (`96 passed, 0 failed`)
+  - `OMNI_LISP_TEST_SLICE=scheduler` (`143 passed, 0 failed`)
+  - `OMNI_LISP_TEST_SLICE=advanced
+    OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system` (`184 passed, 0 failed`)

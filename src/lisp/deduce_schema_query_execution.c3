@@ -180,7 +180,9 @@ fn Value* prim_deduce_query(Value*[] args, Env* env, Interp* interp) {
 
     DeduceTupleIterator it = {};
     if (!deduce_tuple_iterator_open(&it, rel, interp, null, 0, false, {}, {}, false)) {
-        return make_nil(interp);
+        Value* open_err = deduce_tuple_iterator_error(&it);
+        if (open_err != null) return open_err;
+        return deduce_raise(interp, "deduce/query-invalid-state", "deduce-query: invalid iterator state");
     }
     defer deduce_tuple_iterator_close(&it);
 
@@ -200,6 +202,8 @@ fn Value* prim_deduce_query(Value*[] args, Env* env, Interp* interp) {
             filtered_rev = make_cons(interp, row, filtered_rev);
         }
     }
+    Value* scan_err = deduce_tuple_iterator_error(&it);
+    if (scan_err != null) return scan_err;
     if (selector_rule_index >= 0 && !selector_goal_directed_executed) {
         deduce_db_note_goal_directed_read(
             rel.db,

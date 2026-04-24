@@ -74,47 +74,26 @@ fn Value* deduce_match_scan_relation_in_txn(
     }
     if (subject_keys_out != null) deduce_goal_directed_read_subject_key_capture_release(subject_keys_out);
 
-    Value*[] tuple_vals = {};
-    if (rel.col_count > 0) {
-        tuple_vals = mem::new_array(Value*, rel.col_count);
-        if (tuple_vals.ptr == null) {
-            return deduce_raise(interp, "deduce/match-out-of-memory", "deduce-match: out of memory");
-        }
+    DeduceTupleIterator it = {};
+    if (!deduce_tuple_iterator_open_in_txn(&it, rel, interp, txn, null, 0, false, {}, {}, false)) {
+        Value* open_err = deduce_tuple_iterator_error(&it);
+        if (open_err != null) return open_err;
+        return deduce_raise(interp, "deduce/match-invalid-state", "deduce-match: invalid iterator state");
     }
-    defer if (tuple_vals.ptr != null) mem::free(tuple_vals.ptr);
-
-    MdbCursor* cursor = null;
-    int rc = mdb_cursor_open(txn, rel.dbi, &cursor);
-    if (rc != MDB_SUCCESS || cursor == null) {
-        return deduce_raise(interp, "deduce/match-transaction-failed", "deduce-match: transaction cursor open failed");
-    }
-    defer mdb_cursor_close(cursor);
+    defer deduce_tuple_iterator_close(&it);
 
     Value* result_rev = make_nil(interp);
-    MdbVal key = {};
-    MdbVal data = {};
-    rc = mdb_cursor_get(cursor, &key, &data, MDB_FIRST);
-    while (rc == MDB_SUCCESS) {
-        usz? decoded_count = decode_tuple((char*)key.mv_data, key.mv_size, tuple_vals, interp);
-        if (catch err = decoded_count) {
-            rc = mdb_cursor_get(cursor, &key, &data, MDB_NEXT);
-            continue;
-        }
-        if (decoded_count != rel.col_count) {
-            rc = mdb_cursor_get(cursor, &key, &data, MDB_NEXT);
-            continue;
-        }
-
+    while (deduce_tuple_iterator_next(&it)) {
         Bindings bindings = {};
         bindings_init(&bindings);
-        if (catch err = match_clause_against_tuple(pattern, tuple_vals, rel, &bindings, interp)) {
+        if (catch err = match_clause_against_tuple(pattern, it.vals, rel, &bindings, interp)) {
             // Pattern did not match this tuple.
         } else {
             if (subject_keys_out != null) {
                 deduce_goal_directed_read_subject_key_capture_record(
                     subject_keys_out,
-                    key.mv_data,
-                    key.mv_size
+                    it.key.mv_data,
+                    it.key.mv_size
                 );
             }
             Value* result_dict = build_result_dict(&bindings, null, interp);
@@ -125,8 +104,9 @@ fn Value* deduce_match_scan_relation_in_txn(
             result_rev = make_cons(interp, result_dict, result_rev);
         }
         bindings_deinit(&bindings);
-        rc = mdb_cursor_get(cursor, &key, &data, MDB_NEXT);
     }
+    Value* scan_err = deduce_tuple_iterator_error(&it);
+    if (scan_err != null) return scan_err;
     return deduce_reverse_list(result_rev, interp);
 }
 
@@ -139,7 +119,9 @@ fn Value* deduce_match_scan_relation(
     if (subject_keys_out != null) deduce_goal_directed_read_subject_key_capture_release(subject_keys_out);
     DeduceTupleIterator it = {};
     if (!deduce_tuple_iterator_open(&it, rel, interp, null, 0, false, {}, {}, false)) {
-        return make_nil(interp);
+        Value* open_err = deduce_tuple_iterator_error(&it);
+        if (open_err != null) return open_err;
+        return deduce_raise(interp, "deduce/match-invalid-state", "deduce-match: invalid iterator state");
     }
     defer deduce_tuple_iterator_close(&it);
 
@@ -167,5 +149,7 @@ fn Value* deduce_match_scan_relation(
         }
         bindings_deinit(&bindings);
     }
+    Value* scan_err = deduce_tuple_iterator_error(&it);
+    if (scan_err != null) return scan_err;
     return deduce_reverse_list(result_rev, interp);
 }

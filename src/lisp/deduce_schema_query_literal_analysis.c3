@@ -22,6 +22,7 @@ fn bool deduce_query_expr_try_extract_literal_value(
         case E_IF:
         case E_AND:
         case E_OR:
+        case E_WITH_MODULE:
             return deduce_query_expr_try_extract_control_flow_literal_value(
                 expr,
                 row_param,

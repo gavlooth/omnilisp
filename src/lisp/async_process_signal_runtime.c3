@@ -7,6 +7,10 @@ struct ProcessHandle {
     void* uv_process;
     bool open;
     long lifecycle_state;
+    bool wait_status_ready;
+    int wait_pid;
+    int wait_exit_code;
+    int wait_term_signal;
 }
 
 const long PROCESS_HANDLE_STATE_OPEN = 0;
@@ -162,6 +166,10 @@ fn Value* make_process_handle(Interp* interp, void* uv_process) {
     ph.uv_process = uv_process;
     ph.open = true;
     ph.lifecycle_state = PROCESS_HANDLE_STATE_OPEN;
+    ph.wait_status_ready = false;
+    ph.wait_pid = -1;
+    ph.wait_exit_code = 0;
+    ph.wait_term_signal = 0;
     Value* v = make_ffi_handle_ex(interp, (void*)ph, "process-handle",
         &process_handle_finalizer, true, false);
     if (v == null) {

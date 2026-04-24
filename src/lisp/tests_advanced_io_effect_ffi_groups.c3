@@ -72,6 +72,10 @@ fn void run_advanced_process_wait_event_driven_test(Interp* interp, int* pass, i
     run_advanced_process_wait_event_driven_test_impl(interp, pass, fail);
 }
 
+fn void run_advanced_process_wait_status_retry_after_result_oom_test(Interp* interp, int* pass, int* fail) {
+    run_advanced_process_wait_status_retry_after_result_oom_test_impl(interp, pass, fail);
+}
+
 fn void run_advanced_process_handle_concurrent_reuse_test(Interp* interp, int* pass, int* fail) {
     run_advanced_process_handle_concurrent_reuse_test_impl(interp, pass, fail);
 }

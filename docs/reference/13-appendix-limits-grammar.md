@@ -42,6 +42,8 @@ expr        = literal | symbol | path | quoted | quasiquoted
 literal     = integer | radix_integer | float | string ;
 integer     = [ "-" ] digit { digit } ;
 radix_integer = ( "#x" | "#b" | "#o" ) [ "-" ] radix_digit { radix_digit } ;
+(* hex radix alpha digits are uppercase A through F; lowercase symbol-like
+   forms such as #xface, #b101tag, and #o777tag are reader tags. *)
 float       = [ "-" ] digit { digit } "." digit { digit } ;
 string      = '"' { char | escape } '"' ;
 symbol      = symbol_char { symbol_char } ;

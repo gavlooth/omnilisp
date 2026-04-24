@@ -18,6 +18,18 @@ fn void run_advanced_unicode_lambda_utf8_tests(Interp* interp, int* pass, int* f
     test_eq(interp, "utf8 byte-length ASCII", "(string-byte-length \"hello\")", 5, pass, fail);
     test_eq(interp, "utf8 byte-length h\xc3\xa9llo", "(string-byte-length \"h\xc3\xa9llo\")", 6, pass, fail);
     test_eq(interp, "utf8 byte-length CJK", "(string-byte-length \"\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e\")", 9, pass, fail);
+    test_error_contains(interp, "string-length rejects no args", "(string-length)", "arity", pass, fail);
+    test_error_contains(interp, "string-length rejects integer", "(string-length 42)", "string-length: expected string argument", pass, fail);
+    test_error_contains(interp, "string-length rejects nil", "(string-length nil)", "string-length: expected string argument", pass, fail);
+    test_error_contains(interp, "string-length rejects list", "(string-length '(a b))", "string-length: expected string argument", pass, fail);
+    test_error_contains(interp, "string-length rejects array", "(string-length [1 2])", "string-length: expected string argument", pass, fail);
+    test_error_contains(interp, "string-length rejects dict", "(string-length {'a 1})", "string-length: expected string argument", pass, fail);
+    test_error_contains(interp, "string-byte-length rejects no args", "(string-byte-length)", "arity", pass, fail);
+    test_error_contains(interp, "string-byte-length rejects integer", "(string-byte-length 42)", "string-byte-length: expected string argument", pass, fail);
+    test_error_contains(interp, "string-byte-length rejects nil", "(string-byte-length nil)", "string-byte-length: expected string argument", pass, fail);
+    test_error_contains(interp, "string-byte-length rejects list", "(string-byte-length '(a b))", "string-byte-length: expected string argument", pass, fail);
+    test_error_contains(interp, "string-byte-length rejects array", "(string-byte-length [1 2])", "string-byte-length: expected string argument", pass, fail);
+    test_error_contains(interp, "string-byte-length rejects dict", "(string-byte-length {'a 1})", "string-byte-length: expected string argument", pass, fail);
     test_str_val(interp, "utf8 char-at ASCII", "(char-at \"hello\" 1)", "e", pass, fail);
     test_str_val(interp, "utf8 char-at caf\xc3\xa9", "(char-at \"caf\xc3\xa9\" 3)", "\xc3\xa9", pass, fail);
     test_str_val(interp, "utf8 char-at CJK", "(char-at \"\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e\" 1)", "\xe6\x9c\xac", pass, fail);
@@ -37,6 +49,20 @@ fn void run_advanced_unicode_lambda_utf8_tests(Interp* interp, int* pass, int* f
         "(String (List \"a\" 1 \"b\"))", "String: expected string elements", pass, fail);
     test_error_contains(interp, "String(List) rejects improper list tail",
         "(String (cons \"a\" 2))", "String: expected a proper list", pass, fail);
+    test_eq(interp, "string-split multi-char separator count",
+        "(length (string-split \"a::b::\" \"::\"))", 3, pass, fail);
+    test_str_val(interp, "string-split multi-char separator middle",
+        "(ref (string-split \"a::b::\" \"::\") 1)", "b", pass, fail);
+    test_str_val(interp, "string-split multi-char separator trailing empty",
+        "(ref (string-split \"a::b::\" \"::\") 2)", "", pass, fail);
+    test_eq(interp, "string-split CRLFCRLF separator count",
+        "(length (string-split \"head\\r\\n\\r\\nbody\" \"\\r\\n\\r\\n\"))", 2, pass, fail);
+    test_str_val(interp, "string-split CRLFCRLF separator tail",
+        "(ref (string-split \"head\\r\\n\\r\\nbody\" \"\\r\\n\\r\\n\") 1)", "body", pass, fail);
+    test_eq(interp, "string-split utf8 separator count",
+        "(length (string-split \"a\xc3\xa9b\xc3\xa9\" \"\xc3\xa9\"))", 3, pass, fail);
+    test_str_val(interp, "string-split utf8 separator middle",
+        "(ref (string-split \"a\xc3\xa9b\xc3\xa9\" \"\xc3\xa9\") 1)", "b", pass, fail);
 }
 
 fn void run_advanced_callable_type_symbol_constructor_tests(Interp* interp, int* pass, int* fail) {
@@ -272,6 +298,9 @@ fn void run_advanced_unicode_iterator_lazy_pipeline_tests(Interp* interp, int* p
     // Infinite + take
     test_eq(interp, "range-from + take", "(car (list (take 5 (range-from 0))))", 0, pass, fail);
     test_eq(interp, "range-from + take len", "(length (list (take 5 (range-from 0))))", 5, pass, fail);
+    test_str_val(interp, "range-from promotes long.max successor",
+        "(String (car (cdr (list (take 2 (range-from 9223372036854775807))))))",
+        "9223372036854775808", pass, fail);
     // map + filter pipeline
     test_eq(interp, "lazy pipeline len",
         "(length (list (take 3 (filter even? (map (lambda (x) (* x 2)) (range-from 1))))))", 3, pass, fail);

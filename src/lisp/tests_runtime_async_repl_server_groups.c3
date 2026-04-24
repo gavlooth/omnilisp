@@ -16,6 +16,23 @@ fn void run_async_repl_server_worker_start_requires_ready_primitives_test(Interp
     }
 }
 
+fn void run_async_repl_server_worker_destroy_releases_sync_primitives_test(Interp* interp, int* pass, int* fail) {
+    (void)interp;
+    ReplServerWorker worker = {};
+    repl_server_worker_init(&worker, null, null);
+    bool initialized = worker.mu_ready && worker.cv_ready;
+    repl_server_worker_destroy(&worker);
+    bool ok = initialized && !worker.mu_ready && !worker.cv_ready &&
+        worker.thread_handle == null && !worker.thread_started;
+    if (ok) {
+        emit_pass_literal("[PASS] async repl-server worker destroy releases sync primitives");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] async repl-server worker destroy releases sync primitives");
+        (*fail)++;
+    }
+}
+
 fn void run_async_repl_server_pending_interrupt_window_test(Interp* interp, int* pass, int* fail) {
     ReplServerConnection conn = {};
     repl_server_connection_init(&conn, 1, false);
@@ -268,7 +285,9 @@ fn void run_async_repl_server_input_destroy_close_test(Interp* interp, int* pass
                            state.buf == null &&
                            state.len == 0 &&
                            state.cap == 0 &&
-                           read.status == IO_INPUT_READ_EOF &&
+                           !state.mu_ready &&
+                           !state.cv_ready &&
+                           read.status == IO_INPUT_READ_FAILED &&
                            read.len == 0;
 
     if (init_ok && append_ok && post_destroy_ok) {
@@ -372,8 +391,10 @@ fn void run_async_repl_server_client_threads_handle_independent_streams_test(Int
     (void)interp;
     int server_a = -1;
     int client_a = -1;
+    void* client_thread_a = null;
     int server_b = -1;
     int client_b = -1;
+    void* client_thread_b = null;
     if (!repl_server_test_socketpair(&server_a, &client_a) ||
         !repl_server_test_socketpair(&server_b, &client_b)) {
         if (server_a >= 0) c_close_fd(server_a);
@@ -385,8 +406,8 @@ fn void run_async_repl_server_client_threads_handle_independent_streams_test(Int
         return;
     }
 
-    bool started_a = repl_server_start_client_thread(server_a, false);
-    bool started_b = repl_server_start_client_thread(server_b, true);
+    bool started_a = repl_server_start_joinable_client_thread(server_a, false, &client_thread_a);
+    bool started_b = repl_server_start_joinable_client_thread(server_b, true, &client_thread_b);
     if (!started_a) c_close_fd(server_a);
     if (!started_b) c_close_fd(server_b);
 
@@ -395,6 +416,8 @@ fn void run_async_repl_server_client_threads_handle_independent_streams_test(Int
 
     c_close_fd(client_a);
     c_close_fd(client_b);
+    if (client_thread_a != null) repl_server_join_client_thread(client_thread_a);
+    if (client_thread_b != null) repl_server_join_client_thread(client_thread_b);
 
     bool ok = started_a && started_b && response_a && response_b;
     if (ok) {
@@ -412,8 +435,50 @@ fn void run_async_repl_server_client_threads_handle_independent_streams_test(Int
     }
 }
 
+fn void run_async_repl_server_client_start_failure_rejects_protocol_error_test(Interp* interp, int* pass, int* fail) {
+    (void)interp;
+
+    int left = -1;
+    int right = -1;
+    bool ok = repl_server_test_socketpair(&left, &right);
+    char[512] response_buf = {};
+    defer {
+        if (left >= 0) c_close_fd(left);
+        if (right >= 0) c_close_fd(right);
+    }
+
+    if (ok) {
+        repl_server_reject_client_start_failure(left, true);
+        ReplServerReadResult read = repl_server_read_line_fd(right, response_buf[..], true);
+        ok = !read.failed &&
+             !read.truncated &&
+             read.len > 0 &&
+             scheduler_test_str_contains(response_buf[:read.len], "runtime/client-handler-start-failed") &&
+             scheduler_test_str_contains(response_buf[:read.len], "failed to start repl client handler");
+        if (!ok) {
+            io::printfn(
+                "[FAIL] async repl-server client start failure rejects protocol error (failed=%s truncated=%s len=%d response=%s)",
+                read.failed ? "yes" : "no",
+                read.truncated ? "yes" : "no",
+                (long)read.len,
+                response_buf[:read.len]
+            );
+        }
+    } else {
+        io::printn("[FAIL] async repl-server client start failure rejects protocol error (socketpair)");
+    }
+
+    if (ok) {
+        emit_pass_literal("[PASS] async repl-server client start failure rejects protocol error");
+        (*pass)++;
+    } else {
+        (*fail)++;
+    }
+}
+
 fn void run_async_tests_repl_server(Interp* interp, int* pass, int* fail) {
     run_async_repl_server_worker_start_requires_ready_primitives_test(interp, pass, fail);
+    run_async_repl_server_worker_destroy_releases_sync_primitives_test(interp, pass, fail);
     run_async_repl_server_pending_interrupt_window_test(interp, pass, fail);
     run_async_repl_server_active_interrupt_test(interp, pass, fail);
     run_async_repl_server_request_queue_accepts_multiple_pending_test(interp, pass, fail);
@@ -422,4 +487,5 @@ fn void run_async_tests_repl_server(Interp* interp, int* pass, int* fail) {
     run_async_repl_server_input_destroy_close_test(interp, pass, fail);
     run_async_repl_server_auth_policy_test(interp, pass, fail);
     run_async_repl_server_client_threads_handle_independent_streams_test(interp, pass, fail);
+    run_async_repl_server_client_start_failure_rejects_protocol_error_test(interp, pass, fail);
 }

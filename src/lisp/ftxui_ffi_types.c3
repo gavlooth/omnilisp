@@ -26,9 +26,12 @@ struct OmniFtxuiEventSpec {
 struct OmniFtxuiEventReadResult {
     uint size;
     uint abi_version;
+    uint initialized;
     bool has_event;
     int kind;
-    char[256] text;
+    char* text;
+    usz text_len;
+    usz dropped_events;
 }
 
 alias OmniFtxuiGraphCallbackFn = fn OmniFtxuiStatus(
@@ -71,6 +74,10 @@ struct OmniFtxuiPlotOptions {
     usz heatmap_rows;
     usz heatmap_cols;
     int marker;
+    int has_y_min;
+    int has_y_max;
+    double y_min;
+    double y_max;
 }
 
 struct OmniFtxuiDecoratorOptions {

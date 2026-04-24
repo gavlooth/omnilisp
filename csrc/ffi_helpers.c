@@ -2,6 +2,7 @@
 // Reason: libffi uses C structs (ffi_type, ffi_cif) that are hard to declare in C3.
 
 #include <ffi.h>
+#include <string.h>
 #include <stdint.h>
 #include <stdlib.h>
 
@@ -37,9 +38,21 @@ static ffi_type* omni_to_ffi_type(int t) {
         case OMNI_FFI_UINT64:  return &ffi_type_uint64;
         case OMNI_FFI_BUFFER:  return &ffi_type_pointer;
         case OMNI_FFI_STRUCT:  return &ffi_type_pointer;
-        default:               return &ffi_type_pointer;
+        default:               return NULL;
     }
 }
+
+static int omni_ffi_types_supported(int nargs, int* types) {
+    if (nargs < 0) return 0;
+    if (nargs == 0) return 1;
+    if (types == NULL) return 0;
+    for (int i = 0; i < nargs; i++) {
+        if (omni_to_ffi_type(types[i]) == NULL) return 0;
+    }
+    return 1;
+}
+
+uint32_t omni_ffi_test_echo_u32(uint32_t value);
 
 static int omni_ffi_arg_storage_valid(int nargs, int* arg_types, void** arg_values) {
     if (nargs < 0) return 0;
@@ -66,6 +79,7 @@ static int omni_ffi_arg_types_valid(int nargs, int* arg_types) {
 int omni_ffi_call(void* fn_ptr, int nargs, int* arg_types, void** arg_values,
                   int ret_type, void* ret_value) {
     if (fn_ptr == NULL || !omni_ffi_arg_storage_valid(nargs, arg_types, arg_values)) return -1;
+    if (!omni_ffi_types_supported(nargs, arg_types) || omni_to_ffi_type(ret_type) == NULL) return -1;
 
     ffi_cif cif;
     ffi_type** atypes = NULL;
@@ -98,6 +112,7 @@ int omni_ffi_call_var(void* fn_ptr, int nargs, int fixed_count,
         !omni_ffi_arg_storage_valid(nargs, arg_types, arg_values)) {
         return -1;
     }
+    if (!omni_ffi_types_supported(nargs, arg_types) || omni_to_ffi_type(ret_type) == NULL) return -1;
 
     ffi_cif cif;
     ffi_type** atypes = NULL;
@@ -128,8 +143,10 @@ int omni_ffi_call_var(void* fn_ptr, int nargs, int fixed_count,
 // FFI CALLBACK CLOSURES (libffi closure_alloc)
 // =============================================================================
 
-// Forward declaration — implemented in C3 (prim_ffi_callback.c3)
+// Forward declarations — implemented in C3 (prim_ffi_callback.c3)
+extern int omni_ffi_callback_try_enter(void* user_data);
 extern void omni_ffi_callback_dispatch(void* user_data, void* ret, void** args);
+extern void omni_ffi_callback_leave(void* user_data);
 
 typedef struct {
     ffi_closure* closure;
@@ -138,8 +155,14 @@ typedef struct {
 } OmniFfiClosure;
 
 static void omni_ffi_closure_handler(ffi_cif* cif, void* ret, void** args, void* user_data) {
-    (void)cif;
+    if (!omni_ffi_callback_try_enter(user_data)) {
+        if (ret != NULL && cif != NULL && cif->rtype != NULL && cif->rtype->size > 0) {
+            memset(ret, 0, cif->rtype->size);
+        }
+        return;
+    }
     omni_ffi_callback_dispatch(user_data, ret, args);
+    omni_ffi_callback_leave(user_data);
 }
 
 // omni_ffi_closure_alloc — allocate a libffi closure for callbacks into Omni.
@@ -156,7 +179,9 @@ int omni_ffi_closure_alloc(int nargs, int* arg_types, int ret_type,
     if (out_closure != NULL) *out_closure = NULL;
     if (out_code != NULL) *out_code = NULL;
     if (out_closure == NULL || out_code == NULL ||
-        !omni_ffi_arg_types_valid(nargs, arg_types)) {
+        !omni_ffi_arg_types_valid(nargs, arg_types) ||
+        !omni_ffi_types_supported(nargs, arg_types) ||
+        omni_to_ffi_type(ret_type) == NULL) {
         return -1;
     }
 
@@ -229,6 +254,31 @@ int omni_ffi_test_callback_int_int(void* cb, int a, int b) {
     return fn(a, b);
 }
 
+int omni_ffi_test_callback_string_len(void* cb, char* text) {
+    long (*fn)(char*) = (long (*)(char*))cb;
+    return (int)fn(text);
+}
+
+uint32_t omni_ffi_test_echo_u32(uint32_t value) {
+    return value;
+}
+
+uint64_t omni_ffi_test_echo_u64(uint64_t value) {
+    return value;
+}
+
+uint32_t omni_ffi_test_return_u32_max(void) {
+    return UINT32_MAX;
+}
+
+uint64_t omni_ffi_test_return_u64_long_max(void) {
+    return (uint64_t)INT64_MAX;
+}
+
+uint64_t omni_ffi_test_return_u64_above_long_max(void) {
+    return ((uint64_t)INT64_MAX) + 1u;
+}
+
 int omni_ffi_call_null_arg_vectors_guard_for_tests(void) {
     long ret = 0;
     return omni_ffi_call((void*)1, 1, NULL, NULL, OMNI_FFI_INT, &ret);
@@ -239,9 +289,63 @@ int omni_ffi_call_var_null_arg_vectors_guard_for_tests(void) {
     return omni_ffi_call_var((void*)1, 1, 1, NULL, NULL, OMNI_FFI_INT, &ret);
 }
 
+int omni_ffi_call_rejects_unsupported_type_tags_for_tests(void) {
+    long arg_storage = 123;
+    long ret_storage = 456;
+    int unsupported_type = 999;
+    void* arg_value = &arg_storage;
+
+    if (omni_ffi_call((void*)&omni_ffi_test_echo_u32, 1, &unsupported_type, &arg_value,
+        OMNI_FFI_UINT32, &ret_storage) != -1 || ret_storage != 456) {
+        return -1;
+    }
+
+    int supported_type = OMNI_FFI_UINT32;
+    ret_storage = 456;
+    if (omni_ffi_call((void*)&omni_ffi_test_echo_u32, 1, &supported_type, &arg_value,
+        unsupported_type, &ret_storage) != -1 || ret_storage != 456) {
+        return -1;
+    }
+
+    ret_storage = 456;
+    if (omni_ffi_call_var((void*)&omni_ffi_test_echo_u32, 1, 1, &unsupported_type, &arg_value,
+        OMNI_FFI_UINT32, &ret_storage) != -1 || ret_storage != 456) {
+        return -1;
+    }
+
+    ret_storage = 456;
+    if (omni_ffi_call_var((void*)&omni_ffi_test_echo_u32, 1, 1, &supported_type, &arg_value,
+        unsupported_type, &ret_storage) != -1 || ret_storage != 456) {
+        return -1;
+    }
+
+    return 0;
+}
+
 int omni_ffi_closure_alloc_failure_clears_outputs_for_tests(void) {
     void* closure = (void*)1;
     void* code = (void*)1;
     int status = omni_ffi_closure_alloc(1, NULL, OMNI_FFI_INT, &closure, &code, NULL);
     return status == -1 && closure == NULL && code == NULL ? 0 : -1;
+}
+
+int omni_ffi_closure_alloc_rejects_unsupported_type_tags_for_tests(void) {
+    void* closure = (void*)1;
+    void* code = (void*)1;
+    int unsupported_type = 999;
+    int supported_types[1] = { OMNI_FFI_INT };
+
+    if (omni_ffi_closure_alloc(1, &unsupported_type, OMNI_FFI_INT, &closure, &code, NULL) != -1 ||
+        closure != NULL || code != NULL) {
+        return -1;
+    }
+
+    closure = (void*)1;
+    code = (void*)1;
+    if (omni_ffi_closure_alloc(1, supported_types, unsupported_type, &closure, &code, NULL) != -1 ||
+        closure != NULL || code != NULL) {
+        return -1;
+    }
+
+    return 0;
 }

@@ -91,6 +91,18 @@ fn Expr* vte_if_form(Value* rest, Interp* interp) {
 
 fn Expr* vte_define_or_set_form(Value* rest, Interp* interp, bool is_set) {
     usz arity = list_length(rest);
+    if (!is_set && is_cons(rest) && rest.cons_val.car != null && rest.cons_val.car.tag == ARRAY) {
+        return vte_ffi_define_form(rest.cons_val.car, rest.cons_val.cdr, interp);
+    }
+    if (!is_set && is_cons(rest) && rest.cons_val.car != null && rest.cons_val.car.tag == CONS && vte_is_ffi_annotation(rest.cons_val.car, interp)) {
+        return vte_ffi_define_form(rest.cons_val.car, rest.cons_val.cdr, interp);
+    }
+    if (!is_set && is_cons(rest) && rest.cons_val.car != null && macro_value_name_text(rest.cons_val.car, interp, "ffi")) {
+        return vte_ffi_define_flat_form(rest, interp);
+    }
+    if (!is_set && is_cons(rest) && rest.cons_val.car != null && macro_value_name_text(rest.cons_val.car, interp, "Array")) {
+        return vte_ffi_define_flat_form(rest.cons_val.cdr, interp);
+    }
     if (is_set && arity > 2) return vte_generic_set_call(rest, interp);
     if (is_set && arity != 2) return make_error_expr(interp, "value->expr: set! expects name and value");
     if (!is_set && arity != 2) return make_error_expr(interp, "value->expr: define expects name and value");

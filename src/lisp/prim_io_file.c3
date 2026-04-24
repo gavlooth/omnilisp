@@ -146,6 +146,7 @@ fn Value* prim_read_lines(Value*[] args, Env* env, Interp* interp) {
     Value* content_v = read_result.value;
     char[] content = content_v.str_chars[:content_v.str_len];
     usz content_len = content.len;
+    if (content_len == 0) return make_nil(interp);
 
     Value* lines = make_nil(interp);
     usz start = 0;

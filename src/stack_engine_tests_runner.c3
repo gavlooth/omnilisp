@@ -60,6 +60,12 @@ fn void run_stack_engine_tests(int* out_pass, int* out_fail) {
     if (test_stack_ctx_clone_multishot()) { stack_print_pass("clone/resume multi-shot"); pass++; }
     else { io::printfn("  FAIL: clone/resume multi-shot"); fail++; }
 
+    if (test_stack_ctx_clone_signed_delta_negative()) { stack_print_pass("clone signed relocation delta"); pass++; }
+    else { io::printfn("  FAIL: clone signed relocation delta"); fail++; }
+
+    if (test_stack_ctx_clone_residual_source_pointer_policy()) { stack_print_pass("clone residual source-pointer policy"); pass++; }
+    else { io::printfn("  FAIL: clone residual source-pointer policy"); fail++; }
+
     if (test_stack_ctx_scope_create_in_context()) { stack_print_pass("scope create inside stack context"); pass++; }
     else { io::printfn("  FAIL: scope create inside stack context"); fail++; }
 

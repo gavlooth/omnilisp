@@ -4,6 +4,38 @@ import std::io;
 import std::core::mem;
 import main;
 
+const usz COLLECTION_MATERIALIZATION_REGRESSION_COUNT = 65537;
+const usz ITERATOR_MATERIALIZATION_REGRESSION_COUNT = 4097;
+
+fn Value* runtime_alloc_make_integer_list(Interp* interp, usz count) {
+    Value* result = make_nil(interp);
+    for (usz i = count; i > 0; i--) {
+        Value* next = make_cons(interp, make_int(interp, (long)(i - 1)), result);
+        if (next == null || next.tag == ERROR) return next;
+        result = next;
+    }
+    return result;
+}
+
+fn Value* runtime_alloc_make_integer_array(Interp* interp, usz count) {
+    Value* arr = make_array_checked(interp, count, "test: failed to allocate integer array");
+    if (arr == null || arr.tag != ARRAY || arr.array_val == null) return arr;
+    for (usz i = 0; i < count; i++) {
+        arr.array_val.items[i] = make_int(interp, (long)i);
+    }
+    arr.array_val.length = count;
+    return arr;
+}
+
+fn Value* runtime_alloc_list_ref(Value* list, usz index) {
+    Value* cur = list;
+    for (usz i = 0; i < index; i++) {
+        if (!is_cons(cur)) return null;
+        cur = cdr(cur);
+    }
+    return is_cons(cur) ? car(cur) : null;
+}
+
 fn void run_memory_lifetime_runtime_alloc_groups_array_tensor_ctor_tests(Interp* interp, int* pass, int* fail) {
 
     {
@@ -64,6 +96,107 @@ fn void run_memory_lifetime_runtime_alloc_groups_array_tensor_ctor_tests(Interp*
                 runtime_alloc_error_text(direct_fail),
                 runtime_alloc_error_text(prim_array_fail),
                 runtime_alloc_error_text(list_to_array_fail));
+            (*fail)++;
+        }
+    }
+
+    {
+        Value* long_list = runtime_alloc_make_integer_list(interp, COLLECTION_MATERIALIZATION_REGRESSION_COUNT);
+        Value*[1] args = { long_list };
+        Value* array_value = long_list != null && long_list.tag != ERROR
+            ? prim_array(args[0:1], null, interp)
+            : long_list;
+        Value* list_to_array_value = long_list != null && long_list.tag != ERROR
+            ? prim_list_to_array(args[0:1], null, interp)
+            : long_list;
+
+        bool array_ok = array_value != null &&
+            array_value.tag == ARRAY &&
+            array_value.array_val != null &&
+            array_value.array_val.length == COLLECTION_MATERIALIZATION_REGRESSION_COUNT &&
+            array_value.array_val.items[COLLECTION_MATERIALIZATION_REGRESSION_COUNT - 1] != null &&
+            array_value.array_val.items[COLLECTION_MATERIALIZATION_REGRESSION_COUNT - 1].tag == INT &&
+            array_value.array_val.items[COLLECTION_MATERIALIZATION_REGRESSION_COUNT - 1].int_val == (long)(COLLECTION_MATERIALIZATION_REGRESSION_COUNT - 1);
+        bool list_to_array_ok = list_to_array_value != null &&
+            list_to_array_value.tag == ARRAY &&
+            list_to_array_value.array_val != null &&
+            list_to_array_value.array_val.length == COLLECTION_MATERIALIZATION_REGRESSION_COUNT &&
+            list_to_array_value.array_val.items[COLLECTION_MATERIALIZATION_REGRESSION_COUNT - 1] != null &&
+            list_to_array_value.array_val.items[COLLECTION_MATERIALIZATION_REGRESSION_COUNT - 1].tag == INT &&
+            list_to_array_value.array_val.items[COLLECTION_MATERIALIZATION_REGRESSION_COUNT - 1].int_val == (long)(COLLECTION_MATERIALIZATION_REGRESSION_COUNT - 1);
+        if (array_ok && list_to_array_ok) {
+            emit_pass_literal("[PASS] lifetime: Array/list->array materialize lists above former 65536 cap");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: Array/list->array materialize lists above former 65536 cap (array=%s list->array=%s array_msg=%s list_msg=%s)",
+                array_ok ? "yes" : "no",
+                list_to_array_ok ? "yes" : "no",
+                runtime_alloc_error_text(array_value),
+                runtime_alloc_error_text(list_to_array_value));
+            (*fail)++;
+        }
+    }
+
+    {
+        Value* source_array = runtime_alloc_make_integer_array(interp, ITERATOR_MATERIALIZATION_REGRESSION_COUNT);
+        Value* iterator_for_array = source_array != null && source_array.tag == ARRAY
+            ? iterator_from_array_value(source_array, 0, interp)
+            : source_array;
+        Value* iterator_for_list = source_array != null && source_array.tag == ARRAY
+            ? iterator_from_array_value(source_array, 0, interp)
+            : source_array;
+        Value*[1] array_args = { iterator_for_array };
+        Value*[1] list_args = { iterator_for_list };
+        Value* array_value = iterator_for_array != null && iterator_for_array.tag == ITERATOR
+            ? prim_array(array_args[0:1], null, interp)
+            : iterator_for_array;
+        Value* list_value = iterator_for_list != null && iterator_for_list.tag == ITERATOR
+            ? prim_list(list_args[0:1], null, interp)
+            : iterator_for_list;
+        Value* list_tail_value = runtime_alloc_list_ref(list_value, ITERATOR_MATERIALIZATION_REGRESSION_COUNT - 1);
+
+        bool array_ok = array_value != null &&
+            array_value.tag == ARRAY &&
+            array_value.array_val != null &&
+            array_value.array_val.length == ITERATOR_MATERIALIZATION_REGRESSION_COUNT &&
+            array_value.array_val.items[ITERATOR_MATERIALIZATION_REGRESSION_COUNT - 1] != null &&
+            array_value.array_val.items[ITERATOR_MATERIALIZATION_REGRESSION_COUNT - 1].tag == INT &&
+            array_value.array_val.items[ITERATOR_MATERIALIZATION_REGRESSION_COUNT - 1].int_val == (long)(ITERATOR_MATERIALIZATION_REGRESSION_COUNT - 1);
+        bool list_ok = list_length(list_value) == ITERATOR_MATERIALIZATION_REGRESSION_COUNT &&
+            list_tail_value != null &&
+            list_tail_value.tag == INT &&
+            list_tail_value.int_val == (long)(ITERATOR_MATERIALIZATION_REGRESSION_COUNT - 1);
+        if (array_ok && list_ok) {
+            emit_pass_literal("[PASS] lifetime: Array/List iterator materialization exceeds former 4096 cap");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: Array/List iterator materialization exceeds former 4096 cap (array=%s list=%s array_msg=%s list_msg=%s list_len=%d)",
+                array_ok ? "yes" : "no",
+                list_ok ? "yes" : "no",
+                runtime_alloc_error_text(array_value),
+                runtime_alloc_error_text(list_value),
+                (int)list_length(list_value));
+            (*fail)++;
+        }
+    }
+
+    {
+        Value*[1] start_args = { make_int(interp, 0) };
+        Value* range_iter = prim_iterator_range_from(start_args[0:1], null, interp);
+        Value*[1] array_args = { range_iter };
+        Value* array_value = range_iter != null && range_iter.tag == ITERATOR
+            ? prim_array(array_args[0:1], null, interp)
+            : range_iter;
+        bool ok = runtime_alloc_error_matches(array_value, "iterator: cannot materialize a known unbounded iterator without take");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: direct unbounded iterator materialization fails closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: direct unbounded iterator materialization fails closed (msg=%s)",
+                runtime_alloc_error_text(array_value));
             (*fail)++;
         }
     }

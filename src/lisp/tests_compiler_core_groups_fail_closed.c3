@@ -17,6 +17,39 @@ fn void run_compiler_group_allocation_failure_seam_tests(Interp* interp, usz* pa
     }
 
     {
+        int saved_force = g_compiler_force_result_copy_alloc_fail_nth;
+        g_compiler_force_result_copy_alloc_fail_nth = 1;
+        char[] err = "";
+        char[] code = compile_to_c3("(+ 1 2)", interp, &err);
+        g_compiler_force_result_copy_alloc_fail_nth = saved_force;
+        bool ok = code.len == 0 && str_contains(err, "copying generated C3 output");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: generated output copy allocation failure reports diagnostic"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: generated output copy allocation failure reports diagnostic"); }
+    }
+
+    {
+        bool saved_force = g_compiler_force_result_dtor_register_fail;
+        g_compiler_force_result_dtor_register_fail = true;
+        char[] err = "";
+        char[] code = compile_to_c3("(+ 1 2)", interp, &err);
+        g_compiler_force_result_dtor_register_fail = saved_force;
+        bool ok = code.len == 0 && str_contains(err, "copying generated C3 output");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: generated output dtor registration failure reports diagnostic"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: generated output dtor registration failure reports diagnostic"); }
+    }
+
+    {
+        int saved_force = g_compiler_force_result_copy_alloc_fail_nth;
+        g_compiler_force_result_copy_alloc_fail_nth = 1;
+        char[] err = "";
+        char[] code = compile_to_c3("(define x 1)\n2.[", interp, &err);
+        g_compiler_force_result_copy_alloc_fail_nth = saved_force;
+        bool ok = code.len == 0 && str_contains(err, "copying compile error message");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: compile-error message copy allocation failure reports diagnostic"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: compile-error message copy allocation failure reports diagnostic"); }
+    }
+
+    {
         g_compiler_force_compiled_modules_init_alloc_fail = true;
         char[] err = "";
         char[] code = compile_to_c3("(+ 1 2)", interp, &err);
@@ -89,6 +122,79 @@ fn void run_compiler_group_allocation_failure_seam_tests(Interp* interp, usz* pa
         bool ok = code.len == 0 && str_contains(err, "growing lambda capture table");
         if (ok) { (*pass)++; compiler_print_pass("Compiler: lambda capture growth allocation failure fails closed"); }
         else    { (*fail)++; io::printn("[FAIL] Compiler: lambda capture growth allocation failure fails closed"); }
+    }
+
+    {
+        g_compiler_force_call_arg_temps_alloc_fail = true;
+        char[] err = "";
+        char[] code = compile_to_c3("(+ 1 2)", interp, &err);
+        g_compiler_force_call_arg_temps_alloc_fail = false;
+        bool ok = code.len == 0 && str_contains(err, "allocating call argument temporaries");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: normal call argument temp allocation failure fails closed"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: normal call argument temp allocation failure fails closed"); }
+    }
+
+    {
+        g_compiler_force_call_arg_temps_alloc_fail = true;
+        char[] err = "";
+        char[] code = compile_to_c3("(lambda () (+ 1 2))", interp, &err);
+        g_compiler_force_call_arg_temps_alloc_fail = false;
+        bool ok = code.len == 0 && str_contains(err, "allocating call argument temporaries");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: tail call argument temp allocation failure fails closed"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: tail call argument temp allocation failure fails closed"); }
+    }
+
+    {
+        g_compiler_force_call_arg_temps_alloc_fail = true;
+        char[] err = "";
+        char[] code = compile_to_c3("(list 1 2)", interp, &err);
+        g_compiler_force_call_arg_temps_alloc_fail = false;
+        bool ok = code.len == 0 && str_contains(err, "allocating call argument temporaries");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: list construction argument temp allocation failure fails closed"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: list construction argument temp allocation failure fails closed"); }
+    }
+
+    {
+        g_compiler_force_call_arg_temps_alloc_fail = true;
+        char[] err = "";
+        char[] code = compile_to_c3("(Dictionary 'k 1)", interp, &err);
+        g_compiler_force_call_arg_temps_alloc_fail = false;
+        bool ok = code.len == 0 && str_contains(err, "allocating call argument temporaries");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: dictionary construction argument temp allocation failure fails closed"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: dictionary construction argument temp allocation failure fails closed"); }
+    }
+
+    {
+        g_compiler_force_call_arg_temps_alloc_fail = true;
+        char[] err = "";
+        char[] code = compile_to_c3("(explain 'dispatch (+ 1 2))", interp, &err);
+        g_compiler_force_call_arg_temps_alloc_fail = false;
+        bool ok = code.len == 0 && str_contains(err, "allocating call argument temporaries");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: explain dispatch argument temp allocation failure fails closed"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: explain dispatch argument temp allocation failure fails closed"); }
+    }
+
+    {
+        char[] code = compile_to_c3("(let (x 1) (block (define f (lambda () x)) (set! x 2) (f)))", interp);
+        bool ok = str_contains(code, " = aot::define_var(\"x\", ")
+            && str_contains(code, "if (_r")
+            && str_contains(code, " != null) {");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: mutable-capture AOT define_var result is observed"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: mutable-capture AOT define_var result is observed"); }
+    }
+
+    {
+        char[] code = compile_to_c3(
+            "(block "
+            "  (module aot_define_import_src (export value) (define value 7)) "
+            "  (import (aot_define_import_src (value 'as imported_value))) "
+            "  imported_value)",
+            interp
+        );
+        bool ok = str_contains(code, " = aot::define_var(\"imported_value\", aot::lookup_var(\"value\"));")
+            && str_contains(code, "tag == lisp::ValueTag.ERROR");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: import AOT define_var result is observed"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: import AOT define_var result is observed"); }
     }
 
     {
@@ -165,6 +271,10 @@ fn void run_compiler_group_allocation_failure_seam_tests(Interp* interp, usz* pa
             Value* apply_multi_tail_dispatch_interp_unavailable = null;
             Value* apply_multi_tail_negative_argc = null;
             Value* lookup_prim_bridge_interp_unavailable = null;
+            Value* define_var_success = null;
+            Value* define_var_lookup = null;
+            Value* define_var_bridge_interp_unavailable = null;
+            Value* define_var_barrier_fail = null;
             Value* lookup_var_bridge_interp_unavailable = null;
             Value* import_bridge_interp_unavailable = null;
             Value* field_access_bridge_interp_unavailable = null;
@@ -212,6 +322,7 @@ fn void run_compiler_group_allocation_failure_seam_tests(Interp* interp, usz* pa
 
             aot::g_aot_force_bridge_interp_unavailable = true;
             lookup_prim_bridge_interp_unavailable = aot::lookup_prim("+");
+            define_var_bridge_interp_unavailable = aot::define_var("__aot_define_var_bridge_unavailable", aot::make_int(1));
             lookup_var_bridge_interp_unavailable = aot::lookup_var("x");
             import_bridge_interp_unavailable = aot::import_module("missing_mod", "", false, false);
             field_access_bridge_interp_unavailable = aot::field_access(aot::make_int(1), aot::make_string("field"));
@@ -231,6 +342,14 @@ fn void run_compiler_group_allocation_failure_seam_tests(Interp* interp, usz* pa
             explain_effect_signal_bridge_interp_unavailable = aot::explain_effect_signal("aot-test", "ask", aot::make_nil());
             explain_effect_resolve_bridge_interp_unavailable = aot::explain_effect_resolve("aot-test", aot::make_nil());
             aot::g_aot_force_bridge_interp_unavailable = false;
+
+            define_var_success = aot::define_var("__aot_define_var_success", aot::make_int(314));
+            define_var_lookup = aot::lookup_var("__aot_define_var_success");
+
+            bool saved_barrier_promote_failure = g_env_force_barrier_promote_failure;
+            g_env_force_barrier_promote_failure = true;
+            define_var_barrier_fail = aot::define_var("__aot_define_var_barrier_fail", aot::make_int(2));
+            g_env_force_barrier_promote_failure = saved_barrier_promote_failure;
 
             bool saved_hashmap_struct_fail = g_hashmap_force_struct_alloc_fail;
             g_hashmap_force_struct_alloc_fail = true;
@@ -297,6 +416,10 @@ fn void run_compiler_group_allocation_failure_seam_tests(Interp* interp, usz* pa
 
             bool bridge_interp_errors_ok =
                 lookup_prim_bridge_interp_unavailable != null && lookup_prim_bridge_interp_unavailable.tag == ValueTag.ERROR
+                && define_var_success == null
+                && define_var_lookup != null && define_var_lookup.tag == ValueTag.INT && define_var_lookup.int_val == 314
+                && define_var_bridge_interp_unavailable != null && define_var_bridge_interp_unavailable.tag == ValueTag.ERROR
+                && compiler_error_value_contains(define_var_barrier_fail, "out of memory while defining binding")
                 && lookup_var_bridge_interp_unavailable != null && lookup_var_bridge_interp_unavailable.tag == ValueTag.ERROR
                 && import_bridge_interp_unavailable != null && import_bridge_interp_unavailable.tag == ValueTag.ERROR
                 && field_access_bridge_interp_unavailable != null && field_access_bridge_interp_unavailable.tag == ValueTag.ERROR

@@ -16,9 +16,6 @@ fn Value* conversion_runtime_raise(Interp* interp, char[] code, char[] message) 
 
 const double CONVERSION_DOUBLE_FINITE_LIMIT = 1.7976931348623157e308;
 const double CONVERSION_FLOAT32_FINITE_LIMIT = 3.4028234663852886e38;
-const double CONVERSION_INT_MAX_DOUBLE = (double)long.max;
-const double CONVERSION_INT_MIN_DOUBLE = (double)long.min;
-
 fn bool conversion_double_is_finite(double v) @inline {
     if (v != v) return false; // NaN
     return v <= CONVERSION_DOUBLE_FINITE_LIMIT && v >= -CONVERSION_DOUBLE_FINITE_LIMIT;
@@ -32,10 +29,7 @@ fn bool conversion_try_double_to_float32(double v, float* out) @inline {
 }
 
 fn bool conversion_try_double_to_int(double v, long* out) @inline {
-    if (!conversion_double_is_finite(v)) return false;
-    if (v < CONVERSION_INT_MIN_DOUBLE || v > CONVERSION_INT_MAX_DOUBLE) return false;
-    *out = (long)v; // truncation toward zero
-    return true;
+    return omni_double_to_i64_trunc(v, out) != 0;
 }
 
 fn Value* conversion_int_from_double_or_raise(Interp* interp, double v, char[] message) @inline {

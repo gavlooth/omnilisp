@@ -113,7 +113,11 @@ fn bool repl_load_requested_source(lisp::Interp* interp, ReplModeOptions* option
         return repl_load_project_into_interp(interp, options.project_dir, options.json);
     }
     if (options.load_file) {
-        char[] load_path = options.load_path[:cstr_len(options.load_path)];
+        char[] load_path;
+        if (!cli_cstr_slice(options.load_path, &load_path)) {
+            (void)print_cli_cstr_too_long("--repl --load file", options.json);
+            return false;
+        }
         return repl_load_file_into_interp(interp, load_path, options.json, "REPL preload");
     }
     return false;

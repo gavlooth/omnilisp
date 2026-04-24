@@ -11,6 +11,9 @@ extern fn int omni_big_integer_to_i64(void* value, long* out) @extern("omni_big_
 extern fn int omni_big_integer_to_double(void* value, double* out) @extern("omni_big_integer_to_double");
 extern fn int omni_big_integer_compare(void* lhs, void* rhs) @extern("omni_big_integer_compare");
 extern fn int omni_big_integer_compare_i64(void* lhs, long rhs) @extern("omni_big_integer_compare_i64");
+extern fn int omni_big_integer_compare_double(void* lhs, double rhs) @extern("omni_big_integer_compare_double");
+extern fn int omni_i64_compare_double(long lhs, double rhs) @extern("omni_i64_compare_double");
+extern fn int omni_double_to_i64_trunc(double value, long* out) @extern("omni_double_to_i64_trunc");
 extern fn void* omni_big_integer_binary(void* lhs, void* rhs, int op) @extern("omni_big_integer_binary");
 extern fn void* omni_big_integer_binary_i64(long lhs, long rhs, int op) @extern("omni_big_integer_binary_i64");
 extern fn void* omni_big_integer_binary_left_i64(long lhs, void* rhs, int op) @extern("omni_big_integer_binary_left_i64");

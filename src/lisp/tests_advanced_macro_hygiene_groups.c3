@@ -25,8 +25,14 @@ fn void run_advanced_macro_hygiene_group(
 fn void run_advanced_stdlib_macro_migration_regression_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "stdlib when macro true branch", "(let (x 0) (block (when true (set! x 10)) x))", 10, pass, fail);
     test_eq(interp, "stdlib when macro false branch keeps state", "(let (x 3) (block (when false (set! x 10)) x))", 3, pass, fail);
+    test_eq(interp, "stdlib when macro multi-body returns last body", "(when true 1 2)", 2, pass, fail);
+    test_eq(interp, "stdlib when macro multi-body preserves sequencing", "(let (x 0) (block (when true (set! x 1) (set! x 2)) x))", 2, pass, fail);
+    test_eq(interp, "stdlib when macro skipped multi-body keeps state", "(let (x 0) (block (when false (set! x 1) (set! x 2)) x))", 0, pass, fail);
     test_eq(interp, "stdlib unless macro false branch", "(let (x 0) (block (unless false (set! x 20)) x))", 20, pass, fail);
     test_eq(interp, "stdlib unless macro true branch keeps state", "(let (x 4) (block (unless true (set! x 20)) x))", 4, pass, fail);
+    test_eq(interp, "stdlib unless macro multi-body returns last body", "(unless false 1 2)", 2, pass, fail);
+    test_eq(interp, "stdlib unless macro multi-body preserves sequencing", "(let (x 0) (block (unless false (set! x 1) (set! x 2)) x))", 2, pass, fail);
+    test_eq(interp, "stdlib unless macro skipped multi-body keeps state", "(let (x 0) (block (unless true (set! x 1) (set! x 2)) x))", 0, pass, fail);
     test_eq(interp, "stdlib branch picks first truthy condition", "(branch (false 1) (true 2) (_ 3))", 2, pass, fail);
     test_eq(interp, "stdlib branch default clause with _", "(branch (false 1) (false 2) (_ 3))", 3, pass, fail);
     test_nil(interp, "stdlib branch no match without default returns nil", "(branch (false 1) (false 2))", pass, fail);
@@ -166,6 +172,9 @@ fn void run_advanced_macro_hygiene_gensym_tests(Interp* interp, int* pass, int* 
 
     // gensym
     test_tag(interp, "gensym returns symbol", "(gensym)", SYMBOL, pass, fail);
+    interp.gensym_counter = (usz)long.max;
+    test_truthy_interp(interp, "gensym formats unsigned counter above long.max",
+        "(= (String (gensym)) \"g#9223372036854775808\")", pass, fail);
 }
 
 fn void run_advanced_macro_hygiene_capture_tests(Interp* interp, int* pass, int* fail) {
@@ -266,6 +275,84 @@ fn void run_advanced_macro_hygiene_malformed_let_tests(Interp* interp, int* pass
         "(block (define [macro] pair-only (syntax-match ([x y] (template (insert x))))) (pair-only 1))",
         "no macro clause matched",
         pass, fail);
+}
+
+fn void run_advanced_macro_hygiene_special_form_conversion_tests(Interp* interp, int* pass, int* fail) {
+    test_eq(interp,
+        "macro emits handle with resolve special form",
+        "(block "
+        "  (define [macro] emit-resolving-handle "
+        "    (syntax-match ([x] "
+        "      (template (handle (signal audit19-effect (insert x)) "
+        "                 (audit19-effect msg (resolve (+ msg 1)))))))) "
+        "  (emit-resolving-handle 6))",
+        7, pass, fail);
+
+    test_eq(interp,
+        "macro emits handle with with-continuation special form",
+        "(block "
+        "  (define [macro] emit-continuation-handle "
+        "    (syntax-match ([x] "
+        "      (template (handle (signal audit19-k (insert x)) "
+        "                 (audit19-k msg (with-continuation k (k (+ msg 2))))))))) "
+        "  (emit-continuation-handle 8))",
+        10, pass, fail);
+
+    test_eq(interp,
+        "macro emits match special form",
+        "(block "
+        "  (define [macro] emit-match-any "
+        "    (syntax-match ([x] (template (match (insert x) (_ 42)))))) "
+        "  (emit-match-any 99))",
+        42, pass, fail);
+
+    test_eq(interp,
+        "macro emits scoped module open special form",
+        "(block "
+        "  (module audit19mod (export audit19-value) (define audit19-value 33)) "
+        "  (define [macro] emit-with-open (syntax-match ([] (template (with audit19mod audit19-value))))) "
+        "  (emit-with-open))",
+        33, pass, fail);
+
+    test_eq(interp,
+        "macro emits pipe special form",
+        "(block "
+        "  (define [macro] emit-pipe "
+        "    (syntax-match ([x] (template (|> (insert x) (+ 2) (* 5)))))) "
+        "  (emit-pipe 3))",
+        25, pass, fail);
+
+    test_str_val(interp,
+        "macroexpand preserves module special form",
+        "(block "
+        "  (define [macro] emit-module-form "
+        "    (syntax-match ([] (template (module audit19m (export audit19-v) (define audit19-v 1)))))) "
+        "  (String (car (macroexpand '(emit-module-form)))))",
+        "module", pass, fail);
+
+    test_str_val(interp,
+        "macroexpand preserves import special form",
+        "(block "
+        "  (define [macro] emit-import-form "
+        "    (syntax-match ([] (template (import audit19m 'all))))) "
+        "  (String (car (macroexpand '(emit-import-form)))))",
+        "import", pass, fail);
+
+    test_str_val(interp,
+        "macroexpand preserves export-from special form",
+        "(block "
+        "  (define [macro] emit-export-from-form "
+        "    (syntax-match ([] (template (export-from audit19m 'all))))) "
+        "  (String (car (macroexpand '(emit-export-from-form)))))",
+        "export-from", pass, fail);
+
+    test_str_val(interp,
+        "macroexpand preserves explain special form head",
+        "(block "
+        "  (define [macro] emit-explain-form "
+        "    (syntax-match ([] (template (explain 'effect (resolve 1)))))) "
+        "  (String (car (macroexpand '(emit-explain-form)))))",
+        "explain", pass, fail);
 }
 
 fn void run_advanced_macro_hygiene_single_surface_tests(Interp* interp, int* pass, int* fail) {
@@ -403,6 +490,8 @@ fn void run_advanced_macro_hygiene_tests(Interp* interp, int* pass, int* fail) {
         &run_advanced_macro_hygiene_template_datum_collection_tests, interp, pass, fail);
     run_advanced_macro_hygiene_group("advanced-macro-hygiene-malformed-let",
         &run_advanced_macro_hygiene_malformed_let_tests, interp, pass, fail);
+    run_advanced_macro_hygiene_group("advanced-macro-hygiene-special-form-conversion",
+        &run_advanced_macro_hygiene_special_form_conversion_tests, interp, pass, fail);
     run_advanced_macro_hygiene_group("advanced-macro-hygiene-single-surface",
         &run_advanced_macro_hygiene_single_surface_tests, interp, pass, fail);
 }

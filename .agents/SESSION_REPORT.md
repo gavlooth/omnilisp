@@ -48,6 +48,7 @@ The historical content was split mechanically to keep individual files below the
 - Part 40: [.agents/session_report_parts/session_report_part_40.md](session_report_parts/session_report_part_40.md) (4392 lines)
 - Part 41: [.agents/session_report_parts/session_report_part_41.md](session_report_parts/session_report_part_41.md) (43 lines)
 - Part 42: [.agents/session_report_parts/session_report_part_42.md](session_report_parts/session_report_part_42.md) (710 lines)
+- Part 43: [.agents/session_report_parts/session_report_part_43.md](session_report_parts/session_report_part_43.md) (436 lines)
 
 ## 2026-04-24 18:05 CEST - Forced No-Splice Copy Telemetry Split
 
@@ -5951,6 +5952,1141 @@ Re-audit notes:
 
 Signature: GPT-5 Codex
 
+## 2026-04-25 09:00 CEST - Commit And Push Attempt
+
+Objective:
+- Commit the integrated non-artifact audit remediation work and push the
+  bookmark requested by the owner.
+
+Commands run:
+- `jj describe -m "Close audit backlog and final reaudit coverage"`
+- `jj bookmark set audit-remediation-2026-04-25 -r @`
+- `jj git push --bookmark audit-remediation-2026-04-25 --allow-new`
+- `git remote -v`
+- `jj log -r @ --no-graph --color never`
+
+Key results:
+- Local jj change/bookmark was prepared on `audit-remediation-2026-04-25`.
+- Push failed because the only configured remote is
+  `https://github.com/gavlooth/omnilisp.git` and GitHub returned `403`:
+  `Permission to gavlooth/omnilisp.git denied to
+  christos-chatzifountas-biotz-io`.
+
+Current checkpoint:
+- Retry `jj git push --bookmark audit-remediation-2026-04-25` with credentials
+  that have write access to `gavlooth/omnilisp.git`, or add a writable remote
+  and push the same bookmark there.
+
+Unresolved issues:
+- Remote publication is blocked by credentials/permissions only; local
+  validation and audit status are green.
+
+Signature: GPT-5 Codex
+
+## 2026-04-25 08:55 CEST - Audit Closure Coverage Addendum
+
+Objective:
+- Address final mini-agent reaudit coverage gaps before committing the closed
+  audit backlog.
+
+Changes made:
+- Added focused negative-path regressions for AUDIT-172, AUDIT-173, AUDIT-174,
+  AUDIT-178, AUDIT-179, AUDIT-180, AUDIT-181, and AUDIT-182.
+- Moved DNS embedded-NUL validation ahead of fiber/loop availability checks so
+  malformed C-boundary input fails closed deterministically.
+- Replaced invalid source-literal `\0` tests with direct constructed Omni
+  strings that contain real embedded NUL bytes.
+
+Commands run:
+- `LIBRARY_PATH=/home/christos/.local/lib c3c --threads 1 build --obj-out obj`
+- `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-effect-union-limit OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=async OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=jit-policy OMNI_JIT_POLICY_FILTER=continuation-wrapper-alloc-failure,signal-suspend-failure-clears-handler-state,shift-suspend-failure-discards-continuation OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=scheduler OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=deduce OMNI_DEDUCE_GROUP_FILTER=parallel_component_scratch_pass,rule-validation OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- `rg -n "Status: Open" AUDIT.md AUDIT_2.md`
+- `git diff --check`
+
+Key results:
+- Build passed and linked `build/main`.
+- Advanced FFI system passed with `pass=180 fail=0`.
+- Advanced effect/typed IO group passed with `pass=86 fail=0`.
+- Async slice passed with `pass=95 fail=0`.
+- Focused JIT policy slice passed with `pass=3 fail=0`.
+- Scheduler slice passed with `pass=142 fail=0`.
+- Focused Deduce gate passed with `pass=80 fail=0`.
+- No `Status: Open` entries remain in `AUDIT.md` or `AUDIT_2.md`.
+- `git diff --check` passed.
+
+Invalidated assumptions:
+- `[INVALIDATED]` Do not use source text `"\0"` as an embedded-NUL regression
+  in this test surface; it does not exercise the C-boundary NUL path. Use
+  constructed Omni strings with explicit `(char)0` bytes.
+
+Unresolved issues:
+- No open audit entries remain. Full unfiltered Deduce validation remains
+  environment-blocked by child subprocess loader path as previously recorded.
+
+Signature: GPT-5 Codex
+
+## 2026-04-25 audit negative-path test coverage for AUDIT-172/173/174
+
+Objective:
+- Add deterministic negative-path test coverage for the AUDIT-172/173/174 reaudit surface without touching runtime implementation.
+
+Workspace:
+- `src/lisp/tests_runtime_async_repl_server_groups.c3`
+- `src/lisp/tests_runtime_feature_jit_groups_failures.c3`
+- `src/lisp/tests_runtime_feature_jit_groups_more.c3`
+- `src/lisp/tests_scheduler_boundary_thread_task_groups_more.c3`
+
+Changes made:
+- Added an async repl-server rejection-path test that exercises `repl_server_reject_client_start_failure` and checks the protocol error payload on a socketpair.
+- Added a JIT shift suspend-failure test that verifies the continuation is scrubbed when suspend registration fails.
+- Wired the new JIT test into the existing policy runner.
+- Added a scheduler cancel-start cleanup regression that forces the completion-allocation-failure branch and verifies the joinable thread handle is cleared.
+
+Commands run:
+- `c3c build`
+- `scripts/run_validation_container.sh bash -lc 'c3c build'`
+- `scripts/run_validation_container.sh bash -lc 'OMNI_LISP_TEST_SLICE=async OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp'`
+- `scripts/run_validation_container.sh bash -lc 'OMNI_LISP_TEST_SLICE=async LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp 2>&1 | grep -E \"async repl-server client start failure|dns-resolve\"'`
+- `scripts/run_validation_container.sh bash -lc 'OMNI_LISP_TEST_SLICE=jit-policy OMNI_JIT_POLICY_FILTER=signal-suspend-failure-clears-handler-state,shift-suspend-failure-discards-continuation,handle-continuation-alloc-failure OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp'`
+- `scripts/run_validation_container.sh bash -lc 'OMNI_LISP_TEST_SLICE=scheduler OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp'`
+- `git diff --check`
+
+Key results:
+- Host `c3c build` compiled but failed at link time on missing `-llightning` and `-lreplxx`.
+- Containerized `c3c build` passed and linked `build/main`.
+- The full async slice still fails on an unrelated dns-resolve regression, but the filtered output confirmed `[PASS] async repl-server client start failure rejects protocol error`.
+- Filtered JIT policy validation passed for `signal-suspend-failure-clears-handler-state`, `shift-suspend-failure-discards-continuation`, and `handle-continuation-alloc-failure`.
+- Scheduler slice passed.
+- `git diff --check` passed.
+
+Unresolved issues:
+- The async slice remains noisy because of the unrelated dns-resolve regression, so focused output filtering is the reliable way to confirm the new repl-server test path.
+
+Signature: GPT-5 Codex
+
+## 2026-04-25 deduce audit 181/182 negative-path tests
+
+Objective:
+- Add focused negative-path coverage for AUDIT-181/182 in the deduce test surface.
+
+Workspace / target:
+- `src/lisp/tests_deduce_groups_parallel.c3`
+- `src/lisp/tests_deduce_rule_groups_more_tail_support_tests.c3`
+
+Changes made:
+- Added a `fact!` rejection assertion that exercises an unsupported tuple value
+  via a quoted list in the parallel scratch-pass deduce test.
+- Added a direct rule-signature literal validation block that rejects nonzero
+  head and body counts when the corresponding literal arrays are null.
+
+Commands run:
+- `git diff --check`
+- `c3c build`
+- `scripts/build_validation_image.sh`
+- `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_SKIP_TLS_INTEGRATION=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=deduce OMNI_DEDUCE_GROUP_FILTER=parallel_component_scratch_pass,rule-validation ./build/main --test-suite lisp`
+
+Key results:
+- Host `c3c build` failed at link time with missing `-llightning` and
+  `-lreplxx`.
+- Validation image built successfully.
+- Focused deduce slice in the validation container passed with
+  `OMNI_TEST_SUMMARY suite=unified pass=80 fail=0`.
+- `git diff --check` passed.
+
+Current checkpoint:
+- The two AUDIT-181/182 negative-path regressions are covered and verified in
+  the containerized deduce slice.
+
+Unresolved issues:
+- Host build remains link-blocked in this workspace unless the missing runtime
+  libraries are available.
+
+Signature: GPT-5 Codex
+
+## 2026-04-25 08:29 CEST - Audit 161-182 Closure And Final Reaudit
+
+Objective:
+- Close the remaining `AUDIT.md` findings from the previous reaudit wave,
+  perform a final read-only reaudit, then commit and push non-artifact work.
+
+Changes made:
+- Closed `AUDIT-161` through `AUDIT-171` after integrating lifecycle, FFI,
+  JIT, compiler, and module-publication fixes.
+- Final reaudit produced and closed `AUDIT-172` through `AUDIT-182`.
+- Live REPL server paths now retain joinable client handles and join them
+  before process registry shutdown.
+- Value/AOT shift suspend failure discards the created continuation on rollback.
+- OS-thread cancel-start allocation failure preserves and detaches the native
+  handle instead of zeroing it out.
+- AOT global collection, CLI FFI manifests, and generated startup preload guards
+  now recurse through scoped module-open bodies.
+- Direct FFI calls reject unsupported variadic values and embedded-NUL strings;
+  process-spawn and DNS host boundaries reject embedded-NUL strings.
+- Deduce tuple encoding and rule-signature persistence now fail closed for
+  unsupported values and malformed literal arrays.
+
+Commands run:
+- `cc -fsyntax-only` on touched native helper files.
+- `scripts/build_omni_chelpers.sh`
+- Native `uv_helper_cloexec_test` build and run.
+- `LIBRARY_PATH=/home/christos/.local/lib c3c --threads 1 build --obj-out obj`
+- `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=compiler OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=async OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=jit-policy OMNI_JIT_POLICY_FILTER=handle-continuation-alloc-failure,signal-suspend-failure-clears-handler-state OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=scheduler OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=deduce OMNI_DEDUCE_GROUP_FILTER=parallel OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=deduce OMNI_DEDUCE_GROUP_FILTER=command-surface OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=deduce OMNI_DEDUCE_GROUP_FILTER=rule-validation OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- `rg -n "Status: Open" AUDIT.md AUDIT_2.md`
+- `git diff --check`
+
+Key results:
+- Build passed and linked `build/main`.
+- Compiler slice passed with `pass=328 fail=0`.
+- Async slice passed with `pass=93 fail=0`.
+- Focused JIT policy slice passed with `pass=2 fail=0`.
+- Scheduler slice passed with `pass=141 fail=0`.
+- FFI system slice passed with `pass=177 fail=0`.
+- Advanced collections/module slice passed with `pass=2131 fail=0`.
+- Deduce filtered gates passed: parallel `pass=8 fail=0`,
+  command-surface `pass=102 fail=0`, and rule-validation `pass=79 fail=0`.
+- No `Status: Open` entries remain in `AUDIT.md` or `AUDIT_2.md`.
+- `git diff --check` passed.
+
+Invalidated assumptions or failed approaches:
+- `[FAILED]` The full unfiltered Deduce slice is not currently a valid local
+  closure signal because child subprocess restart tests fail to load
+  `liblightning.so.2` from their environment. Use the focused Deduce groups
+  above until the child-process loader environment is fixed.
+
+Current checkpoint:
+- Commit the integrated non-artifact work on bookmark
+  `audit-remediation-2026-04-25`; if remote push is rejected, preserve the
+  local jj change/bookmark and retry with credentials that can write to the
+  target remote.
+
+Unresolved issues:
+- No open audit entries remain after the latest status scan.
+- Full unfiltered Deduce validation remains environment-blocked as described
+  above.
+
+Signature: GPT-5 Codex
+
+## 2026-04-25 audit fix: Pika regex cache retained execution
+
+Date/time: 2026-04-25 05:43:39 CEST
+
+Objective:
+- Close `AUDIT-122` by separating regex cache mutex ownership from compiled
+  regex execution.
+
+Changes made:
+- Added active-use ownership fields to compiled regex objects.
+- Cache lookup/insert/evict/reset still happen under the regex cache mutex.
+- Successful compiled regex search/fullmatch/find-all paths retain the compiled
+  regex under lock, release the mutex before parser-state allocation and match
+  traversal, then release the retained regex afterward.
+- Eviction/reset detach cached entries and defer freeing until active users
+  release them.
+
+Commands run:
+- C3 LSP diagnostics for `src/pika/regex_types.c3`,
+  `src/pika/regex_cache_state.c3`, `src/pika/regex_cache_compile.c3`, and
+  `src/lisp/tests_runtime_feature_pika_groups.c3`.
+- `git diff --check -- src/pika/regex_types.c3 src/pika/regex_cache_state.c3 src/pika/regex_cache_compile.c3 src/lisp/tests_runtime_feature_pika_groups.c3`
+- `LIBRARY_PATH=/home/christos/.local/lib c3c --threads 1 build`
+- `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=pika OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+
+Key results:
+- Diagnostics and diff hygiene passed.
+- Build passed.
+- Pika slice passed with `pass=124 fail=0`.
+
+Current checkpoint:
+- `AUDIT-122` is closed in `AUDIT.md`.
+- The broader worker wave for AOT/module, core allocation, Vulkan, FFI, and I/O
+  remains in progress.
+
+Signature: GPT-5 Codex
+
+## 2026-04-25 audit fix wave: REPL, TLS, FTXUI, ML plot, scheduler, data formats
+
+Date/time: 2026-04-25 05:31:50 CEST
+
+Objective:
+- Continue closing open `AUDIT.md` issues with parallel workers and parent-owned
+  integration/verification.
+
+Changes made:
+- Closed build documentation item `AUDIT-013` by documenting
+  `OMNI_HOST_TOOLCHAIN_LIB_PATH` in the primary build docs.
+- Closed data-format capacity item `AUDIT-095` with a shared checked hashmap
+  capacity-hint helper used by JSON objects and TOML tables.
+- Closed REPL path parity item `AUDIT-097` by routing REPL server project preload
+  through the CLI REPL project resolver.
+- Closed FTXUI items `AUDIT-117`, `AUDIT-118`, `AUDIT-119`, and `AUDIT-120`.
+- Closed TLS cache lifecycle item `AUDIT-137`.
+- Closed ML plot contract/rendering items `AUDIT-143` and `AUDIT-144`.
+- Closed scheduler batch cleanup item `AUDIT-147`.
+
+Commands run:
+- `scripts/build_omni_chelpers.sh`
+- `LIBRARY_PATH=/home/christos/.local/lib c3c --threads 1 build`
+- `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=scheduler OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=data-format OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib ./build/main examples/libraries/ftxui/module_session_smoke.omni`
+- `cc -O2 -Ideps/src/BearSSL/inc tests/native/tls_session_cache_policy_test.c build/libomni_chelpers.a deps/lib/libbearssl.a -lpthread -o /tmp/tls_session_cache_policy_test_from_parent && /tmp/tls_session_cache_policy_test_from_parent`
+- `git diff --check`
+
+Key results:
+- Helper rebuild and full serial build passed.
+- Scheduler slice passed with `pass=141 fail=0`.
+- Data-format slice passed with `pass=89 fail=0`.
+- Advanced FFI/FTXUI system passed with `pass=171 fail=0`.
+- Advanced collections/module passed with `pass=2116 fail=0`.
+- Focused FTXUI session smoke passed.
+- Native TLS session cache policy test passed.
+- `git diff --check` passed before the report/ledger update; rerun after this
+  report remains the final hygiene step.
+
+Unresolved issues:
+- `AUDIT-090` remains partial; Deduce arbitrary-precision consumer ownership is
+  still open.
+- `AUDIT-122` remains open pending compiled-regex cache ownership design.
+- Full `scripts/run_ftxui_smoke.sh` remains blocked by an unrelated
+  `stable_escape_prepare_graph_node` segfault in `module_direct_smoke.omni`.
+
+Next actions:
+- Continue the next independent open audit batch after final hygiene, with good
+  candidates including AOT/module parity (`AUDIT-015`, `AUDIT-019`, `AUDIT-048`,
+  `AUDIT-102`-`AUDIT-104`, `AUDIT-113`) or remaining high-severity runtime
+  ownership items (`AUDIT-030`, `AUDIT-033`, `AUDIT-034`, `AUDIT-038`,
+  `AUDIT-041`-`AUDIT-043`, `AUDIT-111`, `AUDIT-112`).
+
+Signature: GPT-5 Codex
+
+## 2026-04-25 audit fix wave: collections, numeric, CLI, Pika, FFI, HTTP
+
+Date/time: 2026-04-25 05:13:20 CEST
+
+Objective:
+- Continue addressing accumulated `AUDIT.md` issues with parallel workers and
+  integrate the closed slices into one verified checkpoint.
+
+Changes made:
+- Closed collection/iterator issues `AUDIT-079`, `AUDIT-080`, and `AUDIT-086`.
+- Closed numeric and BigInteger/BigFloat issues `AUDIT-085`, `AUDIT-087`,
+  `AUDIT-088`, and `AUDIT-089`; `AUDIT-090` remains partial because `deduce`
+  active uses still need a semantic owner.
+- Closed CLI/reporting issues `AUDIT-096`, `AUDIT-098`, `AUDIT-099`,
+  `AUDIT-100`, and `AUDIT-101`.
+- Closed Pika grammar/reader issues `AUDIT-121`, `AUDIT-123`, `AUDIT-124`,
+  `AUDIT-125`, `AUDIT-126`, `AUDIT-127`, and `AUDIT-128`; `AUDIT-122` remains
+  open pending compiled-regex cache ownership design.
+- Closed documentation and HTTP issues `AUDIT-105` and `AUDIT-136`.
+- Closed FFI callback/async string-boundary issues `AUDIT-139`, `AUDIT-140`,
+  and `AUDIT-148`.
+
+Commands run:
+- `scripts/build_omni_chelpers.sh`
+- `LIBRARY_PATH=/home/christos/.local/lib c3c --threads 1 build`
+- `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_LISP_TEST_SLICE=pika LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_LISP_TEST_SLICE=http OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib ./build/main --test-suite lisp`
+- Direct CLI probes for invalid `--init ../bad` and `--eval --json` non-ASCII
+  output.
+
+Key results:
+- Helper rebuild passed.
+- Serial C3 build passed.
+- Advanced collections/module passed with `pass=2114 fail=0`.
+- Numeric float-math passed with `pass=181 fail=0`.
+- Pika passed with `pass=123 fail=0`.
+- Advanced FFI system passed with `pass=167 fail=0`.
+- HTTP passed with `pass=32 fail=0`.
+- `--init ../bad` failed closed with an invalid-project-name diagnostic.
+- `--eval --json` non-ASCII output no longer emitted `\u00XX` byte escapes.
+
+Invalidated assumptions or failed approaches:
+- `[PARTIAL]` `AUDIT-090` cannot be treated as closed by only making numeric
+  iter/range guards safer; active `deduce` uses need an owner and tests.
+- `[PENDING]` `AUDIT-122` should not be solved by widening lock scopes alone
+  without a compiled-regex retain/clone/read-lock ownership contract.
+
+Unresolved issues:
+- Broad `advanced` still has unrelated iterator/boundary failures around
+  `list it3` and `array it3`.
+- Broad `compiler` had an existing shutdown-cleanup mutex failure during earlier
+  runs, so focused compile/build probes were used for this wave.
+- Broad numeric sort/bitwise/full numeric surfaces still need follow-up beyond
+  the float-math slice.
+
+Next actions:
+- Continue with independent open audit items, preferably scheduler batch cleanup
+  (`AUDIT-147`), TLS/session cache policy (`AUDIT-137`), ML plot contracts
+  (`AUDIT-143`/`AUDIT-144`), REPL server parity (`AUDIT-097`), and remaining
+  module/AOT or memory-boundary items.
+- Run `git diff --check` after this report and ledger update.
+
+Signature: GPT-5 Codex
+
+## 2026-04-25 audit remediation wave: C API strings, Deduce, reader tags, CSV, Pika
+
+Date/time: 2026-04-25 04:47:10 CEST
+
+Objective:
+- Continue closing `AUDIT.md` issues with parallel workers and parent-owned
+  integration, validation, and ledger updates.
+
+Changes made:
+- Closed `AUDIT-016` and `AUDIT-018`: added a shared C API string boundary
+  helper and migrated filesystem, system, TLS, FFI, and dlopen-registry paths
+  away from raw Omni string storage.
+- Closed `AUDIT-055` and `AUDIT-056`: Deduce read/count paths now propagate
+  transaction, cursor-open, allocation, and cursor-read errors instead of
+  reporting empty results or zero.
+- Closed `AUDIT-065` and `AUDIT-066`: Pika regex search/find-all now honor
+  empty/end-boundary matches and `re-split` preserves empty fields.
+- Closed `AUDIT-067` through `AUDIT-070`: reader-tag/radix dispatch, UUID
+  normalization, zero-offset timezone formatting, and AOT `hex`/`uuid`
+  primitive parity were implemented.
+- Closed `AUDIT-074` and `AUDIT-075`: CSV delimiter/quote-char options are
+  codepoint-aware, and strict raw CSV emission rejects ambiguous unquoted cells.
+
+Commands run:
+- C3 LSP diagnostics for touched parent files and worker-reported files.
+- `LIBRARY_PATH=/home/christos/.local/lib c3c --threads 1 build`
+- `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_LISP_TEST_SLICE=pika OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_LISP_TEST_SLICE=data-format OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_LISP_TEST_SLICE=reader-dispatch OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_LISP_TEST_SLICE=deduce OMNI_DEDUCE_QUERY_FILTER=scan,scan-range,query-filter,match,empty-relation-stats,read-failures OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib ./build/main --test-suite lisp`
+- Direct compile probe for `#time`, `#hex`, and `#uuid` in worker validation.
+- `git diff --check`
+
+Key results:
+- Build passed.
+- Advanced FFI/system filtered group passed with `pass=162 fail=0`.
+- Pika slice passed with `pass=116 fail=0`.
+- Data-format slice passed with `pass=89 fail=0`.
+- Reader-dispatch slice passed with `pass=19 fail=0`.
+- Deduce focused read-failure group passed with `pass=31 fail=0`.
+- `git diff --check` passed.
+
+Invalidated assumptions or known unrelated failures:
+- `[INVALIDATED]` Broad `advanced` is not a valid proof for this wave in the
+  current dirty workspace: it still fails unrelated iterator/boundary cases
+  (`list it3`, `array it3`) with commit-path traversal fallback errors.
+- `[PENDING]` Broad `OMNI_LISP_TEST_SLICE=compiler` still fails before the new
+  reader-tag/AOT assertions in an existing AOT runtime parity path with
+  `scope global mutex used after shutdown cleanup`; focused compile probes were
+  used for `AUDIT-070`.
+
+Current checkpoint:
+- This wave is integrated in `AUDIT.md`; remaining high-value independent
+  surfaces include allocation/order hardening (`AUDIT-079`/`080`/`086`),
+  numeric edge cases (`AUDIT-085`/`087`/`088`/`089`/`090`), CLI atomicity/path
+  safety (`AUDIT-096`/`098`/`099`/`100`/`101`), Pika grammar cleanup
+  (`AUDIT-121` through `AUDIT-128`), and FFI callback/string async boundaries
+  (`AUDIT-139`/`140`/`148`).
+
+Unresolved issues:
+- The workspace remains very dirty with prior agent changes; do not revert
+  unrelated files.
+- Broad heavy validation remains container-bound by repo policy.
+
+Signature: GPT-5 Codex
+
+## 2026-04-25 audit remediation wave: printers, Pika allocation, shared bytes, JSON, sort
+
+Date/time: 2026-04-25 04:29:04 CEST
+
+Objective:
+- Continue addressing `AUDIT.md` issues with parallel workers while keeping one
+  integration owner for ledger updates, validation review, and final state.
+
+Changes made:
+- Closed `AUDIT-017`: value printers now respect `str_len` and escape embedded
+  NUL/control bytes.
+- Closed `AUDIT-063`: Pika regex result builders now propagate string/list
+  allocation failures as top-level structured regex errors.
+- Closed `AUDIT-064`: shared-byte offload consumers now use copy-under-lock
+  owned transfers instead of unlocked raw payload views.
+- Closed `AUDIT-071`, `AUDIT-072`, and `AUDIT-073`: JSON Pointer allocation
+  failures are distinct from syntax errors, read-only lookup avoids interning
+  missing symbol keys, and `json-emit` rejects normalized duplicate object keys.
+- Closed `AUDIT-076`, `AUDIT-077`, and `AUDIT-078`: list sorting no longer has
+  the fixed 256-item cap, boolean comparator results use Omni falsiness, and
+  `sort-by` accepts the documented two-argument comparator shape.
+
+Commands run:
+- C3 LSP diagnostics for touched printer, Pika, scheduler, JSON, sort, and
+  regression-test files.
+- `LIBRARY_PATH=/home/christos/.local/lib c3c --threads 1 build`
+- `OMNI_LISP_TEST_SLICE=basic OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_LISP_TEST_SLICE=pika OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_LISP_TEST_SLICE=data-format OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-string-predicate-format OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_LISP_TEST_SLICE=scheduler OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib ./build/main --test-suite lisp`
+- `git diff --check`
+
+Key results:
+- Build passed.
+- Basic slice passed with `pass=173 fail=0`.
+- Pika slice initially exposed a test-harness issue for one-shot fault hooks,
+  then passed with `pass=102 fail=0` after those regressions were made
+  interpreter-only.
+- Data-format slice passed with `pass=77 fail=0`.
+- Advanced numeric/string/predicate/format group passed with `pass=65 fail=0`.
+- Scheduler slice passed with `pass=135 fail=0`.
+- `git diff --check` passed.
+
+Invalidated assumptions:
+- `[INVALIDATED]` Do not use dual-pass interpreter/JIT test helpers for
+  one-shot allocation fault hooks unless the hook is reset before each pass.
+  The interpreter pass consumes the injected failure before the JIT pass can
+  observe it, producing false JIT failures.
+
+Current checkpoint:
+- The second audit remediation wave is integrated and recorded in `AUDIT.md`.
+- Next good parallel targets are independent surfaces such as Deduce cursor
+  error propagation (`AUDIT-055`/`AUDIT-056`), Pika empty-match/split semantics
+  (`AUDIT-065`/`AUDIT-066`), reader data tags/AOT parity
+  (`AUDIT-067` through `AUDIT-070`), and CSV strictness (`AUDIT-074`/`AUDIT-075`).
+
+Unresolved issues:
+- Broad/high-memory or concurrency stress validation remains container-bound by
+  repo policy. The shared-byte root cause has deterministic coverage, but an
+  ASAN/Valgrind stress pass would still add confidence.
+- Broad unfiltered Deduce execution previously hit an environment loader issue
+  for restart child processes locating `liblightning.so.2`; focused Deduce
+  validation should avoid treating that as a tuple-codec failure.
+
+Signature: GPT-5 Codex
+
+## 2026-04-25 audit remediation wave: FFI, strings, async, scope, native loaders
+
+Date/time: 2026-04-25 04:03:19 CEST
+
+Objective:
+- Continue addressing open `AUDIT.md` findings with parallel workers and parent
+  integration ownership.
+
+Changes made:
+- Closed `AUDIT-040`, `AUDIT-047`, `AUDIT-057`, `AUDIT-058`, `AUDIT-059`,
+  `AUDIT-082`, and `AUDIT-083` from the first worker wave.
+- Closed `AUDIT-006`, `AUDIT-007`, `AUDIT-008`, `AUDIT-009`, `AUDIT-010`,
+  `AUDIT-051`, and `AUDIT-081` from the second wave/local integration.
+- Verified `AUDIT-141` and `AUDIT-142` were already fixed in the current
+  workspace and closed them with parent-side Unicode validation.
+- Added a partial note to `AUDIT-012`: destructor registration and descendant
+  destruction now have non-null preconditions; `scope_splice_escapes` remains
+  intentionally null-tolerant pending contract documentation/tightening.
+
+Commands run:
+- `LIBRARY_PATH=/home/christos/.local/lib c3c --threads 1 build`
+- `scripts/build_omni_chelpers.sh`
+- `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_LISP_TEST_SLICE=async OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_LISP_TEST_SLICE=unicode OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_LISP_TEST_SLICE=string-type OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_LISP_TEST_SLICE=data-format OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-string-predicate-format OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-macro-hygiene-gensym OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib ./build/main --test-suite lisp`
+- `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib ./build/main --test-suite scope`
+- `cc -fsyntax-only -std=c11 -I csrc csrc/tensor_blas_helpers.c`
+- `cc -fsyntax-only -std=c11 -I csrc csrc/tensor_lapack_helpers.c`
+- `cc -fsyntax-only -std=c11 -I csrc csrc/tensor_vulkan_helpers_core.c`
+- `git diff --check`
+
+Key results:
+- Build passed after rebuilding helper C sources.
+- `advanced-ffi-system`: `pass=152 fail=0`.
+- `async`: initially failed because public `tcp-read`/`udp-recv` wrappers
+  discarded optional arguments; after wrapper parity and raw packed-argument
+  normalization, passed with `pass=85 fail=0`.
+- `unicode`: `pass=31 fail=0`.
+- `string-type`: `pass=44 fail=0`.
+- `data-format`: `pass=77 fail=0`.
+- `advanced-stdlib-numeric-string-predicate-format`: `pass=62 fail=0`.
+- `advanced-macro-hygiene-gensym`: `pass=6 fail=0`.
+- `scope`: `63 passed, 0 failed`.
+- Native helper syntax checks and `git diff --check` passed.
+- Broad `advanced-unicode-iterator` remains red on unrelated iterator boundary
+  cases; it was not used as proof for the string changes.
+
+Invalidated assumptions:
+- `[INVALIDATED]` Do not assume raw variadic I/O primitive validation is enough
+  for public read surfaces. The stdlib effect wrapper can discard optional
+  arguments before the raw primitive sees them; wrapper payload shape must be
+  part of the validation contract.
+
+Current checkpoint:
+- This checkpoint was superseded by the follow-on 04:13 CEST audit wave, which
+  closed `AUDIT-012`, `AUDIT-050`, `AUDIT-052`, `AUDIT-053`, `AUDIT-060`,
+  `AUDIT-061`, and `AUDIT-062`.
+
+Signature: GPT-5 Codex
+
+## 2026-04-25 audit remediation wave: JSON, Deduce, symbols, UTF-8 positions
+
+Date/time: 2026-04-25 04:13:54 CEST
+
+Objective:
+- Continue addressing open `AUDIT.md` findings with multiple agents and parent
+  integration ownership.
+
+Changes made:
+- Closed `AUDIT-012`: scope destructor registration, owned-descendant
+  destruction, and `scope_splice_escapes` now encode non-null preconditions.
+- Closed `AUDIT-050`: JSON iterator allocation/internal failures now raise
+  structured parser errors instead of returning successful `nil`; helper-level
+  iterator fault injection covers allocation failure and invalid iterator state.
+- Closed `AUDIT-052` and `AUDIT-053`: Deduce tuple strings now fail closed above
+  the two-byte storage width, and empty-string decode uses a valid zero-length
+  slice.
+- Closed `AUDIT-060`: symbol-table growth now checks `SymbolId` and allocation
+  byte bounds and avoids overflowing the load-factor calculation.
+- Closed `AUDIT-061` and `AUDIT-062`: `string-index-of` and public regex
+  position primitives now use codepoint indexes; regex positions are documented
+  as zero-based half-open codepoint spans.
+
+Commands run:
+- `scripts/build_omni_chelpers.sh`
+- `LIBRARY_PATH=/home/christos/.local/lib c3c --threads 1 build`
+- `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib ./build/main --test-suite scope`
+- `OMNI_LISP_TEST_SLICE=data-format OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_LISP_TEST_SLICE=basic OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_LISP_TEST_SLICE=pika OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-string-predicate-format OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_LISP_TEST_SLICE=deduce OMNI_DEDUCE_GROUP_FILTER=parallel OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_LISP_TEST_SLICE=deduce OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib ./build/main --test-suite lisp`
+- `git diff --check`
+
+Key results:
+- Build passed after rebuilding `omni_chelpers`.
+- `scope`: `63 passed, 0 failed`.
+- `data-format`: `pass=77 fail=0`.
+- `basic`: `pass=172 fail=0`.
+- `pika`: `pass=94 fail=0`.
+- `advanced-stdlib-numeric-string-predicate-format`: `pass=65 fail=0`.
+- Focused Deduce parallel group: `pass=8 fail=0`.
+- Broad unfiltered Deduce slice remained red with `pass=387 fail=9` because
+  restart subtests spawn child `./build/main` processes that cannot locate
+  `liblightning.so.2` in this host setup. This is an environment/loader
+  validation gap, not evidence against the tuple-codec changes.
+- `git diff --check` passed.
+
+Invalidated assumptions:
+- `[INVALIDATED]` Do not use the broad host Deduce slice as proof for narrow
+  tuple-codec changes in this environment unless restart child process library
+  paths are fixed first. Use `OMNI_DEDUCE_GROUP_FILTER=parallel` for the codec
+  regression lane, and run full restart validation in a correctly provisioned
+  container or host loader setup.
+
+Current checkpoint:
+- `AUDIT.md` is updated for the closed items above. The next high-signal audit
+  candidates are still open in the ledger starting around `AUDIT-063` and other
+  medium/high runtime allocation/error-propagation findings.
+
+Signature: GPT-5 Codex
+
+## 2026-04-25 audit system-http-script-format closure batch
+
+Date/time: 2026-04-25 03:43:24 CEST
+
+Objective:
+- Continue closing independent `AUDIT.md` issues with multiple agents while the
+  parent owns integration and validation.
+
+Changes made:
+- Closed `AUDIT-021`, `AUDIT-022`, and `AUDIT-025`: `shell` now grows stdout
+  output dynamically and supports its documented status tuple form; `exit`
+  rejects trailing/non-integer status args; `random-int` rejects non-positive
+  bounds.
+- Closed `AUDIT-029`: shared integer string formatting and compiler integer
+  serialization now handle `long.min` through unsigned magnitude formatting.
+- Closed `AUDIT-031`, `AUDIT-036`, and `AUDIT-037`: baseline review-rule
+  checking has a self-test, `run_e2e.sh` bridges validation mounts into Docker
+  hard-cap args with a self-test, and global gates have an independent
+  `OMNI_GLOBAL_GATES_INCLUDE_MEMORY_LIFETIME_BENCH` switch.
+- Closed `AUDIT-045` and `AUDIT-084`: HTTP response parsing now validates the
+  status line and header terminator before building response dictionaries,
+  handles empty header blocks safely, and returns malformed-response errors
+  instead of partial success.
+
+Commands run:
+- `c3c clean && LIBRARY_PATH=/home/christos/.local/lib c3c --threads 1 build`
+- `LIBRARY_PATH=/home/christos/.local/lib c3c --threads 1 build`
+- `bash -n scripts/check_e2e_baseline_policy.sh scripts/run_e2e.sh scripts/run_global_gates.sh`
+- `scripts/check_e2e_baseline_policy.sh --self-test-review-rule`
+- `scripts/run_e2e.sh --self-test-validation-mount-bridge`
+- `env LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system ./build/main --test-suite lisp`
+- `env LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=http ./build/main --test-suite lisp`
+- `env LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math ./build/main --test-suite lisp`
+- `env LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+- `git diff --check`
+- `scripts/check_status_consistency.sh`
+- `scripts/check_build_config_parity.sh`
+- `scripts/check_io_parity_status_map.sh`
+
+Key results:
+- Clean serial build passed, and rebuild after HTTP parser integration repair
+  passed.
+- `advanced-ffi-system`: `151 passed, 0 failed`.
+- `http`: first run failed because the new parser sliced empty header blocks
+  with negative bounds and kept one delimiter byte in non-empty headers; after
+  fixing header bounds, `http` passed with `31 passed, 0 failed`.
+- `advanced-stdlib-numeric-float-math`: `173 passed, 0 failed`.
+- `compiler`: `319 passed, 0 failed`.
+- Script syntax/self-tests and repository consistency/parity checks passed.
+
+Invalidated assumptions or failed approaches:
+- `[FAILED]` The first HTTP parser patch treated `status_line_end + 2` as a
+  valid start even when it equaled the final header delimiter. That failed on
+  empty header blocks and left delimiter residue for non-empty headers. The
+  shipped fix slices only when `hdr_start < header_delim_start`, ending at
+  `header_delim_start - 1`.
+- `[PENDING]` The broad `advanced-stdlib-numeric` umbrella still has unrelated
+  range/TCO failures (`range length`, `range car`, `sum of squares`, and range
+  TCO headroom). The focused subgroup for the `long.min` change passed.
+
+Current checkpoint:
+- `AUDIT-021`, `AUDIT-022`, `AUDIT-025`, `AUDIT-029`, `AUDIT-031`, `AUDIT-036`,
+  `AUDIT-037`, `AUDIT-045`, and `AUDIT-084` are closed in `AUDIT.md`.
+- The dirty working copy still includes unrelated earlier batches; those were
+  not reverted.
+
+Signature: GPT-5 Codex
+
+## 2026-04-25 audit arity/date/handle closure batch
+
+Date/time: 2026-04-25 03:30:34 CEST
+
+Objective:
+- Address independent open `AUDIT.md` runtime issues using multiple agents, with
+  main Codex as integration owner.
+
+Changes made:
+- Closed `AUDIT-020`: `tls-server-wrap` now rejects extra raw direct arguments
+  and non-empty packed tails.
+- Closed `AUDIT-023`: `fs-open` now enforces the current 2-3 argument contract
+  for raw direct and packed paths.
+- Closed `AUDIT-024`: `sleep` now rejects wrong arity, non-finite, negative, and
+  microsecond-overflow durations before calling `usleep`.
+- Closed `AUDIT-049`: `#time` and `TimePoint` date/datetime constructors now use
+  calendar-aware month length and leap-year validation.
+- Closed `AUDIT-116`: atomic primitives validate the FFI handle family name is
+  `atomic-ref` before casting.
+- Closed `AUDIT-131`: `process-kill` and `signal-handle` now reject raw direct
+  and packed trailing arguments.
+- Updated regressions across the touched async, filesystem, data-format, atomic,
+  and advanced FFI/effect test groups.
+
+Commands run:
+- `c3c clean && LIBRARY_PATH=/home/christos/.local/lib c3c --threads 1 build`
+- `LIBRARY_PATH=/home/christos/.local/lib c3c --threads 1 build`
+- `env LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=data-format ./build/main --test-suite lisp`
+- `env LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=atomic ./build/main --test-suite lisp`
+- `env LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=async ./build/main --test-suite lisp`
+- `env LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system ./build/main --test-suite lisp`
+- `env LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-effect-union-limit ./build/main --test-suite lisp`
+- `git diff --check`
+- `scripts/check_status_consistency.sh`
+- `scripts/check_build_config_parity.sh`
+- `scripts/check_io_parity_status_map.sh`
+
+Key results:
+- Clean serial build passed.
+- Rebuild after integration test fix passed.
+- `data-format`: `73 passed, 0 failed`.
+- `atomic`: `10 passed, 0 failed`.
+- `async`: `79 passed, 0 failed`.
+- `advanced-ffi-system`: `144 passed, 0 failed`.
+- First `advanced-effect-union-limit` run failed two new direct-call tests because
+  they exercised the public effect wrapper instead of the raw direct primitive
+  branch. After rewriting those regressions to call `__raw-process-kill` and
+  `__raw-signal-handle` directly, the same gate passed with `77 passed, 0
+  failed`.
+- Diff whitespace and repository consistency/parity checks passed.
+
+Current checkpoint:
+- Six audit issues are closed in `AUDIT.md` with validation notes:
+  `AUDIT-020`, `AUDIT-023`, `AUDIT-024`, `AUDIT-049`, `AUDIT-116`, and
+  `AUDIT-131`.
+- The repo still has many unrelated pre-existing working-copy changes from
+  earlier batches; they were not reverted.
+
+Unresolved issues:
+- Remaining open `AUDIT.md` items should be selected by risk and independence.
+- Broad/full-suite validation was not run in this batch; only targeted slices and
+  lightweight consistency gates were run.
+
+Signature: GPT-5 Codex
+
+## 2026-04-25 audit issue closure batch AUDIT-109/114/115/133/145
+
+Date/time: 2026-04-25 03:16:13 CEST
+
+Objective:
+- Continue addressing `AUDIT.md` issues using multiple agents, with final
+  integration owned by Codex.
+
+Agent assignments:
+- Curie: `AUDIT-109` scheduler fixed-shape offload arity.
+- Descartes: `AUDIT-133` pipe-listen path preservation.
+- Mill: `AUDIT-145` kernel/capture revalidation.
+- Mendel: `AUDIT-115` ml/export-image atomic publication; stalled before final
+  report and was shut down after landing code for integration review.
+- Codex: integration owner, local `AUDIT-114` data-format bounds hardening,
+  final audit/status/report updates.
+
+Changes made:
+- Closed `AUDIT-109`: `scheduler_build_offload_work` now rejects trailing and
+  improper fixed-shape job arguments for `sleep-ms`, `gzip`/`deflate`, and
+  internal fixed-shape offload jobs before payload construction.
+- Closed `AUDIT-114`: `base64` decoded length now uses
+  `data_base64_decoded_len_checked` and `make_array_checked`. The original
+  "decoded length can wrap" mechanism was narrowed: real cleaned input length is
+  itself `usz`-bounded, so the multiply cannot overflow for actual strings, but
+  the helper now makes the invariant explicit and guards padding underflow.
+- Closed `AUDIT-115`: `ml/export-image` writes PPM output to a sibling
+  `final.tmp.<pid>` path, closes it, renames into place, and cleans the temp
+  path on write/close/rename failure.
+- Closed `AUDIT-133`: native pipe/socket listen helpers fail closed if the
+  requested path already exists instead of unconditionally unlinking it; owned
+  socket cleanup now happens only after post-bind listen failure.
+- Closed `AUDIT-145`: `kernel/capture` now runs `kernel_validate_spec` before
+  trusting a Kernel dictionary, matching `Kernel(...)` and `kernel/run`.
+- Updated `AUDIT.md` with closure notes and validation for all five items.
+
+Commands run:
+- `c3c clean && LIBRARY_PATH=/home/christos/.local/lib c3c --threads 1 build`
+- `OMNI_LISP_TEST_SLICE=data-format LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_LISP_TEST_SLICE=async LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_LISP_TEST_SLICE=scheduler LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib ./build/main --test-suite lisp`
+- `scripts/check_scheduler_state_guards.sh`
+- `scripts/check_status_consistency.sh`
+- `scripts/check_build_config_parity.sh`
+- `scripts/check_io_parity_status_map.sh`
+- `git diff --check`
+
+Key results:
+- Clean serial build passed and linked `build/main`.
+- `data-format` passed with `67 passed, 0 failed`.
+- `async` passed with `77 passed, 0 failed`.
+- `scheduler` passed with `134 passed, 0 failed`.
+- `advanced-collections-module` passed with `2114 passed, 0 failed`.
+- `advanced-ffi-system` passed with `141 passed, 0 failed`.
+- Scheduler state guard, status consistency, build-config parity, I/O parity,
+  and whitespace checks all passed.
+
+Observed failure mode:
+- Earlier build/test attempts failed because multiple active workers cleaned or
+  rebuilt the shared `build/` tree concurrently, causing link commands to miss
+  generated `build/obj/linux-aarch64/*.o` files. After worker shutdown and one
+  serial `c3c --threads 1 build`, the build passed.
+
+Unresolved issues:
+- `AUDIT-107`, `AUDIT-131`, and other open audit entries remain in `AUDIT.md`.
+- `AUDIT-115` now has atomic temp/rename publication and cleanup coverage, but
+  it does not yet inject write or close failures directly.
+
+Current best recommendation:
+- Continue with another independent audit batch, avoiding concurrent commands
+  that mutate `build/` during integration validation.
+
+Signature: GPT-5 Codex
+
+## 2026-04-25 audit ledger closure for AUDIT-108/130/132/146
+
+Date/time: 2026-04-25 02:57:55 CEST
+
+Objective:
+- Continue closing open `AUDIT.md` findings with multiple delegated code tracks
+  and integration-owner validation.
+
+Changes made:
+- Closed `AUDIT-108`: `async-sleep` and scheduler `sleep-ms` paths now share a
+  positive bounded millisecond contract, reject zero/negative/overflow values,
+  and convert milliseconds to microseconds through a checked helper.
+- Closed `AUDIT-130`: `fs-readdir` now uses explicit NUL-delimited native
+  records instead of newline-separated records, preserving filenames containing
+  newline bytes.
+- Closed `AUDIT-132`: `read-lines` now returns `nil` for empty files while
+  preserving unterminated-final-line and trailing-newline behavior.
+- Closed `AUDIT-146`: `tensor/run` now checks per-node result-table and
+  contract axis/shape scratch allocations before writes, returning typed
+  `tensor/out-of-memory` errors.
+- Integration fixed the scheduler reliable-queue boundary fixture to enqueue a
+  valid positive `sleep-ms` work item while preserving recycled-slot reset
+  assertions.
+
+Commands run:
+- `LIBRARY_PATH=/home/christos/.local/lib c3c build`
+- `env LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib:build OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=async ./build/main --test-suite lisp`
+- `env LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_SKIP_TLS_INTEGRATION=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-effect-union-limit ./build/main --test-suite lisp`
+- `env LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_SKIP_TLS_INTEGRATION=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=scheduler ./build/main --test-suite lisp`
+- `env LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_SKIP_TLS_INTEGRATION=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp`
+- `scripts/check_status_consistency.sh`
+- `scripts/check_build_config_parity.sh`
+- `scripts/check_io_parity_status_map.sh`
+- `git diff --check`
+
+Key results:
+- Build passed and linked `build/main`.
+- Async slice passed with `pass=76 fail=0`.
+- Advanced effect/process/IO group passed with `pass=71 fail=0`.
+- Scheduler slice passed with `pass=122 fail=0`.
+- Advanced collections/module group passed with `pass=2112 fail=0`.
+- Status consistency, build config parity, IO parity status map, and whitespace
+  checks passed.
+
+Current checkpoint:
+- `AUDIT-108`, `AUDIT-130`, `AUDIT-132`, and `AUDIT-146` are closed in
+  `AUDIT.md`.
+- All worker agents from this batch were closed after integration.
+
+Unresolved issues:
+- `AUDIT-107`, `AUDIT-109`, `AUDIT-131`, `AUDIT-133` and many later FFI/runtime
+  findings remain open.
+
+Signature: GPT-5 Codex
+
+## 2026-04-25 audit ledger closure for AUDIT-106/129/138/141/142
+
+Date/time: 2026-04-25 02:46:35 CEST
+
+Objective:
+- Continue reducing open `AUDIT.md` findings using delegated implementation
+  tracks plus integration-owner validation.
+
+Changes made:
+- Closed `AUDIT-106`: `process-kill` now rejects zero, negative, above-platform
+  maximum, and out-of-`int` signals with `io/process-kill-invalid-sig` instead
+  of falling back to `SIGKILL`.
+- Closed `AUDIT-129`: `fs-read` now fails closed above the documented 8 MiB
+  single-read cap instead of silently clamping.
+- Closed `AUDIT-138`: `Float64` keys now have non-zero hash behavior matching
+  equality semantics, including signed-zero folding and NaN probe behavior.
+- Closed `AUDIT-141` and `AUDIT-142`: `string-graphemes` and
+  `string-codepoints` now materialize through checked list construction instead
+  of fixed 512/1024 entry buffers.
+- Updated `AUDIT.md`, `docs/reference/11-appendix-primitives.md`, and focused
+  regressions for process, filesystem, collections, and Unicode behavior.
+
+Commands run:
+- `LIBRARY_PATH=/home/christos/.local/lib c3c build`
+- `env LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_SKIP_TLS_INTEGRATION=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-effect-union-limit ./build/main --test-suite lisp`
+- `env LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_SKIP_TLS_INTEGRATION=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp`
+- `env LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_SKIP_TLS_INTEGRATION=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=unicode ./build/main --test-suite lisp`
+- `scripts/check_status_consistency.sh`
+- `scripts/check_build_config_parity.sh`
+- `scripts/check_io_parity_status_map.sh`
+- `git diff --check` for touched process/IO/collection/Unicode/docs/audit files.
+
+Key results:
+- Build passed and linked `build/main`.
+- Advanced effect/process/IO group passed with `pass=70 fail=0`.
+- Advanced collections/module group passed with `pass=2110 fail=0`.
+- Unicode slice passed with `pass=31 fail=0`.
+- Status consistency, build config parity, IO parity status map, and whitespace
+  checks passed.
+
+Current checkpoint:
+- `AUDIT-106`, `AUDIT-129`, `AUDIT-138`, `AUDIT-141`, and `AUDIT-142` are closed
+  in `AUDIT.md`.
+- `AUDIT-152` bookkeeping was corrected to `Closed`; it had already been
+  implemented and verified in the previous batch.
+
+Unresolved issues:
+- The audit ledger still has many open runtime, FFI, scheduler, filesystem, and
+  parser findings. Continue selecting independent file scopes for sub-agent
+  work.
+
+Signature: GPT-5 Codex
+
+## 2026-04-25 audit ledger closure for AUDIT-152/153/155/156
+
+Date/time: 2026-04-25 02:32:43 CEST
+
+Objective:
+- Continue addressing issues from `AUDIT.md` using delegated implementation
+  tracks and integrate the completed work.
+
+Changes made:
+- Closed `AUDIT-152` by adding AOT prelude macro parity for `branch`,
+  `with-defaults`, and `stream-yield`, plus isolated compiler macro expansion
+  before top-level/capture/lambda analysis.
+- Closed `AUDIT-153` by adding AOT prelude pure-Lisp function parity for
+  `default`, `partition`, `find`, `stream-take`, `delay`, and `force`.
+- Closed `AUDIT-155` by replacing fixed stable prepared-graph scratch caps with
+  dynamically growing node, edge, seen-node, and seen-index buffers.
+- Closed `AUDIT-156` by making call-argument temp allocation explicitly
+  checked and propagated across normal calls, tail calls, list/dictionary
+  construction, and `explain 'dispatch`.
+- During integration, removed stale when/unless allocation-forcing test hooks
+  because stdlib `when`/`unless` now expand as macros before normal AOT call
+  lowering; the old forcing path no longer represented reachable AOT behavior.
+
+Commands run:
+- `jj status`
+- `rg -n "STABLE_ESCAPE_PREPARED_MAX|compile_call_arg_temps\\(|AUDIT-15[2356]" src/lisp AUDIT.md`
+- `wc -l` for touched C3 files
+- `LIBRARY_PATH=/home/christos/.local/lib c3c build`
+- `git diff --check`
+- `env LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_SKIP_TLS_INTEGRATION=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+- `scripts/run_validation_container.sh bash -lc 'c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+- `env LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_SKIP_TLS_INTEGRATION=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-macro-hygiene-stdlib-migration ./build/main --test-suite lisp`
+- `scripts/check_status_consistency.sh`
+- `scripts/check_build_config_parity.sh`
+- `scripts/check_io_parity_status_map.sh`
+
+Key results:
+- Build passed and linked `build/main`.
+- Compiler slice passed with `pass=318 fail=0`.
+- Bounded container `memory-lifetime-smoke` passed with `pass=256 fail=0`.
+- Advanced macro stdlib migration group passed with `pass=19 fail=0`.
+- Status consistency, build config parity, IO parity status map, and
+  whitespace checks passed.
+
+Current checkpoint:
+- `AUDIT-152`, `AUDIT-153`, `AUDIT-155`, and `AUDIT-156` are closed in
+  `AUDIT.md`.
+- Remaining open audit work should be selected from the current `AUDIT.md`
+  ledger rather than reopening these verified items.
+
+Unresolved issues:
+- The broader `advanced-macro-hygiene` host slice still has the pre-existing
+  512-depth non-tail recursion headroom crash noted in earlier work; the
+  focused stdlib migration group is green.
+
+Signature: GPT-5 Codex
+
+## 2026-04-25 AUDIT remediation integration batch
+
+Date/time:
+- 2026-04-25 02:18 CEST
+
+Objective:
+- Address open AUDIT ledger items using coordinated subagents, integrate their
+  patches, and update the canonical audit state.
+
+Changes made:
+- Closed `AUDIT-149`, `AUDIT-150`, `AUDIT-151`, `AUDIT-154`, `AUDIT-157`,
+  `AUDIT-158`, `AUDIT-159`, and `AUDIT-160` in `AUDIT.md`.
+- Integrated scoped module open traversal for effect explanation and Deduce
+  query demand extraction.
+- Fixed documented multi-body `when`/`unless` expansion by aligning the AOT
+  prelude macro surface and making nested `(splice body)` template forms splice
+  into the surrounding emitted list.
+- Integrated compiler fail-closed allocation/result-copy hardening for
+  `when`/`unless` synthetic block lowering and final compile-output ownership.
+- Added/validated CLI C-string boundary hardening, IO parity status-map guard,
+  and `$CC` honoring in helper C builds.
+
+Commands run:
+- `LIBRARY_PATH=/home/christos/.local/lib c3c build`
+- `env LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_SKIP_TLS_INTEGRATION=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+- `env LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_SKIP_TLS_INTEGRATION=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=schema ./build/main --test-suite lisp`
+- `env LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_SKIP_TLS_INTEGRATION=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=deduce OMNI_DEDUCE_GROUP_FILTER=query OMNI_DEDUCE_QUERY_FILTER=admin-surface-demand ./build/main --test-suite lisp`
+- `env LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_SKIP_TLS_INTEGRATION=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-macro-hygiene-stdlib-migration ./build/main --test-suite lisp`
+- `scripts/check_io_parity_status_map.sh`
+- `scripts/check_build_config_parity.sh`
+- `scripts/check_status_consistency.sh`
+- `git diff --check`
+
+Key results:
+- Build passed and produced `build/main`.
+- Compiler slice passed: `pass=313 fail=0`.
+- Schema slice passed: `pass=43 fail=0`.
+- Deduce query admin-demand slice passed: `pass=58 fail=0`.
+- Focused stdlib macro migration slice passed: `pass=19 fail=0`.
+- IO parity status map and build config parity scripts passed.
+
+Unresolved issues:
+- `AUDIT-152`, `AUDIT-153`, `AUDIT-155`, and `AUDIT-156` remain open.
+- Broad `advanced-macro-hygiene` still hits the pre-existing non-tail recursion
+  headroom probe in this host run; focused macro migration coverage is green.
+- Container compiler validation remains blocked by missing generated container
+  object inputs in the worker run; host validation passed with local library
+  paths.
+
+Next actions:
+- Continue from `AUDIT-152`/`AUDIT-153` using the read-only implementation note
+  from the explorer: unify AOT prelude stdlib surface and add a pre-lowering
+  macro expansion step with macro-state isolation.
+- Address `AUDIT-156` call-argument temp allocation hardening next if staying
+  in compiler allocation work.
+
+Signature: GPT-5 Codex
+
+## 2026-04-25 AUDIT-154 AOT when/unless allocation hardening
+
+Date/time:
+- 2026-04-25 02:12:07 CEST
+
+Objective:
+- Address AUDIT-154 only: AOT multi-body `when`/`unless` synthetic `E_BLOCK`
+  allocation must fail closed with compiler diagnostics instead of assertions.
+
+Changes made:
+- Replaced the three assertion-backed synthetic block allocation paths in
+  `Compiler.compile_when_unless_if` with checked allocations,
+  `set_compile_error(...)`, and `usz.max` returns.
+- Added compiler-state fault-injection flags scoped to the `when`/`unless`
+  synthetic block lowering path.
+- Extended existing compiler fail-closed tests with expression, payload, and
+  expression-array allocation failure coverage for multi-body `when`/`unless`.
+
+Commands run:
+- Serena onboarding/memory check and C3 diagnostics for touched C3 files.
+- `c3c -C build`
+- `c3c build`
+- Integration owner rerun: `LIBRARY_PATH=/home/christos/.local/lib c3c build`
+- Integration owner rerun: `env LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_SKIP_TLS_INTEGRATION=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+- `scripts/run_validation_container.sh bash -lc 'c3c build && env LD_LIBRARY_PATH=build:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp'`
+- `git diff --check -- src/lisp/compiler_call_flat.c3 src/lisp/compiler_compiler_state.c3 src/lisp/tests_compiler_core_groups_fail_closed.c3`
+
+Key results:
+- C3 diagnostics reported no issues in the three touched files.
+- `c3c -C build` passed.
+- `git diff --check` passed for the touched files.
+- Initial host `c3c build` failed at link because `-llightning` and `-lreplxx`
+  were unavailable in the default host linker paths.
+- Integration owner reran with `LIBRARY_PATH=/home/christos/.local/lib`;
+  `build/main` was produced.
+- Integration owner reran the compiler slice against the fresh binary:
+  `pass=313 fail=0`.
+- Bounded container validation failed before tests at link because generated
+  `build/obj/linux-aarch64/*.o` inputs were missing in the container run.
+
+Unresolved issues:
+- Bounded container compiler validation remains blocked by missing generated
+  container object inputs, but host runtime compiler validation passed with the
+  local library path.
+- Existing unrelated working-copy edits, including excluded files and audit
+  ledgers, were left untouched.
+
+Current checkpoint:
+- The AUDIT-154 code/test patch is integrated and host-runtime verified; the
+  canonical audit ledger now marks AUDIT-154 closed.
+
+Signature: GPT-5 Codex
+
 ## 2026-04-24 scoped module open and data reader tags
 
 Date/time: 2026-04-24 18:49:19 CEST
@@ -7443,6 +8579,123 @@ Current checkpoint:
 Unresolved issues:
 - FFI bridge metadata, copy-debt telemetry, and commit-path migration remain
   open roadmap items.
+
+Signature: GPT-5 Codex
+
+## 2026-04-25 audit 183-191 remediation and final reaudit
+
+Date/time: 2026-04-25 CEST
+
+Objective:
+- Continue addressing canonical `AUDIT.md` issues with parallel mini-agent
+  diagnosis, commit non-artifact work, and retry push.
+
+Changes made:
+- Closed `AUDIT-183` through `AUDIT-191` in `AUDIT.md`.
+- Fixed Deduce time-point tuple decode bounds and added truncated-payload
+  coverage.
+- Fixed FFI callback Boolean return conversion and deterministic zero return
+  slots on callback error paths.
+- Fixed compile FFI sidecar generation for macro-expanded FFI declarations,
+  stale no-FFI sidecar cleanup, and extended ABI tag manifest names.
+- Fixed scheduler OS-thread cancel-completion OOM native-handle cleanup.
+- Fixed TCP REPL port-file cleanup and REPL output mutex fail-closed teardown.
+- Updated `memory/changelog_parts/changelog_part_37.md`.
+
+Commands run:
+- `LIBRARY_PATH=/home/christos/.local/lib c3c --threads 1 build --obj-out obj`
+- `env LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=compiler OMNI_COMPILER_GROUP_FILTER=existing-feature OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- `env LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=deduce OMNI_DEDUCE_GROUP_FILTER=parallel OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- `env LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- `env LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=scheduler OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- `env LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=async OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+
+Key results:
+- Build passed.
+- Compiler existing-feature passed with `331 passed, 0 failed`.
+- Deduce parallel passed with `10 passed, 0 failed`.
+- Advanced FFI system passed with `182 passed, 0 failed`.
+- Scheduler passed with `142 passed, 0 failed`.
+- Async passed with `95 passed, 0 failed`.
+
+Current checkpoint:
+- Canonical audit ledger has no known `Status: Open` entries after the current
+  remediation wave.
+- Push may still require credentials because the previous `jj git push` attempt
+  to `https://github.com/gavlooth/omnilisp.git` failed with GitHub 403 for the
+  configured user.
+
+Unresolved issues:
+- Full unfiltered Deduce remains host-environment blocked by child subprocesses
+  that do not inherit the local `liblightning` runtime library path.
+- Remote publication depends on a writable GitHub credential or remote.
+
+Signature: GPT-5 Codex
+
+## 2026-04-25 audit 192-201 remediation and mini-agent reaudit
+
+Date/time: 2026-04-25 CEST
+
+Objective:
+- Continue addressing canonical `AUDIT.md` issues with multiple mini-agent
+  review tracks, update durable audit state, commit non-artifact work, and retry
+  push.
+
+Changes made:
+- Closed `AUDIT-192` through `AUDIT-201` in `AUDIT.md`.
+- Fixed compile sidecar cleanup for empty/no-FFI inputs and extended nested
+  AOT/FFI walkers for generated globals, startup preload, and compile
+  manifests.
+- Fixed Deduce `fact!` LMDB lookup fail-open behavior and reference-scan
+  fail-open behavior for retract/clear/drop paths.
+- Added direct Deduce regressions for forced `fact!` read failure and reference
+  source-open failure.
+- Fixed FFI async `Buffer` handoff rejection and variadic `Float32` promotion to
+  C `double`.
+- Added REPL worker sync teardown and a process-exit scheduler shutdown hook.
+- Fixed Deduce restart subprocess tests to preserve caller `LD_LIBRARY_PATH`.
+- Updated `memory/changelog_parts/changelog_part_37.md`.
+
+Commands run:
+- `LIBRARY_PATH=/home/christos/.local/lib c3c --threads 1 build --obj-out obj`
+- `env LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=compiler OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- `env LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=deduce OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- `env LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=deduce OMNI_DEDUCE_GROUP_FILTER=integrity OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- `env LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- `env LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=async OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- `env LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=scheduler OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- `rg -n "Status: Open" AUDIT.md AUDIT_2.md`
+- `git diff --check`
+
+Key results:
+- Build passed.
+- Compiler passed with `335 passed, 0 failed`.
+- Deduce passed with `411 passed, 0 failed`; the focused integrity group passed
+  with `36 passed, 0 failed`.
+- Advanced FFI system passed with `184 passed, 0 failed`.
+- Async passed with `96 passed, 0 failed`.
+- Scheduler passed with `143 passed, 0 failed`.
+- Mini-agent reaudit results: compiler/AOT, FFI, and lifecycle tracks reported
+  no findings; Deduce reported a low coverage gap that was closed with direct
+  fail-closed regressions.
+- `AUDIT.md`/`AUDIT_2.md` have no `Status: Open` matches.
+- `git diff --check` passed.
+
+Invalidated assumptions or failed approaches:
+- Directly corrupting a test relation DBI did not reliably force the intended
+  LMDB read-failure branch. A small explicit Deduce test seam now drives that
+  branch deterministically.
+
+Current checkpoint:
+- Canonical audit ledger has no known `Status: Open` entries after the current
+  remediation wave.
+
+Unresolved issues:
+- Full unfiltered advanced slice remains red on pre-existing iterator boundary
+  failures outside this wave; targeted advanced FFI is the validation signal for
+  the touched FFI work.
+- Remote publication still depends on writable GitHub credentials for
+  `https://github.com/gavlooth/omnilisp.git`.
 
 Signature: GPT-5 Codex
 

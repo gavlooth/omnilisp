@@ -124,6 +124,15 @@ fn Value* ffi_null_handle_error(Interp* interp, usz arg_index) {
     return ffi_raise(interp, "ffi/type-mismatch", "ffi: expected live ForeignHandle");
 }
 
+fn Value* ffi_unsigned_range_error(Interp* interp, usz arg_index, char[] type_name) {
+    char[256] ebuf;
+    if (try char[] msg = io::bprintf(&ebuf, "ffi: argument %d out of range for %s",
+        (int)(arg_index + 1), (ZString)type_name)) {
+        return ffi_raise(interp, "ffi/range-error", msg);
+    }
+    return ffi_raise(interp, "ffi/range-error", "ffi: unsigned argument out of range");
+}
+
 fn Value* ffi_non_null_handle_error(Interp* interp, usz arg_index) {
     char[256] ebuf;
     if (try char[] msg = io::bprintf(&ebuf, "ffi: argument %d expected non-null ForeignHandle",
@@ -214,6 +223,9 @@ fn Value* ffi_pack_call_arg(Value* arg, FfiTypeTag param_type, usz arg_index,
             if (arg == null || arg.tag == NIL) {
                 *ptr_slot = null;
             } else if (arg.tag == STRING) {
+                if (c_api_string_contains_nul(arg.str_chars[:arg.str_len])) {
+                    return ffi_raise(interp, "ffi/invalid-argument", "ffi: string argument contains embedded NUL byte");
+                }
                 *ptr_slot = (void*)arg.str_chars;
             } else {
                 return ffi_arg_type_error(interp, arg_index, interp.sym_String, arg);
@@ -254,7 +266,10 @@ fn Value* ffi_pack_call_arg(Value* arg, FfiTypeTag param_type, usz arg_index,
             if (arg == null || arg.tag != INT) {
                 return ffi_arg_type_error(interp, arg_index, interp.sym_Integer, arg);
             }
-            *int_slot = (uint)arg.int_val;
+            if (arg.int_val < 0 || arg.int_val > (long)uint.max) {
+                return ffi_unsigned_range_error(interp, arg_index, "UInt32");
+            }
+            *int_slot = (long)(uint)arg.int_val;
             *out_arg_type = (int)param_type;
             *out_arg_value = (void*)int_slot;
             return null;
@@ -262,7 +277,10 @@ fn Value* ffi_pack_call_arg(Value* arg, FfiTypeTag param_type, usz arg_index,
             if (arg == null || arg.tag != INT) {
                 return ffi_arg_type_error(interp, arg_index, interp.sym_Integer, arg);
             }
-            *int_slot = (long)(ulong)arg.int_val;
+            if (arg.int_val < 0) {
+                return ffi_unsigned_range_error(interp, arg_index, "UInt64");
+            }
+            *int_slot = arg.int_val;
             *out_arg_type = (int)param_type;
             *out_arg_value = (void*)int_slot;
             return null;
@@ -309,10 +327,13 @@ fn Value* ffi_pack_variadic_call_arg(
         *out_arg_type = (int)FfiTypeTag.FFI_TYPE_DOUBLE;
         *out_arg_value = (void*)dbl_slot;
     } else if (arg != null && arg.tag == FLOAT32) {
-        *(float*)int_slot = arg.float32_val;
-        *out_arg_type = (int)FfiTypeTag.FFI_TYPE_FLOAT32;
-        *out_arg_value = (void*)int_slot;
+        *dbl_slot = (double)arg.float32_val;
+        *out_arg_type = (int)FfiTypeTag.FFI_TYPE_DOUBLE;
+        *out_arg_value = (void*)dbl_slot;
     } else if (arg != null && arg.tag == STRING) {
+        if (c_api_string_contains_nul(arg.str_chars[:arg.str_len])) {
+            return ffi_raise(interp, "ffi/invalid-argument", "ffi: variadic string argument contains embedded NUL byte");
+        }
         *ptr_slot = (void*)arg.str_chars;
         *out_arg_type = (int)FfiTypeTag.FFI_TYPE_STRING;
         *out_arg_value = (void*)ptr_slot;
@@ -323,27 +344,29 @@ fn Value* ffi_pack_variadic_call_arg(
         *ptr_slot = arg.ffi_val.lib_handle;
         *out_arg_type = (int)FfiTypeTag.FFI_TYPE_PTR;
         *out_arg_value = (void*)ptr_slot;
-    } else if (arg != null && arg.tag == SYMBOL) {
+    } else if (arg != null && arg.tag == SYMBOL &&
+        (arg.sym_val == interp.sym_true || arg.sym_val == interp.sym_false)) {
         *int_slot = (arg.sym_val == interp.sym_true) ? 1 : 0;
         *out_arg_type = (int)FfiTypeTag.FFI_TYPE_BOOL;
         *out_arg_value = (void*)int_slot;
     } else {
-        *ptr_slot = null;
-        *out_arg_type = (int)FfiTypeTag.FFI_TYPE_PTR;
-        *out_arg_value = (void*)ptr_slot;
+        return ffi_raise(interp, "ffi/invalid-argument", "ffi: unsupported variadic argument type");
     }
     return null;
 }
 
-fn void* ffi_return_storage_for(FfiTypeTag return_type, long* ret_int, float* ret_f32, double* ret_dbl, void** ret_ptr) {
+fn void* ffi_return_storage_for(FfiTypeTag return_type, long* ret_int, uint* ret_u32, ulong* ret_u64,
+                                float* ret_f32, double* ret_dbl, void** ret_ptr) {
     switch (return_type) {
         case FFI_TYPE_INT:
         case FFI_TYPE_BOOL:
         case FFI_TYPE_INT32:
         case FFI_TYPE_INT64:
-        case FFI_TYPE_UINT32:
-        case FFI_TYPE_UINT64:
             return (void*)ret_int;
+        case FFI_TYPE_UINT32:
+            return (void*)ret_u32;
+        case FFI_TYPE_UINT64:
+            return (void*)ret_u64;
         case FFI_TYPE_FLOAT32:
             return (void*)ret_f32;
         case FFI_TYPE_DOUBLE:
@@ -367,7 +390,8 @@ fn usz ffi_c_string_len(char* text) @inline {
 }
 
 fn Value* ffi_return_value_for(FfiBoundFn* bound, FfiTypeTag return_type, FfiHandlePolicy* policy,
-                               long ret_int, float ret_f32, double ret_dbl, void* ret_ptr, Interp* interp) {
+                               long ret_int, uint ret_u32, ulong ret_u64,
+                               float ret_f32, double ret_dbl, void* ret_ptr, Interp* interp) {
     switch (return_type) {
         case FFI_TYPE_INT:
             return make_int(interp, ret_int);
@@ -417,9 +441,14 @@ fn Value* ffi_return_value_for(FfiBoundFn* bound, FfiTypeTag return_type, FfiHan
             return make_float32(interp, ret_f32);
         case FFI_TYPE_INT32:
         case FFI_TYPE_INT64:
-        case FFI_TYPE_UINT32:
-        case FFI_TYPE_UINT64:
             return make_int(interp, ret_int);
+        case FFI_TYPE_UINT32:
+            return make_int(interp, (long)ret_u32);
+        case FFI_TYPE_UINT64:
+            if (ret_u64 > (ulong)long.max) {
+                return ffi_raise(interp, "ffi/range-error", "ffi: UInt64 return exceeds Integer range");
+            }
+            return make_int(interp, (long)ret_u64);
         case FFI_TYPE_BUFFER:
             if (ret_ptr == null) return make_nil(interp);
             return make_ffi_handle_ex(interp, ret_ptr, "ffi-buffer", null, false, false, null);
@@ -524,10 +553,12 @@ fn Value* foreign_runtime_call_c_abi_bound(FfiBoundFn* bound, Value*[] args, Env
     // Call via libffi
     int ret_type = (int)bound.return_type;
     long ret_int = 0;
+    uint ret_u32 = 0;
+    ulong ret_u64 = 0;
     float ret_f32 = 0.0f;
     double ret_dbl = 0.0;
     void* ret_ptr = null;
-    void* ret_storage = ffi_return_storage_for(bound.return_type, &ret_int, &ret_f32, &ret_dbl, &ret_ptr);
+    void* ret_storage = ffi_return_storage_for(bound.return_type, &ret_int, &ret_u32, &ret_u64, &ret_f32, &ret_dbl, &ret_ptr);
 
     int rc;
     if (bound.is_variadic) {
@@ -549,7 +580,7 @@ fn Value* foreign_runtime_call_c_abi_bound(FfiBoundFn* bound, Value*[] args, Env
         return ffi_raise(interp, "ffi/call-failed", msg);
     }
 
-    return ffi_return_value_for(bound, bound.return_type, &bound.return_handle_policy, ret_int, ret_f32, ret_dbl, ret_ptr, interp);
+    return ffi_return_value_for(bound, bound.return_type, &bound.return_handle_policy, ret_int, ret_u32, ret_u64, ret_f32, ret_dbl, ret_ptr, interp);
 }
 
 // prim_ffi_bound_call — primitive handler for bound FFI functions.

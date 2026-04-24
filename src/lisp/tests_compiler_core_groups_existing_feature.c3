@@ -6,6 +6,20 @@ import std::io;
 import main;
 import lisp::aot;
 
+fn bool compiler_test_parse_exprs_append(char[] source, Interp* interp, List{Expr*}* out) {
+    Lexer lex;
+    lex.init(source);
+    defer lex.destroy();
+
+    Parser p;
+    p.init(&lex, interp);
+    while (!lex.at_end() && !p.has_error) {
+        Expr* expr = p.parse_expr();
+        if (expr != null && !p.has_error) out.push(expr);
+    }
+    return !p.has_error;
+}
+
 fn void run_compiler_group_existing_feature_tests(Interp* interp, usz* pass, usz* fail) {
     // --- Existing features still work ---
     {
@@ -69,7 +83,8 @@ fn void run_compiler_group_existing_feature_tests(Interp* interp, usz* pass, usz
             && str_contains(code, "// Startup FFI preload")
             && str_contains(code, "aot::ffi_declare_lib(\"libc\", \"libc.so.6\", true, true)")
             && str_contains(code, "aot::ffi_declare_fn(\"libc\", \"strlen\", \"strlen\"")
-            && str_contains(code, ", true, true);");
+            && str_contains(code, ", true, true);")
+            && str_contains(code, "aot::aot_process_shutdown(); return 1;");
         compiler_test_finish_bool(
             ok,
             "Compiler: declarative ffi preload emits explicit load policy",
@@ -100,6 +115,150 @@ fn void run_compiler_group_existing_feature_tests(Interp* interp, usz* pass, usz
             pass,
             fail
         );
+    }
+    {
+        char[] code = compile_to_c3("(with math (define with-global-value 1) with-global-value)", interp);
+        bool ok = code.len > 0
+            && str_contains(code, "lisp::Value* with_global_value;")
+            && str_contains(code, "with_global_value =")
+            && !str_contains(code, "not supported by AOT lowering");
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: scoped module open body definitions declare AOT globals",
+            "[FAIL] Compiler: scoped module open body definitions declare AOT globals",
+            pass,
+            fail
+        );
+    }
+    {
+        char[] code = compile_to_c3("(if true (define nested-global-value 42) nil)", interp);
+        bool ok = code.len > 0
+            && str_contains(code, "lisp::Value* nested_global_value;")
+            && str_contains(code, "nested_global_value =")
+            && !str_contains(code, "not supported by AOT lowering");
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: nested control-flow definitions declare AOT globals",
+            "[FAIL] Compiler: nested control-flow definitions declare AOT globals",
+            pass,
+            fail
+        );
+    }
+    {
+        char[] code = compile_to_c3(
+            "(if true "
+            "  (block "
+            "    (define [ffi lib] libc \"libc.so.6\") "
+            "    (define [ffi λ libc] (strlen (^String s)) ^Integer)) "
+            "  nil)",
+            interp
+        );
+        bool ok = code.len > 0
+            && str_contains(code, "// Startup FFI preload")
+            && str_contains(code, "const char[] __omni_ffi_contract_json = `")
+            && str_contains(code, "\"format\": \"omni.ffi-contract/v1\"")
+            && str_contains(code, "\"binding\": \"libc\"")
+            && str_contains(code, "\"binding\": \"strlen\"")
+            && str_contains(code, "aot::ffi_declare_lib(\"libc\", \"libc.so.6\", true, true)")
+            && str_contains(code, "aot::ffi_declare_fn(\"libc\", \"strlen\", \"strlen\"");
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: nested control-flow ffi feeds startup preload and embedded contract",
+            "[FAIL] Compiler: nested control-flow ffi feeds startup preload and embedded contract",
+            pass,
+            fail
+        );
+    }
+    {
+        List{Expr*} exprs;
+        defer exprs.free();
+        bool parsed = compiler_test_parse_exprs_append(
+            "(module ffi-opened (export strlen) (with math "
+            "  (define [ffi lib] libc \"libc.so.6\") "
+            "  (define [ffi λ libc] (strlen (^String s)) ^Integer) "
+            "  (strlen \"abc\")))",
+            interp,
+            &exprs
+        );
+
+        Compiler compiler;
+        compiler.init(interp);
+        defer compiler.free();
+
+        if (parsed) {
+            compiler.emit_ffi_contract_manifest(&exprs);
+            compiler.emit_ffi_startup_preload(&exprs);
+            char[] code = compiler.get_output();
+            bool ok = str_contains(code, "// Startup FFI preload")
+                && str_contains(code, "\"format\": \"omni.ffi-contract/v1\"")
+                && str_contains(code, "aot::ffi_declare_lib(\"libc\", \"libc.so.6\", true, true)")
+                && str_contains(code, "aot::ffi_declare_fn(\"libc\", \"strlen\", \"strlen\"");
+            compiler_test_finish_bool(
+                ok,
+                "Compiler: scoped module open bodies feed declarative ffi preload and manifest discovery",
+                "[FAIL] Compiler: scoped module open bodies feed declarative ffi preload and manifest discovery",
+                pass,
+                fail
+            );
+        } else {
+            compiler_test_finish_bool(
+                false,
+                "Compiler: scoped module open bodies feed declarative ffi preload and manifest discovery",
+                "[FAIL] Compiler: scoped module open bodies feed declarative ffi preload and manifest discovery",
+                pass,
+                fail
+            );
+        }
+    }
+    {
+        char[512] manifest_output_path_buf;
+        int manifest_pid = compiler_test_getpid();
+        usz manifest_seq = g_compiler_bindgen_temp_seq++;
+        char[] manifest_output_path;
+        if (try rendered = io::bprintf(
+            &manifest_output_path_buf,
+            "/tmp/omni_compile_with_ffi_manifest-%d-%d.c3",
+            manifest_pid,
+            (int)manifest_seq
+        )) {
+            manifest_output_path = rendered;
+            char[] manifest_path = "";
+            main::EntryFileWriteKind manifest_write_kind = ENTRY_FILE_WRITE_GENERIC_FAILURE;
+            defer {
+                if (manifest_path.len > 0) {
+                    (void)io::file::delete((String)manifest_path);
+                    mem::free(manifest_path.ptr);
+                }
+            }
+            bool wrote_manifest = main::write_compile_ffi_manifest(
+                "(with math "
+                "  (define [ffi lib] libc \"libc.so.6\") "
+                "  (define [ffi λ libc] (strlen (^String s)) ^Integer))",
+                "with-ffi.omni",
+                manifest_output_path,
+                interp,
+                &manifest_path,
+                &manifest_write_kind
+            );
+            bool manifest_ok = false;
+            if (wrote_manifest && manifest_path.len > 0) {
+                if (try generated = io::file::load_temp((String)manifest_path)) {
+                    manifest_ok = str_contains(generated, "\"schema\": \"omni-ffi-manifest-v1\"")
+                        && str_contains(generated, "\"binding\": \"libc\"")
+                        && str_contains(generated, "\"binding\": \"strlen\"");
+                }
+            }
+            compiler_test_finish_bool(
+                wrote_manifest && manifest_ok,
+                "Compiler: scoped module open ffi emits compile sidecar manifest",
+                "[FAIL] Compiler: scoped module open ffi emits compile sidecar manifest",
+                pass,
+                fail
+            );
+        } else {
+            fail++;
+            io::printn("[FAIL] Compiler: scoped module open ffi sidecar manifest path");
+        }
     }
     {
         char[512] manifest_output_path_buf;
@@ -254,6 +413,286 @@ fn void run_compiler_group_existing_feature_tests(Interp* interp, usz* pass, usz
         }
     }
     {
+        char[512] manifest_output_path_buf;
+        int manifest_pid = compiler_test_getpid();
+        usz manifest_seq = g_compiler_bindgen_temp_seq++;
+        char[] manifest_output_path;
+        if (try rendered = io::bprintf(
+            &manifest_output_path_buf,
+            "/tmp/omni_compile_macro_ffi_manifest-%d-%d.c3",
+            manifest_pid,
+            (int)manifest_seq
+        )) {
+            manifest_output_path = rendered;
+            char[] manifest_path = "";
+            main::EntryFileWriteKind manifest_write_kind = ENTRY_FILE_WRITE_GENERIC_FAILURE;
+            defer {
+                if (manifest_path.len > 0) {
+                    (void)io::file::delete((String)manifest_path);
+                    mem::free(manifest_path.ptr);
+                }
+            }
+            bool wrote_manifest = main::write_compile_ffi_manifest(
+                "(define [macro] emit-ffi "
+                "  (syntax-match ([] (template (block "
+                "    (define [ffi lib] libc \"libc.so.6\") "
+                "    (define [ffi λ libc] (strlen (^String s)) ^Integer)))))) "
+                "(emit-ffi)",
+                "macro-ffi.omni",
+                manifest_output_path,
+                interp,
+                &manifest_path,
+                &manifest_write_kind
+            );
+            bool manifest_ok = false;
+            if (wrote_manifest && manifest_path.len > 0) {
+                if (try generated = io::file::load_temp((String)manifest_path)) {
+                    manifest_ok = str_contains(generated, "\"binding\": \"libc\"")
+                        && str_contains(generated, "\"binding\": \"strlen\"");
+                }
+            }
+            compiler_test_finish_bool(
+                wrote_manifest && manifest_ok,
+                "Compiler: macro-generated ffi emits compile sidecar manifest",
+                "[FAIL] Compiler: macro-generated ffi emits compile sidecar manifest",
+                pass,
+                fail
+            );
+        } else {
+            fail++;
+            io::printn("[FAIL] Compiler: macro-generated ffi sidecar manifest path");
+        }
+    }
+    {
+        char[512] manifest_output_path_buf;
+        char[576] manifest_path_buf;
+        int manifest_pid = compiler_test_getpid();
+        usz manifest_seq = g_compiler_bindgen_temp_seq++;
+        char[] manifest_output_path;
+        char[] expected_manifest_path;
+        if (try rendered_output = io::bprintf(
+            &manifest_output_path_buf,
+            "/tmp/omni_compile_stale_ffi_manifest-%d-%d.c3",
+            manifest_pid,
+            (int)manifest_seq
+        )) {
+            manifest_output_path = rendered_output;
+            if (try rendered_manifest = io::bprintf(
+                &manifest_path_buf,
+                "%s.ffi-manifest.json",
+                (ZString)manifest_output_path.ptr
+            )) {
+                expected_manifest_path = rendered_manifest;
+                if (try file = io::file::open((String)expected_manifest_path, "w")) {
+                    (void)file.write("stale manifest");
+                    (void)file.close();
+                }
+                char[] manifest_path = "";
+                main::EntryFileWriteKind manifest_write_kind = ENTRY_FILE_WRITE_GENERIC_FAILURE;
+                bool wrote_manifest = main::write_compile_ffi_manifest(
+                    "(+ 1 2)",
+                    "no-ffi.omni",
+                    manifest_output_path,
+                    interp,
+                    &manifest_path,
+                    &manifest_write_kind
+                );
+                defer {
+                    if (manifest_path.len > 0) {
+                        (void)io::file::delete((String)manifest_path);
+                        mem::free(manifest_path.ptr);
+                    }
+                    (void)io::file::delete((String)expected_manifest_path);
+                }
+                bool stale_removed = false;
+                if (catch err = io::file::load_temp((String)expected_manifest_path)) {
+                    stale_removed = true;
+                }
+                compiler_test_finish_bool(
+                    wrote_manifest && manifest_path.len == 0 && stale_removed,
+                    "Compiler: no-ffi compile removes stale sidecar manifest",
+                    "[FAIL] Compiler: no-ffi compile removes stale sidecar manifest",
+                    pass,
+                    fail
+                );
+            } else {
+                fail++;
+                io::printn("[FAIL] Compiler: stale ffi manifest compose expected path");
+            }
+        } else {
+            fail++;
+            io::printn("[FAIL] Compiler: stale ffi manifest compose output path");
+        }
+    }
+    {
+        char[512] manifest_output_path_buf;
+        char[576] manifest_path_buf;
+        int manifest_pid = compiler_test_getpid();
+        usz manifest_seq = g_compiler_bindgen_temp_seq++;
+        char[] manifest_output_path;
+        char[] expected_manifest_path;
+        if (try rendered_output = io::bprintf(
+            &manifest_output_path_buf,
+            "/tmp/omni_compile_empty_stale_ffi_manifest-%d-%d.c3",
+            manifest_pid,
+            (int)manifest_seq
+        )) {
+            manifest_output_path = rendered_output;
+            if (try rendered_manifest = io::bprintf(
+                &manifest_path_buf,
+                "%s.ffi-manifest.json",
+                (ZString)manifest_output_path.ptr
+            )) {
+                expected_manifest_path = rendered_manifest;
+                if (try file = io::file::open((String)expected_manifest_path, "w")) {
+                    (void)file.write("stale manifest");
+                    (void)file.close();
+                }
+                char[] manifest_path = "";
+                main::EntryFileWriteKind manifest_write_kind = ENTRY_FILE_WRITE_GENERIC_FAILURE;
+                bool wrote_manifest = main::write_compile_ffi_manifest(
+                    "",
+                    "empty.omni",
+                    manifest_output_path,
+                    interp,
+                    &manifest_path,
+                    &manifest_write_kind
+                );
+                defer {
+                    if (manifest_path.len > 0) {
+                        (void)io::file::delete((String)manifest_path);
+                        mem::free(manifest_path.ptr);
+                    }
+                    (void)io::file::delete((String)expected_manifest_path);
+                }
+                bool stale_removed = false;
+                if (catch err = io::file::load_temp((String)expected_manifest_path)) {
+                    stale_removed = true;
+                }
+                compiler_test_finish_bool(
+                    wrote_manifest && manifest_path.len == 0 && stale_removed,
+                    "Compiler: empty compile removes stale sidecar manifest",
+                    "[FAIL] Compiler: empty compile removes stale sidecar manifest",
+                    pass,
+                    fail
+                );
+            } else {
+                fail++;
+                io::printn("[FAIL] Compiler: empty stale ffi manifest compose expected path");
+            }
+        } else {
+            fail++;
+            io::printn("[FAIL] Compiler: empty stale ffi manifest compose output path");
+        }
+    }
+    {
+        char[512] manifest_output_path_buf;
+        char[576] manifest_path_buf;
+        int manifest_pid = compiler_test_getpid();
+        usz manifest_seq = g_compiler_bindgen_temp_seq++;
+        char[] manifest_output_path;
+        char[] expected_manifest_path;
+        if (try rendered_output = io::bprintf(
+            &manifest_output_path_buf,
+            "/tmp/omni_compile_unlink_fail_ffi_manifest-%d-%d.c3",
+            manifest_pid,
+            (int)manifest_seq
+        )) {
+            manifest_output_path = rendered_output;
+            if (try rendered_manifest = io::bprintf(
+                &manifest_path_buf,
+                "%s.ffi-manifest.json",
+                (ZString)manifest_output_path.ptr
+            )) {
+                expected_manifest_path = rendered_manifest;
+                int mkdir_rc = compiler_test_mkdir((char*)expected_manifest_path.ptr, 0o755);
+                char[] manifest_path = "";
+                main::EntryFileWriteKind manifest_write_kind = ENTRY_FILE_WRITE_OK;
+                bool wrote_manifest = main::write_compile_ffi_manifest(
+                    "(+ 1 2)",
+                    "no-ffi-unlink-fail.omni",
+                    manifest_output_path,
+                    interp,
+                    &manifest_path,
+                    &manifest_write_kind
+                );
+                defer {
+                    if (manifest_path.len > 0) {
+                        mem::free(manifest_path.ptr);
+                    }
+                    (void)compiler_test_rmdir((char*)expected_manifest_path.ptr);
+                }
+                compiler_test_finish_bool(
+                    mkdir_rc == 0
+                        && !wrote_manifest
+                        && manifest_path.len > 0
+                        && manifest_write_kind != ENTRY_FILE_WRITE_OK,
+                    "Compiler: no-ffi compile reports stale sidecar removal failure",
+                    "[FAIL] Compiler: no-ffi compile reports stale sidecar removal failure",
+                    pass,
+                    fail
+                );
+            } else {
+                fail++;
+                io::printn("[FAIL] Compiler: stale ffi unlink failure compose expected path");
+            }
+        } else {
+            fail++;
+            io::printn("[FAIL] Compiler: stale ffi unlink failure compose output path");
+        }
+    }
+    {
+        char[512] manifest_output_path_buf;
+        int manifest_pid = compiler_test_getpid();
+        usz manifest_seq = g_compiler_bindgen_temp_seq++;
+        char[] manifest_output_path;
+        if (try rendered = io::bprintf(
+            &manifest_output_path_buf,
+            "/tmp/omni_compile_nested_ffi_manifest-%d-%d.c3",
+            manifest_pid,
+            (int)manifest_seq
+        )) {
+            manifest_output_path = rendered;
+            char[] manifest_path = "";
+            main::EntryFileWriteKind manifest_write_kind = ENTRY_FILE_WRITE_GENERIC_FAILURE;
+            defer {
+                if (manifest_path.len > 0) {
+                    (void)io::file::delete((String)manifest_path);
+                    mem::free(manifest_path.ptr);
+                }
+            }
+            bool wrote_manifest = main::write_compile_ffi_manifest(
+                "(if true "
+                "  (block "
+                "    (define [ffi lib] libc \"libc.so.6\") "
+                "    (define [ffi λ libc] (strlen (^String s)) ^Integer)) "
+                "  nil)",
+                "nested-ffi.omni",
+                manifest_output_path,
+                interp,
+                &manifest_path,
+                &manifest_write_kind
+            );
+            bool manifest_ok = false;
+            if (wrote_manifest && manifest_path.len > 0) {
+                if (try generated = io::file::load_temp((String)manifest_path)) {
+                    manifest_ok = str_contains(generated, "\"binding\": \"libc\"")
+                        && str_contains(generated, "\"binding\": \"strlen\"");
+                }
+            }
+            compiler_test_finish_bool(
+                wrote_manifest && manifest_ok,
+                "Compiler: nested control-flow ffi emits compile sidecar manifest",
+                "[FAIL] Compiler: nested control-flow ffi emits compile sidecar manifest",
+                pass,
+                fail
+            );
+        } else {
+            fail++;
+            io::printn("[FAIL] Compiler: nested control-flow ffi sidecar manifest path");
+        }
+    }
+    {
         char[] code = compile_to_c3(
             "(define [ffi lib] libc \"libc.so.6\") "
             "(define [ffi λ libc] (strlen (^String s)) ^Integer) "
@@ -283,6 +722,29 @@ fn void run_compiler_group_existing_feature_tests(Interp* interp, usz* pass, usz
             ok,
             "Compiler: declarative ffi emits manifest contract with loading policy and ABI tags",
             "[FAIL] Compiler: declarative ffi emits manifest contract with loading policy and ABI tags",
+            pass,
+            fail
+        );
+    }
+    {
+        char[] code = compile_to_c3(
+            "(define [ffi lib] libc \"libc.so.6\") "
+            "(define [ffi λ libc] (mixed_abi (^Float32 f) (^Int32 i) (^Int64 j) (^UInt32 u) (^UInt64 v) (^Buffer b) (^Struct s)) ^Float32)",
+            interp
+        );
+        bool ok = code.len > 0
+            && str_contains(code, "\"Float32\"")
+            && str_contains(code, "\"Int32\"")
+            && str_contains(code, "\"Int64\"")
+            && str_contains(code, "\"UInt32\"")
+            && str_contains(code, "\"UInt64\"")
+            && str_contains(code, "\"Buffer\"")
+            && str_contains(code, "\"Struct\"")
+            && !str_contains(code, "\"params\": [\"Void\"");
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: ffi manifest preserves extended ABI tag names",
+            "[FAIL] Compiler: ffi manifest preserves extended ABI tag names",
             pass,
             fail
         );

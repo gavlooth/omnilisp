@@ -36,6 +36,80 @@ fn void PrintBuf.append_zstr(PrintBuf* self, ZString zs) {
     }
 }
 
+fn char value_print_hex_digit(uint nibble) @inline {
+    if (nibble < 10) return (char)((uint)'0' + nibble);
+    return (char)((uint)'A' + (nibble - 10));
+}
+
+fn bool value_print_needs_hex_escape(char c) @inline {
+    uint b = ((uint)c) & 0xFF;
+    return b < 0x20 || b == 0x7F;
+}
+
+fn void PrintBuf.append_hex_escape(PrintBuf* self, char c) {
+    uint b = ((uint)c) & 0xFF;
+    self.append_char('\\');
+    self.append_char('x');
+    self.append_char(value_print_hex_digit((b >> 4) & 0xF));
+    self.append_char(value_print_hex_digit(b & 0xF));
+}
+
+fn void PrintBuf.append_escaped_string_content(PrintBuf* self, char[] bytes) {
+    foreach (c : bytes) {
+        if (c == '"') {
+            self.append_str("\\\"");
+        } else if (c == '\\') {
+            self.append_str("\\\\");
+        } else if (c == '\n') {
+            self.append_str("\\n");
+        } else if (c == '\r') {
+            self.append_str("\\r");
+        } else if (c == '\t') {
+            self.append_str("\\t");
+        } else if (value_print_needs_hex_escape(c)) {
+            self.append_hex_escape(c);
+        } else {
+            self.append_char(c);
+        }
+    }
+}
+
+fn void value_print_emit_hex_escape(char c) {
+    uint b = ((uint)c) & 0xFF;
+    char[4] escaped = {
+        '\\',
+        'x',
+        value_print_hex_digit((b >> 4) & 0xF),
+        value_print_hex_digit(b & 0xF)
+    };
+    io::print(escaped[..]);
+}
+
+fn void value_print_emit_raw_byte(char c) {
+    char[1] out = { c };
+    io::print(out[..]);
+}
+
+fn void value_print_emit_escaped_string_content(char[] bytes) {
+    foreach (c : bytes) {
+        if (c == '"') {
+            io::print("\\\"");
+        } else if (c == '\\') {
+            io::print("\\\\");
+        } else if (c == '\n') {
+            io::print("\\n");
+        } else if (c == '\r') {
+            io::print("\\r");
+        } else if (c == '\t') {
+            io::print("\\t");
+        } else if (value_print_needs_hex_escape(c)) {
+            value_print_emit_hex_escape(c);
+        } else {
+            value_print_emit_raw_byte(c);
+        }
+    }
+}
+
 fn void print_cons_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
     pb.append_char('(');
     print_value_buf(v.cons_val.car, syms, pb);
@@ -242,7 +316,7 @@ fn void print_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
             fixed_complex_append_f64((double)v.complex64_val.real, (double)v.complex64_val.imag, pb);
         case STRING:
             pb.append_char('"');
-            pb.append_zstr((ZString)v.str_chars);
+            pb.append_escaped_string_content(v.str_chars[:v.str_len]);
             pb.append_char('"');
         case SYMBOL:
             pb.append_str(syms.get_name(v.sym_val));

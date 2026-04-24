@@ -491,9 +491,9 @@ Current behavior:
 ### `--repl-server --tcp` — TCP REPL Server
 
 ```bash
-omni --repl-server --tcp 127.0.0.1 5555
-omni --repl-server --tcp 127.0.0.1 5555 --project
-omni --repl-server --tcp 127.0.0.1 5555 --project myproject
+OMNI_REPL_TCP_AUTH_TOKEN=dev-token omni --repl-server --tcp 127.0.0.1 5555
+OMNI_REPL_TCP_AUTH_TOKEN=dev-token omni --repl-server --tcp 127.0.0.1 5555 --project
+OMNI_REPL_TCP_AUTH_TOKEN=dev-token omni --repl-server --tcp 127.0.0.1 5555 --project myproject
 ```
 
 Runs the same JSON-line REPL server protocol over a TCP listener.
@@ -501,6 +501,10 @@ Runs the same JSON-line REPL server protocol over a TCP listener.
 Current behavior:
 
 - uses the same request/event protocol as the Unix-socket server,
+- accepts only loopback bind hosts (`127.0.0.1`, `localhost`, and `::1`) and
+  fails preflight for non-loopback TCP hosts,
+- requires `OMNI_REPL_TCP_AUTH_TOKEN` at startup; TCP clients must authenticate
+  with the configured token before normal request handling,
 - emits one machine-readable startup error object on stdout when preflight
   fails before any client attaches; listener and discovery-file startup
   failures now use stable JSON error codes instead of plaintext text,
@@ -518,12 +522,16 @@ Current behavior:
 
 Current limitations:
 
-- no authentication or TLS layer is built into this mode,
-- one connected client is serviced at a time,
+- token authentication is built in for TCP mode, but no TLS layer is built into
+  the transport; use loopback binding or an external tunnel when confidentiality
+  is required,
+- accepted clients are handled by per-client threads, but each session still
+  follows the same interpreter attachment and session ownership constraints as
+  the socket and stdio server transports,
 - abrupt termination can leave a stale `.omni-repl-port`, so clients should
   treat it as a discovery hint and still verify connect,
-- richer concurrent multi-client handling is still deferred because interpreter
-  attachment remains owner-thread constrained.
+- richer shared-interpreter concurrency remains constrained by interpreter
+  attachment ownership.
 
 ---
 

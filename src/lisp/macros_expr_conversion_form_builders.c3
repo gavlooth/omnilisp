@@ -9,6 +9,213 @@ fn void* macro_ast_array_alloc(Interp* interp, usz elem_size, usz count) {
     return ast_arena_alloc(&interp.ast_arena, elem_size * count);
 }
 
+fn bool macro_symbol_name_eq(Interp* interp, SymbolId sym, char[] expected) {
+    char[] name = interp.symbols.get_name(sym);
+    if (name.len != expected.len) return false;
+    for (usz i = 0; i < expected.len; i++) {
+        if (name[i] != expected[i]) return false;
+    }
+    return true;
+}
+
+fn bool macro_value_is_symbol(Value* v, SymbolId sym) @inline {
+    return v != null && v.tag == SYMBOL && (uint)v.sym_val == (uint)sym;
+}
+
+fn bool macro_value_is_symbol_text(Value* v, Interp* interp, char[] expected) @inline {
+    return v != null && v.tag == SYMBOL && macro_symbol_name_eq(interp, v.sym_val, expected);
+}
+
+fn bool macro_value_name_text(Value* v, Interp* interp, char[] expected) @inline {
+    if (macro_value_is_symbol_text(v, interp, expected)) return true;
+    return primitive_name_equals(v, expected);
+}
+
+fn bool macro_value_is_quoted_symbol(Value* v, Interp* interp, SymbolId sym) {
+    if (v == null || v.tag != CONS || !is_list(v)) return false;
+    if (list_length(v) != 2) return false;
+    Value* head = v.cons_val.car;
+    if (!macro_value_is_symbol(head, interp.sym_quote)) return false;
+    Value* rest = v.cons_val.cdr;
+    if (!is_cons(rest)) return false;
+    return macro_value_is_symbol(rest.cons_val.car, sym);
+}
+
+fn Value* macro_make_quoted_symbol(Interp* interp, SymbolId sym) {
+    return make_tagged_form1(interp, interp.sym_quote, make_symbol(interp, sym));
+}
+
+fn Value* macro_symbol_list_to_value(Interp* interp, SymbolId* syms, usz count) {
+    Value* result = make_nil(interp);
+    for (usz i = count; i > 0; i--) {
+        result = make_cons(interp, make_symbol(interp, syms[i - 1]), result);
+    }
+    return result;
+}
+
+fn Value* macro_expr_array_to_value(Interp* interp, Expr** exprs, usz count) {
+    Value* result = make_nil(interp);
+    for (usz i = count; i > 0; i--) {
+        result = make_cons(interp, expr_to_value(exprs[i - 1], interp), result);
+    }
+    return result;
+}
+
+fn Expr** macro_expr_list_to_array(Interp* interp, List{Expr*}* items) {
+    Expr** arr = (Expr**)macro_ast_array_alloc(interp, Expr*.sizeof, items.len());
+    if (items.len() > 0 && arr == null) return null;
+    for (usz i = 0; i < items.len(); i++) arr[i] = (*items)[i];
+    return arr;
+}
+
+fn MatchClause* macro_match_clause_list_to_array(Interp* interp, List{MatchClause}* items) {
+    MatchClause* arr = (MatchClause*)macro_ast_array_alloc(interp, MatchClause.sizeof, items.len());
+    if (items.len() > 0 && arr == null) return null;
+    for (usz i = 0; i < items.len(); i++) arr[i] = (*items)[i];
+    return arr;
+}
+
+fn EffectClause* macro_effect_clause_list_to_array(Interp* interp, List{EffectClause}* items) {
+    EffectClause* arr = (EffectClause*)macro_ast_array_alloc(interp, EffectClause.sizeof, items.len());
+    if (items.len() > 0 && arr == null) return null;
+    for (usz i = 0; i < items.len(); i++) arr[i] = (*items)[i];
+    return arr;
+}
+
+fn SymbolId* macro_symbol_list_to_array(Interp* interp, List{SymbolId}* items) {
+    SymbolId* arr = (SymbolId*)macro_ast_array_alloc(interp, SymbolId.sizeof, items.len());
+    if (items.len() > 0 && arr == null) return null;
+    for (usz i = 0; i < items.len(); i++) arr[i] = (*items)[i];
+    return arr;
+}
+
+fn Value* pattern_to_value(Pattern* pat, Interp* interp) {
+    if (pat == null) return make_symbol(interp, interp.symbols.intern("_"));
+
+    switch (pat.tag) {
+        case PAT_WILDCARD:
+            return make_symbol(interp, interp.symbols.intern("_"));
+        case PAT_VAR:
+            return make_symbol(interp, pat.var_name);
+        case PAT_LIT:
+            return pat.lit_value;
+        case PAT_QUOTE:
+            return make_tagged_form1(interp, interp.sym_quote, pat.quote_datum);
+        case PAT_AS: {
+            Value* inner = pattern_to_value(pat.as_sub, interp);
+            return make_list3(interp, inner, macro_make_quoted_symbol(interp, interp.sym_as), make_symbol(interp, pat.as_name));
+        }
+        case PAT_GUARD: {
+            SymbolId q = interp.symbols.intern("?");
+            Value* pred = expr_to_value(pat.guard_pred, interp);
+            if (pat.guard_sub == null) return make_list2(interp, make_symbol(interp, q), pred);
+            return make_list3(interp, make_symbol(interp, q), pred, pattern_to_value(pat.guard_sub, interp));
+        }
+        case PAT_CONSTRUCTOR: {
+            Value* result = make_nil(interp);
+            for (usz i = pat.ctor_sub_count; i > 0; i--) {
+                result = make_cons(interp, pattern_to_value(pat.ctor_sub_patterns[i - 1], interp), result);
+            }
+            return make_cons(interp, make_symbol(interp, pat.constructor_name), result);
+        }
+        default:
+            return make_symbol(interp, interp.symbols.intern("_"));
+    }
+}
+
+fn Pattern* vte_pattern_from_value(Value* val, Interp* interp) {
+    Pattern* p = interp.alloc_pattern();
+    if (p == null) return null;
+    if (val == null || val.tag == NIL) {
+        p.tag = PAT_LIT;
+        p.lit_value = make_nil(interp);
+        return p;
+    }
+
+    if (val.tag == INT || val.tag == STRING || val.tag == DOUBLE || val.tag == FLOAT32) {
+        p.tag = PAT_LIT;
+        p.lit_value = val;
+        return p;
+    }
+
+    if (val.tag == SYMBOL) {
+        if (macro_symbol_name_eq(interp, val.sym_val, "_")) {
+            p.tag = PAT_WILDCARD;
+        } else if ((uint)val.sym_val == (uint)interp.sym_false) {
+            p.tag = PAT_LIT;
+            p.lit_value = val;
+        } else if ((uint)val.sym_val == (uint)interp.sym_Void) {
+            p.tag = PAT_LIT;
+            p.lit_value = interp.alloc_value_root();
+            if (p.lit_value == null) return null;
+            p.lit_value.tag = VOID;
+        } else {
+            p.tag = PAT_VAR;
+            p.var_name = val.sym_val;
+        }
+        return p;
+    }
+
+    if (val.tag != CONS || !is_list(val)) {
+        p.tag = PAT_WILDCARD;
+        return p;
+    }
+
+    if (macro_value_is_symbol(val.cons_val.car, interp.sym_quote) && list_length(val) == 2) {
+        p.tag = PAT_QUOTE;
+        p.quote_datum = val.cons_val.cdr.cons_val.car;
+        return p;
+    }
+
+    if (list_length(val) == 3 && macro_value_is_quoted_symbol(val.cons_val.cdr.cons_val.car, interp, interp.sym_as)) {
+        p.tag = PAT_AS;
+        p.as_sub = vte_pattern_from_value(val.cons_val.car, interp);
+        if (p.as_sub == null) return null;
+        Value* as_name = val.cons_val.cdr.cons_val.cdr.cons_val.car;
+        p.as_name = as_name != null && as_name.tag == SYMBOL ? as_name.sym_val : interp.symbols.intern("_");
+        return p;
+    }
+
+    Value* head = val.cons_val.car;
+    if (head != null && head.tag == SYMBOL && macro_symbol_name_eq(interp, head.sym_val, "?")) {
+        p.tag = PAT_GUARD;
+        Value* rest = val.cons_val.cdr;
+        p.guard_pred = is_cons(rest) ? value_to_expr(rest.cons_val.car, interp) : make_nil_expr(interp);
+        rest = is_cons(rest) ? rest.cons_val.cdr : make_nil(interp);
+        p.guard_sub = is_cons(rest) ? vte_pattern_from_value(rest.cons_val.car, interp) : null;
+        if (is_cons(rest) && p.guard_sub == null) return null;
+        return p;
+    }
+
+    if (head != null && head.tag == SYMBOL) {
+        p.tag = PAT_CONSTRUCTOR;
+        p.constructor_name = head.sym_val;
+        List{Pattern*} subs;
+        Value* rest = val.cons_val.cdr;
+        while (is_cons(rest)) {
+            Pattern* sub = vte_pattern_from_value(rest.cons_val.car, interp);
+            if (sub == null) {
+                subs.free();
+                return null;
+            }
+            subs.push(sub);
+            rest = rest.cons_val.cdr;
+        }
+        p.ctor_sub_count = subs.len();
+        p.ctor_sub_patterns = (Pattern**)macro_ast_array_alloc(interp, Pattern*.sizeof, subs.len());
+        if (subs.len() > 0 && p.ctor_sub_patterns == null) {
+            subs.free();
+            return null;
+        }
+        for (usz i = 0; i < subs.len(); i++) p.ctor_sub_patterns[i] = subs[i];
+        subs.free();
+        return p;
+    }
+
+    p.tag = PAT_WILDCARD;
+    return p;
+}
+
 fn Expr* make_single_lambda_expr(Interp* interp, SymbolId param, Expr* body) {
     Expr* e = interp.alloc_expr();
     if (e == null) return null;

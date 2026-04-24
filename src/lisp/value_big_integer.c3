@@ -225,6 +225,33 @@ fn bool numeric_values_compare(Value* lhs, Value* rhs, int* out) {
         return big_float_compare_values(lhs, rhs, out);
     }
 
+    if (lhs.tag == BIG_INTEGER && (rhs.tag == DOUBLE || rhs.tag == FLOAT32)) {
+        if (lhs.big_integer_val == null) return false;
+        int cmp = omni_big_integer_compare_double(lhs.big_integer_val, rhs.tag == DOUBLE ? rhs.double_val : (double)rhs.float32_val);
+        if (cmp < -1 || cmp > 1) return false;
+        *out = cmp;
+        return true;
+    }
+    if ((lhs.tag == DOUBLE || lhs.tag == FLOAT32) && rhs.tag == BIG_INTEGER) {
+        if (rhs.big_integer_val == null) return false;
+        int cmp = omni_big_integer_compare_double(rhs.big_integer_val, lhs.tag == DOUBLE ? lhs.double_val : (double)lhs.float32_val);
+        if (cmp < -1 || cmp > 1) return false;
+        *out = -cmp;
+        return true;
+    }
+    if (lhs.tag == INT && (rhs.tag == DOUBLE || rhs.tag == FLOAT32)) {
+        int cmp = omni_i64_compare_double(lhs.int_val, rhs.tag == DOUBLE ? rhs.double_val : (double)rhs.float32_val);
+        if (cmp < -1 || cmp > 1) return false;
+        *out = cmp;
+        return true;
+    }
+    if ((lhs.tag == DOUBLE || lhs.tag == FLOAT32) && rhs.tag == INT) {
+        int cmp = omni_i64_compare_double(rhs.int_val, lhs.tag == DOUBLE ? lhs.double_val : (double)lhs.float32_val);
+        if (cmp < -1 || cmp > 1) return false;
+        *out = -cmp;
+        return true;
+    }
+
     if (lhs.tag == DOUBLE || rhs.tag == DOUBLE || lhs.tag == FLOAT32 || rhs.tag == FLOAT32) {
         double left = 0.0;
         double right = 0.0;

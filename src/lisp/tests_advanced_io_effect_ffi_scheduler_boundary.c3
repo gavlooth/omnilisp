@@ -40,6 +40,64 @@ fn void run_advanced_process_wait_event_driven_test_impl(Interp* interp, int* pa
     }
 }
 
+fn void run_advanced_process_wait_status_retry_after_result_oom_test_impl(Interp* interp, int* pass, int* fail) {
+    EvalResult setup = run(
+        "(define process-wait-retry-p (process-spawn \"/bin/sh\" [\"-c\" \"exit 7\"] nil))",
+        interp
+    );
+
+    bool saved_force = g_process_wait_force_result_insert_fail;
+    g_process_wait_force_result_insert_fail = true;
+    EvalResult first_wait = run(
+        "(await (spawn (lambda () (process-wait (ref process-wait-retry-p 'handle)))))",
+        interp
+    );
+    g_process_wait_force_result_insert_fail = saved_force;
+
+    EvalResult second_wait = run(
+        "(await (spawn (lambda () (process-wait (ref process-wait-retry-p 'handle)))))",
+        interp
+    );
+    EvalResult cleanup = run(
+        "(block "
+        "(fs-close (ref process-wait-retry-p 'stdin)) "
+        "(fs-close (ref process-wait-retry-p 'stdout)) "
+        "(fs-close (ref process-wait-retry-p 'stderr)) "
+        "true)",
+        interp
+    );
+
+    bool first_failed_closed = first_wait.error.has_error &&
+        str_contains(first_wait.error.message[:256], "process-wait: out of memory");
+    bool second_returned_status = !second_wait.error.has_error &&
+        second_wait.value != null &&
+        second_wait.value.tag == HASHMAP &&
+        second_wait.value.hashmap_val != null;
+    if (second_returned_status) {
+        Value* exit_key = make_symbol(interp, interp.symbols.intern("exit-code"));
+        Value* exit_v = hashmap_get(second_wait.value.hashmap_val, exit_key);
+        second_returned_status = exit_v != null && exit_v.tag == INT && exit_v.int_val == 7;
+    }
+
+    bool ok = !setup.error.has_error &&
+        first_failed_closed &&
+        second_returned_status &&
+        !cleanup.error.has_error;
+    if (ok) {
+        emit_pass("process wait status survives result materialization failure");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] process wait status survives result materialization failure (setup_err=%s first_err=%s second_err=%s cleanup_err=%s)",
+            setup.error.has_error ? "yes" : "no",
+            first_wait.error.has_error ? "yes" : "no",
+            second_wait.error.has_error ? "yes" : "no",
+            cleanup.error.has_error ? "yes" : "no"
+        );
+        (*fail)++;
+    }
+}
+
 fn void run_advanced_process_handle_concurrent_reuse_test_impl(Interp* interp, int* pass, int* fail) {
     EvalResult setup = run(
         "(define p (process-spawn \"/bin/sh\" [\"-c\" \"sleep 0.2\"] nil))",

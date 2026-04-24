@@ -53,6 +53,22 @@ fn void run_scheduler_offload_tests(Interp* interp, int* pass, int* fail) {
         pass,
         fail
     );
+
+    test_error_contains(interp, "offload sleep-ms rejects zero duration",
+        "(offload 'sleep-ms 0)",
+        "offload sleep-ms: milliseconds must be positive", pass, fail);
+    test_error_contains(interp, "offload sleep-ms rejects negative duration",
+        "(offload 'sleep-ms -1)",
+        "offload sleep-ms: milliseconds must be positive", pass, fail);
+    test_error_contains(interp, "offload sleep-ms rejects too-large duration",
+        "(offload 'sleep-ms 4294968)",
+        "offload sleep-ms: milliseconds must be positive", pass, fail);
+    test_error_contains(interp, "offload sleep-ms rejects trailing arg",
+        "(offload 'sleep-ms 1 'ignored)",
+        "offload sleep-ms: expected exactly 1 argument", pass, fail);
+    test_error_contains(interp, "offload gzip rejects trailing arg",
+        "(offload 'gzip \"payload\" 'ignored)",
+        "offload compress: expected exactly 1 argument", pass, fail);
 }
 
 fn void run_scheduler_thread_join_tests(Interp* interp, int* pass, int* fail) {
@@ -114,6 +130,22 @@ fn void run_scheduler_thread_join_tests(Interp* interp, int* pass, int* fail) {
         fail
     );
 
+    test_error_contains(interp, "task-spawn sleep-ms rejects zero duration",
+        "(task-spawn 'sleep-ms 0)",
+        "offload sleep-ms: milliseconds must be positive", pass, fail);
+    test_error_contains(interp, "task-spawn sleep-ms rejects negative duration",
+        "(task-spawn 'sleep-ms -1)",
+        "offload sleep-ms: milliseconds must be positive", pass, fail);
+    test_error_contains(interp, "task-spawn sleep-ms rejects too-large duration",
+        "(task-spawn 'sleep-ms 4294968)",
+        "offload sleep-ms: milliseconds must be positive", pass, fail);
+    test_error_contains(interp, "task-spawn sleep-ms rejects trailing arg",
+        "(task-spawn 'sleep-ms 1 'ignored)",
+        "offload sleep-ms: expected exactly 1 argument", pass, fail);
+    test_error_contains(interp, "task-spawn gzip rejects trailing arg",
+        "(task-spawn 'gzip \"payload\" 'ignored)",
+        "offload compress: expected exactly 1 argument", pass, fail);
+
     scheduler_test_expect_int_exact(
         interp,
         "(block "
@@ -166,6 +198,22 @@ fn void run_scheduler_thread_join_tests(Interp* interp, int* pass, int* fail) {
         pass,
         fail
     );
+
+    test_error_contains(interp, "thread-spawn sleep-ms rejects zero duration",
+        "(thread-spawn 'sleep-ms 0)",
+        "offload sleep-ms: milliseconds must be positive", pass, fail);
+    test_error_contains(interp, "thread-spawn sleep-ms rejects negative duration",
+        "(thread-spawn 'sleep-ms -1)",
+        "offload sleep-ms: milliseconds must be positive", pass, fail);
+    test_error_contains(interp, "thread-spawn sleep-ms rejects too-large duration",
+        "(thread-spawn 'sleep-ms 4294968)",
+        "offload sleep-ms: milliseconds must be positive", pass, fail);
+    test_error_contains(interp, "thread-spawn sleep-ms rejects trailing arg",
+        "(thread-spawn 'sleep-ms 1 'ignored)",
+        "offload sleep-ms: expected exactly 1 argument", pass, fail);
+    test_error_contains(interp, "thread-spawn gzip rejects trailing arg",
+        "(thread-spawn 'gzip \"payload\" 'ignored)",
+        "offload compress: expected exactly 1 argument", pass, fail);
 
     scheduler_test_expect_error(
         interp,

@@ -28,12 +28,12 @@ catastrophic backtracking.
 ;; => ("hello" "world" "foo")
 
 ;; Replace
-(re-replace "[0-9]+" "abc123def456" "NUM")
-;; => "abcNUMdefNUM"
+(re-replace "[0-9]+" "NUM" "abc123def456")
+;; => "abcNUMdef456"
 
-;; With limit
-(re-replace "[0-9]+" "a1b2c3" "X" 2)
-;; => "aXbXc3"
+;; Replace all matches with 'global
+(re-replace "[0-9]+" "NUM" "abc123def456" 'global)
+;; => "abcNUMdefNUM"
 
 ;; Position-returning variants
 (re-match-pos "[0-9]+" "abc123")

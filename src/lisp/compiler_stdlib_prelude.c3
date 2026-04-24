@@ -9,7 +9,8 @@ import main;
 
 /**
  * Standard library definitions prepended to all compiled programs.
- * These are the same HOFs defined in register_stdlib() in eval.c3.
+ * Keep macro forms aligned with stdlib/stdlib.lisp so compile-time and
+ * runtime expansion share the same public surface.
  */
 const char[] STDLIB_PRELUDE =
 `(define with-trampoline (lambda (thunk) (handle (thunk nil) (bounce next-thunk (resolve (with-trampoline next-thunk))))))
@@ -37,5 +38,14 @@ const char[] STDLIB_PRELUDE =
 (define (every? pred lst) (let (bad (__require-proper-list lst "every?")) (if (error? bad) bad (let loop (xs lst) (if (null? xs) true (if (pred (car xs)) (loop (cdr xs)) nil))))))
 (define (try thunk handler) (handle (thunk nil) (raise msg (handler msg))))
 (define (assert! condition msg) (if condition true (signal raise msg)))
-(define when (lambda (test body) (if test body nil)))
-(define unless (lambda (test body) (if test nil body)))`;
+(define (default v fallback) (if (null? v) fallback v))
+(define [macro] branch (syntax-match ([] (template nil)) ([['__placeholder result]] (template (insert result))) ([['__placeholder result] .. rest] (template (assert! false "branch: _ default clause must be final"))) ([[test result]] (template (if (insert test) (insert result) nil))) ([[test result] .. rest] (template (if (insert test) (insert result) (branch .. rest))))))
+(define [macro] with-defaults (syntax-match ([body] (template (insert body))) ([name val .. rest] (template (let ((insert name) (default (insert name) (insert val))) (with-defaults .. rest))))))
+(define [macro] when (syntax-match ([test .. body] (template (if (insert test) (block (splice body)) nil)))))
+(define [macro] unless (syntax-match ([test .. body] (template (if (insert test) nil (block (splice body)))))))
+(define (partition pred lst) (let (bad (__require-proper-list lst "partition")) (if (error? bad) bad (let loop (l lst yes nil no nil) (if (null? l) (cons (reverse yes) (reverse no)) (if (pred (car l)) (loop (cdr l) (cons (car l) yes) no) (loop (cdr l) yes (cons (car l) no))))))))
+(define (find pred lst) (let (bad (__require-proper-list lst "find")) (if (error? bad) bad (let loop (l lst) (if (null? l) nil (if (pred (car l)) (car l) (loop (cdr l))))))))
+(define [macro] stream-yield (syntax-match ([val] (template (capture k (cons (insert val) k))))))
+(define (stream-take n gen) (let loop (i n g gen acc nil) (if (= i 0) (reverse acc) (if (null? g) (reverse acc) (let (pair (if (procedure? g) (g nil) g)) (if (null? pair) (reverse acc) (loop (- i 1) (cdr pair) (cons (car pair) acc))))))))
+(define (delay thunk) (let (result nil forced nil) (lambda () (if forced result (block (set! result (thunk nil)) (set! forced true) result)))))
+(define (force p) (p))`;

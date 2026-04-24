@@ -110,6 +110,26 @@ fn Value* deduce_query_collect_disjunctive_head_demands_from_expr(
             *supported_out = true;
             return null;
         }
+        case E_WITH_MODULE: {
+            Expr* tail = null;
+            Env* scoped_env = null;
+            if (!deduce_query_expr_try_open_with_module_tail_env(
+                    expr,
+                    capture_env,
+                    interp,
+                    &tail,
+                    &scoped_env
+                )) return null;
+            return deduce_query_collect_disjunctive_head_demands_from_expr(
+                rel,
+                tail,
+                row_param,
+                scoped_env,
+                out_demands,
+                supported_out,
+                interp
+            );
+        }
         default:
             return deduce_query_collect_disjunctive_head_demands_from_non_or_expr(
                 rel,

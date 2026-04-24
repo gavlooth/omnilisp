@@ -2,6 +2,8 @@ module lisp;
 
 import std::core::mem;
 
+const usz FS_READ_MAX_BYTES = 8 * 1024 * 1024;
+
 struct FsHandle {
     int fd;
     bool open;
@@ -70,8 +72,14 @@ fn Value* prim_fs_open(Value*[] args, Env* env, Interp* interp) {
         }
         flags_v = car(packed);
         packed = cdr(packed);
-        if (is_cons(packed)) mode_v = car(packed);
-    } else if (args.len >= 2) {
+        if (is_cons(packed)) {
+            mode_v = car(packed);
+            packed = cdr(packed);
+        }
+        if (!is_nil(packed)) {
+            return io_fs_raise(interp, "io/fs-open-expected-path-flags", "fs-open: expected (fs-open path flags [mode])");
+        }
+    } else if (args.len >= 2 && args.len <= 3) {
         path_v = args[0];
         flags_v = args[1];
         if (args.len >= 3) mode_v = args[2];
@@ -99,7 +107,16 @@ fn Value* prim_fs_open(Value*[] args, Env* env, Interp* interp) {
         mode = (int)mode_v.int_val;
     }
 
-    int fd = fs_uv_open((ZString)path_v.str_chars, flags, mode);
+    CApiStringResult path = c_api_string_dup_no_nul(path_v.str_chars[:path_v.str_len]);
+    if (path.contains_nul) {
+        return io_fs_raise(interp, "io/fs-open-invalid-path", "fs-open: path contains embedded NUL byte");
+    }
+    if (!path.ok) {
+        return io_fs_raise(interp, "io/fs-open-out-of-memory", "fs-open: out of memory");
+    }
+    defer c_api_string_free(&path);
+
+    int fd = fs_uv_open(path.ptr, flags, mode);
     if (fd < 0) {
         return io_fs_raise(interp, "io/fs-open-failed", "fs-open: open failed");
     }
@@ -125,7 +142,9 @@ fn Value* prim_fs_read(Value*[] args, Env* env, Interp* interp) {
     }
     usz n = (usz)req_n;
     if (n == 0) return make_string(interp, "");
-    if (n > 8 * 1024 * 1024) n = 8 * 1024 * 1024;
+    if (n > FS_READ_MAX_BYTES) {
+        return io_fs_raise(interp, "io/fs-read-size-too-large", "fs-read: requested byte count exceeds maximum single read");
+    }
 
     char* buf = (char*)mem::malloc(n);
     if (buf == null) {
@@ -155,11 +174,25 @@ fn Value* prim_fs_write(Value*[] args, Env* env, Interp* interp) {
     }
 
     char[] data = args[1].str_chars[:args[1].str_len];
-    long wrote_n = fs_uv_write(fh.fd, data.ptr, data.len);
-    if (wrote_n < 0) {
+    if (data.len > (usz)long.max) {
+        return io_fs_raise(interp, "io/fs-write-size-too-large", "fs-write: data exceeds writable byte count");
+    }
+    usz max_chunk = omni_uv_fs_max_buf_len();
+    if (max_chunk == 0) {
         return io_fs_raise(interp, "io/fs-write-failed", "fs-write: write failed");
     }
-    return make_int(interp, wrote_n);
+
+    usz written = 0;
+    while (written < data.len) {
+        usz remaining = data.len - written;
+        usz chunk_len = remaining > max_chunk ? max_chunk : remaining;
+        long wrote_n = fs_uv_write(fh.fd, data.ptr + written, chunk_len);
+        if (wrote_n <= 0) {
+            return io_fs_raise(interp, "io/fs-write-failed", "fs-write: write failed");
+        }
+        written += (usz)wrote_n;
+    }
+    return make_int(interp, (long)written);
 }
 
 // (fs-close handle) -> void

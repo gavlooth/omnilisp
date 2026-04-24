@@ -42,6 +42,29 @@ fn void regex_cache_unlock() @inline {
     g_regex_cache_mu.unlock();
 }
 
+fn CompiledRegex* regex_cache_retain_locked(CompiledRegex* rx) {
+    if (rx == null) return null;
+    if (rx.active_refs == int.max) return null;
+    rx.active_refs++;
+    return rx;
+}
+
+fn void regex_cache_detach_locked(CompiledRegex* rx) {
+    if (rx == null) return;
+    rx.cached = false;
+    if (rx.active_refs == 0) regex_free(rx);
+}
+
+fn void regex_cache_release(CompiledRegex* rx) {
+    if (rx == null) return;
+    bool should_free = false;
+    regex_cache_lock();
+    if (rx.active_refs > 0) rx.active_refs--;
+    should_free = !rx.cached && rx.active_refs == 0;
+    regex_cache_unlock();
+    if (should_free) regex_free(rx);
+}
+
 fn void regex_clear_last_compile_error() @inline {
     g_regex_last_compile_error_set = false;
     g_regex_last_compile_error[0] = 0;
@@ -92,7 +115,7 @@ fn void regex_cache_reset() {
 
     for (int i = 0; i < g_regex_cache_len; i++) {
         if (g_regex_cache[i].pattern.len > 0) mem::free(g_regex_cache[i].pattern.ptr);
-        regex_free(g_regex_cache[i].rx);
+        regex_cache_detach_locked(g_regex_cache[i].rx);
     }
     if (g_regex_cache_cap > 0) mem::free(g_regex_cache.ptr);
 

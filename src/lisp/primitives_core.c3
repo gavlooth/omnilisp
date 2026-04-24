@@ -224,7 +224,7 @@ fn Value* prim_gensym(Value*[] args, Env* env, Interp* interp) {
     buf[0] = 'g'; buf[1] = '#';
     usz len = 2;
     interp.gensym_counter++;
-    long n = (long)interp.gensym_counter;
+    usz n = interp.gensym_counter;
     // Convert number to string
     char[20] digits;
     usz dlen = 0;

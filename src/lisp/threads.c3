@@ -24,6 +24,16 @@ struct AtomicRef {
     types::Atomic{long} value;
 }
 
+fn bool atomic_ref_handle_name_equals(Value* v) @inline {
+    char[] expected = "atomic-ref";
+    if (v == null || v.tag != FFI_HANDLE || v.ffi_val == null) return false;
+    if (v.ffi_val.name_len != expected.len) return false;
+    for (usz i = 0; i < expected.len; i++) {
+        if (v.ffi_val.lib_name[i] != expected[i]) return false;
+    }
+    return true;
+}
+
 <*
 @require interp != null
 *>
@@ -44,8 +54,7 @@ fn Value* prim_atomic(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn AtomicRef* get_atomic_ref(Value* v) {
-    if (v == null || v.tag != FFI_HANDLE) return null;
-    if (v.ffi_val == null) return null;
+    if (!atomic_ref_handle_name_equals(v)) return null;
     return (AtomicRef*)v.ffi_val.lib_handle;
 }
 

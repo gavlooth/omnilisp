@@ -96,6 +96,7 @@ fn Value* prim_deduce_scan(Value*[] args, Env* env, Interp* interp) {
         interp,
         &subject_keys
     );
+    if (rows != null && rows.tag == ERROR) return rows;
     if (selector_rule_index >= 0 && !selector_goal_directed_executed) {
         deduce_db_note_goal_directed_read(
             rel.db,

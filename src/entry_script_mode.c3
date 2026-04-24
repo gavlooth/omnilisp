@@ -10,7 +10,8 @@ fn int run_script_mode(int argc, char** argv, int script_idx) {
     }
 
     char* script_file = argv[script_idx];
-    char[] script_path = script_file[:cstr_len(script_file)];
+    char[] script_path;
+    if (!cli_cstr_slice(script_file, &script_path)) return print_cli_cstr_too_long("script path");
 
     EntryFileReadKind read_kind = ENTRY_FILE_READ_GENERIC_FAILURE;
     if (!classify_file_read_path(script_path, &read_kind)) {

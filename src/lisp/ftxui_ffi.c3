@@ -33,6 +33,7 @@ extern fn OmniFtxuiStatus omni_ftxui_session_run_once(OmniFtxuiContext* context,
 extern fn OmniFtxuiStatus omni_ftxui_session_run_once_blocking(OmniFtxuiContext* context, OmniFtxuiSession* session) @extern("omni_ftxui_session_run_once_blocking");
 extern fn OmniFtxuiStatus omni_ftxui_session_has_quitted(OmniFtxuiContext* context, OmniFtxuiSession* session, bool* out_quitted) @extern("omni_ftxui_session_has_quitted");
 extern fn OmniFtxuiStatus omni_ftxui_session_take_event(OmniFtxuiContext* context, OmniFtxuiSession* session, OmniFtxuiEventReadResult* out_event) @extern("omni_ftxui_session_take_event");
+extern fn void omni_ftxui_event_read_result_clear(OmniFtxuiEventReadResult* event) @extern("omni_ftxui_event_read_result_clear");
 
 extern fn OmniFtxuiStatus omni_ftxui_element_create(
     OmniFtxuiContext* context,
@@ -88,6 +89,13 @@ extern fn OmniFtxuiStatus omni_ftxui_component_wrap_action(
     OmniFtxuiCallbackOptions* callbacks,
     OmniFtxuiComponent** out_component
 ) @extern("omni_ftxui_component_wrap_action");
+extern fn OmniFtxuiStatus omni_ftxui_component_wrap_message_action(
+    OmniFtxuiContext* context,
+    OmniFtxuiScreen* screen,
+    OmniFtxuiComponent* base,
+    char* message,
+    OmniFtxuiComponent** out_component
+) @extern("omni_ftxui_component_wrap_message_action");
 extern fn OmniFtxuiStatus omni_ftxui_component_from_element(
     OmniFtxuiContext* context,
     OmniFtxuiElement* element,

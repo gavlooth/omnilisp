@@ -51,6 +51,100 @@ fn bool test_fpu_preservation() {
     return ok;
 }
 
+fn bool test_stack_ctx_clone_signed_delta_negative() {
+    long negative_delta = 0;
+    bool negative_ok = stack_clone_signed_address_delta((usz)0x3000, (usz)0x5000, &negative_delta);
+    ulong relocated = stack_clone_relocate_ptr_if_needed(
+        (ulong)0x5100,
+        (usz)0x4000,
+        (usz)0x6000,
+        negative_delta
+    );
+    bool untouched = stack_clone_relocate_ptr_if_needed(
+        (ulong)0x7000,
+        (usz)0x4000,
+        (usz)0x6000,
+        negative_delta
+    ) == (ulong)0x7000;
+
+    long positive_delta = 0;
+    bool positive_ok = stack_clone_signed_address_delta((usz)0x7000, (usz)0x5000, &positive_delta);
+    long overflow_delta = 0;
+    bool overflow_positive_rejected = !stack_clone_signed_address_delta((usz)long.max + (usz)1, (usz)0, &overflow_delta);
+    bool overflow_negative_rejected = !stack_clone_signed_address_delta((usz)0, (usz)long.max + (usz)1, &overflow_delta);
+
+    return negative_ok &&
+           negative_delta == -8192 &&
+           relocated == (ulong)0x3100 &&
+           untouched &&
+           positive_ok &&
+           positive_delta == 8192 &&
+           overflow_positive_rejected &&
+           overflow_negative_rejected;
+}
+
+fn bool test_stack_ctx_clone_residual_source_pointer_policy() {
+    ulong[4] words;
+    words[0] = (ulong)0x4100;
+    words[1] = (ulong)0x7000;
+    words[2] = ((ulong)0xab << 56) | (ulong)0x4200;
+    words[3] = (ulong)0x5000;
+
+    StackCloneResidualSourceWords residual = stack_clone_classify_residual_source_stack_words(
+        (usz)&words[0],
+        (usz)4 * ulong.sizeof,
+        (usz)0x4000,
+        (usz)0x5000
+    );
+    bool raw_fails_closed =
+        residual.raw_words == 1 &&
+        residual.low56_only_words == 1 &&
+        stack_clone_residual_source_stack_words_fail_closed(residual);
+
+    words[0] = (ulong)0x4100;
+    words[1] = (ulong)0x7000;
+    words[2] = (ulong)0x9000;
+    words[3] = (ulong)0x5000;
+    usz relocated = stack_clone_relocate_active_stack_words(
+        (usz)&words[0],
+        (usz)4 * ulong.sizeof,
+        (usz)0x4000,
+        (usz)0x5000,
+        0x3000
+    );
+    residual = stack_clone_classify_residual_source_stack_words(
+        (usz)&words[0],
+        (usz)4 * ulong.sizeof,
+        (usz)0x4000,
+        (usz)0x5000
+    );
+    bool relocation_clears_raw =
+        relocated == 1 &&
+        words[0] == (ulong)0x7100 &&
+        residual.raw_words == 0 &&
+        residual.low56_only_words == 0 &&
+        !stack_clone_residual_source_stack_words_fail_closed(residual);
+
+    words[0] = ((ulong)0xab << 56) | (ulong)0x4200;
+    words[1] = (ulong)0x7000;
+    words[2] = (ulong)0x9000;
+    words[3] = (ulong)0x5000;
+    residual = stack_clone_classify_residual_source_stack_words(
+        (usz)&words[0],
+        (usz)4 * ulong.sizeof,
+        (usz)0x4000,
+        (usz)0x5000
+    );
+    bool low56_false_positive_tolerated =
+        residual.raw_words == 0 &&
+        residual.low56_only_words == 1 &&
+        !stack_clone_residual_source_stack_words_fail_closed(residual);
+
+    return raw_fails_closed &&
+           relocation_clears_raw &&
+           low56_false_positive_tolerated;
+}
+
 // Clone a suspended context and verify multi-shot behavior:
 // cloned execution completes independently while the source remains resumable.
 fn bool test_stack_ctx_clone_multishot() {

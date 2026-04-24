@@ -61,6 +61,16 @@ static void omni_tensor_backend_vulkan_context_retain_locked(OmniTensorVulkanCon
     if (context->ref_count < UINT32_MAX) context->ref_count++;
 }
 
+static void omni_tensor_vulkan_test_destroy_instance(OmniVulkanInstance instance, const void* allocator) {
+    (void)instance;
+    (void)allocator;
+}
+
+static void omni_tensor_vulkan_test_destroy_device(OmniVulkanDevice device, const void* allocator) {
+    (void)device;
+    (void)allocator;
+}
+
 void omni_tensor_backend_vulkan_context_retain(OmniTensorVulkanContext* context) {
     if (context == NULL) return;
     if (pthread_mutex_lock(&omni_tensor_vulkan_context_mutex) != 0) return;
@@ -76,6 +86,9 @@ void omni_tensor_backend_vulkan_context_release(OmniTensorVulkanContext* context
         pthread_mutex_unlock(&omni_tensor_vulkan_context_mutex);
         return;
     }
+    if (omni_tensor_vulkan_shared_context == context) {
+        omni_tensor_vulkan_shared_context = NULL;
+    }
     pthread_mutex_unlock(&omni_tensor_vulkan_context_mutex);
     if (context->device != NULL) omni_vulkan_destroy_device(context->device, NULL);
     if (context->instance != NULL) omni_vulkan_destroy_instance(context->instance, NULL);
@@ -84,10 +97,11 @@ void omni_tensor_backend_vulkan_context_release(OmniTensorVulkanContext* context
 
 void omni_tensor_backend_vulkan_destroy_buffer_handle(OmniTensorVulkanBuffer* handle) {
     if (handle == NULL) return;
-    if (handle->ref_count > 1) {
-        handle->ref_count--;
+    uint32_t previous_count = atomic_fetch_sub_explicit(&handle->ref_count, 1u, memory_order_acq_rel);
+    if (previous_count > 1u) {
         return;
     }
+    if (previous_count == 0u) return;
     OmniTensorVulkanContext* context = handle->context;
     if (context != NULL && context->device != NULL) {
         if (handle->buffer != NULL) omni_vulkan_destroy_buffer(context->device, handle->buffer, NULL);
@@ -223,7 +237,7 @@ int omni_tensor_backend_vulkan_create_buffer_on_context(
     if (handle == NULL) return OMNI_TENSOR_VULKAN_ALLOCATION_FAILED;
     handle->context = context;
     handle->byte_len = byte_len;
-    handle->ref_count = 1;
+    atomic_init(&handle->ref_count, 1u);
 
     OmniVulkanBufferCreateInfo buffer_info = {
         OMNI_VULKAN_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
@@ -433,6 +447,120 @@ void omni_tensor_backend_vulkan_free(void* device_ptr) {
 void* omni_tensor_backend_vulkan_retain(void* device_ptr) {
     if (device_ptr == NULL) return NULL;
     OmniTensorVulkanBuffer* handle = (OmniTensorVulkanBuffer*)device_ptr;
-    if (handle->ref_count < UINT32_MAX) handle->ref_count++;
+    uint32_t count = atomic_load_explicit(&handle->ref_count, memory_order_acquire);
+    while (count > 0u && count < UINT32_MAX) {
+        if (atomic_compare_exchange_weak_explicit(
+                &handle->ref_count,
+                &count,
+                count + 1u,
+                memory_order_acq_rel,
+                memory_order_acquire)) {
+            return handle;
+        }
+    }
+    if (count == 0u || count == UINT32_MAX) return NULL;
     return handle;
+}
+
+int omni_tensor_backend_vulkan_shared_context_release_clears_global_for_tests(void) {
+    if (pthread_mutex_lock(&omni_tensor_vulkan_context_mutex) != 0) return OMNI_TENSOR_VULKAN_EXECUTION_FAILED;
+    if (omni_tensor_vulkan_shared_context != NULL) {
+        pthread_mutex_unlock(&omni_tensor_vulkan_context_mutex);
+        return OMNI_TENSOR_VULKAN_UNSUPPORTED;
+    }
+    pthread_mutex_unlock(&omni_tensor_vulkan_context_mutex);
+
+    omni_vulkan_destroy_instance_fn saved_destroy_instance = omni_vulkan_destroy_instance;
+    omni_vulkan_destroy_device_fn saved_destroy_device = omni_vulkan_destroy_device;
+    omni_vulkan_destroy_instance = omni_tensor_vulkan_test_destroy_instance;
+    omni_vulkan_destroy_device = omni_tensor_vulkan_test_destroy_device;
+
+    OmniTensorVulkanContext* context = (OmniTensorVulkanContext*)calloc(1, sizeof(OmniTensorVulkanContext));
+    if (context == NULL) {
+        omni_vulkan_destroy_instance = saved_destroy_instance;
+        omni_vulkan_destroy_device = saved_destroy_device;
+        return OMNI_TENSOR_VULKAN_ALLOCATION_FAILED;
+    }
+    context->instance = (OmniVulkanInstance)(uintptr_t)1u;
+    context->device = (OmniVulkanDevice)(uintptr_t)2u;
+    context->ref_count = 1u;
+
+    if (pthread_mutex_lock(&omni_tensor_vulkan_context_mutex) != 0) {
+        free(context);
+        omni_vulkan_destroy_instance = saved_destroy_instance;
+        omni_vulkan_destroy_device = saved_destroy_device;
+        return OMNI_TENSOR_VULKAN_EXECUTION_FAILED;
+    }
+    omni_tensor_vulkan_shared_context = context;
+    pthread_mutex_unlock(&omni_tensor_vulkan_context_mutex);
+
+    omni_tensor_backend_vulkan_context_release(context);
+
+    int result = OMNI_TENSOR_VULKAN_SUCCESS;
+    if (pthread_mutex_lock(&omni_tensor_vulkan_context_mutex) != 0) {
+        result = OMNI_TENSOR_VULKAN_EXECUTION_FAILED;
+    } else {
+        if (omni_tensor_vulkan_shared_context != NULL) {
+            omni_tensor_vulkan_shared_context = NULL;
+            result = OMNI_TENSOR_VULKAN_INVALID;
+        }
+        pthread_mutex_unlock(&omni_tensor_vulkan_context_mutex);
+    }
+
+    omni_vulkan_destroy_instance = saved_destroy_instance;
+    omni_vulkan_destroy_device = saved_destroy_device;
+    return result;
+}
+
+typedef struct OmniTensorVulkanRefcountStress {
+    OmniTensorVulkanBuffer* handle;
+    atomic_int failed;
+} OmniTensorVulkanRefcountStress;
+
+static void* omni_tensor_vulkan_refcount_stress_worker(void* arg) {
+    OmniTensorVulkanRefcountStress* stress = (OmniTensorVulkanRefcountStress*)arg;
+    if (stress == NULL || stress->handle == NULL) return NULL;
+    for (size_t i = 0; i < 20000u; i++) {
+        OmniTensorVulkanBuffer* retained = (OmniTensorVulkanBuffer*)omni_tensor_backend_vulkan_retain(stress->handle);
+        if (retained == NULL) {
+            atomic_store_explicit(&stress->failed, 1, memory_order_release);
+            return NULL;
+        }
+        omni_tensor_backend_vulkan_destroy_buffer_handle(retained);
+    }
+    return NULL;
+}
+
+int omni_tensor_backend_vulkan_buffer_refcount_concurrent_for_tests(void) {
+    OmniTensorVulkanContext* context = (OmniTensorVulkanContext*)calloc(1, sizeof(OmniTensorVulkanContext));
+    if (context == NULL) return OMNI_TENSOR_VULKAN_ALLOCATION_FAILED;
+    context->ref_count = 1u;
+
+    OmniTensorVulkanBuffer* handle = (OmniTensorVulkanBuffer*)calloc(1, sizeof(OmniTensorVulkanBuffer));
+    if (handle == NULL) {
+        free(context);
+        return OMNI_TENSOR_VULKAN_ALLOCATION_FAILED;
+    }
+    handle->context = context;
+    handle->byte_len = 64u;
+    atomic_init(&handle->ref_count, 1u);
+
+    enum { WORKER_COUNT = 8 };
+    pthread_t workers[WORKER_COUNT];
+    OmniTensorVulkanRefcountStress stress = { handle, ATOMIC_VAR_INIT(0) };
+    size_t started = 0u;
+    for (; started < WORKER_COUNT; started++) {
+        if (pthread_create(&workers[started], NULL, omni_tensor_vulkan_refcount_stress_worker, &stress) != 0) {
+            atomic_store_explicit(&stress.failed, 1, memory_order_release);
+            break;
+        }
+    }
+    for (size_t i = 0; i < started; i++) {
+        if (pthread_join(workers[i], NULL) != 0) atomic_store_explicit(&stress.failed, 1, memory_order_release);
+    }
+    uint32_t final_count = atomic_load_explicit(&handle->ref_count, memory_order_acquire);
+    int failed = atomic_load_explicit(&stress.failed, memory_order_acquire);
+    int result = (!failed && final_count == 1u) ? OMNI_TENSOR_VULKAN_SUCCESS : OMNI_TENSOR_VULKAN_INVALID;
+    omni_tensor_backend_vulkan_destroy_buffer_handle(handle);
+    return result;
 }

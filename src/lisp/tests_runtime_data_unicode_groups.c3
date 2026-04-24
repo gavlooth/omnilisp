@@ -3,6 +3,13 @@ module lisp;
 
 import std::io;
 
+extern fn void omni_yyjson_test_json_fail_reset() @extern("omni_yyjson_test_json_fail_reset");
+extern fn void omni_yyjson_test_json_fail_arr_iter_new(int enabled) @extern("omni_yyjson_test_json_fail_arr_iter_new");
+extern fn void omni_yyjson_test_json_fail_obj_iter_new(int enabled) @extern("omni_yyjson_test_json_fail_obj_iter_new");
+extern fn void omni_yyjson_test_json_fail_arr_iter_next_after(usz after) @extern("omni_yyjson_test_json_fail_arr_iter_next_after");
+extern fn void omni_yyjson_test_json_fail_obj_iter_next_after(usz after) @extern("omni_yyjson_test_json_fail_obj_iter_next_after");
+extern fn void omni_yyjson_test_json_fail_obj_iter_get_val_after(usz after) @extern("omni_yyjson_test_json_fail_obj_iter_get_val_after");
+
 fn void run_json_tests(Interp* interp, int* pass, int* fail) {
     emit_test_section_banner("JSON Tests");
 
@@ -44,6 +51,17 @@ fn void run_json_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "json-parse array length",
         "(length (json-parse \"[1,2,3]\"))", 3, pass, fail);
 
+    omni_yyjson_test_json_fail_reset();
+    omni_yyjson_test_json_fail_arr_iter_new(1);
+    test_truthy_interp(interp, "json-parse array iterator allocation failure reports OOM",
+        "(= (handle (json-parse \"[1]\") (raise msg (ref msg 'code))) 'parser/out-of-memory)", pass, fail);
+    omni_yyjson_test_json_fail_reset();
+
+    omni_yyjson_test_json_fail_arr_iter_next_after((usz)0);
+    test_truthy_interp(interp, "json-parse array iterator exhaustion reports invalid state",
+        "(= (handle (json-parse \"[1]\") (raise msg (ref msg 'code))) 'parser/invalid-state)", pass, fail);
+    omni_yyjson_test_json_fail_reset();
+
     // json-get pointer lookup
     test_eq(interp, "json-get object key",
         "(json-get (json-parse \"{\\\"a\\\": {\\\"b\\\": 42}}\") \"/a/b\")", 42, pass, fail);
@@ -51,19 +69,63 @@ fn void run_json_tests(Interp* interp, int* pass, int* fail) {
         "(json-get (json-parse \"{\\\"users\\\": [\\\"alice\\\",\\\"bob\\\"]}\") \"/users/1\")", "bob", pass, fail);
     test_eq(interp, "json-get escaped object key",
         "(json-get (json-parse \"{\\\"a/b\\\": 7, \\\"a~0b\\\": 9}\") \"/a~1b\")", 7, pass, fail);
+    test_eq(interp, "json-get existing symbol key without new intern",
+        "(json-get (Dictionary 'a 42) \"/a\")", 42, pass, fail);
     test_tag(interp, "json-get root path",
         "(json-get (json-parse \"{\\\"a\\\": 1}\") \"\")", HASHMAP, pass, fail);
 
     test_nil(interp, "json-get missing path returns nil",
         "(json-get (json-parse \"{\\\"a\\\": 1}\") \"/b\")", pass, fail);
-    test_error(interp, "json-get invalid escape",
-        "(json-get (json-parse \"{\\\"a\\\": 1}\") \"/a~\")", pass, fail);
+    test_truthy_interp(interp, "json-get invalid escape reports invalid argument",
+        "(= (handle (json-get (json-parse \"{\\\"a\\\": 1}\") \"/a~\") (raise msg (ref msg 'code))) 'parser/invalid-argument)", pass, fail);
+    json_pointer_force_decode_alloc_fail_for_test(true);
+    test_truthy_interp(interp, "json-get pointer decode allocation failure reports OOM",
+        "(= (handle (json-get (json-parse \"{\\\"a~b\\\": 1}\") \"/a~0b\") (raise msg (ref msg 'code))) 'parser/out-of-memory)", pass, fail);
+    json_pointer_force_decode_alloc_fail_for_test(false);
     test_error(interp, "json-get invalid path start",
         "(json-get (json-parse \"{\\\"a\\\": 1}\") \"a/b\")", pass, fail);
+
+    {
+        Value* source = make_string(interp, "{\"a\":1}");
+        Value*[1] parse_args = { source };
+        Value* parsed = prim_json_parse(parse_args[0:1], null, interp);
+        Value* path = make_string(interp, "/missing-json-get-symbol-growth");
+        Value*[2] get_args = { parsed, path };
+        usz before_symbol_count = interp.symbols.count;
+        Value* miss1 = prim_json_get(get_args[0:2], null, interp);
+        Value* miss2 = prim_json_get(get_args[0:2], null, interp);
+        bool ok = parsed != null && parsed.tag != ERROR &&
+            path != null && path.tag != ERROR &&
+            is_nil(miss1) &&
+            is_nil(miss2) &&
+            interp.symbols.count == before_symbol_count;
+        if (ok) {
+            emit_pass_literal("[PASS] json-get repeated missing object key lookup does not intern");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] json-get repeated missing object key lookup does not intern");
+            (*fail)++;
+        }
+    }
 
     // Parse object
     test_tag(interp, "json-parse object is dict",
         "(json-parse \"{\\\"a\\\": 1}\")", HASHMAP, pass, fail);
+
+    omni_yyjson_test_json_fail_obj_iter_new(1);
+    test_truthy_interp(interp, "json-parse object iterator allocation failure reports OOM",
+        "(= (handle (json-parse \"{\\\"a\\\":1}\") (raise msg (ref msg 'code))) 'parser/out-of-memory)", pass, fail);
+    omni_yyjson_test_json_fail_reset();
+
+    omni_yyjson_test_json_fail_obj_iter_next_after((usz)0);
+    test_truthy_interp(interp, "json-parse object iterator key exhaustion reports invalid state",
+        "(= (handle (json-parse \"{\\\"a\\\":1}\") (raise msg (ref msg 'code))) 'parser/invalid-state)", pass, fail);
+    omni_yyjson_test_json_fail_reset();
+
+    omni_yyjson_test_json_fail_obj_iter_get_val_after((usz)0);
+    test_truthy_interp(interp, "json-parse object iterator missing value reports invalid state",
+        "(= (handle (json-parse \"{\\\"a\\\":1}\") (raise msg (ref msg 'code))) 'parser/invalid-state)", pass, fail);
+    omni_yyjson_test_json_fail_reset();
 
     // Emit basic types
     test_str_val(interp, "json-emit integer",
@@ -97,6 +159,8 @@ fn void run_json_tests(Interp* interp, int* pass, int* fail) {
         "(json-emit (lambda (x) x))", "json-emit: unsupported value type", pass, fail);
     test_error_contains(interp, "json-emit rejects unsupported dictionary key type",
         "(json-emit (Dictionary 1 2))", "json-emit: unsupported dictionary key type", pass, fail);
+    test_error_contains(interp, "json-emit rejects duplicate normalized dictionary keys",
+        "(json-emit (Dictionary \"a\" 1 'a 2))", "duplicate JSON object key", pass, fail);
     test_error_contains(interp, "json-emit rejects improper list tail",
         "(json-emit (cons 1 2))", "json-emit: expected proper list", pass, fail);
 
@@ -107,6 +171,30 @@ fn void run_json_tests(Interp* interp, int* pass, int* fail) {
 
 fn void run_data_format_tests(Interp* interp, int* pass, int* fail) {
     emit_test_section_banner("Data Format Tests");
+
+    {
+        usz decoded = 0;
+        bool ok = data_base64_decoded_len_checked((usz)8, (usz)1, &decoded) && decoded == (usz)5;
+        if (ok) {
+            emit_pass_literal("[PASS] base64 decoded length accounts for padding");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] base64 decoded length accounts for padding");
+            (*fail)++;
+        }
+    }
+
+    {
+        usz decoded = 0;
+        bool ok = !data_base64_decoded_len_checked((usz)0, (usz)1, &decoded);
+        if (ok) {
+            emit_pass_literal("[PASS] base64 decoded length rejects padding underflow");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] base64 decoded length rejects padding underflow");
+            (*fail)++;
+        }
+    }
 
     // TOML
     test_tag(interp, "toml-parse object is dict",
@@ -135,10 +223,20 @@ fn void run_data_format_tests(Interp* interp, int* pass, int* fail) {
         "(TimePoint 'date 2026 3 7)", TIME_POINT, pass, fail);
     test_tag(interp, "time-point constructor date",
         "(TimePoint 'date 2026 3 7)", TIME_POINT, pass, fail);
+    test_tag(interp, "time-point constructor accepts leap day",
+        "(TimePoint 'date 2024 2 29)", TIME_POINT, pass, fail);
     test_truthy(interp, "time-point predicate for date",
         "(time-point? (TimePoint 'date 2026 3 7))", pass, fail);
     test_tag(interp, "#time ISO-8601 reader tag",
         "#time \"2024-01-15T10:30:00Z\"", TIME_POINT, pass, fail);
+    test_str_val(interp, "#time UTC formatting keeps timezone marker",
+        "(format \"%s\" #time \"2024-01-15T10:30:00Z\")", "#<time-point 2024-01-15T10:30:00Z>", pass, fail);
+    test_tag(interp, "#time ISO-8601 reader tag accepts leap day",
+        "#time \"2024-02-29T10:30:00Z\"", TIME_POINT, pass, fail);
+    test_str_val(interp, "toml-parse UTC datetime keeps timezone marker",
+        "(format \"%s\" (ref (toml-parse \"dt = 1979-05-27T07:32:00Z\\n\") \"dt\"))", "#<time-point 1979-05-27T07:32:00Z>", pass, fail);
+    test_str_val(interp, "toml-parse zero offset datetime keeps timezone marker",
+        "(format \"%s\" (ref (toml-parse \"dt = 1979-05-27T07:32:00+00:00\\n\") \"dt\"))", "#<time-point 1979-05-27T07:32:00Z>", pass, fail);
     test_tag(interp, "time-point constructor time",
         "(TimePoint 'time 8 15 30 123456)", TIME_POINT, pass, fail);
     test_tag(interp, "time-point constructor datetime",
@@ -153,8 +251,20 @@ fn void run_data_format_tests(Interp* interp, int* pass, int* fail) {
         "(TimePoint 'datetime-tz 2026 3 7 8 15 30)", "time-point: datetime-tz expects", pass, fail);
     test_error_contains(interp, "time-point rejects date field out of range",
         "(TimePoint 'date 2026 13 7)", "out of range", pass, fail);
+    test_error_contains(interp, "time-point rejects non-leap February 29 date",
+        "(TimePoint 'date 2023 2 29)", "out of range", pass, fail);
+    test_error_contains(interp, "time-point rejects impossible February datetime",
+        "(TimePoint 'datetime 2024 2 31 8 15 30 123456)", "out of range", pass, fail);
+    test_error_contains(interp, "time-point rejects impossible April datetime-tz",
+        "(TimePoint 'datetime-tz 2026 4 31 8 15 30 123456 0)", "out of range", pass, fail);
+    test_error_contains(interp, "#time rejects impossible February date",
+        "#time \"2024-02-31T10:30:00Z\"", "out of range", pass, fail);
     test_error_contains(interp, "time-point rejects datetime-tz offset out of range",
         "(TimePoint 'datetime-tz 2026 3 7 8 15 30 0 2000)", "out of range", pass, fail);
+    test_str_val(interp, "#uuid canonicalizes uppercase input",
+        "#uuid \"550E8400-E29B-41D4-A716-446655440000\"", "550e8400-e29b-41d4-a716-446655440000", pass, fail);
+    test_str_val(interp, "uuid canonicalizes mixed-case input",
+        "(uuid \"550e8400-E29b-41d4-A716-446655440000\")", "550e8400-e29b-41d4-a716-446655440000", pass, fail);
     test_tag(interp, "toml-parse supports options list",
         "(toml-parse \"title = \\\"Toml\\\"\n\" '((check-utf8 false)))", HASHMAP, pass, fail);
     test_error_contains(interp, "toml-parse validates unknown option key",
@@ -173,8 +283,18 @@ fn void run_data_format_tests(Interp* interp, int* pass, int* fail) {
         "(ref (ref (csv-parse \"a,b\\r\\n1,2\") 0) 1)", "b", pass, fail);
     test_str_val(interp, "csv-parse quoted delimiter",
         "(ref (ref (csv-parse \"\\\"a,b\\\",2\") 0) 0)", "a,b", pass, fail);
+    test_str_val(interp, "csv-parse supports one-codepoint UTF-8 delimiter",
+        "(ref (ref (csv-parse \"a§b\" \"§\") 0) 1)", "b", pass, fail);
     test_str_val(interp, "csv-parse preserves trailing empty field",
         "(ref (ref (csv-parse \"a,b,\") 0) 2)", "", pass, fail);
+    test_str_val(interp, "csv-parse preserves single quoted empty field",
+        "(ref (ref (csv-parse \"\\\"\\\"\") 0) 0)", "", pass, fail);
+    test_str_val(interp, "csv-parse preserves leading quoted empty field",
+        "(ref (ref (csv-parse \"\\\"\\\",x\") 0) 0)", "", pass, fail);
+    test_str_val(interp, "csv-parse preserves trailing quoted empty field",
+        "(ref (ref (csv-parse \"x,\\\"\\\"\") 0) 1)", "", pass, fail);
+    test_str_val(interp, "csv-parse preserves middle quoted empty field",
+        "(ref (ref (csv-parse \"x,\\\"\\\",y\") 0) 1)", "", pass, fail);
     test_error_contains(interp, "csv-parse default strict rejects LF-only rows",
         "(csv-parse \"a,b\\n1,2\")", "csv-parse: strict mode requires CRLF line endings", pass, fail);
     test_str_val(interp, "csv-parse supports strict mode toggle",
@@ -201,16 +321,26 @@ fn void run_data_format_tests(Interp* interp, int* pass, int* fail) {
         "(csv-emit '((\"a\" \"b\") (\"c\" \"d\")))", "a,b\r\nc,d", pass, fail);
     test_str_val(interp, "csv-emit with custom delimiter",
         "(csv-emit [[\"a\" \"b|c\"]] \"|\")", "a|\"b|c\"", pass, fail);
+    test_str_val(interp, "csv-emit supports one-codepoint UTF-8 delimiter",
+        "(csv-emit [[\"a\" \"b§c\"]] \"§\")", "a§\"b§c\"", pass, fail);
     test_str_val(interp, "csv-emit supports custom line ending",
         "(csv-emit [[\"a\" \"b\"] [\"c\" \"d\"]] '((line-ending \"\\r\\n\")))", "a,b\r\nc,d", pass, fail);
     test_str_val(interp, "csv-emit supports quote-style always",
         "(csv-emit [[\"a,b\" \"x\"]] '((quote-style 'always)))", "\"a,b\",\"x\"", pass, fail);
-    test_str_val(interp, "csv-emit supports quote-style none",
-        "(csv-emit [[\"a,b\" \"x\"]] '((quote-style 'none)))", "a,b,x", pass, fail);
+    test_error_contains(interp, "csv-emit strict rejects quote-style none with delimiter",
+        "(csv-emit [[\"a,b\" \"x\"]] '((quote-style 'none)))", "quote-style none", pass, fail);
+    test_error_contains(interp, "csv-emit strict rejects quote-style none with quote char",
+        "(csv-emit [[\"a\\\"b\" \"x\"]] '((quote-style 'none)))", "quote-style none", pass, fail);
+    test_error_contains(interp, "csv-emit strict rejects quote-style none with line ending",
+        "(csv-emit [[\"a\\nb\" \"x\"]] '((quote-style 'none)))", "quote-style none", pass, fail);
+    test_str_val(interp, "csv-emit strict false preserves quote-style none raw emission",
+        "(csv-emit [[\"a,b\" \"x\"]] '((quote-style 'none) (strict false)))", "a,b,x", pass, fail);
     test_str_val(interp, "csv-emit supports nil-as",
         "(csv-emit [[nil \"x\"]] '((nil-as \"NULL\")))", "NULL,x", pass, fail);
     test_str_val(interp, "csv-emit supports custom quote-char",
         "(csv-emit [[\"a|b\" \"x\"]] '((quote-char \"|\") (quote-style 'always)))", "|a||b|,|x|", pass, fail);
+    test_str_val(interp, "csv-emit supports one-codepoint UTF-8 quote-char",
+        "(csv-emit [[\"a«b\" \"x\"]] '((quote-char \"«\") (quote-style 'always)))", "«a««b«,«x«", pass, fail);
     test_error_contains(interp, "csv-emit default strict validates quote-char != delimiter",
         "(csv-emit [[\"a\"]] '((quote-char \",\")))", "quote-char", pass, fail);
     test_str_val(interp, "csv-emit strict false allows quote-char == delimiter",
@@ -225,6 +355,8 @@ fn void run_data_format_tests(Interp* interp, int* pass, int* fail) {
         "(csv-emit [[[]]])", "csv-emit: row cells must be", pass, fail);
     test_error_contains(interp, "csv-parse validates delimiter length",
         "(csv-parse \"a,b\" \";;\")", "delimiter must be a one-character string", pass, fail);
+    test_error_contains(interp, "csv-emit validates quote-char codepoint length",
+        "(csv-emit [[\"a\"]] '((quote-char \"«»\")))", "quote-char must be a one-character string", pass, fail);
 
     // Thin dispatched format helpers (`parse` / `emit`)
     test_eq_interp(interp, "parse helper json route",
@@ -365,6 +497,8 @@ fn void run_unicode_tests(Interp* interp, int* pass, int* fail) {
         "(length (string-codepoints \"abc\"))", 3, pass, fail);
     test_eq(interp, "string-codepoints first is 97",
         "(car (string-codepoints \"abc\"))", 97, pass, fail);
+    test_eq(interp, "string-codepoints long ASCII no truncation",
+        "(length (string-codepoints (string-repeat \"a\" 1025)))", 1025, pass, fail);
 
     // Char-category: letter
     test_str_val(interp, "char-category uppercase A",
@@ -401,6 +535,12 @@ fn void run_unicode_tests(Interp* interp, int* pass, int* fail) {
     // Graphemes: ASCII chars are each a grapheme
     test_eq(interp, "string-graphemes ASCII",
         "(length (string-graphemes \"abc\"))", 3, pass, fail);
+    test_str_val(interp, "string-graphemes preserves order",
+        "(car (string-graphemes \"ab\"))", "a", pass, fail);
+    test_eq(interp, "string-graphemes long ASCII no truncation",
+        "(length (string-graphemes (string-repeat \"a\" 513)))", 513, pass, fail);
+    test_eq(interp, "string-graphemes combining mark cluster",
+        "(length (string-graphemes \"é\"))", 1, pass, fail);
 }
 
 fn void run_unicode_tests_isolated(int* pass, int* fail) {

@@ -51,6 +51,8 @@ fn void Compiler.free(Compiler* self) {
     self.mutable_captures.free();
     self.declared_vars.free();
     self.referenced_prims.free();
+    self.module_open_exports.free();
+    self.module_open_aliases.free();
     for (usz i = 0; i < self.compiled_module_count; i++) {
         if (self.compiled_modules[i].exports != null) {
             mem::free(self.compiled_modules[i].exports);

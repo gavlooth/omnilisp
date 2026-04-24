@@ -359,4 +359,47 @@ fn void run_memory_lifetime_runtime_alloc_groups_checked_collections_tests(Inter
         }
     }
 
+    {
+        Value* dict_value = make_hashmap_checked(interp, 8, "dict canonical order test: ctor oom");
+        Value* set_value = make_set_checked(interp, 8, "set canonical order test: ctor oom");
+        bool setup_ok = dict_value != null &&
+            dict_value.tag == HASHMAP &&
+            set_value != null &&
+            set_value.tag == SET;
+
+        if (setup_ok) {
+            setup_ok =
+                hashmap_set_checked(dict_value.hashmap_val, make_symbol(interp, interp.symbols.intern("b")), make_int(interp, 2), interp) &&
+                hashmap_set_checked(dict_value.hashmap_val, make_symbol(interp, interp.symbols.intern("a")), make_int(interp, 1), interp) &&
+                hashmap_set_checked(set_value.hashmap_val, make_symbol(interp, interp.symbols.intern("b")), make_symbol(interp, interp.sym_true), interp) &&
+                hashmap_set_checked(set_value.hashmap_val, make_symbol(interp, interp.symbols.intern("a")), make_symbol(interp, interp.sym_true), interp);
+        }
+
+        Value*[1] dict_args = { dict_value };
+        Value*[1] set_args = { set_value };
+        bool saved_slots_fail = g_hashmap_force_sorted_slots_alloc_fail;
+        g_hashmap_force_sorted_slots_alloc_fail = true;
+        Value* keys_fail = setup_ok ? prim_keys(dict_args[0:1], null, interp) : runtime_raise(interp, "runtime/evaluation-error", "setup failed");
+        Value* values_fail = setup_ok ? prim_values(dict_args[0:1], null, interp) : runtime_raise(interp, "runtime/evaluation-error", "setup failed");
+        Value* set_list_fail = setup_ok ? prim_set_to_list(set_args[0:1], null, interp) : runtime_raise(interp, "runtime/evaluation-error", "setup failed");
+        g_hashmap_force_sorted_slots_alloc_fail = saved_slots_fail;
+
+        bool ok = setup_ok &&
+            runtime_alloc_error_matches(keys_fail, "keys: failed to allocate canonical order scratch") &&
+            runtime_alloc_error_matches(values_fail, "values: failed to allocate canonical order scratch") &&
+            runtime_alloc_error_matches(set_list_fail, "keys: failed to allocate canonical order scratch");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: canonical collection materializers fail closed on order scratch OOM");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: canonical collection materializers fail closed on order scratch OOM (setup_ok=%s keys=%s values=%s set=%s)",
+                setup_ok ? "yes" : "no",
+                runtime_alloc_error_text(keys_fail),
+                runtime_alloc_error_text(values_fail),
+                runtime_alloc_error_text(set_list_fail));
+            (*fail)++;
+        }
+    }
+
 }

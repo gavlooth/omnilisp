@@ -107,6 +107,27 @@ fn bool deduce_query_filter_expr_try_collect_equalities(
                 has_any_bound_out
             );
         }
+        case E_WITH_MODULE: {
+            Expr* tail = null;
+            Env* scoped_env = null;
+            if (!deduce_query_expr_try_open_with_module_tail_env(
+                    expr,
+                    capture_env,
+                    interp,
+                    &tail,
+                    &scoped_env
+                )) return false;
+            return deduce_query_filter_expr_try_collect_equalities(
+                tail,
+                row_param,
+                scoped_env,
+                rel,
+                term_bound,
+                term_values,
+                interp,
+                has_any_bound_out
+            );
+        }
         case E_OR: {
             if (expr.or_expr.left == null || expr.or_expr.right == null) return false;
 

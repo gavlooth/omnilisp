@@ -98,6 +98,20 @@ fn bool symbol_table_force_name_alloc_fail_active() @inline {
     $endif
 }
 
+fn bool symbol_table_should_grow(usz count, usz capacity) @inline {
+    if (capacity == 0) return false;
+    usz threshold = (capacity / 10) * 7;
+    threshold += ((capacity % 10) * 7 + 9) / 10;
+    return count >= threshold;
+}
+
+fn bool symbol_table_growth_bounds_valid(usz new_cap, usz new_hash_cap) @inline {
+    if (new_cap >= (usz)INVALID_SYMBOL_ID) return false;
+    if (new_cap > usz.max / SymbolEntry.sizeof) return false;
+    if (new_hash_cap > usz.max / SymbolId.sizeof) return false;
+    return true;
+}
+
 fn void SymbolTable.init(SymbolTable* self) {
     self.count = 0;
     self.capacity = 0;
@@ -150,6 +164,7 @@ fn bool SymbolTable.grow(SymbolTable* self) {
 
     usz new_cap = self.capacity * 2;
     usz new_hash_cap = self.hash_capacity * 2;
+    if (!symbol_table_growth_bounds_valid(new_cap, new_hash_cap)) return false;
 
     SymbolEntry* new_entries = symbol_table_force_grow_entries_alloc_fail_active()
         ? null
@@ -249,8 +264,10 @@ fn SymbolId SymbolTable.intern(SymbolTable* self, char[] name) {
         }
     }
 
-    // Grow at 70% load factor
-    if (self.count * 10 >= self.capacity * 7) {
+    if (self.count >= (usz)INVALID_SYMBOL_ID) return INVALID_SYMBOL_ID;
+
+    // Grow at 70% load factor.
+    if (symbol_table_should_grow(self.count, self.capacity)) {
         if (!self.grow()) return INVALID_SYMBOL_ID;
         mask = self.hash_capacity - 1;
         h = hash_symbol(name);  // recompute with new mask

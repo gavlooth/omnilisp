@@ -3,7 +3,11 @@ module main;
 import std::io;
 
 fn bool load_build_source(char* input_file, char[]* source_out, EntryFileReadKind* kind_out = null) {
-    char[] input_path = input_file[:cstr_len(input_file)];
+    char[] input_path;
+    if (!cli_cstr_slice(input_file, &input_path)) {
+        if (kind_out != null) *kind_out = ENTRY_FILE_READ_PATH_FAILURE;
+        return false;
+    }
     if (try src = io::file::load_temp((String)input_path)) {
         *source_out = src;
         if (kind_out != null) *kind_out = ENTRY_FILE_READ_OK;

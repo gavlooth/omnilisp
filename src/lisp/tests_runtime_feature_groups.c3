@@ -2,6 +2,7 @@ module lisp;
 
 
 import std::io;
+import std::core::mem;
 
 fn void run_diagnostic_tests(Interp* interp, int* pass, int* fail) {
     emit_test_section_banner("Diagnostic Tests");
@@ -71,6 +72,7 @@ fn void run_diagnostic_tests_isolated(int* pass, int* fail) {
 fn void run_atomic_tests(Interp* interp, int* pass, int* fail) {
     emit_test_section_banner("Atomic Tests");
     run_atomic_core_tests(interp, pass, fail);
+    run_atomic_rejects_non_atomic_ffi_handle_tests(interp, pass, fail);
     run_atomic_lifetime_tests(interp, pass, fail);
 }
 
@@ -127,6 +129,34 @@ fn void run_atomic_core_tests(Interp* interp, int* pass, int* fail) {
             (*fail)++;
         }
     }
+}
+
+fn void run_atomic_rejects_non_atomic_ffi_handle_tests(Interp* interp, int* pass, int* fail) {
+    long* payload = (long*)mem::malloc(long.sizeof);
+    Value* handle = null;
+    bool setup_ok = false;
+    if (payload != null) {
+        payload[0] = 123;
+        handle = make_ffi_handle_ex(interp, (void*)payload, "not-atomic-ref", null, true, false);
+        setup_ok = handle != null &&
+            env_define_with_barrier_checked(interp.global_env, interp.symbols.intern("__atomic_bad_ffi"), handle, interp);
+    }
+
+    if (!setup_ok) {
+        io::printn("[FAIL] atomic primitives reject non-atomic FFI handles (setup)");
+        (*fail)++;
+        return;
+    }
+
+    test_error_contains(interp, "atomic-read rejects non-atomic FFI handle",
+        "(atomic-read __atomic_bad_ffi)",
+        "atomic ref", pass, fail);
+    test_error_contains(interp, "atomic-add! rejects non-atomic FFI handle",
+        "(atomic-add! __atomic_bad_ffi 1)",
+        "atomic ref", pass, fail);
+    test_error_contains(interp, "atomic-cas! rejects non-atomic FFI handle",
+        "(atomic-cas! __atomic_bad_ffi 123 456)",
+        "atomic ref", pass, fail);
 }
 
 fn void run_atomic_lifetime_tests(Interp* interp, int* pass, int* fail) {

@@ -125,9 +125,25 @@ fn Value* jit_shift_impl(Expr* expr, Env* env, Interp* interp) {
     k.is_coroutine_based = true;
 
     Value* k_val = make_continuation(interp, k);
+    if (k_val == null || k_val.tag == ERROR) {
+        interp_discard_lisp_continuation(interp, k);
+        return k_val != null ? k_val : runtime_effect_raise(
+            interp,
+            "runtime/capture-continuation-allocation-failed",
+            "capture: failed to allocate continuation wrapper"
+        );
+    }
 
     // Bind k in the shift body's environment
     Env* shift_env = jit_env_extend(interp, env, expr.shift.k_name, k_val);
+    if (shift_env == null) {
+        interp_discard_lisp_continuation(interp, k);
+        return runtime_effect_raise(
+            interp,
+            "runtime/out-of-memory",
+            "capture: out of memory while binding continuation"
+        );
+    }
 
     // Store shift body info for the parent (jit_reset_impl) to evaluate
     rstate.shifted = true;
@@ -156,6 +172,7 @@ fn Value* jit_shift_impl(Expr* expr, Env* env, Interp* interp) {
         rstate.shifted = false;
         rstate.shift_body = null;
         rstate.shift_env = null;
+        interp_discard_lisp_continuation(interp, k);
         restore_interp_state_preserve_raise(interp, &saved);
         return raise_error_with_payload_names(interp, "runtime", "runtime/suspend-scope-guard", "stack engine: failed to register suspend scope guard");
     }

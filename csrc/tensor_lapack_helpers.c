@@ -319,17 +319,39 @@ static int omni_tensor_lapack_resolve(void) {
             cgeev_symbol != NULL
         ) {
             omni_tensor_lapack_handle = handle;
-            omni_tensor_lapacke_dgesv = (omni_lapacke_dgesv_fn)dgesv_symbol;
-            omni_tensor_lapacke_dgetrf = (omni_lapacke_dgetrf_fn)dgetrf_symbol;
-            omni_tensor_lapacke_dpotrf = (omni_lapacke_dpotrf_fn)dpotrf_symbol;
-            omni_tensor_lapacke_dgeqrf = (omni_lapacke_dgeqrf_fn)dgeqrf_symbol;
-            omni_tensor_lapacke_dorgqr = (omni_lapacke_dorgqr_fn)dorgqr_symbol;
-            omni_tensor_lapacke_dsyev = (omni_lapacke_dsyev_fn)dsyev_symbol;
-            omni_tensor_lapacke_dgesvd = (omni_lapacke_dgesvd_fn)dgesvd_symbol;
-            omni_tensor_lapacke_dgeev = (omni_lapacke_dgeev_fn)dgeev_symbol;
-            omni_tensor_lapacke_sgeev = (omni_lapacke_sgeev_fn)sgeev_symbol;
-            omni_tensor_lapacke_zgeev = (omni_lapacke_zgeev_fn)zgeev_symbol;
-            omni_tensor_lapacke_cgeev = (omni_lapacke_cgeev_fn)cgeev_symbol;
+            if (dgesv_symbol != NULL) {
+                omni_tensor_lapacke_dgesv = (omni_lapacke_dgesv_fn)dgesv_symbol;
+            }
+            if (dgetrf_symbol != NULL) {
+                omni_tensor_lapacke_dgetrf = (omni_lapacke_dgetrf_fn)dgetrf_symbol;
+            }
+            if (dpotrf_symbol != NULL) {
+                omni_tensor_lapacke_dpotrf = (omni_lapacke_dpotrf_fn)dpotrf_symbol;
+            }
+            if (dgeqrf_symbol != NULL) {
+                omni_tensor_lapacke_dgeqrf = (omni_lapacke_dgeqrf_fn)dgeqrf_symbol;
+            }
+            if (dorgqr_symbol != NULL) {
+                omni_tensor_lapacke_dorgqr = (omni_lapacke_dorgqr_fn)dorgqr_symbol;
+            }
+            if (dsyev_symbol != NULL) {
+                omni_tensor_lapacke_dsyev = (omni_lapacke_dsyev_fn)dsyev_symbol;
+            }
+            if (dgesvd_symbol != NULL) {
+                omni_tensor_lapacke_dgesvd = (omni_lapacke_dgesvd_fn)dgesvd_symbol;
+            }
+            if (dgeev_symbol != NULL) {
+                omni_tensor_lapacke_dgeev = (omni_lapacke_dgeev_fn)dgeev_symbol;
+            }
+            if (sgeev_symbol != NULL) {
+                omni_tensor_lapacke_sgeev = (omni_lapacke_sgeev_fn)sgeev_symbol;
+            }
+            if (zgeev_symbol != NULL) {
+                omni_tensor_lapacke_zgeev = (omni_lapacke_zgeev_fn)zgeev_symbol;
+            }
+            if (cgeev_symbol != NULL) {
+                omni_tensor_lapacke_cgeev = (omni_lapacke_cgeev_fn)cgeev_symbol;
+            }
             return 1;
         }
         dlclose(handle);

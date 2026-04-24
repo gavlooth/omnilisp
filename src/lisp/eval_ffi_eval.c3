@@ -34,6 +34,14 @@ fn Value* eval_ffi_lib(Expr* expr, Env* env, Interp* interp) {
     if (path_val.str_len == 0 || path_val.str_len >= FFI_DLOPEN_REGISTRY_PATH_CAP) {
         return ffi_raise(interp, "ffi/invalid-argument", "ffi lib: path must be a non-empty string shorter than 256 bytes");
     }
+    CApiStringResult c_path = c_api_string_dup_no_nul(path_val.str_chars[:path_val.str_len], FFI_DLOPEN_REGISTRY_PATH_CAP - 1);
+    if (c_path.contains_nul) {
+        return ffi_raise(interp, "ffi/invalid-argument", "ffi lib: path contains embedded NUL byte");
+    }
+    if (!c_path.ok) {
+        return ffi_raise(interp, "ffi/out-of-memory", "ffi lib: out of memory");
+    }
+    defer c_api_string_free(&c_path);
 
     // Acquire shared dlopen handle via registry
     (void)dlerror();
@@ -45,13 +53,13 @@ fn Value* eval_ffi_lib(Expr* expr, Env* env, Interp* interp) {
         char[] msg;
         if (dl_err != null && dl_err[0] != 0) {
             if (try formatted = io::bprintf(&ebuf, "ffi lib: dlopen failed for '%s': %s (errno=%d)",
-                    (ZString)path_val.str_chars, (ZString)dl_err, saved_errno)) {
+                    c_path.ptr, (ZString)dl_err, saved_errno)) {
                 msg = formatted;
             } else {
                 msg = "ffi lib: dlopen failed (error formatting failed)";
             }
         } else if (try formatted = io::bprintf(&ebuf, "ffi lib: dlopen failed for '%s' (errno=%d)",
-                (ZString)path_val.str_chars, saved_errno)) {
+                c_path.ptr, saved_errno)) {
             msg = formatted;
         } else {
             msg = "ffi lib: dlopen failed";

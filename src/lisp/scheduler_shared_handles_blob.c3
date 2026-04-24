@@ -2,10 +2,6 @@ module lisp;
 
 import std::core::mem;
 
-fn SharedHandleBlob* shared_handle_as_blob(SharedHandle* handle) @inline {
-    return scheduler_shared_registry_resolve_blob(handle);
-}
-
 fn SharedHandle* shared_handle_blob_new_owned(char* owned_bytes, usz len) {
     if (owned_bytes == null) return null;
     if (!scheduler_shared_registry_ensure_ready()) {
@@ -53,16 +49,6 @@ fn SharedHandle* shared_handle_blob_new_copy(char[] bytes) {
     return shared_handle_blob_new_owned(copy, bytes.len);
 }
 
-fn char[] shared_handle_blob_bytes(SharedHandle* handle, usz* out_len) @inline {
-    SharedHandleBlob* payload = shared_handle_as_blob(handle);
-    if (payload == null || payload.bytes == null) {
-        if (out_len != null) *out_len = 0;
-        return "";
-    }
-    if (out_len != null) *out_len = payload.len;
-    return payload.bytes[:payload.len];
-}
-
 fn SharedHandle* scheduler_publish_shared_bytes_owned(char* owned_bytes, usz len) @inline {
     return shared_handle_blob_new_owned(owned_bytes, len);
 }
@@ -90,40 +76,12 @@ fn SharedHandle* scheduler_domain_publish_shared_owned(SchedulerDomain* domain, 
     return scheduler_publish_shared_bytes_owned(owned_bytes, len);
 }
 
-fn bool scheduler_project_shared_bytes_view(SharedHandle* handle, char[]* out_bytes) @inline {
-    if (out_bytes != null) *out_bytes = "";
-    SharedHandleBlob* payload = shared_handle_as_blob(handle);
-    if (payload == null || payload.bytes == null) return false;
-    if (out_bytes != null) *out_bytes = payload.bytes[:payload.len];
-    return true;
-}
-
-fn bool scheduler_project_shared(SharedHandle* handle, char[]* out_bytes) @inline {
-    return scheduler_project_shared_bytes_view(handle, out_bytes);
+fn bool scheduler_copy_shared_bytes_owned(SharedHandle* handle, char** out_bytes, usz* out_len) @inline {
+    return scheduler_shared_registry_copy_blob_bytes(handle, out_bytes, out_len);
 }
 
 fn bool scheduler_take_shared_bytes_owned(SharedHandle* handle, char** out_bytes, usz* out_len) @inline {
-    if (out_bytes != null) *out_bytes = null;
-    if (out_len != null) *out_len = 0;
-    SharedHandleBlob* payload = shared_handle_as_blob(handle);
-    if (payload == null || payload.bytes == null || out_bytes == null) return false;
-
-    usz len = payload.len;
-    if (len == usz.max) return false;
-    char* owned = (char*)mem::malloc(len + 1);
-    if (owned == null) return false;
-    for (usz i = 0; i < len; i++) owned[i] = payload.bytes[i];
-    owned[len] = 0;
-    *out_bytes = owned;
-    if (out_len != null) *out_len = payload.len;
-    return true;
-}
-
-fn void shared_handle_clear_blob(SharedHandle* handle) @inline {
-    SharedHandleBlob* payload = shared_handle_as_blob(handle);
-    if (payload == null) return;
-    payload.bytes = null;
-    payload.len = 0;
+    return scheduler_copy_shared_bytes_owned(handle, out_bytes, out_len);
 }
 
 fn void shared_handle_release(SharedHandle* handle) @inline {

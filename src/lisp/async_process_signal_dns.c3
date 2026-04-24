@@ -19,7 +19,11 @@ fn Value* prim_signal_handle(Value*[] args, Env* env, Interp* interp) {
             return io_raise(interp, "io/signal-handle-expected-sig-callback", "signal-handle: expected (signal-handle sig callback)");
         }
         callback_v = car(packed);
-    } else if (args.len >= 2) {
+        packed = cdr(packed);
+        if (!is_nil(packed)) {
+            return io_raise(interp, "io/signal-handle-expected-sig-callback", "signal-handle: expected (signal-handle sig callback)");
+        }
+    } else if (args.len == 2) {
         sig_v = args[0];
         callback_v = args[1];
     } else {
@@ -95,6 +99,9 @@ fn Value* prim_dns_resolve(Value*[] args, Env* env, Interp* interp) {
 
     char[] host = args[0].str_chars[:args[0].str_len];
 
+    if (c_api_string_contains_nul(host)) {
+        return io_raise(interp, "io/dns-resolve-invalid-hostname", "dns-resolve: hostname contains embedded NUL byte");
+    }
     if (!scheduler_is_running_fiber_context()) {
         return io_raise(
             interp,

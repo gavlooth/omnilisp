@@ -75,10 +75,22 @@ fn bool lookup_named_grammar(lisp::SymbolId name, Grammar* out_grammar, int* out
     return true;
 }
 
-fn bool store_named_grammar(lisp::SymbolId grammar_name, Grammar grammar, int start_clause) {
+fn bool named_grammar_exists(lisp::SymbolId name) {
     named_grammar_lock();
     defer named_grammar_unlock();
 
+    return find_grammar_index_locked(name) >= 0;
+}
+
+fn bool store_named_grammar(lisp::SymbolId grammar_name, Grammar grammar, int start_clause, bool* duplicate_name) {
+    named_grammar_lock();
+    defer named_grammar_unlock();
+
+    *duplicate_name = false;
+    if (find_grammar_index_locked(grammar_name) >= 0) {
+        *duplicate_name = true;
+        return false;
+    }
     if (!ensure_named_grammar_capacity()) return false;
 
     g_named_grammars[g_grammar_count].name = grammar_name;

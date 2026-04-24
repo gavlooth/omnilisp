@@ -110,7 +110,8 @@ fn int run_eval_mode(int argc, char** argv, int eval_idx) {
         return print_unexpected_mode_arg("--eval", extra);
     }
 
-    char[] source = source_arg[:cstr_len(source_arg)];
+    char[] source;
+    if (!cli_cstr_slice(source_arg, &source)) return print_cli_cstr_too_long("--eval source", json);
     lisp::Interp* interp = create_runtime_interp();
     if (interp == null) {
         lisp::EvalResult result = lisp::eval_error("failed to create runtime interpreter for --eval");

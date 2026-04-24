@@ -65,18 +65,51 @@ fn void Compiler.emit_recursive_closure_self_patch(Compiler* self, Expr* rec_ini
 fn bool Compiler.compile_mutable_captured_let(Compiler* self, Expr* expr, bool tail, usz* result) {
     if (!self.is_mutable_captured_var(expr.let_expr.name)) return false;
     usz init_r = self.compile_to_temp(expr.let_expr.init);
+    usz result_r = self.next_result();
+    self.emit_temp_decl(result_r);
+    self.emit(";\n");
+    usz define_err_r = self.next_result();
     self.emit_indent();
-    self.emit("aot::define_var(\"");
+    self.emit_temp_decl(define_err_r);
+    self.emit(" = aot::define_var(\"");
     char[] mc_name = self.interp.symbols.get_name(expr.let_expr.name);
     self.emit_escaped(mc_name);
     self.emit("\", ");
     self.emit_temp_ref(init_r);
     self.emit(");\n");
+    self.emit_indent();
+    self.emit("if (");
+    self.emit_temp_ref(define_err_r);
+    self.emit(" != null) {\n");
+    self.indent++;
+    self.emit_indent();
+    self.emit_temp_ref(result_r);
+    self.emit(" = ");
+    self.emit_temp_ref(define_err_r);
+    self.emit(";\n");
+    self.indent--;
+    self.emit_indent();
+    self.emit("} else {\n");
+    self.indent++;
     if (tail) {
-        *result = self.compile_to_temp_tail(expr.let_expr.body);
+        usz body_r = self.compile_to_temp_tail(expr.let_expr.body);
+        self.emit_indent();
+        self.emit_temp_ref(result_r);
+        self.emit(" = ");
+        self.emit_temp_ref(body_r);
+        self.emit(";\n");
     } else {
-        *result = self.compile_to_temp(expr.let_expr.body);
+        usz body_r = self.compile_to_temp(expr.let_expr.body);
+        self.emit_indent();
+        self.emit_temp_ref(result_r);
+        self.emit(" = ");
+        self.emit_temp_ref(body_r);
+        self.emit(";\n");
     }
+    self.indent--;
+    self.emit_indent();
+    self.emit("}\n");
+    *result = result_r;
     return true;
 }
 

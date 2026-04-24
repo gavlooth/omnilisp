@@ -156,6 +156,7 @@ fn Value* prim_deduce_match(Value*[] args, Env* env, Interp* interp) {
         interp,
         &subject_keys
     );
+    if (rows != null && rows.tag == ERROR) return rows;
     deduce_relation_schema_note_goal_directed_read_subject_keys(
         deduce_relation_lookup_schema(rel),
         &subject_keys

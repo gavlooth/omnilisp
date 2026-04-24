@@ -2,6 +2,21 @@ module lisp;
 
 import std::core::mem;
 
+int g_scheduler_force_task_spawn_batch_task_ids_alloc_fail_nth = 0;
+int g_scheduler_force_task_spawn_batch_generations_alloc_fail_nth = 0;
+
+fn bool scheduler_should_force_task_spawn_batch_task_ids_alloc_fail() @inline {
+    if (g_scheduler_force_task_spawn_batch_task_ids_alloc_fail_nth <= 0) return false;
+    g_scheduler_force_task_spawn_batch_task_ids_alloc_fail_nth--;
+    return g_scheduler_force_task_spawn_batch_task_ids_alloc_fail_nth == 0;
+}
+
+fn bool scheduler_should_force_task_spawn_batch_generations_alloc_fail() @inline {
+    if (g_scheduler_force_task_spawn_batch_generations_alloc_fail_nth <= 0) return false;
+    g_scheduler_force_task_spawn_batch_generations_alloc_fail_nth--;
+    return g_scheduler_force_task_spawn_batch_generations_alloc_fail_nth == 0;
+}
+
 // ============================================================
 // (__raw-task-spawn (op arg...)) -> task-handle
 //
@@ -11,14 +26,14 @@ import std::core::mem;
 fn Value* scheduler_prepare_task_spawn(OffloadWork* work, usz* task_id_out, Interp* interp) {
     usz task_id = scheduler_alloc_thread_task();
     if (task_id == NO_TASK) {
-        scheduler_release_shared(work.shared);
+        scheduler_release_offload_work(work);
         return scheduler_raise(interp, "scheduler/task-spawn-task-table-full", "task-spawn: task table full");
     }
 
     work.fiber_id = NO_FIBER;
     work.task_id = task_id;
     if (!scheduler_enqueue_offload(*work)) {
-        scheduler_release_shared(work.shared);
+        scheduler_release_offload_work(work);
         scheduler_drop_thread_task(task_id);
         return scheduler_raise(
             interp,
@@ -138,15 +153,25 @@ fn Value* prim_task_spawn_batch(Value*[] args, Env* env, Interp* interp) {
             &works[i],
             interp
         );
-        if (parse_err != null) return parse_err;
+        if (parse_err != null) {
+            scheduler_release_offload_work_range(works.ptr, 0, i + 1);
+            return parse_err;
+        }
         cur = cdr(cur);
     }
 
-    usz[] task_ids = mem::new_array(usz, job_count);
-    uint[] generations = mem::new_array(uint, job_count);
+    usz[] task_ids = {};
+    if (!scheduler_should_force_task_spawn_batch_task_ids_alloc_fail()) {
+        task_ids = mem::new_array(usz, job_count);
+    }
+    uint[] generations = {};
+    if (!scheduler_should_force_task_spawn_batch_generations_alloc_fail()) {
+        generations = mem::new_array(uint, job_count);
+    }
     if (task_ids.ptr == null || generations.ptr == null) {
         if (task_ids.ptr != null) mem::free(task_ids.ptr);
         if (generations.ptr != null) mem::free(generations.ptr);
+        scheduler_release_offload_work_range(works.ptr, 0, job_count);
         return scheduler_raise(
             interp,
             "scheduler/task-spawn-batch-out-of-memory",
@@ -166,6 +191,7 @@ fn Value* prim_task_spawn_batch(Value*[] args, Env* env, Interp* interp) {
                     scheduler_drop_thread_task(task_ids[j], generations[j]);
                 }
             }
+            scheduler_release_offload_work_range(works.ptr, i + 1, job_count);
             return spawn_err;
         }
 
@@ -177,6 +203,7 @@ fn Value* prim_task_spawn_batch(Value*[] args, Env* env, Interp* interp) {
                     scheduler_drop_thread_task(task_ids[j], generations[j]);
                 }
             }
+            scheduler_release_offload_work_range(works.ptr, i + 1, job_count);
             return scheduler_raise(
                 interp,
                 "scheduler/task-spawn-task-handle-invalid",

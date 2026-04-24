@@ -43,6 +43,25 @@ fn bool path_has_suffix(char[] path, char[] suffix) {
     return true;
 }
 
+fn bool init_project_name_is_valid(char[] name) {
+    if (name.len == 0) return false;
+    if (name.len == 1 && name[0] == '.') return false;
+    if (name.len == 2 && name[0] == '.' && name[1] == '.') return false;
+    if (name[0] == '/' || name[0] == '\\') return false;
+
+    for (usz i = 0; i < name.len; i++) {
+        uint byte = (uint)name[i] & 0xFF;
+        if (byte < 0x20 || byte == 0x7F) return false;
+        if (name[i] == '/' || name[i] == '\\') return false;
+    }
+    return true;
+}
+
+fn int print_init_invalid_project_name() {
+    io::printn("Error: invalid project name for --init: use a single directory name without path separators, '.' or '..'");
+    return 1;
+}
+
 fn void maybe_force_init_test_file_collision(char* path_cstr, char[] suffix) {
     if (suffix.len == 0) return;
     char* forced_suffix = c_getenv("OMNI_INIT_TEST_FILE_COLLISION_SUFFIX");
@@ -56,7 +75,11 @@ fn void maybe_force_init_test_file_collision(char* path_cstr, char[] suffix) {
 fn bool init_should_force_write_failure(char[] path) {
     char* forced_suffix = c_getenv("OMNI_INIT_TEST_FAIL_WRITE_SUFFIX");
     if (forced_suffix == null) return false;
-    char[] suffix = forced_suffix[:cstr_len(forced_suffix)];
+    char[] suffix;
+    if (!cli_cstr_slice(forced_suffix, &suffix)) {
+        (void)print_cli_cstr_too_long("OMNI_INIT_TEST_FAIL_WRITE_SUFFIX");
+        return false;
+    }
     return path_has_suffix(path, suffix);
 }
 
@@ -125,23 +148,6 @@ fn bool init_project_root_is_fresh(char* name, usz name_len) {
 
 fn bool write_project_text_file(char[] path, char[] text) {
     if (init_should_force_write_failure(path)) return false;
-    if (try file = io::file::open((String)path, "w")) {
-        char[] remaining = text;
-        bool write_ok = true;
-        while (write_ok && remaining.len > 0) {
-            usz? written_opt = file.write(remaining);
-            if (catch err = written_opt) {
-                write_ok = false;
-                break;
-            }
-            if (written_opt == 0) {
-                write_ok = false;
-                break;
-            }
-            remaining = remaining[written_opt..];
-        }
-        if (catch err = file.close()) write_ok = false;
-        return write_ok;
-    }
-    return false;
+    EntryFileWriteKind write_kind = ENTRY_FILE_WRITE_GENERIC_FAILURE;
+    return entry_write_text_atomic(path, text, &write_kind);
 }

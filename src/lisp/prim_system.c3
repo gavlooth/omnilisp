@@ -1,5 +1,7 @@
 module lisp;
 
+import std::core::mem;
+
 extern fn void* c_popen(char* command, char* mode) @extern("popen");
 extern fn int c_pclose(void* stream) @extern("pclose");
 extern fn usz c_fread(void* ptr, usz size, usz count, void* stream) @extern("fread");
@@ -8,6 +10,19 @@ extern fn char* c_getenv(char* name) @extern("getenv");
 extern fn long c_time(long* t) @extern("time");
 extern fn int c_usleep(uint usec) @extern("usleep");
 extern fn void c_exit(int status) @extern("_exit");
+
+const double SYSTEM_SLEEP_USEC_PER_SECOND = 1000000.0;
+const double SYSTEM_SLEEP_MAX_SECONDS = (double)uint.max / SYSTEM_SLEEP_USEC_PER_SECOND;
+const usz SYSTEM_SHELL_INITIAL_OUTPUT_CAP = 8192;
+
+fn long prim_shell_decode_wait_status(int status) {
+    if (status < 0) return -1;
+    int term_signal = status & 0x7f;
+    if (term_signal == 0) return (long)((status >> 8) & 0xff);
+    if (term_signal != 0x7f) return (long)(128 + term_signal);
+    return (long)status;
+}
+
 /**
  * (shell cmd) -> string (stdout of command)
  * (shell cmd true) -> list (stdout-string exit-code)
@@ -17,26 +32,58 @@ extern fn void c_exit(int status) @extern("_exit");
 @require interp != null
 *>
 fn Value* prim_shell(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_string(args[0])) {
+    if (args.len < 1 || args.len > 2) return primitive_arity_raise(interp, "shell", "1 or 2 arguments", args.len);
+    if (!is_string(args[0])) {
         return runtime_raise(interp, "type/arg-mismatch", "shell: expected string command");
     }
 
-    void* fp = c_popen((ZString)args[0].str_chars, "r");
+    CApiStringResult command = c_api_string_dup_no_nul(args[0].str_chars[:args[0].str_len]);
+    if (command.contains_nul) {
+        return runtime_raise(interp, "runtime/invalid-argument", "shell: command contains embedded NUL byte");
+    }
+    if (!command.ok) {
+        return runtime_raise(interp, "runtime/allocation-failed", "shell: failed to allocate command buffer");
+    }
+    defer c_api_string_free(&command);
+
+    usz cap = SYSTEM_SHELL_INITIAL_OUTPUT_CAP;
+    char* buf = (char*)mem::malloc(cap);
+    if (buf == null) {
+        return runtime_raise(interp, "runtime/allocation-failed", "shell: failed to allocate output buffer");
+    }
+    defer mem::free(buf);
+
+    void* fp = c_popen(command.ptr, "r");
     if (fp == null) {
         return runtime_raise(interp, "runtime/evaluation-error", "shell: popen failed");
     }
 
-    // Read output into buffer
-    char[8192] buf;
     usz total = 0;
-    while (c_feof(fp) == 0) {
-        usz n = c_fread(&buf[total], 1, 8192 - total, fp);
+    while (true) {
+        if (total == cap) {
+            if (cap > usz.max / 2) {
+                (void)c_pclose(fp);
+                return runtime_raise(interp, "runtime/range-error", "shell: output too large");
+            }
+            usz next_cap = cap * 2;
+            char* grown = (char*)mem::realloc(buf, next_cap);
+            if (grown == null) {
+                (void)c_pclose(fp);
+                return runtime_raise(interp, "runtime/allocation-failed", "shell: failed to grow output buffer");
+            }
+            buf = grown;
+            cap = next_cap;
+        }
+
+        usz n = c_fread(buf + total, 1, cap - total, fp);
         if (n == 0) break;
         total += n;
-        if (total >= 8192) break;
     }
     int status = c_pclose(fp);
-    int exit_code = status >> 8;  // WEXITSTATUS
+    long exit_code = prim_shell_decode_wait_status(status);
+    if (exit_code < 0) {
+        return runtime_raise(interp, "runtime/evaluation-error", "shell: pclose failed");
+    }
 
     // Strip trailing newline
     if (total > 0 && buf[total - 1] == '\n') total--;
@@ -47,6 +94,7 @@ fn Value* prim_shell(Value*[] args, Env* env, Interp* interp) {
     // If second arg is truthy, return (output exit-code)
     if (args.len >= 2 && !is_falsy(args[1], interp)) {
         Value* code = make_int(interp, exit_code);
+        if (code == null || code.tag == ERROR) return code;
         return make_list2_or_error(interp, output, code, "shell: failed to construct result list");
     }
     return output;
@@ -62,7 +110,16 @@ fn Value* prim_getenv(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_string(args[0])) {
         return runtime_raise(interp, "type/arg-mismatch", "getenv: expected string");
     }
-    char* val = c_getenv((ZString)args[0].str_chars);
+    CApiStringResult name = c_api_string_dup_no_nul(args[0].str_chars[:args[0].str_len]);
+    if (name.contains_nul) {
+        return runtime_raise(interp, "runtime/invalid-argument", "getenv: name contains embedded NUL byte");
+    }
+    if (!name.ok) {
+        return runtime_raise(interp, "runtime/allocation-failed", "getenv: failed to allocate name buffer");
+    }
+    defer c_api_string_free(&name);
+
+    char* val = c_getenv(name.ptr);
     if (val == null) return make_nil(interp);
     // Measure length
     usz len = 0;
@@ -107,8 +164,12 @@ fn Value* prim_time_ms(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_exit(Value*[] args, Env* env, Interp* interp) {
+    if (args.len > 1) return primitive_arity_raise(interp, "exit", "0 or 1 arguments", args.len);
     int code = 0;
-    if (args.len >= 1 && args[0].tag == INT) {
+    if (args.len == 1) {
+        if (args[0].tag != INT) {
+            return primitive_arg_type_raise(interp, "exit", 0, "Integer", args[0]);
+        }
         if (args[0].int_val < 0 || args[0].int_val > 255) {
             return runtime_raise(interp, "type/range-error", "exit: code must be between 0 and 255");
         }
@@ -126,13 +187,16 @@ fn Value* prim_exit(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_sleep(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return runtime_raise(interp, "type/arg-mismatch", "sleep: expected number of seconds");
+    if (args.len != 1) return runtime_raise(interp, "type/arg-mismatch", "sleep: expected exactly 1 argument");
     double secs;
     if (args[0].tag == INT) { secs = (double)args[0].int_val; }
     else if (args[0].tag == DOUBLE) { secs = args[0].double_val; }
     else if (args[0].tag == FLOAT32) { secs = (double)args[0].float32_val; }
     else { return runtime_raise(interp, "type/arg-mismatch", "sleep: expected number"); }
-    uint usec = (uint)(secs * 1000000.0);
+    if (!conversion_double_is_finite(secs) || secs < 0.0 || secs > SYSTEM_SLEEP_MAX_SECONDS) {
+        return runtime_raise(interp, "type/range-error", "sleep: seconds must be non-negative finite and within range");
+    }
+    uint usec = (uint)(secs * SYSTEM_SLEEP_USEC_PER_SECOND);
     if (c_usleep(usec) != 0) {
         return runtime_raise(interp, "system/interrupted", "sleep: interrupted or failed");
     }

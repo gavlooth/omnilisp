@@ -45,6 +45,10 @@ struct Compiler {
     // D2: Track referenced primitives for global caching
     List{SymbolId} referenced_prims;
 
+    // Scoped module-open aliases active during AOT emission.
+    List{SymbolId} module_open_exports;
+    List{SymbolId} module_open_aliases;
+
     // When true, emit aot::print_value for the last non-define expression
     bool print_last;
 
@@ -109,6 +113,7 @@ bool g_compiler_force_lambda_capture_size_overflow = false;
 bool g_compiler_force_lambda_param_size_overflow = false;
 bool g_compiler_force_lambda_lookup_miss = false;
 bool g_compiler_force_lambda_emit_lookup_miss = false;
+bool g_compiler_force_call_arg_temps_alloc_fail = false;
 
 fn bool compiler_checked_mul_usz(usz left, usz right, usz* out) @inline {
     if (left == 0 || right == 0) {

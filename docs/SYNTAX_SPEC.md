@@ -22,7 +22,7 @@
 | T_BACKQUOTE | `` ` `` | Quasiquote shorthand |
 | T_COMMA | `,` | Unquote shorthand |
 | T_COMMA_AT | `,@` | Unquote-splicing shorthand |
-| T_INT | `-?[0-9]+`, `#x-?[0-9a-fA-F]+`, `#b-?[01]+`, `#o-?[0-7]+` | Fixed-width signed integer literals in `long.min..long.max` |
+| T_INT | `-?[0-9]+`, `#x-?[0-9A-F]+`, `#b-?[01]+`, `#o-?[0-7]+` | Fixed-width signed integer literals in `long.min..long.max`; lowercase `#x...` symbol-like forms remain reader tags |
 | T_FLOAT | `-?[0-9]+\.[0-9]+` | Floating-point literals |
 | T_STRING | `"..."` | String literals with escapes: `\n`, `\t`, `\\`, `\"` |
 | T_REGEX | `#r"..."` | Regex literal payload, represented as a string value |
@@ -474,6 +474,8 @@ expr        = literal | symbol | path | quoted | quasiquoted
 literal     = integer | radix_integer | float | string ;
 integer     = [ "-" ] digit { digit } ;
 radix_integer = ( "#x" | "#b" | "#o" ) [ "-" ] radix_digit { radix_digit } ;
+(* hex radix alpha digits are uppercase A through F; lowercase symbol-like
+   forms such as #xface, #b101tag, and #o777tag are reader tags. *)
 float       = [ "-" ] digit { digit } "." digit { digit } ;
 string      = '"' { char | escape } '"' ;
 symbol      = symbol_char { symbol_char } ;

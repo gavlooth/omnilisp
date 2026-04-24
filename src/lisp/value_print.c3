@@ -52,7 +52,9 @@ fn void print_value(Value* v, SymbolTable* syms) {
             c64buf[c64pb.pos] = 0;
             io::printf("%s", (ZString)&c64buf);
         case STRING:
-            io::printf("\"%s\"", (ZString)v.str_chars);
+            io::print("\"");
+            value_print_emit_escaped_string_content(v.str_chars[:v.str_len]);
+            io::print("\"");
         case SYMBOL:
             io::printf("%s", (ZString)syms.get_name(v.sym_val));
         case CONS:

@@ -275,7 +275,7 @@ compile_c_source() {
   local obj="$OBJ_DIR/$obj_name"
   local depfile="$obj.d"
   if object_needs_rebuild "$src" "$obj" "$depfile"; then
-    cc -O2 \
+    "${CC:-cc}" -O2 \
       -Ideps/src/yyjson/src \
       -Ideps/src/BearSSL/inc \
       -Ideps/src/libuv/include \

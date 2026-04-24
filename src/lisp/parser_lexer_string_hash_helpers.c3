@@ -62,7 +62,6 @@ fn bool Lexer.scan_hash_regex_literal(Lexer* self, char next) {
 
 fn int hash_radix_digit_value(char c) @inline {
     if (c >= '0' && c <= '9') return (int)(c - '0');
-    if (c >= 'a' && c <= 'f') return 10 + (int)(c - 'a');
     if (c >= 'A' && c <= 'F') return 10 + (int)(c - 'A');
     return -1;
 }
@@ -83,10 +82,15 @@ fn bool Lexer.scan_hash_radix_literal(Lexer* self, char next) {
     if (digit_pos < self.len && self.source[digit_pos] == '-') digit_pos++;
     if (digit_pos >= self.len) return false;
     int first_value = hash_radix_digit_value(self.source[digit_pos]);
-    if (first_value < 0) return false;
-    if (first_value >= radix) {
-        if (self.source[digit_pos] >= 'A' && self.source[digit_pos] <= 'z') return false;
+    if (first_value < 0 || first_value >= radix) return false;
+
+    usz end_pos = digit_pos;
+    while (end_pos < self.len) {
+        int digit = hash_radix_digit_value(self.source[end_pos]);
+        if (digit < 0 || digit >= radix) break;
+        end_pos++;
     }
+    if (end_pos < self.len && is_symbol_char(self.source[end_pos])) return false;
 
     self.next_char();  // consume #
     self.next_char();  // consume radix marker
@@ -115,11 +119,6 @@ fn bool Lexer.scan_hash_radix_literal(Lexer* self, char next) {
         self.set_error_text("invalid radix integer literal");
         return true;
     }
-    if (self.pos < self.len && is_symbol_char(self.source[self.pos])) {
-        self.set_error_text("invalid digit in radix integer literal");
-        return true;
-    }
-
     self.current.type = T_INT;
     self.current.int_value = negative ? -val : val;
     self.current.text_len = 0;

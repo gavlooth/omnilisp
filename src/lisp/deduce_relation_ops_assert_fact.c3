@@ -12,6 +12,9 @@ fn void deduce_ignore_post_commit_error(Value* err, Interp* interp) {
     deduce_clear_post_commit_raise_state(interp);
 }
 
+// Test seam: force the idempotency lookup down the LMDB read-failure branch.
+bool g_deduce_force_fact_existing_read_fail = false;
+
 <*
 @require interp != null
 *>
@@ -65,6 +68,11 @@ fn Value* prim_assert_fact(Value*[] args, Env* env, Interp* interp) {
     }
 
     // Encode tuple
+    foreach (item : args[tuple_start..]) {
+        if (!deduce_value_supported_by_tuple_codec(item)) {
+            return deduce_raise(interp, "deduce/fact-unsupported-value", "fact!: unsupported tuple value");
+        }
+    }
     char[4096] key_buf;  // buffer: C-interop (keep) — binary tuple encoding for mdb_put
     usz? key_len = encode_tuple(args[tuple_start..], key_buf[..], 4096);
     if (catch err = key_len) {
@@ -93,7 +101,12 @@ fn Value* prim_assert_fact(Value*[] args, Env* env, Interp* interp) {
             if (ref_err != null) return ref_err;
         }
         MdbVal existing_data = {};
-        bool existed = mdb_get(txn.txn, rel.dbi, &key, &existing_data) == MDB_SUCCESS;
+        int get_rc = mdb_get(txn.txn, rel.dbi, &key, &existing_data);
+        if (g_deduce_force_fact_existing_read_fail) get_rc = -1;
+        if (get_rc != MDB_SUCCESS && get_rc != MDB_NOTFOUND) {
+            return deduce_raise(interp, "deduce/fact-read-failed", "fact!: existing fact lookup failed");
+        }
+        bool existed = get_rc == MDB_SUCCESS;
         int rc = mdb_put(txn.txn, rel.dbi, &key, &data, 0);
         if (rc != MDB_SUCCESS) {
             return deduce_raise(interp, "deduce/fact-put-failed", "fact!: put failed");
@@ -140,7 +153,13 @@ fn Value* prim_assert_fact(Value*[] args, Env* env, Interp* interp) {
     }
 
     MdbVal existing_data = {};
-    bool existed = mdb_get(write_txn, rel.dbi, &key, &existing_data) == MDB_SUCCESS;
+    int get_rc = mdb_get(write_txn, rel.dbi, &key, &existing_data);
+    if (g_deduce_force_fact_existing_read_fail) get_rc = -1;
+    if (get_rc != MDB_SUCCESS && get_rc != MDB_NOTFOUND) {
+        mdb_txn_abort(write_txn);
+        return deduce_raise(interp, "deduce/fact-read-failed", "fact!: existing fact lookup failed");
+    }
+    bool existed = get_rc == MDB_SUCCESS;
 
     rc = mdb_put(write_txn, rel.dbi, &key, &data, 0);
     if (rc != MDB_SUCCESS) {

@@ -2,6 +2,7 @@
 #include <string.h>
 #include <signal.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <stdatomic.h>
 #include "../deps/src/libuv/include/uv.h"
 
@@ -31,6 +32,15 @@ static void omni_uv_process_exit_cb(uv_process_t* req, int64_t exit_status, int 
 
 static void omni_uv_close_fd_if_valid(int fd) {
     if (fd >= 0) (void)close(fd);
+}
+
+static int omni_uv_set_fd_cloexec(int fd) {
+    if (fd < 0) return UV_EINVAL;
+    int flags = fcntl(fd, F_GETFD, 0);
+    if (flags < 0) return UV_EIO;
+    if ((flags & FD_CLOEXEC) != 0) return 0;
+    if (fcntl(fd, F_SETFD, flags | FD_CLOEXEC) < 0) return UV_EIO;
+    return 0;
 }
 
 int omni_uv_process_spawn(
@@ -67,6 +77,21 @@ int omni_uv_process_spawn(
         omni_uv_close_fd_if_valid(stdout_pipe[0]);
         omni_uv_close_fd_if_valid(stdout_pipe[1]);
         return UV_EPIPE;
+    }
+
+    if (omni_uv_set_fd_cloexec(stdin_pipe[0]) < 0 ||
+        omni_uv_set_fd_cloexec(stdin_pipe[1]) < 0 ||
+        omni_uv_set_fd_cloexec(stdout_pipe[0]) < 0 ||
+        omni_uv_set_fd_cloexec(stdout_pipe[1]) < 0 ||
+        omni_uv_set_fd_cloexec(stderr_pipe[0]) < 0 ||
+        omni_uv_set_fd_cloexec(stderr_pipe[1]) < 0) {
+        omni_uv_close_fd_if_valid(stdin_pipe[0]);
+        omni_uv_close_fd_if_valid(stdin_pipe[1]);
+        omni_uv_close_fd_if_valid(stdout_pipe[0]);
+        omni_uv_close_fd_if_valid(stdout_pipe[1]);
+        omni_uv_close_fd_if_valid(stderr_pipe[0]);
+        omni_uv_close_fd_if_valid(stderr_pipe[1]);
+        return UV_EIO;
     }
 
     omni_uv_process_t* proc = (omni_uv_process_t*)calloc(1, sizeof(omni_uv_process_t));
@@ -192,6 +217,14 @@ int omni_uv_process_kill(void* process, int sig) {
     omni_uv_process_t* proc = (omni_uv_process_t*)process;
     if (!proc->spawned || proc->exited) return UV_ESRCH;
     return uv_kill(proc->process.pid, sig);
+}
+
+int omni_uv_process_max_signal(void) {
+#ifdef NSIG
+    return NSIG - 1;
+#else
+    return 64;
+#endif
 }
 
 int omni_uv_process_pid(void* process) {

@@ -182,6 +182,13 @@ omni_ftxui_status omni_ftxui_element_plot(
     if (options->x_values != nullptr && options->x_count != options->value_count) {
         return ctx_fail(context, OMNI_FTXUI_STATUS_INVALID_ARGUMENT, "element_plot: x count must match value count");
     }
+    if ((options->has_y_min && !std::isfinite(options->y_min)) ||
+        (options->has_y_max && !std::isfinite(options->y_max))) {
+        return ctx_fail(context, OMNI_FTXUI_STATUS_INVALID_ARGUMENT, "element_plot: y bounds must be finite");
+    }
+    if (options->has_y_min && options->has_y_max && options->y_min > options->y_max) {
+        return ctx_fail(context, OMNI_FTXUI_STATUS_INVALID_ARGUMENT, "element_plot: y min must be less than or equal to y max");
+    }
     if (options->kind == OMNI_FTXUI_PLOT_HEATMAP &&
         (options->heatmap_rows == 0 ||
          options->heatmap_cols == 0 ||

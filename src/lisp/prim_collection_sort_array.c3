@@ -7,10 +7,78 @@ import main;
 // Collection primitives: sorting + array operations.
 bool g_array_push_force_grow_alloc_fail = false;
 
+struct CollectionListItems {
+    Value** items;
+    usz len;
+}
+
 fn Value* array_promote_or_error(Value* value, Interp* interp) @inline {
     Value* promoted = boundary_promote_to_root(value, interp);
     if (promoted != null && promoted.tag == ERROR) return promoted;
     return promoted;
+}
+
+<*
+@require interp != null
+@require out != null
+*>
+fn Value* collect_proper_list_items(
+    Value* list,
+    Interp* interp,
+    char[] improper_message,
+    char[] cyclic_message,
+    char[] overflow_message,
+    char[] alloc_message,
+    CollectionListItems* out
+) {
+    out.items = null;
+    out.len = 0;
+
+    Value* slow = list;
+    Value* fast = list;
+    while (is_cons(fast)) {
+        fast = fast.cons_val.cdr;
+        if (!is_cons(fast)) break;
+        fast = fast.cons_val.cdr;
+        slow = slow.cons_val.cdr;
+        if (fast == slow) return collection_raise(interp, "type/range-error", cyclic_message);
+    }
+
+    usz count = 0;
+    Value* cur = list;
+    while (is_cons(cur)) {
+        if (count == usz.max) return collection_raise(interp, "type/range-error", overflow_message);
+        count++;
+        cur = cur.cons_val.cdr;
+    }
+    if (!is_nil(cur)) return collection_raise(interp, "type/arg-mismatch", improper_message);
+    if (count == 0) return null;
+    if (count > usz.max / Value*.sizeof) return collection_raise(interp, "type/range-error", overflow_message);
+
+    Value** items = (Value**)mem::malloc(Value*.sizeof * count);
+    if (items == null) return collection_raise(interp, "runtime/out-of-memory", alloc_message);
+
+    cur = list;
+    for (usz i = 0; i < count; i++) {
+        items[i] = cur.cons_val.car;
+        cur = cur.cons_val.cdr;
+    }
+    out.items = items;
+    out.len = count;
+    return null;
+}
+
+<*
+@require interp != null
+*>
+fn Value* sort_by_apply_comparator(Value* cmp_fn, Value* left, Value* right, Interp* interp) {
+    Value* tail = make_cons(interp, right, make_nil(interp));
+    if (tail == null || tail.tag == ERROR) return collection_raise(interp, "runtime/out-of-memory", "sort-by: failed to allocate comparator call args");
+    Value* call_args = make_cons(interp, left, tail);
+    if (call_args == null || call_args.tag == ERROR) return collection_raise(interp, "runtime/out-of-memory", "sort-by: failed to allocate comparator call args");
+    Value* result = jit_apply_multi_args(interp, cmp_fn, call_args, 2);
+    if (result == null) return collection_raise(interp, "runtime/evaluation-error", "sort-by: comparator application failed");
+    return result;
 }
 
 <*
@@ -20,16 +88,20 @@ fn Value* prim_sort(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return collection_raise(interp, "type/arg-mismatch", "sort: expected list argument");
     if (is_nil(args[0])) return make_nil(interp);
     if (!is_cons(args[0])) return collection_raise(interp, "type/arg-mismatch", "sort: expected list argument");
-    // Convert list to array
-    Value*[256] arr;
-    usz len = 0;
-    Value* cur = args[0];
-    while (is_cons(cur) && len < 256) {
-        arr[len++] = cur.cons_val.car;
-        cur = cur.cons_val.cdr;
-    }
-    if (is_cons(cur)) return collection_raise(interp, "type/range-error", "sort: list input too long");
-    if (!is_nil(cur)) return collection_raise(interp, "type/arg-mismatch", "sort: expected a proper list");
+    CollectionListItems list_items;
+    Value* collect_error = collect_proper_list_items(
+        args[0],
+        interp,
+        "sort: expected a proper list",
+        "sort: list input is cyclic",
+        "sort: list input too large",
+        "sort: out of memory while staging list",
+        &list_items
+    );
+    if (collect_error != null) return collect_error;
+    defer if (list_items.items != null) mem::free(list_items.items);
+    Value** arr = list_items.items;
+    usz len = list_items.len;
     // Insertion sort (stable)
     for (usz i = 1; i < len; i++) {
         Value* key = arr[i];
@@ -37,8 +109,9 @@ fn Value* prim_sort(Value*[] args, Env* env, Interp* interp) {
         // Compare: numbers by value, strings lexicographic
         while (j >= 0) {
             bool gt = false;
-            if (is_number(arr[(usz)j]) && is_number(key)) {
-                gt = to_double(arr[(usz)j]) > to_double(key);
+            if (is_numeric_value(arr[(usz)j]) && is_numeric_value(key)) {
+                int cmp = 0;
+                gt = numeric_values_compare(arr[(usz)j], key, &cmp) && cmp > 0;
             } else if (arr[(usz)j].tag == STRING && key.tag == STRING) {
                 // Lexicographic string comparison
                 usz al = arr[(usz)j].str_len; usz bl = key.str_len;
@@ -77,35 +150,35 @@ fn Value* prim_sort_by(Value*[] args, Env* env, Interp* interp) {
     Value* cmp_fn = args[0];
     if (is_nil(args[1])) return make_nil(interp);
     if (!is_cons(args[1])) return collection_raise(interp, "type/arg-mismatch", "sort-by: expected list argument");
-    // Convert list to array
-    Value*[256] arr;
-    usz len = 0;
-    Value* cur = args[1];
-    while (is_cons(cur) && len < 256) {
-        arr[len++] = cur.cons_val.car;
-        cur = cur.cons_val.cdr;
-    }
-    if (is_cons(cur)) return collection_raise(interp, "type/range-error", "sort-by: list input too long");
-    if (!is_nil(cur)) return collection_raise(interp, "type/arg-mismatch", "sort-by: expected a proper list");
+    CollectionListItems list_items;
+    Value* collect_error = collect_proper_list_items(
+        args[1],
+        interp,
+        "sort-by: expected a proper list",
+        "sort-by: list input is cyclic",
+        "sort-by: list input too large",
+        "sort-by: out of memory while staging list",
+        &list_items
+    );
+    if (collect_error != null) return collect_error;
+    defer if (list_items.items != null) mem::free(list_items.items);
+    Value** arr = list_items.items;
+    usz len = list_items.len;
     // Insertion sort with custom comparator
     for (usz i = 1; i < len; i++) {
         Value* key = arr[i];
         isz j = (isz)i - 1;
         while (j >= 0) {
-            // Call comparator: (cmp a b) should return negative/0/positive or truthy for a>b
-            Value* r1 = jit_apply_value(cmp_fn, arr[(usz)j], interp);
-            if (r1 == null) return collection_raise(interp, "runtime/evaluation-error", "sort-by: comparator application failed");
-            if (r1.tag == ERROR) return r1;
-            Value* r2 = jit_apply_value(r1, key, interp);
+            // Comparator returns positive numeric or truthy when left should move after right.
+            Value* r2 = sort_by_apply_comparator(cmp_fn, arr[(usz)j], key, interp);
             if (r2 == null) return collection_raise(interp, "runtime/evaluation-error", "sort-by: comparator application failed");
             if (r2.tag == ERROR) return r2;
-            // If result > 0 (or truthy for >), swap
             bool gt = false;
             double cmp_value = 0.0;
             if (try_numeric_to_double(r2, &cmp_value)) {
                 gt = cmp_value > 0.0;
             } else {
-                gt = !is_nil(r2);
+                gt = !is_falsy(r2, interp);
             }
             if (!gt) break;
             arr[(usz)(j + 1)] = arr[(usz)j];
@@ -143,25 +216,27 @@ fn Value* prim_array(Value*[] args, Env* env, Interp* interp) {
 
     // Single list/nil arg → convert to array
     if (args.len == 1 && (is_cons(args[0]) || is_nil(args[0]))) {
-        usz count = 0;
-        Value* cur = args[0];
-        while (is_cons(cur) && count < 65536) { count++; cur = cur.cons_val.cdr; }
-        if (is_cons(cur)) {
-            return collection_raise(interp, "type/range-error", "Array: list input too long or cyclic");
-        }
-        if (!is_nil(cur)) {
-            return collection_raise(interp, "type/arg-mismatch", "Array: expected a proper list");
-        }
-        Value* v = make_array(interp, count);
+        CollectionListItems list_items;
+        Value* collect_error = collect_proper_list_items(
+            args[0],
+            interp,
+            "Array: expected a proper list",
+            "Array: list input is cyclic",
+            "Array: list input too large",
+            "Array: out of memory while staging list",
+            &list_items
+        );
+        if (collect_error != null) return collect_error;
+        defer if (list_items.items != null) mem::free(list_items.items);
+
+        Value* v = make_array(interp, list_items.len);
         if (v == null || v.tag != ARRAY || v.array_val == null) return v;
-        cur = args[0];
-        for (usz i = 0; i < count; i++) {
-            Value* promoted = array_promote_or_error(cur.cons_val.car, interp);
+        for (usz i = 0; i < list_items.len; i++) {
+            Value* promoted = array_promote_or_error(list_items.items[i], interp);
             if (promoted == null || promoted.tag == ERROR) return promoted;
             v.array_val.items[i] = promoted;
-            cur = cur.cons_val.cdr;
         }
-        v.array_val.length = count;
+        v.array_val.length = list_items.len;
         return v;
     }
 
@@ -224,26 +299,28 @@ fn Value* prim_array_to_list(Value*[] args, Env* env, Interp* interp) {
 fn Value* prim_list_to_array(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return collection_raise(interp, "type/arg-mismatch", "list->array: expected list");
     if (!is_cons(args[0]) && !is_nil(args[0])) return collection_raise(interp, "type/arg-mismatch", "list->array: expected list");
-    // Count elements
-    usz count = 0;
-    Value* cur = args[0];
-    while (is_cons(cur) && count < 65536) { count++; cur = cur.cons_val.cdr; }
-    if (is_cons(cur)) {
-        return collection_raise(interp, "type/range-error", "list->array: list input too long or cyclic");
-    }
-    if (!is_nil(cur)) {
-        return collection_raise(interp, "type/arg-mismatch", "list->array: expected a proper list");
-    }
-    Value* v = make_array(interp, count);
+
+    CollectionListItems list_items;
+    Value* collect_error = collect_proper_list_items(
+        args[0],
+        interp,
+        "list->array: expected a proper list",
+        "list->array: list input is cyclic",
+        "list->array: list input too large",
+        "list->array: out of memory while staging list",
+        &list_items
+    );
+    if (collect_error != null) return collect_error;
+    defer if (list_items.items != null) mem::free(list_items.items);
+
+    Value* v = make_array(interp, list_items.len);
     if (v == null || v.tag != ARRAY || v.array_val == null) return v;
-    cur = args[0];
-    for (usz i = 0; i < count; i++) {
-        Value* promoted = array_promote_or_error(cur.cons_val.car, interp);
+    for (usz i = 0; i < list_items.len; i++) {
+        Value* promoted = array_promote_or_error(list_items.items[i], interp);
         if (promoted == null || promoted.tag == ERROR) return promoted;
         v.array_val.items[i] = promoted;
-        cur = cur.cons_val.cdr;
     }
-    v.array_val.length = count;
+    v.array_val.length = list_items.len;
     return v;
 }
 

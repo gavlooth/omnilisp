@@ -81,16 +81,21 @@ fn int run_build(int argc, char** argv, int build_idx) {
         }
     }
 
+    char[] input_path;
+    if (!cli_cstr_slice(input_file, &input_path)) return print_cli_cstr_too_long("--build input file");
+    char[] output_path;
+    if (!cli_cstr_slice(output_binary, &output_path)) return print_cli_cstr_too_long("--build output binary");
+
     EntryFileWriteKind output_kind = ENTRY_FILE_WRITE_GENERIC_FAILURE;
     if (!validate_output_target_path(output_binary, &output_kind)) {
-        print_file_write_error_text("output binary", output_binary[:cstr_len(output_binary)], output_kind);
+        print_file_write_error_text("output binary", output_path, output_kind);
         return 1;
     }
 
     char[] source;
     EntryFileReadKind read_kind = ENTRY_FILE_READ_GENERIC_FAILURE;
     if (!load_build_source(input_file, &source, &read_kind)) {
-        print_file_read_error_text("input file", input_file[:cstr_len(input_file)], read_kind);
+        print_file_read_error_text("input file", input_path, read_kind);
         return 1;
     }
 

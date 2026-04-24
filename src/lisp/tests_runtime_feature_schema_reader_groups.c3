@@ -18,6 +18,8 @@ fn void run_schema_tests(Interp* interp, int* pass, int* fail) {
         "(validate 'string \"hello\")", SYMBOL, pass, fail);
     test_tag(interp, "validate any passes",
         "(validate 'any 42)", SYMBOL, pass, fail);
+    test_tag(interp, "validate regex clause treats invalid regex as failed validation",
+        "(validate '(re \"(\") \"x\")", NIL, pass, fail);
 
     // validate with composite schema
     test_tag(interp, "validate (and int (> 0)) passes",
@@ -74,6 +76,8 @@ fn void run_schema_tests(Interp* interp, int* pass, int* fail) {
         "(= (ref (ref (explain 'effect (signal io/print \"x\")) 'decision) 'reason) 'fast-path)", pass, fail);
     test_truthy(interp, "explain effect resolve outcome",
         "(= (handle (ref (ref (explain 'effect (signal explain-outcome 1)) 'decision) 'outcome) (explain-outcome x (resolve x))) 'resolve)", pass, fail);
+    test_truthy(interp, "explain effect resolve outcome inside with module",
+        "(= (handle (ref (ref (explain 'effect (signal explain-with-module 1)) 'decision) 'outcome) (explain-with-module x (with math (resolve x)))) 'resolve)", pass, fail);
     test_truthy(interp, "explain effect abort outcome",
         "(= (handle (ref (ref (explain 'effect (signal explain-abort 1)) 'decision) 'outcome) (explain-abort x x)) 'abort)", pass, fail);
     test_truthy(interp, "explain effect resolve invalid continuation reason",
@@ -153,6 +157,12 @@ fn void run_reader_dispatch_tests(Interp* interp, int* pass, int* fail) {
         "(block (define (reader-inc x) (+ x 1)) #reader-inc 41)", 42, pass, fail);
     test_eq(interp, "reader tag supports slash names",
         "(block (define (debug/spy x) x) #debug/spy 7)", 7, pass, fail);
+    test_eq(interp, "reader tag supports lowercase x radix-looking names",
+        "(block (define (xface x) (+ x 1)) #xface 41)", 42, pass, fail);
+    test_eq(interp, "reader tag supports binary-looking names with digits",
+        "(block (define (b101tag x) (+ x 2)) #b101tag 40)", 42, pass, fail);
+    test_eq(interp, "reader tag supports octal-looking names with digits",
+        "(block (define (o777tag x) (+ x 3)) #o777tag 39)", 42, pass, fail);
     test_eq(interp, "reader tag macro declaration",
         "(block (define [reader tag] reader-double (syntax-match ([x] (template (+ (insert x) (insert x)))))) #reader-double 21)",
         42, pass, fail);

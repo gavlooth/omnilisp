@@ -116,6 +116,14 @@ fn Value* jit_handle_dispatch_signal(HandleEffectState* hstate, Expr* expr, Env*
     k.is_coroutine_based = true;
     k.handle_state = hstate;
     Value* k_val = make_continuation(interp, k);
+    if (k_val == null || k_val.tag == ERROR) {
+        interp_discard_lisp_continuation(interp, k);
+        return k_val != null ? k_val : runtime_effect_raise(
+            interp,
+            "runtime/handle-continuation-allocation-failed",
+            "handle: failed to allocate continuation wrapper"
+        );
+    }
 
     // Bind k and arg in clause environment
     Env* clause_env = jit_env_extend(interp, env, clause.k_name, k_val);

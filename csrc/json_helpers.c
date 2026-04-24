@@ -5,6 +5,49 @@
 
 /* Wrapper functions for yyjson inline accessors (C3 can't call inline fns) */
 
+static int omni_json_test_arr_iter_new_fail = 0;
+static int omni_json_test_obj_iter_new_fail = 0;
+static size_t omni_json_test_arr_iter_next_null_after = (size_t)-1;
+static size_t omni_json_test_arr_iter_next_count = 0;
+static size_t omni_json_test_obj_iter_next_null_after = (size_t)-1;
+static size_t omni_json_test_obj_iter_next_count = 0;
+static size_t omni_json_test_obj_iter_get_val_null_after = (size_t)-1;
+static size_t omni_json_test_obj_iter_get_val_count = 0;
+
+void omni_yyjson_test_json_fail_reset(void) {
+    omni_json_test_arr_iter_new_fail = 0;
+    omni_json_test_obj_iter_new_fail = 0;
+    omni_json_test_arr_iter_next_null_after = (size_t)-1;
+    omni_json_test_arr_iter_next_count = 0;
+    omni_json_test_obj_iter_next_null_after = (size_t)-1;
+    omni_json_test_obj_iter_next_count = 0;
+    omni_json_test_obj_iter_get_val_null_after = (size_t)-1;
+    omni_json_test_obj_iter_get_val_count = 0;
+}
+
+void omni_yyjson_test_json_fail_arr_iter_new(int enabled) {
+    omni_json_test_arr_iter_new_fail = enabled != 0;
+}
+
+void omni_yyjson_test_json_fail_obj_iter_new(int enabled) {
+    omni_json_test_obj_iter_new_fail = enabled != 0;
+}
+
+void omni_yyjson_test_json_fail_arr_iter_next_after(size_t after) {
+    omni_json_test_arr_iter_next_null_after = after;
+    omni_json_test_arr_iter_next_count = 0;
+}
+
+void omni_yyjson_test_json_fail_obj_iter_next_after(size_t after) {
+    omni_json_test_obj_iter_next_null_after = after;
+    omni_json_test_obj_iter_next_count = 0;
+}
+
+void omni_yyjson_test_json_fail_obj_iter_get_val_after(size_t after) {
+    omni_json_test_obj_iter_get_val_null_after = after;
+    omni_json_test_obj_iter_get_val_count = 0;
+}
+
 yyjson_doc* omni_yyjson_read(const char* dat, size_t len, size_t flags) {
     return yyjson_read(dat, len, flags);
 }
@@ -42,6 +85,7 @@ int omni_yyjson_get_bool(yyjson_val* val) { return yyjson_get_bool(val); }
 /* Array iteration */
 size_t omni_yyjson_arr_size(yyjson_val* arr) { return yyjson_arr_size(arr); }
 yyjson_arr_iter* omni_yyjson_arr_iter_new(yyjson_val* arr) {
+    if (omni_json_test_arr_iter_new_fail) return NULL;
     yyjson_arr_iter* iter = (yyjson_arr_iter*)malloc(sizeof(yyjson_arr_iter));
     if (iter == NULL) return NULL;
     if (!yyjson_arr_iter_init(arr, iter)) {
@@ -55,6 +99,10 @@ void omni_yyjson_arr_iter_free(yyjson_arr_iter* iter) {
 }
 yyjson_val* omni_yyjson_arr_iter_next(yyjson_arr_iter* iter) {
     if (iter == NULL) return NULL;
+    if (omni_json_test_arr_iter_next_null_after != (size_t)-1) {
+        if (omni_json_test_arr_iter_next_count >= omni_json_test_arr_iter_next_null_after) return NULL;
+        omni_json_test_arr_iter_next_count++;
+    }
     return yyjson_arr_iter_next(iter);
 }
 
@@ -64,6 +112,7 @@ yyjson_val* omni_yyjson_obj_getn(yyjson_val* obj, const char* key, size_t len) {
     return yyjson_obj_getn(obj, key, len);
 }
 yyjson_obj_iter* omni_yyjson_obj_iter_new(yyjson_val* obj) {
+    if (omni_json_test_obj_iter_new_fail) return NULL;
     yyjson_obj_iter* iter = (yyjson_obj_iter*)malloc(sizeof(yyjson_obj_iter));
     if (iter == NULL) return NULL;
     if (!yyjson_obj_iter_init(obj, iter)) {
@@ -77,10 +126,18 @@ void omni_yyjson_obj_iter_free(yyjson_obj_iter* iter) {
 }
 yyjson_val* omni_yyjson_obj_iter_next(yyjson_obj_iter* iter) {
     if (iter == NULL) return NULL;
+    if (omni_json_test_obj_iter_next_null_after != (size_t)-1) {
+        if (omni_json_test_obj_iter_next_count >= omni_json_test_obj_iter_next_null_after) return NULL;
+        omni_json_test_obj_iter_next_count++;
+    }
     return yyjson_obj_iter_next(iter);
 }
 yyjson_val* omni_yyjson_obj_iter_get_val(yyjson_val* key) {
     if (key == NULL) return NULL;
+    if (omni_json_test_obj_iter_get_val_null_after != (size_t)-1) {
+        if (omni_json_test_obj_iter_get_val_count >= omni_json_test_obj_iter_get_val_null_after) return NULL;
+        omni_json_test_obj_iter_get_val_count++;
+    }
     return yyjson_obj_iter_get_val(key);
 }
 

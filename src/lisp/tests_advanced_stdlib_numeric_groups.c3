@@ -164,6 +164,9 @@ fn void run_advanced_stdlib_numeric_float_math_tests(Interp* interp, int* pass, 
         "(= (type-of (parse-number \"9223372036854775808\")) 'BigInteger)", pass, fail);
     test_truthy(interp, "parse-number long-min type is Integer",
         "(= (type-of (parse-number \"-9223372036854775808\")) 'Integer)", pass, fail);
+    test_str_val(interp, "String long.min preserves full decimal magnitude",
+        "(String (parse-number \"-9223372036854775808\"))",
+        "-9223372036854775808", pass, fail);
     test_nil(interp, "parse-number invalid overflow suffix => nil",
         "(parse-number \"9223372036854775808x\")", pass, fail);
     test_str_val(interp, "BigInteger ctor large string",
@@ -350,6 +353,16 @@ fn void run_advanced_stdlib_numeric_float_math_tests(Interp* interp, int* pass, 
         "(>= (BigInteger \"9223372036854775808\") (BigInteger \"9223372036854775808\"))", pass, fail);
     test_truthy(interp, "BigInteger compare with Float64 in range",
         "(< (BigInteger \"42\") 42.5)", pass, fail);
+    test_truthy(interp, "BigInteger greater than rounded-adjacent Float64",
+        "(> (BigInteger \"9007199254740993\") 9007199254740992.0)", pass, fail);
+    test_truthy(interp, "Float64 less than rounded-adjacent BigInteger",
+        "(< 9007199254740992.0 (BigInteger \"9007199254740993\"))", pass, fail);
+    test_str_val(interp, "BigInteger max with rounded-adjacent Float64 selects exact value",
+        "(String (max (BigInteger \"9007199254740993\") 9007199254740992.0))",
+        "9007199254740993", pass, fail);
+    test_truthy(interp, "BigInteger min with rounded-adjacent Float64 selects Float64",
+        "(= (min (BigInteger \"9007199254740993\") 9007199254740992.0) 9007199254740992.0)",
+        pass, fail);
     test_eq(interp, "Integer ctor accepts in-range BigInteger",
         "(Integer (BigInteger \"9223372036854775807\"))",
         9223372036854775807, pass, fail);
@@ -365,6 +378,18 @@ fn void run_advanced_stdlib_numeric_float_math_tests(Interp* interp, int* pass, 
     test_str_val(interp, "Integer huge-Float64 payload code",
         "(handle (Integer (pow 10.0 400.0)) (raise msg (String (ref msg 'code))))",
         "type/arg-mismatch", pass, fail);
+    test_str_val(interp, "Integer rejects Float64 two-to-sixty-three boundary",
+        "(handle (Integer (pow 2.0 63.0)) (raise msg (String (ref msg 'code))))",
+        "type/arg-mismatch", pass, fail);
+    test_str_val(interp, "Integer accepts Float64 long.min boundary",
+        "(String (Integer (- 0.0 (pow 2.0 63.0))))",
+        "-9223372036854775808", pass, fail);
+    test_error_contains(interp, "truncate rejects Float64 two-to-sixty-three boundary",
+        "(truncate (pow 2.0 63.0))",
+        "out of Integer range", pass, fail);
+    test_str_val(interp, "Tensor truncate rejects Float64 two-to-sixty-three boundary",
+        "(let (limit (pow 2.0 63.0)) (handle (truncate (Tensor Float64 [1] [limit])) (raise msg (String (ref msg 'code)))))",
+        "tensor/domain-error", pass, fail);
     test_str_val(interp, "BigInteger invalid string payload code",
         "(handle (BigInteger \"12x\") (raise msg (String (ref msg 'code))))",
         "type/arg-mismatch", pass, fail);

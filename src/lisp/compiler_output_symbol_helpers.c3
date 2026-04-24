@@ -66,6 +66,13 @@ fn bool compiler_prim_emit_code_is_runtime_lookup(char[] emit_code) @inline {
 }
 
 fn void Compiler.emit_symbol_value_reference(Compiler* self, SymbolId sym) {
+    for (usz i = self.module_open_exports.len(); i > 0; i--) {
+        if ((uint)self.module_open_exports.entries[i - 1] == (uint)sym) {
+            self.emit_symbol_name(self.module_open_aliases.entries[i - 1]);
+            return;
+        }
+    }
+
     char[] emit_code = prim_hash_lookup(sym);
     if (emit_code.len > 0) {
         if (compiler_prim_emit_code_is_runtime_lookup(emit_code)) {

@@ -450,8 +450,8 @@ all non-contracted right axes.
 | `json` | Alias for `json-parse`; reader tag form is `#json "..."` |
 | `toml` | Alias for `toml-parse`; reader tag form is `#toml "..."` |
 | `uuid` | Validate and return a canonical UUID string; reader tag form is `#uuid "..."` |
-| `sort` | Sort list |
-| `sort-by` | Sort list by comparator |
+| `sort` | Sort a proper list of numbers/strings in ascending order |
+| `sort-by` | Sort a proper list with a comparator; comparator may be two-argument or curried and returns a positive number or truthy value when the left item should move after the right item (`nil` and `false` are false) |
 | `read-string` | Parse string to Lisp value |
 
 ### 7.20 FFI (Declarative)
@@ -595,8 +595,8 @@ always-present primitive family rather than a module dereference.
 | `re-find-all` | 2 | Non-overlapping match list |
 | `re-split` | 2 | Split input on regex matches |
 | `re-replace` | 3-4 | Replace first match, or all with `'global` |
-| `re-match-pos` | 2 | Match positions as `(start end)` or `nil` |
-| `re-find-all-pos` | 2 | List of `(start end)` pairs |
+| `re-match-pos` | 2 | Match positions as zero-based codepoint `(start end)` half-open spans, or `nil` |
+| `re-find-all-pos` | 2 | List of zero-based codepoint `(start end)` half-open spans |
 
 Supported regex constructs:
 - literals, char classes (`[a-z]`, `[^x]`), shorthand classes (`\d`, `\w`, `\s`)

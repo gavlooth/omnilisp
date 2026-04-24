@@ -599,6 +599,10 @@ fn void run_deduce_query_tests(Interp* interp, int* pass, int* fail) {
         run_deduce_empty_relation_stats_tests(interp, pass, fail);
         matched_group_filter = true;
     }
+    if (deduce_query_filter_contains_token(query_filter, "read-failures")) {
+        run_deduce_read_failure_propagation_tests(interp, pass, fail);
+        matched_group_filter = true;
+    }
     if (deduce_query_filter_contains_token(query_filter, "admin-surface")) {
         run_deduce_admin_surface_tests(interp, pass, fail);
         matched_group_filter = true;
@@ -624,6 +628,7 @@ fn void run_deduce_query_tests(Interp* interp, int* pass, int* fail) {
     run_deduce_query_filter_tests(interp, pass, fail);
     run_deduce_match_tests(interp, pass, fail);
     run_deduce_empty_relation_stats_tests(interp, pass, fail);
+    run_deduce_read_failure_propagation_tests(interp, pass, fail);
     run_deduce_admin_surface_tests(interp, pass, fail);
     run_deduce_aggregate_rule_tests(interp, pass, fail);
     run_deduce_recursive_aggregate_rule_tests(interp, pass, fail);

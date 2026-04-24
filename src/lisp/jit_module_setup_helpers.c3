@@ -60,6 +60,19 @@ fn usz find_module_index(SymbolId name, Interp* interp) {
     return usz.max;
 }
 
+fn usz reacquire_module_index(SymbolId name, usz expected_idx, Interp* interp) {
+    if (interp == null) return usz.max;
+    if (expected_idx < interp.module_count && interp.modules[expected_idx].name == name) {
+        return expected_idx;
+    }
+    return find_module_index(name, interp);
+}
+
+fn Module* reacquire_module(SymbolId name, usz expected_idx, Interp* interp) {
+    usz idx = reacquire_module_index(name, expected_idx, interp);
+    return idx != usz.max ? &interp.modules[idx] : null;
+}
+
 fn void rollback_module_publication(Interp* interp, usz mod_idx) {
     if (interp == null || mod_idx >= interp.module_count) return;
     module_release_storage(&interp.modules[mod_idx]);
@@ -125,15 +138,23 @@ fn EvalResult jit_eval_module_impl(Expr* expr, Env* env, Interp* interp) {
     EvalResult last_result = eval_ok(make_void(interp));
     for (usz i = 0; i < expr.module_expr.body_count; i++) {
         last_result = jit_eval_to_result(expr.module_expr.body[i], mod_env, interp);
+        usz current_idx = reacquire_module_index(name, mod_idx, interp);
         if (last_result.error.has_error) {
             interp.global_env = saved_global;
-            rollback_module_publication(interp, mod_idx);
+            if (current_idx != usz.max) rollback_module_publication(interp, current_idx);
             return last_result;
         }
+        if (current_idx == usz.max) {
+            interp.global_env = saved_global;
+            return eval_error("module publication lost during evaluation");
+        }
+        mod_idx = current_idx;
     }
 
     interp.global_env = saved_global;
-    mod.loaded = true;
+    Module* loaded_mod = reacquire_module(name, mod_idx, interp);
+    if (loaded_mod == null) return eval_error("module publication lost during evaluation");
+    loaded_mod.loaded = true;
     return eval_ok(make_void(interp));
 }
 
@@ -286,21 +307,23 @@ fn bool module_append_export(Module* mod, SymbolId name) {
     return true;
 }
 
-fn Module* jit_create_file_module(SymbolId name, char[] path, Interp* interp) {
-    if (interp.module_count >= interp.module_capacity && !interp.grow_module_table()) return null;
+fn bool jit_create_file_module_index(SymbolId name, char[] path, Interp* interp, usz* mod_idx_out) {
+    if (mod_idx_out == null) return false;
+    *mod_idx_out = usz.max;
+    if (interp.module_count >= interp.module_capacity && !interp.grow_module_table()) return false;
     Module* mod = &interp.modules[interp.module_count];
     mod.name = name;
     mod.loaded = false;
     mod.path = null;
     mod.path_len = 0;
-    if (!module_copy_path(mod, path)) return null;
+    if (!module_copy_path(mod, path)) return false;
     mod.export_count = 0;
     mod.export_capacity = 32;
     mod.exports = jit_alloc_module_exports(32);
     if (mod.exports == null) {
         if (mod.path != null) mem::free(mod.path);
         *mod = {};
-        return null;
+        return false;
     }
 
     mod.env = boundary_make_env_in_root(interp, interp.global_env);
@@ -308,7 +331,7 @@ fn Module* jit_create_file_module(SymbolId name, char[] path, Interp* interp) {
         if (mod.path != null) mem::free(mod.path);
         mem::free(mod.exports);
         *mod = {};
-        return null;
+        return false;
     }
 
     interp.module_count++;
@@ -318,5 +341,12 @@ fn Module* jit_create_file_module(SymbolId name, char[] path, Interp* interp) {
         slot = (slot + 1) % interp.module_hash_capacity;
     }
     interp.module_hash_index[slot] = mod_idx;
-    return mod;
+    *mod_idx_out = mod_idx;
+    return true;
+}
+
+fn Module* jit_create_file_module(SymbolId name, char[] path, Interp* interp) {
+    usz mod_idx = usz.max;
+    if (!jit_create_file_module_index(name, path, interp, &mod_idx)) return null;
+    return &interp.modules[mod_idx];
 }

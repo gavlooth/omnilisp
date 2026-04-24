@@ -135,7 +135,7 @@ fn bool schema_check_regex_clause(Value* schema, Value* val, Interp* interp) {
     re_args[0] = pat;
     re_args[1] = val;
     Value* result = pika::prim_re_fullmatch(re_args[..], null, interp);
-    return result != null && result.tag != NIL;
+    return result != null && result.tag != NIL && result.tag != ERROR;
 }
 
 fn bool schema_check_map_clause(Value* schema, Value* val, Interp* interp) {

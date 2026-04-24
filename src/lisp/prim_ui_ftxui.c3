@@ -498,18 +498,32 @@ fn Value* ui_ftxui_session_event_dict_set(Value* dict, Interp* interp, char[] ke
 }
 
 fn Value* ui_ftxui_session_event_to_value(OmniFtxuiEventReadResult* event, Interp* interp) {
-    if (event == null || !event.has_event) return make_nil(interp);
+    if (event == null || (!event.has_event && event.dropped_events == 0)) return make_nil(interp);
     Value* out = make_hashmap_checked(interp, 4, "ui-ftxui.session-read-event: out of memory");
     if (out == null || out.tag == ERROR) return out;
+    if (!event.has_event && event.dropped_events > 0) {
+        SymbolId overflow_sym = interp.symbols.intern("overflow");
+        if (overflow_sym == INVALID_SYMBOL_ID) {
+            return ftxui_raise(interp, "ui/out-of-memory", "ui-ftxui.session-read-event: out of memory");
+        }
+        if (Value* err = ui_ftxui_session_event_dict_set(out, interp, "kind", make_symbol(interp, overflow_sym))) return err;
+        usz dropped = event.dropped_events;
+        if (dropped > (usz)long.max) dropped = (usz)long.max;
+        if (Value* err = ui_ftxui_session_event_dict_set(out, interp, "dropped-events", make_int(interp, (long)dropped))) return err;
+        return out;
+    }
     char[] kind_name = ui_ftxui_session_event_kind_symbol(event.kind);
     SymbolId kind_sym = interp.symbols.intern(kind_name);
     if (kind_sym == INVALID_SYMBOL_ID) return ftxui_raise(interp, "ui/out-of-memory", "ui-ftxui.session-read-event: out of memory");
     if (Value* err = ui_ftxui_session_event_dict_set(out, interp, "kind", make_symbol(interp, kind_sym))) return err;
+    if (event.dropped_events > 0) {
+        usz dropped = event.dropped_events;
+        if (dropped > (usz)long.max) dropped = (usz)long.max;
+        if (Value* err = ui_ftxui_session_event_dict_set(out, interp, "dropped-events", make_int(interp, (long)dropped))) return err;
+    }
 
-    usz text_len = 0;
-    while (text_len < event.text.len && event.text[text_len] != 0) text_len++;
-    if (text_len > 0) {
-        if (Value* err = ui_ftxui_session_event_dict_set(out, interp, "text", make_string(interp, event.text[:text_len]))) return err;
+    if (event.text != null && event.text_len > 0) {
+        if (Value* err = ui_ftxui_session_event_dict_set(out, interp, "text", make_string(interp, event.text[:event.text_len]))) return err;
     }
     return out;
 }
@@ -681,13 +695,21 @@ fn Value* prim_ui_ftxui_session_read_event(Value*[] args, Env* env, Interp* inte
     if (args.len < 1) return ftxui_raise(interp, "ui/arity", "__ui-ftxui-session-read-event: expected session handle");
     UiFtxuiSessionOwner* owner = null;
     if (Value* err = ui_ftxui_session_require(args[0], interp, &owner)) return err;
-    OmniFtxuiStatus status = omni_ftxui_session_run_once_blocking(owner.state.context, owner.session);
-    if (status != OMNI_FTXUI_STATUS_OK) return ui_ftxui_raise_status(&owner.state, "session_run_once_blocking", status, interp);
     OmniFtxuiEventReadResult event = {};
     event.size = OmniFtxuiEventReadResult.sizeof;
     event.abi_version = OMNI_FTXUI_ABI_VERSION;
-    status = omni_ftxui_session_take_event(owner.state.context, owner.session, &event);
+    defer omni_ftxui_event_read_result_clear(&event);
+    OmniFtxuiStatus status = omni_ftxui_session_take_event(owner.state.context, owner.session, &event);
     if (status != OMNI_FTXUI_STATUS_OK) return ui_ftxui_raise_status(&owner.state, "session_take_event", status, interp);
+    if (!event.has_event && event.dropped_events == 0) {
+        status = omni_ftxui_session_run_once_blocking(owner.state.context, owner.session);
+        if (status != OMNI_FTXUI_STATUS_OK) return ui_ftxui_raise_status(&owner.state, "session_run_once_blocking", status, interp);
+        event = {};
+        event.size = OmniFtxuiEventReadResult.sizeof;
+        event.abi_version = OMNI_FTXUI_ABI_VERSION;
+        status = omni_ftxui_session_take_event(owner.state.context, owner.session, &event);
+        if (status != OMNI_FTXUI_STATUS_OK) return ui_ftxui_raise_status(&owner.state, "session_take_event", status, interp);
+    }
     return ui_ftxui_session_event_to_value(&event, interp);
 }
 

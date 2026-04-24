@@ -82,7 +82,7 @@ fn Value* boundary_alloc_value_in_scope_impl(Interp* interp, main::ScopeRegion* 
     interp.current_scope = target_scope;
     Value* v = boundary_should_force_alloc_value_fail() ? null : interp.alloc_value();
     if (register_dtor && v != null) {
-        main::scope_register_dtor(target_scope, (void*)v, &scope_dtor_value);
+        if (!main::scope_register_dtor(target_scope, (void*)v, &scope_dtor_value)) return null;
     }
     return v;
 }
@@ -109,7 +109,7 @@ fn Value* boundary_alloc_value_in_root(Interp* interp, bool register_dtor = fals
 fn Value* boundary_alloc_value_in_current_escape(Interp* interp, bool register_dtor = false) @inline {
     Value* v = boundary_should_force_alloc_escape_value_fail() ? null : interp.alloc_value_escape();
     if (register_dtor && v != null) {
-        main::scope_register_dtor_escape(interp.current_scope, (void*)v, &scope_dtor_value);
+        if (!main::scope_register_dtor_escape(interp.current_scope, (void*)v, &scope_dtor_value)) return null;
     }
     return v;
 }

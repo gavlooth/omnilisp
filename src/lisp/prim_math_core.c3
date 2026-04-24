@@ -595,6 +595,11 @@ fn Value* prim_min(Value*[] args, Env* env, Interp* interp) {
         if (!numeric_values_compare(args[0], args[1], &cmp)) return math_runtime_raise(interp, "min: numeric comparison failed");
         return cmp <= 0 ? args[0] : args[1];
     }
+    if (is_big_integer(args[0]) || is_big_integer(args[1])) {
+        int cmp = 0;
+        if (!numeric_values_compare(args[0], args[1], &cmp)) return math_runtime_raise(interp, "min: numeric comparison failed");
+        return cmp <= 0 ? args[0] : args[1];
+    }
     if (is_double(args[0]) || is_double(args[1])) {
         double a = 0.0;
         double b = 0.0;
@@ -627,6 +632,11 @@ fn Value* prim_max(Value*[] args, Env* env, Interp* interp) {
     if (!is_numeric_value(args[1])) return primitive_arg_type_raise(interp, "max", 1, "number", args[1]);
     if (is_big_complex(args[0]) || is_big_complex(args[1]) || is_fixed_complex(args[0]) || is_fixed_complex(args[1])) return math_raise(interp, "type/unsupported", "max: complex numbers are not ordered");
     if (is_big_float(args[0]) || is_big_float(args[1])) {
+        int cmp = 0;
+        if (!numeric_values_compare(args[0], args[1], &cmp)) return math_runtime_raise(interp, "max: numeric comparison failed");
+        return cmp >= 0 ? args[0] : args[1];
+    }
+    if (is_big_integer(args[0]) || is_big_integer(args[1])) {
         int cmp = 0;
         if (!numeric_values_compare(args[0], args[1], &cmp)) return math_runtime_raise(interp, "max: numeric comparison failed");
         return cmp >= 0 ? args[0] : args[1];

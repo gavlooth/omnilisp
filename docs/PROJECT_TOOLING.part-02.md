@@ -6,7 +6,8 @@ For normal edit/build iteration, use the dedicated fast dev build:
 
 ```bash
 scripts/build_fast_dev.sh
-LD_LIBRARY_PATH=/usr/local/lib ./build/dev-fast/main-dev --eval '(+ 1 2)'
+OMNI_HOST_TOOLCHAIN_LIB_PATH="${OMNI_HOST_TOOLCHAIN_LIB_PATH:-/usr/local/lib}"
+LD_LIBRARY_PATH="$OMNI_HOST_TOOLCHAIN_LIB_PATH${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ./build/dev-fast/main-dev --eval '(+ 1 2)'
 ```
 
 This path:
@@ -17,17 +18,24 @@ This path:
 Use the full project build when you need the repo-local full binary:
 
 ```bash
-c3c build
+OMNI_HOST_TOOLCHAIN_LIB_PATH="${OMNI_HOST_TOOLCHAIN_LIB_PATH:-/usr/local/lib}"
+LIBRARY_PATH="$OMNI_HOST_TOOLCHAIN_LIB_PATH${LIBRARY_PATH:+:$LIBRARY_PATH}" c3c build
 # run the locally built artifact directly
 # installed/user-facing CLI examples elsewhere in the docs use `omni`
-LD_LIBRARY_PATH=/usr/local/lib ./build/main
+LD_LIBRARY_PATH="$OMNI_HOST_TOOLCHAIN_LIB_PATH${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ./build/main
 ```
+
+`project.json` searches `build`, `/usr/local/lib`, and `deps/lib` for native
+link dependencies such as `lightning`, `replxx`, `omni_chelpers`, and
+`omni_ftxui`. If those dependencies are installed in a local toolchain prefix,
+set `OMNI_HOST_TOOLCHAIN_LIB_PATH` to that prefix's `lib` directory before
+building and running, for example `$HOME/.local/lib`.
 
 Optional narrower profile for non-deduce work:
 
 ```bash
 scripts/build_fast_nodeduce_dev.sh
-LD_LIBRARY_PATH=/usr/local/lib ./build/dev-fast-nodeduce/main-dev-nodeduce --eval '(+ 1 2)'
+LD_LIBRARY_PATH="$OMNI_HOST_TOOLCHAIN_LIB_PATH${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ./build/dev-fast-nodeduce/main-dev-nodeduce --eval '(+ 1 2)'
 ```
 
 Use the full binary for:

@@ -157,6 +157,7 @@ fn Value* kernel_capture_scale_f32(Value* kernel, Value* inputs, Value* push, In
 *>
 fn Value* prim_kernel_capture(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 3) return primitive_arity_raise(interp, "kernel/capture", "3 arguments: kernel inputs push", args.len);
+    if (Value* err = kernel_validate_spec(args[0], interp)) return err;
     if (!kernel_is_value(args[0], interp)) return kernel_invalid(interp, "kernel", "Kernel value", args[0]);
     if (args[1].tag != HASHMAP || args[1].hashmap_val == null) {
         return primitive_arg_type_raise(interp, "kernel/capture", 1, "Dictionary of input tensors", args[1]);

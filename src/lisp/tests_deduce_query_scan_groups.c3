@@ -44,9 +44,178 @@ fn Relation* deduce_test_prepare_relation_handle(
 }
 
 fn bool deduce_test_result_is_oom_code(Value* value) {
+    return deduce_test_result_is_code(value, "deduce/query-out-of-memory");
+}
+
+fn bool deduce_test_result_is_code(Value* value, char[] expected) {
     return value != null &&
         value.tag == STRING &&
-        deduce_name_equals(value.str_chars[:value.str_len], "deduce/query-out-of-memory");
+        deduce_name_equals(value.str_chars[:value.str_len], expected);
+}
+
+fn void deduce_read_failure_expect_code(
+    Interp* interp,
+    char[] source,
+    char[] expected_code,
+    char[] pass_msg,
+    char[] fail_msg,
+    int* pass,
+    int* fail
+) {
+    EvalResult r = run(source, interp);
+    if (!r.error.has_error && deduce_test_result_is_code(r.value, expected_code)) {
+        emit_pass_literal(pass_msg);
+        (*pass)++;
+        return;
+    }
+    io::printn((ZString)fail_msg);
+    (*fail)++;
+}
+
+fn void run_deduce_read_failure_propagation_tests(Interp* interp, int* pass, int* fail) {
+    bool saved_txn_fail = g_deduce_force_read_txn_begin_fail;
+    bool saved_cursor_open_fail = g_deduce_force_read_cursor_open_fail;
+    bool saved_value_array_fail = g_deduce_force_read_value_array_alloc_fail;
+    int saved_cursor_get_fail_after = g_deduce_force_read_cursor_get_fail_after;
+    defer {
+        g_deduce_force_read_txn_begin_fail = saved_txn_fail;
+        g_deduce_force_read_cursor_open_fail = saved_cursor_open_fail;
+        g_deduce_force_read_value_array_alloc_fail = saved_value_array_fail;
+        g_deduce_force_read_cursor_get_fail_after = saved_cursor_get_fail_after;
+    }
+
+    g_deduce_force_read_txn_begin_fail = true;
+    deduce_read_failure_expect_code(
+        interp,
+        "(block "
+        "  (define db-read-txn-fail (deduce 'open 'memory)) "
+        "  (define [relation db-read-txn-fail] read_txn_fail_person (name) (age)) "
+        "  (deduce 'fact! read_txn_fail_person \"Alice\" 30) "
+        "  (handle (deduce 'scan read_txn_fail_person) (raise payload (String (ref payload 'code))))"
+        ")",
+        "deduce/scan-transaction-failed",
+        "[PASS] deduce scan reports read transaction failure",
+        "[FAIL] deduce scan reports read transaction failure",
+        pass,
+        fail
+    );
+    g_deduce_force_read_txn_begin_fail = false;
+
+    g_deduce_force_read_cursor_open_fail = true;
+    deduce_read_failure_expect_code(
+        interp,
+        "(block "
+        "  (define db-read-cursor-open-fail (deduce 'open 'memory)) "
+        "  (define [relation db-read-cursor-open-fail] read_cursor_open_fail_person (name) (age)) "
+        "  (deduce 'fact! read_cursor_open_fail_person \"Alice\" 30) "
+        "  (handle (deduce 'scan read_cursor_open_fail_person) (raise payload (String (ref payload 'code))))"
+        ")",
+        "deduce/scan-cursor-open-failed",
+        "[PASS] deduce scan reports cursor open failure",
+        "[FAIL] deduce scan reports cursor open failure",
+        pass,
+        fail
+    );
+    g_deduce_force_read_cursor_open_fail = false;
+
+    g_deduce_force_read_value_array_alloc_fail = true;
+    deduce_read_failure_expect_code(
+        interp,
+        "(block "
+        "  (define db-read-value-array-fail (deduce 'open 'memory)) "
+        "  (define [relation db-read-value-array-fail] read_value_array_fail_person (name) (age)) "
+        "  (deduce 'fact! read_value_array_fail_person \"Alice\" 30) "
+        "  (handle (deduce 'query read_value_array_fail_person (lambda (row) true)) "
+        "    (raise payload (String (ref payload 'code))))"
+        ")",
+        "deduce/scan-out-of-memory",
+        "[PASS] deduce query reports iterator value allocation failure",
+        "[FAIL] deduce query reports iterator value allocation failure",
+        pass,
+        fail
+    );
+    g_deduce_force_read_value_array_alloc_fail = false;
+
+    g_deduce_force_read_cursor_get_fail_after = 1;
+    deduce_read_failure_expect_code(
+        interp,
+        "(block "
+        "  (define db-read-cursor-get-fail (deduce 'open 'memory)) "
+        "  (define [relation db-read-cursor-get-fail] read_cursor_get_fail_person (name) (age)) "
+        "  (deduce 'fact! read_cursor_get_fail_person \"Alice\" 30) "
+        "  (deduce 'fact! read_cursor_get_fail_person \"Bob\" 31) "
+        "  (handle (deduce 'scan read_cursor_get_fail_person) (raise payload (String (ref payload 'code))))"
+        ")",
+        "deduce/scan-cursor-read-failed",
+        "[PASS] deduce scan reports cursor read failure",
+        "[FAIL] deduce scan reports cursor read failure",
+        pass,
+        fail
+    );
+    g_deduce_force_read_cursor_get_fail_after = -1;
+
+    g_deduce_force_read_txn_begin_fail = true;
+    deduce_read_failure_expect_code(
+        interp,
+        "(block "
+        "  (define db-count-txn-fail (deduce 'open 'memory)) "
+        "  (define [relation db-count-txn-fail] count_txn_fail_person (name) (age)) "
+        "  (handle (deduce 'count count_txn_fail_person) (raise payload (String (ref payload 'code))))"
+        ")",
+        "deduce/count-transaction-failed",
+        "[PASS] deduce count reports read transaction failure",
+        "[FAIL] deduce count reports read transaction failure",
+        pass,
+        fail
+    );
+    g_deduce_force_read_txn_begin_fail = false;
+
+    g_deduce_force_read_cursor_open_fail = true;
+    deduce_read_failure_expect_code(
+        interp,
+        "(block "
+        "  (define db-count-cursor-open-fail (deduce 'open 'memory)) "
+        "  (define [relation db-count-cursor-open-fail] count_cursor_open_fail_person (name) (age)) "
+        "  (handle (deduce 'count count_cursor_open_fail_person) (raise payload (String (ref payload 'code))))"
+        ")",
+        "deduce/count-cursor-open-failed",
+        "[PASS] deduce count reports cursor open failure",
+        "[FAIL] deduce count reports cursor open failure",
+        pass,
+        fail
+    );
+    g_deduce_force_read_cursor_open_fail = false;
+
+    g_deduce_force_read_cursor_get_fail_after = 1;
+    deduce_read_failure_expect_code(
+        interp,
+        "(block "
+        "  (define db-count-cursor-get-fail (deduce 'open 'memory)) "
+        "  (define [relation db-count-cursor-get-fail] count_cursor_get_fail_person (name) (age)) "
+        "  (deduce 'fact! count_cursor_get_fail_person \"Alice\" 30) "
+        "  (deduce 'fact! count_cursor_get_fail_person \"Bob\" 31) "
+        "  (handle (deduce 'count count_cursor_get_fail_person) (raise payload (String (ref payload 'code))))"
+        ")",
+        "deduce/count-cursor-read-failed",
+        "[PASS] deduce count reports cursor read failure",
+        "[FAIL] deduce count reports cursor read failure",
+        pass,
+        fail
+    );
+    g_deduce_force_read_cursor_get_fail_after = -1;
+
+    deduce_test_expect_int_exact(
+        interp,
+        "(block "
+        "  (define db-count-empty-ok (deduce 'open 'memory)) "
+        "  (define [relation db-count-empty-ok] count_empty_ok_person (name) (age)) "
+        "  (deduce 'count count_empty_ok_person))",
+        0,
+        "[PASS] deduce count preserves valid empty relation zero",
+        "[FAIL] deduce count preserves valid empty relation zero (got %d)",
+        pass,
+        fail
+    );
 }
 
 fn void run_deduce_scan_tests(Interp* interp, int* pass, int* fail) {

@@ -360,3 +360,70 @@ fn void run_scheduler_shared_retire_queue_boundary_tests(Interp* interp, int* pa
         (*fail)++;
     }
 }
+
+fn void run_scheduler_shared_bytes_copy_release_boundary_tests(Interp* interp, int* pass, int* fail) {
+    // Invariant: shared byte consumers own a copy before another thread can
+    // release or retire the source handle.
+    SchedulerBoundarySnapshot saved = scheduler_capture_runtime_boundary_snapshot(interp);
+    bool ok = scheduler_shared_registry_ensure_ready();
+    char[] failed_phase = ok ? "" : "registry-init";
+
+    char* owned = null;
+    usz owned_len = 0;
+    SharedHandle* handle = null;
+
+    if (ok) {
+        scheduler_shared_registry_drain_retired(SHARED_RETIRED_QUEUE_CAPACITY);
+        handle = scheduler_publish_shared("release-safe-bytes");
+        if (handle == null) {
+            ok = false;
+            failed_phase = "publish";
+        }
+    }
+
+    if (ok && !scheduler_copy_shared_bytes_owned(handle, &owned, &owned_len)) {
+        ok = false;
+        failed_phase = "copy";
+    }
+
+    if (handle != null) {
+        scheduler_release_shared(handle);
+        handle = null;
+    }
+    scheduler_shared_registry_drain_retired(SHARED_RETIRED_QUEUE_CAPACITY);
+
+    if (ok) {
+        char[] expected = "release-safe-bytes";
+        if (owned == null || owned_len != expected.len || owned[owned_len] != 0) {
+            ok = false;
+            failed_phase = "shape";
+        } else {
+            for (usz i = 0; i < expected.len; i++) {
+                if (owned[i] != expected[i]) {
+                    ok = false;
+                    failed_phase = "content";
+                    break;
+                }
+            }
+        }
+    }
+
+    if (owned != null) mem::free(owned);
+
+    bool state_ok = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
+    if (!state_ok && ok) {
+        ok = false;
+        failed_phase = "boundary";
+    }
+
+    if (ok) {
+        emit_pass_literal("[PASS] scheduler shared byte copy survives handle release");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] scheduler shared byte copy survives handle release (%s)",
+            (ZString)failed_phase
+        );
+        (*fail)++;
+    }
+}

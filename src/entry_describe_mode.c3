@@ -97,11 +97,14 @@ fn int run_describe_mode(int argc, char** argv, int describe_idx) {
         return print_unexpected_mode_arg("--describe", extra);
     }
 
+    char[] symbol;
+    if (!cli_cstr_slice(symbol_arg, &symbol)) return print_cli_cstr_too_long("--describe symbol", json);
+
     SymbolDescribeInfo info = describe_lookup_symbol(symbol_arg);
     if (json) {
-        print_describe_result_json(symbol_arg[:cstr_len(symbol_arg)], info);
+        print_describe_result_json(symbol, info);
     } else {
-        print_describe_result_text(symbol_arg[:cstr_len(symbol_arg)], info);
+        print_describe_result_text(symbol, info);
     }
     return info.found ? 0 : 1;
 }

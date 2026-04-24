@@ -46,6 +46,42 @@ fn Value* json_emit_raise_unsupported_dict_key_type(Value* key_v, Interp* interp
     return json_raise(interp, "parser/type-mismatch", msg);
 }
 
+fn bool json_emit_object_key_name(Value* key_v, Interp* interp, char[]* out_name) {
+    if (is_string(key_v)) {
+        *out_name = key_v.str_chars[:key_v.str_len];
+        return true;
+    }
+    if (key_v != null && key_v.tag == SYMBOL) {
+        *out_name = interp.symbols.get_name(key_v.sym_val);
+        return true;
+    }
+    return false;
+}
+
+fn bool json_emit_key_names_equal(char[] a, char[] b) {
+    if (a.len != b.len) return false;
+    for (usz i = 0; i < a.len; i++) {
+        if (a[i] != b[i]) return false;
+    }
+    return true;
+}
+
+fn Value* json_emit_reject_duplicate_object_key(Interp* interp) @inline {
+    return json_raise(interp, "parser/invalid-argument", "json-emit: duplicate JSON object key after string normalization");
+}
+
+fn Value* json_emit_check_duplicate_object_key(HashMap* hm, usz current_index, char[] key_name, Interp* interp) {
+    for (usz j = 0; j < current_index; j++) {
+        HashEntry* prior = &hm.entries[j];
+        if (prior.key == null) continue;
+
+        char[] prior_name = {};
+        if (!json_emit_object_key_name(prior.key, interp, &prior_name)) continue;
+        if (json_emit_key_names_equal(prior_name, key_name)) return json_emit_reject_duplicate_object_key(interp);
+    }
+    return null;
+}
+
 fn Value* json_emit_append_array_value(YyjsonMutVal* arr, YyjsonMutVal* elem, Interp* interp) {
     if (!omni_yyjson_mut_arr_append(arr, elem)) {
         return json_raise(interp, "parser/out-of-memory", "json-emit: failed to append array element");
@@ -107,16 +143,8 @@ foreach (item : arr_v.array_val.items[0:arr_v.array_val.length]) {
 }
 
 fn Value* omni_hash_key_to_json(Value* key_v, YyjsonMutDoc* doc, Interp* interp, YyjsonMutVal** out_key) {
-    if (is_string(key_v)) {
-        return json_emit_set_allocated_value(
-            omni_yyjson_mut_strn(doc, key_v.str_chars, key_v.str_len),
-            "JSON object key string",
-            out_key,
-            interp
-        );
-    }
-    if (key_v.tag == SYMBOL) {
-        char[] name = interp.symbols.get_name(key_v.sym_val);
+    char[] name = {};
+    if (json_emit_object_key_name(key_v, interp, &name)) {
         return json_emit_set_allocated_value(
             omni_yyjson_mut_strn(doc, name.ptr, name.len),
             "JSON object key string",
@@ -136,6 +164,13 @@ fn Value* omni_hashmap_to_json(Value* map_v, YyjsonMutDoc* doc, Interp* interp, 
         if (entry.key == null) continue;
 
         YyjsonMutVal* key = null;
+        char[] key_name = {};
+        if (!json_emit_object_key_name(entry.key, interp, &key_name)) {
+            return json_emit_raise_unsupported_dict_key_type(entry.key, interp);
+        }
+        Value* duplicate_err = json_emit_check_duplicate_object_key(hm, i, key_name, interp);
+        if (duplicate_err != null) return duplicate_err;
+
         Value* key_err = omni_hash_key_to_json(entry.key, doc, interp, &key);
         if (key_err != null) return key_err;
         YyjsonMutVal* v = null;

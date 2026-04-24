@@ -19,12 +19,18 @@ fn Value* prim_tcp_listen(Value*[] args, Env* env, Interp* interp) {
         if (!is_cons(packed)) return io_raise(interp, "io/tcp-listen-expected-host-port-backlog", "tcp-listen: expected (tcp-listen host port [backlog])");
         port_v = car(packed);
         packed = cdr(packed);
-        if (is_cons(packed)) backlog_v = car(packed);
+        if (is_cons(packed)) {
+            backlog_v = car(packed);
+            packed = cdr(packed);
+        }
+        if (!is_nil(packed)) {
+            return io_raise(interp, "io/tcp-listen-expected-host-port-backlog", "tcp-listen: expected (tcp-listen host port [backlog])");
+        }
     } else {
-        if (args.len < 2) return io_raise(interp, "io/tcp-listen-expected-host-port-backlog", "tcp-listen: expected (tcp-listen host port [backlog])");
+        if (args.len < 2 || args.len > 3) return io_raise(interp, "io/tcp-listen-expected-host-port-backlog", "tcp-listen: expected (tcp-listen host port [backlog])");
         host_v = args[0];
         port_v = args[1];
-        if (args.len >= 3) backlog_v = args[2];
+        if (args.len == 3) backlog_v = args[2];
     }
 
     if (!is_string(host_v)) return io_raise(interp, "io/tcp-listen-host-not-string", "tcp-listen: host must be a string");

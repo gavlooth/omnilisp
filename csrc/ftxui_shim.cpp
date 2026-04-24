@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <deque>
 #include <exception>
 #include <limits>
 #include <memory>
@@ -64,8 +65,8 @@ struct omni_ftxui_captured_event_t {
 struct omni_ftxui_session_t {
     omni_ftxui_screen_t* screen;
     omni_ftxui_component_t* root;
-    bool has_event = false;
-    omni_ftxui_captured_event_t event;
+    std::deque<omni_ftxui_captured_event_t> events;
+    size_t dropped_events = 0;
     std::unique_ptr<ftxui::Loop> loop;
 };
 
@@ -96,6 +97,8 @@ struct omni_ftxui_app_t {
 namespace {
 
 constexpr uint32_t kAbiVersion = OMNI_FTXUI_SHIM_ABI_VERSION;
+constexpr uint32_t kEventReadResultMagic = 0x46545845u;
+constexpr size_t kSessionEventQueueLimit = 1024;
 
 inline bool validate_sized_abi(uint32_t size, uint32_t abi, uint32_t expected) {
     return abi == kAbiVersion && size >= expected;
@@ -377,6 +380,14 @@ inline void plot_range(
     if (options->kind == OMNI_FTXUI_PLOT_BAR || options->kind == OMNI_FTXUI_PLOT_HISTOGRAM) {
         *out_y_min = std::min(*out_y_min, 0.0);
         *out_y_max = std::max(*out_y_max, 0.0);
+    }
+    if (options->has_y_min) {
+        *out_y_min = options->y_min;
+        if (!options->has_y_max && *out_y_max < *out_y_min) *out_y_max = *out_y_min;
+    }
+    if (options->has_y_max) {
+        *out_y_max = options->y_max;
+        if (!options->has_y_min && *out_y_min > *out_y_max) *out_y_min = *out_y_max;
     }
 
     if (options->x_values != nullptr && options->x_count > 0) {

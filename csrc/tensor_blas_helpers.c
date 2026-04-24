@@ -94,9 +94,15 @@ static int omni_tensor_blas_resolve(void) {
         if (dgemm_symbol != NULL) {
             omni_tensor_blas_handle = handle;
             omni_tensor_cblas_dgemm = (omni_cblas_dgemm_fn)dgemm_symbol;
-            omni_tensor_cblas_dgemv = (omni_cblas_dgemv_fn)dgemv_symbol;
-            omni_tensor_cblas_ddot = (omni_cblas_ddot_fn)ddot_symbol;
-            omni_tensor_cblas_dger = (omni_cblas_dger_fn)dger_symbol;
+            if (dgemv_symbol != NULL) {
+                omni_tensor_cblas_dgemv = (omni_cblas_dgemv_fn)dgemv_symbol;
+            }
+            if (ddot_symbol != NULL) {
+                omni_tensor_cblas_ddot = (omni_cblas_ddot_fn)ddot_symbol;
+            }
+            if (dger_symbol != NULL) {
+                omni_tensor_cblas_dger = (omni_cblas_dger_fn)dger_symbol;
+            }
             return 1;
         }
 

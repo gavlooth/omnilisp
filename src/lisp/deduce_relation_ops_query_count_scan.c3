@@ -91,22 +91,29 @@ fn Value* prim_deduce_count(Value*[] args, Env* env, Interp* interp) {
     }
 
     MdbTxn* txn = null;
-    int rc = mdb_txn_begin(rel.db.env, null, MDB_RDONLY, &txn);
-    if (rc != MDB_SUCCESS) return make_int(interp, 0);
+    int rc = g_deduce_force_read_txn_begin_fail ? -1 : mdb_txn_begin(rel.db.env, null, MDB_RDONLY, &txn);
+    if (rc != MDB_SUCCESS || txn == null) {
+        return deduce_raise(interp, "deduce/count-transaction-failed", "deduce-count: transaction open failed");
+    }
     defer mdb_txn_abort(txn);
 
     MdbCursor* cursor = null;
-    rc = mdb_cursor_open(txn, rel.dbi, &cursor);
-    if (rc != MDB_SUCCESS) return make_int(interp, 0);
+    rc = g_deduce_force_read_cursor_open_fail ? -1 : mdb_cursor_open(txn, rel.dbi, &cursor);
+    if (rc != MDB_SUCCESS || cursor == null) {
+        return deduce_raise(interp, "deduce/count-cursor-open-failed", "deduce-count: cursor open failed");
+    }
     defer mdb_cursor_close(cursor);
 
     long count = 0;
     MdbVal key;
     MdbVal data;
-    rc = mdb_cursor_get(cursor, &key, &data, MDB_FIRST);
+    rc = deduce_read_cursor_get(cursor, &key, &data, MDB_FIRST);
     while (rc == MDB_SUCCESS) {
         count++;
-        rc = mdb_cursor_get(cursor, &key, &data, MDB_NEXT);
+        rc = deduce_read_cursor_get(cursor, &key, &data, MDB_NEXT);
+    }
+    if (rc != MDB_NOTFOUND) {
+        return deduce_raise(interp, "deduce/count-cursor-read-failed", "deduce-count: cursor read failed");
     }
 
     return make_int(interp, count);

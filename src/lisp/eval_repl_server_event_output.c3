@@ -74,14 +74,19 @@ fn bool repl_server_publish_tcp_port_file(int port) {
     return repl_server_write_text_file_atomic(".omni-repl-port", text);
 }
 
+fn void repl_server_unlink_tcp_port_file() {
+    (void)omni_uv_fs_unlink(".omni-repl-port");
+}
+
 fn bool repl_server_output_write_json_doc(ReplServerOutput* output, YyjsonMutDoc* doc) {
     if (output == null) return false;
+    if (!output.write_mu_ready) return false;
     usz len = 0;
     char* json = omni_yyjson_mut_write_with_flags(doc, 0, &len);
     if (json == null) return false;
     defer c_free_json(json);
-    if (output.write_mu_ready) output.write_mu.lock();
-    defer if (output.write_mu_ready) output.write_mu.unlock();
+    output.write_mu.lock();
+    defer output.write_mu.unlock();
     if (!repl_server_write_all_raw(output.write_fd, json[:len], output.socket_write)) return false;
     char[1] nl = {'\n'};
     return repl_server_write_all_raw(output.write_fd, nl[..], output.socket_write);

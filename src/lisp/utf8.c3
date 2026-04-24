@@ -113,6 +113,21 @@ fn usz utf8_byte_offset(char[] bytes, usz char_idx) {
     return pos;
 }
 
+/// Convert a byte offset to the containing codepoint index.
+/// If `byte_off` is beyond the string, returns the codepoint length.
+fn usz utf8_codepoint_index_for_byte_offset(char[] bytes, usz byte_off) {
+    usz pos = 0;
+    usz count = 0;
+    while (pos < bytes.len && pos < byte_off) {
+        usz cplen = utf8_codepoint_len(bytes[pos]);
+        if (pos + cplen > bytes.len) cplen = bytes.len - pos;
+        if (byte_off < pos + cplen) return count;
+        pos += cplen;
+        count++;
+    }
+    return count;
+}
+
 /// Validate a UTF-8 byte sequence. Returns true if valid.
 fn bool utf8_valid(char[] bytes) {
     usz pos = 0;

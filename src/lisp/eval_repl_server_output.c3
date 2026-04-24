@@ -139,5 +139,8 @@ fn void repl_server_output_init(ReplServerOutput* output, int write_fd, bool soc
 
 fn void repl_server_output_destroy(ReplServerOutput* output) {
     if (output == null) return;
+    if (output.write_mu_ready) {
+        output.write_mu.destroy();
+    }
     *output = {};
 }

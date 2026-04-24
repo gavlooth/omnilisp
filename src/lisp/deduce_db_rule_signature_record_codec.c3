@@ -32,12 +32,12 @@ fn void deduce_write_u64_le(char* out, ulong value) @inline {
 
 fn bool deduce_rule_signature_literals_supported(DeduceRuleSignature* sig) {
     if (sig == null) return false;
+    if (sig.head_term_count > 0 && sig.head_term_literals == null) return false;
+    if (sig.body_term_total_count > 0 && sig.body_term_literals == null) return false;
     for (usz i = 0; i < sig.head_term_count; i++) {
-        if (sig.head_term_literals == null) break;
         if (!deduce_value_supported_by_tuple_codec(sig.head_term_literals[i])) return false;
     }
     for (usz i = 0; i < sig.body_term_total_count; i++) {
-        if (sig.body_term_literals == null) break;
         if (!deduce_value_supported_by_tuple_codec(sig.body_term_literals[i])) return false;
     }
     return true;

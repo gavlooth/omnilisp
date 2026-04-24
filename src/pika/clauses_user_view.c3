@@ -17,6 +17,12 @@ fn UserMatch make_user_match(int id, Match* m, int[] subs, ParserState* st) {
     return um;
 }
 
+fn void UserMatch.release(UserMatch* self) {
+    if (self.submatches.len > 0) mem::free(self.submatches.ptr);
+    int[] empty_submatches;
+    self.submatches = empty_submatches;
+}
+
 fn UserMatch user_view_default(int id, int mid, ParserState* st) {
     int[] empty;
     return make_user_match(id, &st.matches[mid], empty, st);
@@ -101,6 +107,7 @@ fn UserMatch user_view_tie(int id, int mid, ParserState* st) {
 
     // Get the user_view of the inner clause
     UserMatch inner = get_user_view(tcl, tmid, st);
+    defer inner.release();
 
     // Flatten: collect grandchildren
     // Count first
@@ -110,6 +117,7 @@ fn UserMatch user_view_tie(int id, int mid, ParserState* st) {
         int cl = st.matches[cmid].clause;
         UserMatch child = get_user_view(cl, cmid, st);
         count += (int)child.submatches.len;
+        child.release();
     }
 
     int[] ccmids = mem::new_array(int, (usz)count);
@@ -122,6 +130,7 @@ fn UserMatch user_view_tie(int id, int mid, ParserState* st) {
             ccmids[idx] = child.submatches[j];
             idx++;
         }
+        child.release();
     }
 
     return make_user_match(id, m, ccmids, st);

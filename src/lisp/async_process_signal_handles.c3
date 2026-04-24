@@ -54,6 +54,7 @@ fn void close_fs_like_handle(Value* v, Interp* interp) {
 }
 
 fn char* copy_to_heap_c_string(char[] src) {
+    if (c_api_string_contains_nul(src)) return null;
     if (src.len == usz.max) return null;
     usz cap = src.len + 1;
     char* out = (char*)mem::malloc(cap);
@@ -135,6 +136,10 @@ fn Value* collect_string_sequence(
                 free_heap_c_string_items(items, count);
                 return io_raise(interp, code, message);
             }
+            if (is_string(it) && c_api_string_contains_nul(it.str_chars[:it.str_len])) {
+                free_heap_c_string_items(items, count);
+                return io_raise(interp, "io/process-spawn-invalid-string", "process-spawn: string argument contains embedded NUL byte");
+            }
             char* copied = copy_value_to_heap_c_string(it, interp);
             if (copied == null) {
                 free_heap_c_string_items(items, count);
@@ -150,6 +155,10 @@ fn Value* collect_string_sequence(
             if (!(is_string(it) || is_symbol(it))) {
                 free_heap_c_string_items(items, count);
                 return io_raise(interp, code, message);
+            }
+            if (is_string(it) && c_api_string_contains_nul(it.str_chars[:it.str_len])) {
+                free_heap_c_string_items(items, count);
+                return io_raise(interp, "io/process-spawn-invalid-string", "process-spawn: string argument contains embedded NUL byte");
             }
             char* copied = copy_value_to_heap_c_string(it, interp);
             if (copied == null) {

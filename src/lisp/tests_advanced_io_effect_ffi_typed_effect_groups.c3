@@ -3,6 +3,246 @@ module lisp;
 import std::io;
 import std::core::mem;
 
+extern fn int advanced_io_test_mkdir(char* path, uint mode) @extern("mkdir");
+extern fn int advanced_io_test_rmdir(char* path) @extern("rmdir");
+
+fn bool advanced_io_string_value_equals(Value* value, char[] expected) {
+    if (value == null || value.tag != STRING || value.str_len != expected.len) return false;
+    for (usz i = 0; i < expected.len; i++) {
+        if (value.str_chars[i] != expected[i]) return false;
+    }
+    return true;
+}
+
+fn bool advanced_io_error_contains(Value* value, char[] expected) {
+    if (value == null || value.tag != ERROR || value.str_chars == null) return false;
+    if (expected.len > value.str_len) return false;
+    for (usz i = 0; i <= value.str_len - expected.len; i++) {
+        bool match = true;
+        for (usz j = 0; j < expected.len; j++) {
+            if (value.str_chars[i + j] != expected[j]) {
+                match = false;
+                break;
+            }
+        }
+        if (match) return true;
+    }
+    return false;
+}
+
+fn void advanced_io_record_result(char[] name, bool ok, int* pass, int* fail) {
+    if (ok) {
+        emit_pass(name);
+        (*pass)++;
+    } else {
+        io::printfn("[FAIL] %s", (ZString)name);
+        (*fail)++;
+    }
+}
+
+fn Value* advanced_io_nul_string(Interp* interp, char[] prefix, char[] suffix) {
+    char[256] bytes;
+    if (prefix.len + suffix.len + 1 > bytes.len) return null;
+    usz n = 0;
+    for (usz i = 0; i < prefix.len; i++) bytes[n++] = prefix[i];
+    bytes[n++] = (char)0;
+    for (usz i = 0; i < suffix.len; i++) bytes[n++] = suffix[i];
+    return make_string(interp, bytes[0:n]);
+}
+
+fn void run_advanced_c_api_string_boundary_tests(Interp* interp, int* pass, int* fail) {
+    Value* bad_path = advanced_io_nul_string(interp, "/tmp/omni_capi_", "suffix");
+    Value* good_path = make_string(interp, "/tmp/omni_capi_good");
+    if (bad_path == null || bad_path.tag == ERROR || good_path == null || good_path.tag == ERROR) {
+        advanced_io_record_result("C API string boundary test setup", false, pass, fail);
+        return;
+    }
+
+    Value*[1] one_bad = { bad_path };
+    Value*[2] tls_connect_args = { make_nil(interp), bad_path };
+    Value*[2] rename_args = { bad_path, good_path };
+    Value*[3] open_args = { bad_path, make_int(interp, 0), make_int(interp, 420) };
+
+    advanced_io_record_result(
+        "fs-open rejects embedded NUL path before native call",
+        advanced_io_error_contains(prim_fs_open(open_args[..], null, interp), "embedded NUL byte"),
+        pass, fail);
+    advanced_io_record_result(
+        "fs-stat rejects embedded NUL path before native call",
+        advanced_io_error_contains(prim_fs_stat(one_bad[..], null, interp), "embedded NUL byte"),
+        pass, fail);
+    advanced_io_record_result(
+        "fs-readdir rejects embedded NUL path before native call",
+        advanced_io_error_contains(prim_fs_readdir(one_bad[..], null, interp), "embedded NUL byte"),
+        pass, fail);
+    advanced_io_record_result(
+        "fs-unlink rejects embedded NUL path before native call",
+        advanced_io_error_contains(prim_fs_unlink(one_bad[..], null, interp), "embedded NUL byte"),
+        pass, fail);
+    advanced_io_record_result(
+        "fs-rename rejects embedded NUL src before native call",
+        advanced_io_error_contains(prim_fs_rename(rename_args[..], null, interp), "embedded NUL byte"),
+        pass, fail);
+
+    advanced_io_record_result(
+        "tls trust-store helper rejects embedded NUL path before native call",
+        advanced_io_error_contains(prim_tls_trust_store_load_cause(one_bad[..], null, interp), "embedded NUL byte"),
+        pass, fail);
+    advanced_io_record_result(
+        "tls-connect rejects embedded NUL hostname before native call",
+        advanced_io_error_contains(prim_tls_connect(tls_connect_args[..], null, interp), "embedded NUL byte"),
+        pass, fail);
+}
+
+fn void run_advanced_process_spawn_c_string_boundary_tests(Interp* interp, int* pass, int* fail) {
+    Value* bad_cmd = advanced_io_nul_string(interp, "/bin/sh", "suffix");
+    Value* bad_arg = advanced_io_nul_string(interp, "-c", "suffix");
+    Value* bad_env = advanced_io_nul_string(interp, "OMNI_PROC_TEST=ok", "suffix");
+    Value* argv = make_array(interp, 1);
+    Value* envv = make_array(interp, 1);
+    Value* sh = make_string(interp, "/bin/sh");
+    if (bad_cmd == null || bad_cmd.tag == ERROR ||
+        bad_arg == null || bad_arg.tag == ERROR ||
+        bad_env == null || bad_env.tag == ERROR ||
+        argv == null || argv.tag != ARRAY || argv.array_val == null ||
+        envv == null || envv.tag != ARRAY || envv.array_val == null ||
+        sh == null || sh.tag == ERROR) {
+        advanced_io_record_result("process-spawn C API string boundary test setup", false, pass, fail);
+        return;
+    }
+
+    argv.array_val.items[0] = bad_arg;
+    argv.array_val.length = 1;
+    envv.array_val.items[0] = bad_env;
+    envv.array_val.length = 1;
+
+    Value*[3] cmd_args = { bad_cmd, make_nil(interp), make_nil(interp) };
+    Value*[3] argv_args = { sh, argv, make_nil(interp) };
+    Value*[3] env_args = { sh, make_nil(interp), envv };
+
+    advanced_io_record_result(
+        "process-spawn rejects embedded NUL cmd before native call",
+        advanced_io_error_contains(prim_process_spawn(cmd_args[..], null, interp), "cmd contains embedded NUL byte"),
+        pass, fail);
+    advanced_io_record_result(
+        "process-spawn rejects embedded NUL argv before native call",
+        advanced_io_error_contains(prim_process_spawn(argv_args[..], null, interp), "string argument contains embedded NUL byte"),
+        pass, fail);
+    advanced_io_record_result(
+        "process-spawn rejects embedded NUL env before native call",
+        advanced_io_error_contains(prim_process_spawn(env_args[..], null, interp), "string argument contains embedded NUL byte"),
+        pass, fail);
+}
+
+fn void run_advanced_c_api_process_boundary_tests(Interp* interp, int* pass, int* fail) {
+    run_advanced_c_api_process_boundary_tests(interp, pass, fail);
+    run_advanced_process_spawn_c_string_boundary_tests(interp, pass, fail);
+}
+
+fn bool advanced_fs_readdir_preserves_newline_entry_names(Interp* interp) {
+    char[] dir = "/tmp/omni_fs_readdir_newline_case";
+    char[] entry_name = "line\nbreak";
+    char[256] path_buf;
+    (void)advanced_io_test_rmdir((ZString)dir);
+    if (advanced_io_test_mkdir((ZString)dir, 0o755) != 0) return false;
+    defer (void)advanced_io_test_rmdir((ZString)dir);
+
+    if (try char[] path = io::bprintf(&path_buf, "%s/%s", (ZString)dir, (ZString)entry_name)) {
+        int fd = fs_uv_open((ZString)path, 577, 0o644);
+        if (fd < 0) return false;
+        (void)fs_uv_close(fd);
+        defer (void)fs_uv_unlink((ZString)path);
+
+        Value*[1] args = { make_string(interp, dir) };
+        Value* entries = prim_fs_readdir(args[..], null, interp);
+        if (entries == null || entries.tag != ARRAY || entries.array_val == null) return false;
+
+        int exact = 0;
+        int split_line = 0;
+        int split_break = 0;
+        for (usz i = 0; i < entries.array_val.length; i++) {
+            Value* item = entries.array_val.items[i];
+            if (advanced_io_string_value_equals(item, entry_name)) exact++;
+            if (advanced_io_string_value_equals(item, "line")) split_line++;
+            if (advanced_io_string_value_equals(item, "break")) split_break++;
+        }
+        return exact == 1 && split_line == 0 && split_break == 0;
+    }
+    return false;
+}
+
+fn bool advanced_process_kill_invalid_signal_case(Interp* interp, int sig) {
+    char[1400] code_buf;
+    if (try char[] code = io::bprintf(
+        &code_buf,
+        "(block "
+        "(define p (process-spawn \"/bin/sh\" [\"-c\" \"sleep 2\"] nil)) "
+        "(define code (handle (process-kill (ref p 'handle) %d) (raise msg (String (ref msg 'code))))) "
+        "(if (= code \"io/process-kill-invalid-sig\") (process-kill (ref p 'handle) 15) nil) "
+        "(define st (await (spawn (lambda () (process-wait (ref p 'handle)))))) "
+        "(fs-close (ref p 'stdin)) "
+        "(fs-close (ref p 'stdout)) "
+        "(fs-close (ref p 'stderr)) "
+        "(and (= code \"io/process-kill-invalid-sig\") (> (ref st 'term-signal) 0)))",
+        sig
+    )) {
+        EvalResult result = run(code, interp);
+        return !result.error.has_error &&
+            result.value != null &&
+            result.value.tag != ERROR &&
+            result.value.tag != NIL;
+    }
+    return false;
+}
+
+fn bool advanced_process_kill_valid_signal_case(Interp* interp, int sig) {
+    char[1400] code_buf;
+    if (try char[] code = io::bprintf(
+        &code_buf,
+        "(block "
+        "(define p (process-spawn \"/bin/sh\" [\"-c\" \"sleep 0.2\"] nil)) "
+        "(define code (handle (process-kill (ref p 'handle) %d) (raise msg (String (ref msg 'code))))) "
+        "(define st (await (spawn (lambda () (process-wait (ref p 'handle)))))) "
+        "(fs-close (ref p 'stdin)) "
+        "(fs-close (ref p 'stdout)) "
+        "(fs-close (ref p 'stderr)) "
+        "(and (if (= code \"io/process-kill-invalid-sig\") false true) (> (ref st 'term-signal) 0)))",
+        sig
+    )) {
+        EvalResult result = run(code, interp);
+        return !result.error.has_error &&
+            result.value != null &&
+            result.value.tag != ERROR &&
+            result.value.tag != NIL;
+    }
+    return false;
+}
+
+fn void run_advanced_process_kill_signal_validation_tests(Interp* interp, int* pass, int* fail) {
+    int max_sig = omni_uv_process_max_signal();
+    bool zero_ok = advanced_process_kill_invalid_signal_case(interp, 0);
+    bool negative_ok = advanced_process_kill_invalid_signal_case(interp, -1);
+    bool max_ok = max_sig > 0 && advanced_process_kill_valid_signal_case(interp, max_sig);
+    bool above_max_ok = max_sig > 0 &&
+        max_sig < int.max &&
+        advanced_process_kill_invalid_signal_case(interp, max_sig + 1);
+
+    if (zero_ok && negative_ok && max_ok && above_max_ok) {
+        emit_pass("process-kill validates signal bounds without SIGKILL fallback");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] process-kill validates signal bounds without SIGKILL fallback (max_sig=%d zero=%s negative=%s max=%s above_max=%s)",
+            max_sig,
+            zero_ok ? "yes" : "no",
+            negative_ok ? "yes" : "no",
+            max_ok ? "yes" : "no",
+            above_max_ok ? "yes" : "no"
+        );
+        (*fail)++;
+    }
+}
+
 fn void run_advanced_io_typed_effect_tests(Interp* interp, int* pass, int* fail) {
     // === I/O EFFECTS TESTS (Phase 5) ===
     // print/println go through effects now (fast path to __raw-*). Capture the
@@ -101,12 +341,26 @@ fn void run_advanced_io_typed_effect_tests(Interp* interp, int* pass, int* fail)
 
     test_truthy_interp(interp, "fs-readdir returns array",
         "(array? (fs-readdir \"/tmp\"))", pass, fail);
+    if (advanced_fs_readdir_preserves_newline_entry_names(interp)) {
+        emit_pass_literal("[PASS] fs-readdir preserves newline-containing entry names");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] fs-readdir preserves newline-containing entry names");
+        (*fail)++;
+    }
     test_error_contains(interp, "fs-open rejects flags out of range",
         "(fs-open \"/tmp/omni_fs_bad_flags.txt\" 9223372036854775807)",
         "flags out of range", pass, fail);
     test_error_contains(interp, "fs-open rejects mode out of range",
         "(fs-open \"/tmp/omni_fs_bad_mode.txt\" 0 9223372036854775807)",
         "mode out of range", pass, fail);
+    test_error_contains(interp, "fs-open rejects extra direct arg",
+        "(fs-open \"/dev/null\" 0 420 'extra)",
+        "expected (fs-open path flags [mode])", pass, fail);
+    test_error_contains(interp, "fs-open rejects extra packed arg",
+        "(__raw-fs-open '(\"/dev/null\" 0 420 extra))",
+        "expected (fs-open path flags [mode])", pass, fail);
+    run_advanced_c_api_string_boundary_tests(interp, pass, fail);
 
     test_str_val(interp, "transmission-control alias payload code",
         "(handle (tcp-connect 42 80) "
@@ -200,6 +454,26 @@ fn void run_advanced_io_typed_effect_tests(Interp* interp, int* pass, int* fail)
         "(fs-close h) "
         "(fs-read h 1))",
         "fs-read: invalid or closed handle", pass, fail);
+    test_error_contains(interp, "fs-read rejects requests above single-read cap",
+        "(block "
+        "(define r (fs-open \"/dev/null\" 0)) "
+        "(fs-read r 8388609))",
+        "fs-read: requested byte count exceeds maximum single read", pass, fail);
+
+    omni_uv_fs_debug_set_max_buf_len(2);
+    test_truthy_interp(interp, "fs-write chunks across native buffer boundary",
+        "(block "
+        "(define p (string-append \"/tmp/omni_fs_write_chunk_\" (String (% (time-ms) 1000000)) \".txt\")) "
+        "(define h (fs-open p 577 420)) "
+        "(define n (fs-write h \"abcdef\")) "
+        "(fs-close h) "
+        "(define rh (fs-open p 0)) "
+        "(define got (fs-read rh 16)) "
+        "(fs-close rh) "
+        "(fs-unlink p) "
+        "(and (= n 6) (= got \"abcdef\")))",
+        pass, fail);
+    omni_uv_fs_debug_set_max_buf_len(0);
 
     test_tag_interp(interp, "udp socket create/close",
         "(block "
@@ -245,6 +519,30 @@ fn void run_advanced_io_typed_effect_tests(Interp* interp, int* pass, int* fail)
         "(handle (process-kill nil \"TERM\") "
         "  (raise msg (String (ref msg 'code))))",
         "io/process-kill-sig-not-integer", pass, fail);
+    test_truthy_interp(interp, "process-kill rejects trailing raw direct arg before kill",
+        "(block "
+        "(define p (process-spawn \"/bin/sh\" [\"-c\" \"sleep 2\"] nil)) "
+        "(define code (handle (__raw-process-kill (ref p 'handle) 15 'ignored) "
+        "  (raise msg (String (ref msg 'code))))) "
+        "(process-kill (ref p 'handle) 15) "
+        "(define st (await (spawn (lambda () (process-wait (ref p 'handle)))))) "
+        "(fs-close (ref p 'stdin)) "
+        "(fs-close (ref p 'stdout)) "
+        "(fs-close (ref p 'stderr)) "
+        "(and (= code \"io/process-kill-expected-handle-sig\") (> (ref st 'term-signal) 0)))",
+        pass, fail);
+    test_truthy_interp(interp, "process-kill rejects trailing packed arg before kill",
+        "(block "
+        "(define p (process-spawn \"/bin/sh\" [\"-c\" \"sleep 2\"] nil)) "
+        "(define code (handle (__raw-process-kill (list (ref p 'handle) 15 'ignored)) "
+        "  (raise msg (String (ref msg 'code))))) "
+        "(process-kill (ref p 'handle) 15) "
+        "(define st (await (spawn (lambda () (process-wait (ref p 'handle)))))) "
+        "(fs-close (ref p 'stdin)) "
+        "(fs-close (ref p 'stdout)) "
+        "(fs-close (ref p 'stderr)) "
+        "(and (= code \"io/process-kill-expected-handle-sig\") (> (ref st 'term-signal) 0)))",
+        pass, fail);
 
     test_truthy_interp(interp, "process spawn stdio + wait",
         "(block "
@@ -289,7 +587,9 @@ fn void run_advanced_io_typed_effect_tests(Interp* interp, int* pass, int* fail)
         "(and (= (ref st 'exit-code) 0) (string-contains? msg \"requires running fiber context\")))",
         pass, fail);
     run_advanced_process_wait_event_driven_test(interp, pass, fail);
+    run_advanced_process_wait_status_retry_after_result_oom_test(interp, pass, fail);
     run_advanced_process_handle_concurrent_reuse_test(interp, pass, fail);
+    run_advanced_process_kill_signal_validation_tests(interp, pass, fail);
 
     test_truthy_interp(interp, "process kill terminates child",
         "(block "
@@ -310,6 +610,22 @@ fn void run_advanced_io_typed_effect_tests(Interp* interp, int* pass, int* fail)
         "(async-sleep 20) "
         "(signal-unhandle h) "
         "(= (ref hits 'n) 1))",
+        pass, fail);
+    test_truthy_interp(interp, "signal-handle rejects trailing raw direct arg",
+        "(block "
+        "(define result (handle (__raw-signal-handle 10 (lambda (sig) nil) 'ignored) "
+        "  (raise msg (String (ref msg 'code))))) "
+        "(if (= result \"io/signal-handle-expected-sig-callback\") "
+        "  true "
+        "  (block (signal-unhandle result) false)))",
+        pass, fail);
+    test_truthy_interp(interp, "signal-handle rejects trailing packed arg",
+        "(block "
+        "(define result (handle (__raw-signal-handle (list 10 (lambda (sig) nil) 'ignored)) "
+        "  (raise msg (String (ref msg 'code))))) "
+        "(if (= result \"io/signal-handle-expected-sig-callback\") "
+        "  true "
+        "  (block (signal-unhandle result) false)))",
         pass, fail);
     run_advanced_signal_burst_delivery_test(interp, pass, fail);
     run_advanced_signal_handle_registry_scaling_test(interp, pass, fail);

@@ -232,9 +232,17 @@ int omni_tensor_vulkan_select_physical_device(
         omni_vulkan_get_queue_family_properties(devices[i], &queue_count, NULL);
         if (queue_count == 0) continue;
 
-        OmniVulkanQueueFamilyProperties* queues = (OmniVulkanQueueFamilyProperties*)calloc(queue_count, sizeof(OmniVulkanQueueFamilyProperties));
+        uint32_t allocated_queue_count = queue_count;
+        OmniVulkanQueueFamilyProperties* queues = (OmniVulkanQueueFamilyProperties*)calloc(
+            allocated_queue_count,
+            sizeof(OmniVulkanQueueFamilyProperties)
+        );
         if (queues == NULL) continue;
         omni_vulkan_get_queue_family_properties(devices[i], &queue_count, queues);
+        if (queue_count == 0 || queue_count > allocated_queue_count) {
+            free(queues);
+            continue;
+        }
 
         for (uint32_t q = 0; q < queue_count; q++) {
             if (!omni_tensor_vulkan_queue_is_selectable(&queues[q])) continue;

@@ -11,8 +11,22 @@ fn char[] ffi_manifest_type_name(FfiTypeTag tag) {
             return "Integer";
         case FFI_TYPE_DOUBLE:
             return "Float64";
+        case FFI_TYPE_FLOAT32:
+            return "Float32";
+        case FFI_TYPE_INT32:
+            return "Int32";
+        case FFI_TYPE_INT64:
+            return "Int64";
+        case FFI_TYPE_UINT32:
+            return "UInt32";
+        case FFI_TYPE_UINT64:
+            return "UInt64";
         case FFI_TYPE_PTR:
             return "ForeignHandle";
+        case FFI_TYPE_BUFFER:
+            return "Buffer";
+        case FFI_TYPE_STRUCT:
+            return "Struct";
         case FFI_TYPE_BOOL:
             return "Boolean";
         case FFI_TYPE_STRING:
@@ -150,34 +164,208 @@ fn void Compiler.emit_ffi_manifest_fn_entry(Compiler* self, Expr* expr, bool* fi
 
 fn void Compiler.emit_ffi_manifest_lib_entries(Compiler* self, Expr* expr, bool* first) {
     if (expr == null) return;
-    if (expr.tag == E_MODULE && expr.module_expr != null) {
-        for (usz mi = 0; mi < expr.module_expr.body_count; mi++) {
-            self.emit_ffi_manifest_lib_entries(expr.module_expr.body[mi], first);
-        }
-        return;
-    }
-    if (expr.tag == E_BLOCK && expr.block != null) {
-        for (usz bi = 0; bi < expr.block.expr_count; bi++) {
-            self.emit_ffi_manifest_lib_entries(expr.block.exprs[bi], first);
-        }
-        return;
+
+    switch (expr.tag) {
+        case E_LAMBDA:
+            if (expr.lambda != null) self.emit_ffi_manifest_lib_entries(expr.lambda.body, first);
+            return;
+        case E_APP:
+            self.emit_ffi_manifest_lib_entries(expr.app.func, first);
+            self.emit_ffi_manifest_lib_entries(expr.app.arg, first);
+            return;
+        case E_IF:
+            self.emit_ffi_manifest_lib_entries(expr.if_expr.test, first);
+            self.emit_ffi_manifest_lib_entries(expr.if_expr.then_branch, first);
+            self.emit_ffi_manifest_lib_entries(expr.if_expr.else_branch, first);
+            return;
+        case E_LET:
+            self.emit_ffi_manifest_lib_entries(expr.let_expr.init, first);
+            self.emit_ffi_manifest_lib_entries(expr.let_expr.body, first);
+            return;
+        case E_RESET:
+            self.emit_ffi_manifest_lib_entries(expr.reset.body, first);
+            return;
+        case E_SHIFT:
+            self.emit_ffi_manifest_lib_entries(expr.shift.body, first);
+            return;
+        case E_PERFORM:
+            if (expr.perform.has_tag_expr) self.emit_ffi_manifest_lib_entries(expr.perform.tag_expr, first);
+            self.emit_ffi_manifest_lib_entries(expr.perform.arg, first);
+            return;
+        case E_RESOLVE:
+            self.emit_ffi_manifest_lib_entries(expr.resolve.value, first);
+            return;
+        case E_HANDLE:
+            if (expr.handle != null) {
+                self.emit_ffi_manifest_lib_entries(expr.handle.body, first);
+                for (usz hi = 0; hi < expr.handle.clause_count; hi++) {
+                    if (expr.handle.clauses[hi].has_effect_tag_expr) {
+                        self.emit_ffi_manifest_lib_entries(expr.handle.clauses[hi].effect_tag_expr, first);
+                    }
+                    self.emit_ffi_manifest_lib_entries(expr.handle.clauses[hi].handler_body, first);
+                }
+            }
+            return;
+        case E_INDEX:
+            self.emit_ffi_manifest_lib_entries(expr.index.collection, first);
+            self.emit_ffi_manifest_lib_entries(expr.index.index, first);
+            return;
+        case E_MATCH:
+            if (expr.match != null) {
+                self.emit_ffi_manifest_lib_entries(expr.match.scrutinee, first);
+                for (usz mi = 0; mi < expr.match.clause_count; mi++) {
+                    self.emit_ffi_manifest_lib_entries(expr.match.clauses[mi].result, first);
+                }
+            }
+            return;
+        case E_AND:
+            self.emit_ffi_manifest_lib_entries(expr.and_expr.left, first);
+            self.emit_ffi_manifest_lib_entries(expr.and_expr.right, first);
+            return;
+        case E_OR:
+            self.emit_ffi_manifest_lib_entries(expr.or_expr.left, first);
+            self.emit_ffi_manifest_lib_entries(expr.or_expr.right, first);
+            return;
+        case E_CALL:
+            if (expr.call != null) {
+                self.emit_ffi_manifest_lib_entries(expr.call.func, first);
+                for (usz ai = 0; ai < expr.call.arg_count; ai++) {
+                    self.emit_ffi_manifest_lib_entries(expr.call.args[ai], first);
+                }
+            }
+            return;
+        case E_MODULE:
+            if (expr.module_expr != null) {
+                for (usz mi = 0; mi < expr.module_expr.body_count; mi++) {
+                    self.emit_ffi_manifest_lib_entries(expr.module_expr.body[mi], first);
+                }
+            }
+            return;
+        case E_WITH_MODULE:
+            if (expr.with_module != null) {
+                for (usz wi = 0; wi < expr.with_module.body_count; wi++) {
+                    self.emit_ffi_manifest_lib_entries(expr.with_module.body[wi], first);
+                }
+            }
+            return;
+        case E_BLOCK:
+            if (expr.block != null) {
+                for (usz bi = 0; bi < expr.block.expr_count; bi++) {
+                    self.emit_ffi_manifest_lib_entries(expr.block.exprs[bi], first);
+                }
+            }
+            return;
+        case E_SET:
+            self.emit_ffi_manifest_lib_entries(expr.set_expr.value, first);
+            return;
+        case E_DEFINE:
+            self.emit_ffi_manifest_lib_entries(expr.define.value, first);
+            return;
+        default:
     }
     self.emit_ffi_manifest_lib_entry(expr, first);
 }
 
 fn void Compiler.emit_ffi_manifest_fn_entries(Compiler* self, Expr* expr, bool* first) {
     if (expr == null) return;
-    if (expr.tag == E_MODULE && expr.module_expr != null) {
-        for (usz mi = 0; mi < expr.module_expr.body_count; mi++) {
-            self.emit_ffi_manifest_fn_entries(expr.module_expr.body[mi], first);
-        }
-        return;
-    }
-    if (expr.tag == E_BLOCK && expr.block != null) {
-        for (usz bi = 0; bi < expr.block.expr_count; bi++) {
-            self.emit_ffi_manifest_fn_entries(expr.block.exprs[bi], first);
-        }
-        return;
+
+    switch (expr.tag) {
+        case E_LAMBDA:
+            if (expr.lambda != null) self.emit_ffi_manifest_fn_entries(expr.lambda.body, first);
+            return;
+        case E_APP:
+            self.emit_ffi_manifest_fn_entries(expr.app.func, first);
+            self.emit_ffi_manifest_fn_entries(expr.app.arg, first);
+            return;
+        case E_IF:
+            self.emit_ffi_manifest_fn_entries(expr.if_expr.test, first);
+            self.emit_ffi_manifest_fn_entries(expr.if_expr.then_branch, first);
+            self.emit_ffi_manifest_fn_entries(expr.if_expr.else_branch, first);
+            return;
+        case E_LET:
+            self.emit_ffi_manifest_fn_entries(expr.let_expr.init, first);
+            self.emit_ffi_manifest_fn_entries(expr.let_expr.body, first);
+            return;
+        case E_RESET:
+            self.emit_ffi_manifest_fn_entries(expr.reset.body, first);
+            return;
+        case E_SHIFT:
+            self.emit_ffi_manifest_fn_entries(expr.shift.body, first);
+            return;
+        case E_PERFORM:
+            if (expr.perform.has_tag_expr) self.emit_ffi_manifest_fn_entries(expr.perform.tag_expr, first);
+            self.emit_ffi_manifest_fn_entries(expr.perform.arg, first);
+            return;
+        case E_RESOLVE:
+            self.emit_ffi_manifest_fn_entries(expr.resolve.value, first);
+            return;
+        case E_HANDLE:
+            if (expr.handle != null) {
+                self.emit_ffi_manifest_fn_entries(expr.handle.body, first);
+                for (usz hi = 0; hi < expr.handle.clause_count; hi++) {
+                    if (expr.handle.clauses[hi].has_effect_tag_expr) {
+                        self.emit_ffi_manifest_fn_entries(expr.handle.clauses[hi].effect_tag_expr, first);
+                    }
+                    self.emit_ffi_manifest_fn_entries(expr.handle.clauses[hi].handler_body, first);
+                }
+            }
+            return;
+        case E_INDEX:
+            self.emit_ffi_manifest_fn_entries(expr.index.collection, first);
+            self.emit_ffi_manifest_fn_entries(expr.index.index, first);
+            return;
+        case E_MATCH:
+            if (expr.match != null) {
+                self.emit_ffi_manifest_fn_entries(expr.match.scrutinee, first);
+                for (usz mi = 0; mi < expr.match.clause_count; mi++) {
+                    self.emit_ffi_manifest_fn_entries(expr.match.clauses[mi].result, first);
+                }
+            }
+            return;
+        case E_AND:
+            self.emit_ffi_manifest_fn_entries(expr.and_expr.left, first);
+            self.emit_ffi_manifest_fn_entries(expr.and_expr.right, first);
+            return;
+        case E_OR:
+            self.emit_ffi_manifest_fn_entries(expr.or_expr.left, first);
+            self.emit_ffi_manifest_fn_entries(expr.or_expr.right, first);
+            return;
+        case E_CALL:
+            if (expr.call != null) {
+                self.emit_ffi_manifest_fn_entries(expr.call.func, first);
+                for (usz ai = 0; ai < expr.call.arg_count; ai++) {
+                    self.emit_ffi_manifest_fn_entries(expr.call.args[ai], first);
+                }
+            }
+            return;
+        case E_MODULE:
+            if (expr.module_expr != null) {
+                for (usz mi = 0; mi < expr.module_expr.body_count; mi++) {
+                    self.emit_ffi_manifest_fn_entries(expr.module_expr.body[mi], first);
+                }
+            }
+            return;
+        case E_WITH_MODULE:
+            if (expr.with_module != null) {
+                for (usz wi = 0; wi < expr.with_module.body_count; wi++) {
+                    self.emit_ffi_manifest_fn_entries(expr.with_module.body[wi], first);
+                }
+            }
+            return;
+        case E_BLOCK:
+            if (expr.block != null) {
+                for (usz bi = 0; bi < expr.block.expr_count; bi++) {
+                    self.emit_ffi_manifest_fn_entries(expr.block.exprs[bi], first);
+                }
+            }
+            return;
+        case E_SET:
+            self.emit_ffi_manifest_fn_entries(expr.set_expr.value, first);
+            return;
+        case E_DEFINE:
+            self.emit_ffi_manifest_fn_entries(expr.define.value, first);
+            return;
+        default:
     }
     self.emit_ffi_manifest_fn_entry(expr, first);
 }

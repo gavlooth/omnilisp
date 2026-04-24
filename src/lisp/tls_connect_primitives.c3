@@ -88,6 +88,21 @@ fn Value* prim_tls_connect(Value*[] args, Env* env, Interp* interp) {
     if (resume_policy_v != null && !tls_is_resume_policy_value(resume_policy_v, interp)) {
         return tls_raise_async(interp, "io/tls-connect-expected-resume-policy-bool", "tls-connect: resume-session? must be true or false");
     }
+    if (c_api_string_contains_nul(host_v.str_chars[:host_v.str_len])) {
+        return tls_raise_async(interp, "io/tls-connect-invalid-hostname", "tls-connect: hostname contains embedded NUL byte");
+    }
+    if (host_v.str_len > 255) {
+        return tls_raise_async(interp, "io/tls-connect-invalid-hostname", "tls-connect: hostname must be <= 255 bytes");
+    }
+    if (ca_bundle_v != null && c_api_string_contains_nul(ca_bundle_v.str_chars[:ca_bundle_v.str_len])) {
+        return tls_raise_async(interp, "io/tls-connect-invalid-ca-bundle-path", "tls-connect: ca-bundle-path contains embedded NUL byte");
+    }
+    if (client_cert_v != null && c_api_string_contains_nul(client_cert_v.str_chars[:client_cert_v.str_len])) {
+        return tls_raise_async(interp, "io/tls-connect-invalid-client-cert-path", "tls-connect: client-cert-pem-path contains embedded NUL byte");
+    }
+    if (client_key_v != null && c_api_string_contains_nul(client_key_v.str_chars[:client_key_v.str_len])) {
+        return tls_raise_async(interp, "io/tls-connect-invalid-client-key-path", "tls-connect: client-key-pem-path contains embedded NUL byte");
+    }
     if ((client_cert_v == null) != (client_key_v == null)) {
         return tls_raise_async(interp, "io/tls-connect-client-cert-key-pair-required", "tls-connect: client cert and key paths must be provided together");
     }
@@ -168,8 +183,17 @@ fn Value* prim_tls_trust_store_load_cause(Value*[] args, Env* env, Interp* inter
     if (args.len < 1) return tls_raise_async(interp, "io/tls-trust-store-load-cause-expected-path", "tls-trust-store-load-cause: expected (tls-trust-store-load-cause path)");
     if (!is_string(args[0])) return tls_raise_async(interp, "io/tls-trust-store-load-cause-path-not-string", "tls-trust-store-load-cause: path must be a string");
 
+    CApiStringResult path = c_api_string_dup_no_nul(args[0].str_chars[:args[0].str_len]);
+    if (path.contains_nul) {
+        return tls_raise_async(interp, "io/tls-trust-store-load-cause-invalid-path", "tls-trust-store-load-cause: path contains embedded NUL byte");
+    }
+    if (!path.ok) {
+        return tls_raise_async(interp, "io/tls-trust-store-load-cause-out-of-memory", "tls-trust-store-load-cause: out of memory");
+    }
+    defer c_api_string_free(&path);
+
     omni_tls_clear_last_error();
-    void* store = omni_tls_trust_store_load_file((ZString)args[0].str_chars);
+    void* store = omni_tls_trust_store_load_file(path.ptr);
     char[] msg = tls_last_error_text();
     if (store != null) omni_tls_trust_store_free(store);
     return make_string(interp, msg);

@@ -3,359 +3,155 @@ module lisp;
 import std::io;
 import std::core::mem;
 
-fn void ftxui_record_result(ZString name, bool ok, int* pass, int* fail) {
-    if (ok) {
-        io::printfn("[PASS] %s", name);
-        (*pass)++;
-    } else {
-        io::printfn("[FAIL] %s", name);
-        (*fail)++;
-    }
+extern fn uint omni_ffi_test_echo_u32(uint value) @extern("omni_ffi_test_echo_u32");
+extern fn ulong omni_ffi_test_echo_u64(ulong value) @extern("omni_ffi_test_echo_u64");
+extern fn uint omni_ffi_test_return_u32_max() @extern("omni_ffi_test_return_u32_max");
+extern fn ulong omni_ffi_test_return_u64_long_max() @extern("omni_ffi_test_return_u64_long_max");
+extern fn ulong omni_ffi_test_return_u64_above_long_max() @extern("omni_ffi_test_return_u64_above_long_max");
+extern fn int omni_ffi_call_rejects_unsupported_type_tags_for_tests() @extern("omni_ffi_call_rejects_unsupported_type_tags_for_tests");
+extern fn int omni_ffi_closure_alloc_rejects_unsupported_type_tags_for_tests() @extern("omni_ffi_closure_alloc_rejects_unsupported_type_tags_for_tests");
+
+fn bool ffi_unsigned_pack_contract_for_tests(Interp* interp) {
+    long int_slot = 0;
+    double dbl_slot = 0.0;
+    void* ptr_slot = null;
+    int arg_type = 0;
+    void* arg_value = null;
+
+    Value* neg_u32 = ffi_pack_call_arg(make_int(interp, -1), FfiTypeTag.FFI_TYPE_UINT32, 0, null,
+        &int_slot, &dbl_slot, &ptr_slot, &arg_type, &arg_value, interp);
+    Value* high_u32 = ffi_pack_call_arg(make_int(interp, (long)uint.max + 1), FfiTypeTag.FFI_TYPE_UINT32, 0, null,
+        &int_slot, &dbl_slot, &ptr_slot, &arg_type, &arg_value, interp);
+    Value* max_u32 = ffi_pack_call_arg(make_int(interp, (long)uint.max), FfiTypeTag.FFI_TYPE_UINT32, 0, null,
+        &int_slot, &dbl_slot, &ptr_slot, &arg_type, &arg_value, interp);
+    bool u32_ok = ffi_test_error_contains(neg_u32, "out of range for UInt32") &&
+        ffi_test_error_contains(high_u32, "out of range for UInt32") &&
+        max_u32 == null &&
+        arg_type == (int)FfiTypeTag.FFI_TYPE_UINT32 &&
+        arg_value == (void*)&int_slot &&
+        int_slot == (long)uint.max;
+
+    Value* neg_u64 = ffi_pack_call_arg(make_int(interp, -1), FfiTypeTag.FFI_TYPE_UINT64, 0, null,
+        &int_slot, &dbl_slot, &ptr_slot, &arg_type, &arg_value, interp);
+    Value* max_signed_u64 = ffi_pack_call_arg(make_int(interp, long.max), FfiTypeTag.FFI_TYPE_UINT64, 0, null,
+        &int_slot, &dbl_slot, &ptr_slot, &arg_type, &arg_value, interp);
+    bool u64_ok = ffi_test_error_contains(neg_u64, "out of range for UInt64") &&
+        max_signed_u64 == null &&
+        arg_type == (int)FfiTypeTag.FFI_TYPE_UINT64 &&
+        arg_value == (void*)&int_slot &&
+        int_slot == long.max;
+
+    return u32_ok && u64_ok;
 }
 
-fn OmniFtxuiDimension ftxui_test_fit_dimension() {
-    return {
-        .size = OmniFtxuiDimension.sizeof,
-        .abi_version = OMNI_FTXUI_ABI_VERSION,
-        .kind = OMNI_FTXUI_DIMENSION_FIT,
-        .value = 0
-    };
+fn bool ffi_unsigned_return_contract_for_tests(Interp* interp) {
+    Value* u32 = ffi_return_value_for(null, FfiTypeTag.FFI_TYPE_UINT32, null, 0, uint.max, 0, 0.0f, 0.0, null, interp);
+    Value* u64_max_signed = ffi_return_value_for(null, FfiTypeTag.FFI_TYPE_UINT64, null, 0, 0, (ulong)long.max, 0.0f, 0.0, null, interp);
+    Value* u64_high = ffi_return_value_for(null, FfiTypeTag.FFI_TYPE_UINT64, null, 0, 0, (ulong)long.max + (ulong)1, 0.0f, 0.0, null, interp);
+    return u32 != null && u32.tag == INT && u32.int_val == (long)uint.max &&
+        u64_max_signed != null && u64_max_signed.tag == INT && u64_max_signed.int_val == long.max &&
+        ffi_test_error_contains(u64_high, "UInt64 return exceeds Integer range");
 }
 
-fn OmniFtxuiEventSpec ftxui_test_escape_event_spec() {
-    return {
-        .size = OmniFtxuiEventSpec.sizeof,
-        .abi_version = OMNI_FTXUI_ABI_VERSION,
-        .kind = OMNI_FTXUI_EVENT_ESCAPE,
-        .text = null
-    };
+fn bool ffi_unsigned_libffi_contract_for_tests(Interp* interp) {
+    long int_storage = (long)uint.max;
+    int arg_type = (int)FfiTypeTag.FFI_TYPE_UINT32;
+    void* arg_value = (void*)&int_storage;
+    uint ret_u32 = 0;
+    if (omni_ffi_call((void*)&omni_ffi_test_echo_u32, 1, &arg_type, &arg_value,
+        (int)FfiTypeTag.FFI_TYPE_UINT32, (void*)&ret_u32) != 0 || ret_u32 != uint.max) {
+        return false;
+    }
+
+    int_storage = long.max;
+    arg_type = (int)FfiTypeTag.FFI_TYPE_UINT64;
+    arg_value = (void*)&int_storage;
+    ulong ret_u64 = 0;
+    if (omni_ffi_call((void*)&omni_ffi_test_echo_u64, 1, &arg_type, &arg_value,
+        (int)FfiTypeTag.FFI_TYPE_UINT64, (void*)&ret_u64) != 0 || ret_u64 != (ulong)long.max) {
+        return false;
+    }
+
+    uint ret_u32_max = 0;
+    if (omni_ffi_call((void*)&omni_ffi_test_return_u32_max, 0, null, null,
+        (int)FfiTypeTag.FFI_TYPE_UINT32, (void*)&ret_u32_max) != 0 || ret_u32_max != uint.max) {
+        return false;
+    }
+
+    ulong ret_u64_high = 0;
+    return omni_ffi_call((void*)&omni_ffi_test_return_u64_above_long_max, 0, null, null,
+        (int)FfiTypeTag.FFI_TYPE_UINT64, (void*)&ret_u64_high) == 0 &&
+        ret_u64_high == (ulong)long.max + (ulong)1;
 }
 
-fn OmniFtxuiEventSpec ftxui_test_return_event_spec() {
-    return {
-        .size = OmniFtxuiEventSpec.sizeof,
-        .abi_version = OMNI_FTXUI_ABI_VERSION,
-        .kind = OMNI_FTXUI_EVENT_RETURN,
-        .text = null
-    };
+fn bool ffi_invalid_libffi_type_contract_for_tests() {
+    return omni_ffi_call_rejects_unsupported_type_tags_for_tests() == 0 &&
+        omni_ffi_closure_alloc_rejects_unsupported_type_tags_for_tests() == 0;
 }
 
-fn int ftxui_test_event_callback(void* user_data, OmniFtxuiContext* context, OmniFtxuiEventHandle* event) {
-    (void)context;
-    (void)event;
-    if (user_data != null) {
-        int* count = (int*)user_data;
-        (*count)++;
-    }
-    return 1;
+fn bool ffi_async_unsigned_return_contract_for_tests() {
+    FfiAsyncCallCtx* ctx = (FfiAsyncCallCtx*)mem::malloc(FfiAsyncCallCtx.sizeof);
+    if (ctx == null) return false;
+    *ctx = {};
+    ctx.fn_ptr = (void*)&omni_ffi_test_return_u64_above_long_max;
+    ctx.nargs = 0;
+    ctx.ret_type = (int)FfiTypeTag.FFI_TYPE_UINT64;
+
+    OffloadCompletion* completion = ffi_async_offload_callback({ .custom_ctx = (void*)ctx });
+    bool high_rejected = completion != null &&
+        completion.kind == OFFLOAD_RES_ERROR &&
+        completion.error_msg != null &&
+        completion.error_len > 0;
+    if (completion != null) scheduler_free_offload_completion(completion);
+
+    ctx.fn_ptr = (void*)&omni_ffi_test_return_u32_max;
+    ctx.ret_type = (int)FfiTypeTag.FFI_TYPE_UINT32;
+    completion = ffi_async_offload_callback({ .custom_ctx = (void*)ctx });
+    bool u32_ok = completion != null &&
+        completion.kind == OFFLOAD_RES_INT &&
+        completion.int_result == (long)uint.max;
+    if (completion != null) scheduler_free_offload_completion(completion);
+
+    ffi_async_call_ctx_free((void*)ctx);
+    return high_rejected && u32_ok;
 }
 
-fn void ftxui_test_action_callback(void* user_data) {
-    if (user_data != null) {
-        int* count = (int*)user_data;
-        (*count)++;
-    }
+fn bool ffi_callback_finalization_guard_contract_for_tests(Interp* interp) {
+    EvalResult ri = run("(ffi-callback (lambda (a b) (- a b)) ['Integer 'Integer] 'Integer)", interp);
+    if (ri.error.has_error || ri.value == null || ri.value.tag != FFI_HANDLE || ri.value.ffi_val == null) return false;
+    FfiCallbackContext* ctx = (FfiCallbackContext*)ri.value.ffi_val.user_data;
+    if (ctx == null || ffi_callback_try_enter((void*)ctx) == 0) return false;
+    void* code_ptr = ri.value.ffi_val.lib_handle;
+
+    Value*[1] release_args = { ri.value };
+    Value* released = prim_foreign_release(release_args[..], null, interp);
+    bool release_ok = released != null && released.tag == VOID;
+    bool held_active = ctx.open.load() == 0 &&
+        ctx.finalize_requested.load() != 0 &&
+        ctx.resources_released.load() == 0 &&
+        ctx.active_calls.load() == 1;
+    bool closed_rejects_enter = ffi_callback_try_enter((void*)ctx) == 0 &&
+        ctx.active_calls.load() == 1;
+    int rejected_result = omni_ffi_test_callback_int_int(code_ptr, 10, 3);
+    bool closed_zeroes_return_slot = rejected_result == 0;
+
+    ffi_callback_leave((void*)ctx);
+    bool released_after_leave = ctx.resources_released.load() != 0 &&
+        ctx.active_calls.load() == 0 &&
+        ctx.callback == null &&
+        ctx.param_types == null &&
+        ctx.closure_handle == null;
+    bool tombstone_rejects_enter = ffi_callback_try_enter((void*)ctx) == 0 &&
+        ctx.active_calls.load() == 0;
+
+    return release_ok && held_active && closed_rejects_enter && closed_zeroes_return_slot &&
+        released_after_leave && tombstone_rejects_enter;
 }
 
-fn void run_advanced_ftxui_context_screen_lifecycle_test(int* pass, int* fail) {
-    OmniFtxuiContext* context = null;
-    OmniFtxuiStatus status = omni_ftxui_context_create(&context);
-    ftxui_record_result("ftxui context create", status == OMNI_FTXUI_STATUS_OK && context != null, pass, fail);
-    if (context == null) return;
-    defer omni_ftxui_context_destroy(context);
-
-    OmniFtxuiEventHandle* bad_event = null;
-    status = omni_ftxui_event_create(context, null, &bad_event);
-    ftxui_record_result(
-        "ftxui context captures invalid argument status",
-        status == OMNI_FTXUI_STATUS_INVALID_ARGUMENT &&
-            omni_ftxui_context_last_error_code(context) == OMNI_FTXUI_STATUS_INVALID_ARGUMENT,
-        pass,
-        fail
-    );
-    omni_ftxui_context_clear_error(context);
-    ftxui_record_result(
-        "ftxui context clear error",
-        omni_ftxui_context_last_error_code(context) == OMNI_FTXUI_STATUS_OK,
-        pass,
-        fail
-    );
-
-    OmniFtxuiScreenCreateOptions options = {};
-    options.size = OmniFtxuiScreenCreateOptions.sizeof;
-    options.abi_version = OMNI_FTXUI_ABI_VERSION;
-    options.mode = OMNI_FTXUI_SCREEN_TERMINAL_OUTPUT;
-    options.track_mouse = false;
-    options.handle_piped_input = false;
-    options.width = ftxui_test_fit_dimension();
-    options.height = ftxui_test_fit_dimension();
-
-    OmniFtxuiScreenCreateOptions piped_options = options;
-    piped_options.handle_piped_input = true;
-    OmniFtxuiScreen* piped_screen = null;
-    status = omni_ftxui_screen_create(context, &piped_options, &piped_screen);
-    if (omni_ftxui_backend_available() != 0) {
-        ftxui_record_result(
-            "ftxui screen create rejects piped input",
-            status == OMNI_FTXUI_STATUS_NOT_SUPPORTED && piped_screen == null,
-            pass,
-            fail
-        );
-    }
-    if (piped_screen != null) omni_ftxui_screen_destroy(piped_screen);
-
-    OmniFtxuiScreen* screen = null;
-    status = omni_ftxui_screen_create(context, &options, &screen);
-    if (omni_ftxui_backend_available() == 0) {
-        ftxui_record_result(
-            "ftxui screen create fails closed without backend",
-            status == OMNI_FTXUI_STATUS_BACKEND_UNAVAILABLE && screen == null,
-            pass,
-            fail
-        );
-        return;
-    }
-    ftxui_record_result("ftxui screen create", status == OMNI_FTXUI_STATUS_OK && screen != null, pass, fail);
-    if (screen == null) return;
-    defer omni_ftxui_screen_destroy(screen);
-
-    status = omni_ftxui_screen_set_track_mouse(context, screen, true);
-    ftxui_record_result("ftxui screen set track mouse", status == OMNI_FTXUI_STATUS_OK, pass, fail);
-    status = omni_ftxui_screen_set_handle_piped_input(context, screen, false);
-    ftxui_record_result("ftxui screen accepts disabled piped input", status == OMNI_FTXUI_STATUS_OK, pass, fail);
-    status = omni_ftxui_screen_set_handle_piped_input(context, screen, true);
-    ftxui_record_result("ftxui screen rejects enabled piped input", status == OMNI_FTXUI_STATUS_NOT_SUPPORTED, pass, fail);
-    status = omni_ftxui_screen_request_animation_frame(context, screen);
-    ftxui_record_result("ftxui screen request animation frame", status == OMNI_FTXUI_STATUS_OK, pass, fail);
-
-    OmniFtxuiEventSpec event_spec = ftxui_test_escape_event_spec();
-    OmniFtxuiEventHandle* event = null;
-    status = omni_ftxui_event_create(context, &event_spec, &event);
-    ftxui_record_result("ftxui event create", status == OMNI_FTXUI_STATUS_OK && event != null, pass, fail);
-    if (event != null) {
-        defer omni_ftxui_event_destroy(event);
-        status = omni_ftxui_screen_post_event(context, screen, event);
-        ftxui_record_result("ftxui screen post event", status == OMNI_FTXUI_STATUS_OK, pass, fail);
-    }
-
-    status = omni_ftxui_screen_exit(context, screen);
-    ftxui_record_result("ftxui screen exit", status == OMNI_FTXUI_STATUS_OK, pass, fail);
-}
-
-fn void run_advanced_ftxui_table_canvas_conversion_test(int* pass, int* fail) {
-    OmniFtxuiContext* context = null;
-    OmniFtxuiStatus status = omni_ftxui_context_create(&context);
-    ftxui_record_result("ftxui table/canvas context create", status == OMNI_FTXUI_STATUS_OK && context != null, pass, fail);
-    if (context == null) return;
-    defer omni_ftxui_context_destroy(context);
-
-    char*[4] cells = { null, null, null, null };
-    OmniFtxuiTableCreateOptions table_options = {};
-    table_options.size = OmniFtxuiTableCreateOptions.sizeof;
-    table_options.abi_version = OMNI_FTXUI_ABI_VERSION;
-    table_options.rows = 2;
-    table_options.cols = 2;
-    table_options.cells = &cells[0];
-
-    OmniFtxuiTable* table = null;
-    status = omni_ftxui_table_create(context, &table_options, &table);
-    if (omni_ftxui_backend_available() == 0) {
-        ftxui_record_result(
-            "ftxui table create fails closed without backend",
-            status == OMNI_FTXUI_STATUS_BACKEND_UNAVAILABLE && table == null,
-            pass,
-            fail
-        );
-    } else {
-        ftxui_record_result("ftxui table create", status == OMNI_FTXUI_STATUS_OK && table != null, pass, fail);
-    }
-
-    if (table != null) {
-        defer omni_ftxui_table_destroy(table);
-        status = omni_ftxui_table_select_all(context, table, OMNI_FTXUI_BORDER_LIGHT);
-        ftxui_record_result("ftxui table select all", status == OMNI_FTXUI_STATUS_OK, pass, fail);
-        status = omni_ftxui_table_select_row(context, table, 1, OMNI_FTXUI_BORDER_HEAVY);
-        ftxui_record_result("ftxui table select row", status == OMNI_FTXUI_STATUS_OK, pass, fail);
-        status = omni_ftxui_table_select_column(context, table, 1, OMNI_FTXUI_BORDER_ROUNDED);
-        ftxui_record_result("ftxui table select column", status == OMNI_FTXUI_STATUS_OK, pass, fail);
-        status = omni_ftxui_table_select_cell(context, table, 1, 1, OMNI_FTXUI_BORDER_DOUBLE);
-        ftxui_record_result("ftxui table select cell", status == OMNI_FTXUI_STATUS_OK, pass, fail);
-
-        OmniFtxuiElement* table_element = null;
-        status = omni_ftxui_table_render(context, table, &table_element);
-        ftxui_record_result("ftxui table render element", status == OMNI_FTXUI_STATUS_OK && table_element != null, pass, fail);
-        if (table_element != null) omni_ftxui_element_destroy(table_element);
-    }
-
-    OmniFtxuiCanvasCreateOptions canvas_options = {};
-    canvas_options.size = OmniFtxuiCanvasCreateOptions.sizeof;
-    canvas_options.abi_version = OMNI_FTXUI_ABI_VERSION;
-    canvas_options.width = 8;
-    canvas_options.height = 4;
-
-    OmniFtxuiCanvas* canvas = null;
-    status = omni_ftxui_canvas_create(context, &canvas_options, &canvas);
-    if (omni_ftxui_backend_available() == 0) {
-        ftxui_record_result(
-            "ftxui canvas create fails closed without backend",
-            status == OMNI_FTXUI_STATUS_BACKEND_UNAVAILABLE && canvas == null,
-            pass,
-            fail
-        );
-        return;
-    }
-
-    ftxui_record_result("ftxui canvas create", status == OMNI_FTXUI_STATUS_OK && canvas != null, pass, fail);
-    if (canvas == null) return;
-    defer omni_ftxui_canvas_destroy(canvas);
-
-    status = omni_ftxui_canvas_draw_point_on(context, canvas, 1, 1);
-    ftxui_record_result("ftxui canvas draw point on", status == OMNI_FTXUI_STATUS_OK, pass, fail);
-    status = omni_ftxui_canvas_draw_point_off(context, canvas, 1, 1);
-    ftxui_record_result("ftxui canvas draw point off", status == OMNI_FTXUI_STATUS_OK, pass, fail);
-    status = omni_ftxui_canvas_draw_line(context, canvas, 0, 0, 7, 3);
-    ftxui_record_result("ftxui canvas draw line", status == OMNI_FTXUI_STATUS_OK, pass, fail);
-
-    OmniFtxuiElement* canvas_element = null;
-    status = omni_ftxui_canvas_render(context, canvas, &canvas_element);
-    ftxui_record_result("ftxui canvas render element", status == OMNI_FTXUI_STATUS_OK && canvas_element != null, pass, fail);
-    if (canvas_element != null) omni_ftxui_element_destroy(canvas_element);
-
-    double[6] plot_values = { 1.0, 2.0, 3.0, 3.0, 2.0, 1.0 };
-    usz[2] plot_lengths = { 3, 3 };
-    OmniFtxuiPlotOptions plot_options = {};
-    plot_options.size = OmniFtxuiPlotOptions.sizeof;
-    plot_options.abi_version = OMNI_FTXUI_ABI_VERSION;
-    plot_options.kind = OMNI_FTXUI_PLOT_MULTI_SERIES;
-    plot_options.width = 24;
-    plot_options.height = 12;
-    plot_options.values = &plot_values[0];
-    plot_options.value_count = 6;
-    plot_options.series_lengths = &plot_lengths[0];
-    plot_options.series_count = 2;
-    plot_options.marker = OMNI_FTXUI_PLOT_MARKER_POINT;
-    OmniFtxuiElement* plot_element = null;
-    status = omni_ftxui_element_plot(context, &plot_options, &plot_element);
-    ftxui_record_result("ftxui plot render multi-series element", status == OMNI_FTXUI_STATUS_OK && plot_element != null, pass, fail);
-    if (plot_element != null) omni_ftxui_element_destroy(plot_element);
-
-    double[4] heat_values = { 1.0, 2.0, 3.0, 4.0 };
-    OmniFtxuiPlotOptions heat_options = {};
-    heat_options.size = OmniFtxuiPlotOptions.sizeof;
-    heat_options.abi_version = OMNI_FTXUI_ABI_VERSION;
-    heat_options.kind = OMNI_FTXUI_PLOT_HEATMAP;
-    heat_options.width = 16;
-    heat_options.height = 8;
-    heat_options.values = &heat_values[0];
-    heat_options.value_count = 4;
-    heat_options.heatmap_rows = 2;
-    heat_options.heatmap_cols = 2;
-    OmniFtxuiElement* heat_element = null;
-    status = omni_ftxui_element_plot(context, &heat_options, &heat_element);
-    ftxui_record_result("ftxui plot render heatmap element", status == OMNI_FTXUI_STATUS_OK && heat_element != null, pass, fail);
-    if (heat_element != null) omni_ftxui_element_destroy(heat_element);
-}
-
-fn void run_advanced_ftxui_component_callback_delivery_test(int* pass, int* fail) {
-    OmniFtxuiContext* context = null;
-    OmniFtxuiStatus status = omni_ftxui_context_create(&context);
-    ftxui_record_result("ftxui callback context create", status == OMNI_FTXUI_STATUS_OK && context != null, pass, fail);
-    if (context == null) return;
-    defer omni_ftxui_context_destroy(context);
-
-    OmniFtxuiComponentCreateOptions component_options = {};
-    component_options.size = OmniFtxuiComponentCreateOptions.sizeof;
-    component_options.abi_version = OMNI_FTXUI_ABI_VERSION;
-    component_options.kind = OMNI_FTXUI_COMPONENT_BUTTON;
-
-    OmniFtxuiComponent* base = null;
-    status = omni_ftxui_component_create(context, &component_options, null, 0, &base);
-    if (omni_ftxui_backend_available() == 0) {
-        ftxui_record_result(
-            "ftxui component create fails closed without backend",
-            status == OMNI_FTXUI_STATUS_BACKEND_UNAVAILABLE && base == null,
-            pass,
-            fail
-        );
-        return;
-    }
-
-    ftxui_record_result("ftxui component create", status == OMNI_FTXUI_STATUS_OK && base != null, pass, fail);
-    if (base == null) return;
-    defer omni_ftxui_component_destroy(base);
-
-    int callback_count = 0;
-    OmniFtxuiCallbackOptions callbacks = {};
-    callbacks.size = OmniFtxuiCallbackOptions.sizeof;
-    callbacks.abi_version = OMNI_FTXUI_ABI_VERSION;
-    callbacks.user_data = (void*)&callback_count;
-    callbacks.event_cb = &ftxui_test_event_callback;
-
-    OmniFtxuiComponent* wrapped = null;
-    status = omni_ftxui_component_wrap_event_handler(context, base, &callbacks, &wrapped);
-    ftxui_record_result("ftxui component wrap event handler", status == OMNI_FTXUI_STATUS_OK && wrapped != null, pass, fail);
-    if (wrapped == null) return;
-    defer omni_ftxui_component_destroy(wrapped);
-
-    OmniFtxuiEventSpec event_spec = ftxui_test_escape_event_spec();
-    OmniFtxuiEventHandle* event = null;
-    status = omni_ftxui_event_create(context, &event_spec, &event);
-    ftxui_record_result("ftxui callback event create", status == OMNI_FTXUI_STATUS_OK && event != null, pass, fail);
-    if (event == null) return;
-    defer omni_ftxui_event_destroy(event);
-
-    bool handled = false;
-    status = omni_ftxui_component_handle_event(context, wrapped, event, &handled);
-    ftxui_record_result(
-        "ftxui component handle event delivers callback",
-        status == OMNI_FTXUI_STATUS_OK && handled && callback_count == 1,
-        pass,
-        fail
-    );
-
-    OmniFtxuiCallbackOptions missing_action_callbacks = {};
-    missing_action_callbacks.size = OmniFtxuiCallbackOptions.sizeof;
-    missing_action_callbacks.abi_version = OMNI_FTXUI_ABI_VERSION;
-    OmniFtxuiComponent* bad_action_wrapper = null;
-    status = omni_ftxui_component_wrap_action(context, base, &missing_action_callbacks, &bad_action_wrapper);
-    ftxui_record_result(
-        "ftxui component wrap action rejects missing callback",
-        status == OMNI_FTXUI_STATUS_INVALID_ARGUMENT && bad_action_wrapper == null,
-        pass,
-        fail
-    );
-
-    int action_count = 0;
-    OmniFtxuiCallbackOptions action_callbacks = {};
-    action_callbacks.size = OmniFtxuiCallbackOptions.sizeof;
-    action_callbacks.abi_version = OMNI_FTXUI_ABI_VERSION;
-    action_callbacks.user_data = (void*)&action_count;
-    action_callbacks.action_cb = &ftxui_test_action_callback;
-
-    OmniFtxuiComponent* action_wrapped = null;
-    status = omni_ftxui_component_wrap_action(context, base, &action_callbacks, &action_wrapped);
-    ftxui_record_result("ftxui component wrap action", status == OMNI_FTXUI_STATUS_OK && action_wrapped != null, pass, fail);
-    if (action_wrapped == null) return;
-    defer omni_ftxui_component_destroy(action_wrapped);
-
-    OmniFtxuiEventSpec return_spec = ftxui_test_return_event_spec();
-    OmniFtxuiEventHandle* return_event = null;
-    status = omni_ftxui_event_create(context, &return_spec, &return_event);
-    ftxui_record_result("ftxui action event create", status == OMNI_FTXUI_STATUS_OK && return_event != null, pass, fail);
-    if (return_event == null) return;
-    defer omni_ftxui_event_destroy(return_event);
-
-    handled = false;
-    status = omni_ftxui_component_handle_event(context, action_wrapped, return_event, &handled);
-    ftxui_record_result(
-        "ftxui component handle event delivers action callback",
-        status == OMNI_FTXUI_STATUS_OK && handled && action_count == 1,
-        pass,
-        fail
-    );
-}
 
 fn void run_advanced_ffi_system_surface_tests(Interp* interp, int* pass, int* fail) {
+    run_advanced_c_api_string_boundary_tests(interp, pass, fail);
+
     // === FFI TESTS (define [ffi lib] / define [ffi λ]) ===
     // Library declaration
     setup(interp, "(define [ffi lib] libc \"libc.so.6\")");
@@ -421,6 +217,18 @@ fn void run_advanced_ffi_system_surface_tests(Interp* interp, int* pass, int* fa
         } else {
             ffi_dlopen_registry_release(too_long_path[0:too_long_path.len]);
             io::printn("[FAIL] shared dlopen registry rejects overlong non-NUL path");
+            (*fail)++;
+        }
+    }
+    {
+        char[12] nul_path = { 'l', 'i', 'b', 'c', (char)0, '.', 's', 'o', '.', '6', 0, 0 };
+        void* rejected = ffi_dlopen_registry_acquire(nul_path[0:10]);
+        if (rejected == null) {
+            io::printn("[PASS] shared dlopen registry rejects embedded-NUL path");
+            (*pass)++;
+        } else {
+            ffi_dlopen_registry_release(nul_path[0:10]);
+            io::printn("[FAIL] shared dlopen registry rejects embedded-NUL path");
             (*fail)++;
         }
     }
@@ -592,6 +400,70 @@ fn void run_advanced_ffi_system_surface_tests(Interp* interp, int* pass, int* fa
     test_gt(interp, "ffi-async-call variadic snprintf",
         "(let (buf (malloc 64)) (ffi-async-call snprintf buf 64 \"hello %s %d\" \"world\" 42))",
         0, pass, fail);
+    test_error_contains(interp, "ffi λ variadic snprintf rejects unsupported variadic Omni value",
+        "(let (buf (malloc 64)) (snprintf buf 64 \"hello %s %d\" nil 42))",
+        "unsupported variadic argument type", pass, fail);
+    {
+        Value* bad_ffi_string = advanced_io_nul_string(interp, "hello", "world");
+        long int_slot = 0;
+        double dbl_slot = 0.0;
+        void* ptr_slot = null;
+        int arg_type = 0;
+        void* arg_value = null;
+        Value* fixed_err = null;
+        Value* variadic_err = null;
+        Value* variadic_f32_err = null;
+        if (bad_ffi_string != null && bad_ffi_string.tag == STRING) {
+            fixed_err = ffi_pack_call_arg(
+                bad_ffi_string,
+                FfiTypeTag.FFI_TYPE_STRING,
+                0,
+                null,
+                &int_slot,
+                &dbl_slot,
+                &ptr_slot,
+                &arg_type,
+                &arg_value,
+                interp
+            );
+            variadic_err = ffi_pack_variadic_call_arg(
+                bad_ffi_string,
+                3,
+                &int_slot,
+                &dbl_slot,
+                &ptr_slot,
+                &arg_type,
+                &arg_value,
+                interp
+            );
+        }
+        variadic_f32_err = ffi_pack_variadic_call_arg(
+            make_float32(interp, 1.25f),
+            3,
+            &int_slot,
+            &dbl_slot,
+            &ptr_slot,
+            &arg_type,
+            &arg_value,
+            interp
+        );
+        ftxui_record_result(
+            "ffi fixed string packing rejects embedded NUL string arg",
+            ffi_test_error_contains(fixed_err, "string argument contains embedded NUL byte"),
+            pass,
+            fail);
+        ftxui_record_result(
+            "ffi variadic string packing rejects embedded NUL string arg",
+            ffi_test_error_contains(variadic_err, "variadic string argument contains embedded NUL byte"),
+            pass,
+            fail);
+        ftxui_record_result(
+            "ffi variadic Float32 arguments promote to Float64 ABI",
+            variadic_f32_err == null && arg_type == (int)FfiTypeTag.FFI_TYPE_DOUBLE &&
+                arg_value == (void*)&dbl_slot && dbl_slot > 1.24 && dbl_slot < 1.26,
+            pass,
+            fail);
+    }
     test_error_contains(interp, "ffi λ Boolean requires real booleans",
         "(block (define [ffi λ libc] (abs (^Boolean flag)) ^Integer) (abs 1))",
         "argument 1 expected Boolean, got Integer", pass, fail);
@@ -620,6 +492,39 @@ fn void run_advanced_ffi_system_surface_tests(Interp* interp, int* pass, int* fa
         io::printn("[FAIL] ffi native closure failure clears outputs");
         (*fail)++;
     }
+    ftxui_record_result(
+        "ffi unsigned parameter packing rejects wrapping values",
+        ffi_unsigned_pack_contract_for_tests(interp),
+        pass,
+        fail);
+    ftxui_record_result(
+        "ffi unsigned return conversion rejects unrepresentable UInt64",
+        ffi_unsigned_return_contract_for_tests(interp),
+        pass,
+        fail);
+    ftxui_record_result(
+        "ffi native unsigned libffi storage preserves unsigned ABI bits",
+        ffi_unsigned_libffi_contract_for_tests(interp),
+        pass,
+        fail);
+    ftxui_record_result(
+        "ffi native unsupported type tags fail closed before libffi prep",
+        ffi_invalid_libffi_type_contract_for_tests(),
+        pass,
+        fail);
+    {
+        int saved_cons_fail = g_value_force_make_cons_or_error_alloc_fail_nth;
+        g_value_force_make_cons_or_error_alloc_fail_nth = 1;
+        Value* forced_cons_failure = ffi_callback_make_arg_cons(interp, make_int(interp, 1), make_nil(interp));
+        g_value_force_make_cons_or_error_alloc_fail_nth = saved_cons_fail;
+        if (forced_cons_failure != null && forced_cons_failure.tag == ERROR) {
+            io::printn("[PASS] ffi-callback argument list cons failure fails closed");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] ffi-callback argument list cons failure fails closed");
+            (*fail)++;
+        }
+    }
 
     // === FFI CALLBACK TESTS ===
     setup(interp, "(define cb (ffi-callback (lambda (a b) (- a b)) ['Integer 'Integer] 'Integer))");
@@ -635,6 +540,10 @@ fn void run_advanced_ffi_system_surface_tests(Interp* interp, int* pass, int* fa
     test_error_contains(interp, "ffi-callback rejects unsupported return type symbol",
         "(ffi-callback (lambda (x) x) ['Integer] 'UnknownType)",
         "unsupported return type", pass, fail);
+
+    test_error_contains(interp, "ffi-callback rejects String return without ownership contract",
+        "(ffi-callback (lambda () \"owned-by-omni\") [] 'String)",
+        "String returns are unsupported", pass, fail);
 
     test_error_contains(interp, "ffi-callback rejects non-callable first arg",
         "(ffi-callback 123 ['Integer] 'Integer)",
@@ -659,6 +568,58 @@ fn void run_advanced_ffi_system_surface_tests(Interp* interp, int* pass, int* fa
         }
     }
 
+    {
+        EvalResult ri = run("(ffi-callback (lambda (a b) true) ['Integer 'Integer] 'Boolean)", interp);
+        if (ri.error.has_error || ri.value == null || ri.value.tag != FFI_HANDLE || ri.value.ffi_val == null) {
+            io::printfn("[FAIL] ffi-callback Boolean return end-to-end: failed to create callback");
+            (*fail)++;
+        } else {
+            int result = omni_ffi_test_callback_int_int(ri.value.ffi_val.lib_handle, 1, 2);
+            if (result == 1) {
+                io::printfn("[PASS] ffi-callback Boolean return converts true to C true");
+                (*pass)++;
+            } else {
+                io::printfn("[FAIL] ffi-callback Boolean return converts true to C true: expected 1, got %d", result);
+                (*fail)++;
+            }
+        }
+    }
+
+    {
+        EvalResult ri = run("(ffi-callback (lambda (a b) (car nil)) ['Integer 'Integer] 'Integer)", interp);
+        if (ri.error.has_error || ri.value == null || ri.value.tag != FFI_HANDLE || ri.value.ffi_val == null) {
+            io::printfn("[FAIL] ffi-callback error return slot zeroing: failed to create callback");
+            (*fail)++;
+        } else {
+            int result = omni_ffi_test_callback_int_int(ri.value.ffi_val.lib_handle, 1, 2);
+            if (result == 0) {
+                io::printfn("[PASS] ffi-callback error return slot is deterministic zero");
+                (*pass)++;
+            } else {
+                io::printfn("[FAIL] ffi-callback error return slot is deterministic zero: expected 0, got %d", result);
+                (*fail)++;
+            }
+        }
+    }
+
+    {
+        EvalResult ri = run("(ffi-callback (lambda (s) (if (string? s) (string-length s) -1)) ['String] 'Integer)", interp);
+        if (ri.error.has_error || ri.value == null || ri.value.tag != FFI_HANDLE || ri.value.ffi_val == null) {
+            io::printfn("[FAIL] ffi-callback String parameter end-to-end: failed to create callback");
+            (*fail)++;
+        } else {
+            char[14] text = { 'c', 'a', 'l', 'l', 'b', 'a', 'c', 'k', '-', 't', 'e', 'x', 't', 0 };
+            int result = omni_ffi_test_callback_string_len(ri.value.ffi_val.lib_handle, &text[0]);
+            if (result == 13) {
+                io::printfn("[PASS] ffi-callback String parameter arrives as Omni String");
+                (*pass)++;
+            } else {
+                io::printfn("[FAIL] ffi-callback String parameter arrives as Omni String: expected 13, got %d", result);
+                (*fail)++;
+            }
+        }
+    }
+
     // Regression: foreign-release on ffi-callback must not segfault
     {
         EvalResult ri = run("(let (cb (ffi-callback (lambda (a b) (- a b)) ['Integer 'Integer] 'Integer)) (foreign-release cb))", interp);
@@ -670,12 +631,41 @@ fn void run_advanced_ffi_system_surface_tests(Interp* interp, int* pass, int* fa
             (*pass)++;
         }
     }
+    ftxui_record_result(
+        "ffi-callback finalization waits for active dispatch and leaves tombstone",
+        ffi_callback_finalization_guard_contract_for_tests(interp),
+        pass,
+        fail);
 
     // === ASYNC FFI CALL TESTS ===
     test_eq(interp, "ffi-async-call strlen",
         "(ffi-async-call strlen \"hello\")", 5, pass, fail);
     test_eq(interp, "ffi-async-call strlen empty",
         "(ffi-async-call strlen \"\")", 0, pass, fail);
+    ftxui_record_result(
+        "ffi-async-call owns copied String arguments before worker handoff",
+        ffi_async_string_arg_copy_contract_for_tests(interp),
+        pass,
+        fail);
+    ftxui_record_result(
+        "ffi-async-call unsigned returns reject unrepresentable UInt64",
+        ffi_async_unsigned_return_contract_for_tests(),
+        pass,
+        fail);
+    {
+        Value* bad_async_string = advanced_io_nul_string(interp, "bad", "string");
+        Value* strlen_v = interp.global_env.lookup(interp.symbols.intern("strlen"));
+        if (bad_async_string == null || bad_async_string.tag == ERROR || strlen_v == null) {
+            ftxui_record_result("ffi-async-call embedded-NUL string test setup", false, pass, fail);
+        } else {
+            Value*[2] async_args = { strlen_v, bad_async_string };
+            ftxui_record_result(
+                "ffi-async-call rejects embedded-NUL String before worker handoff",
+                ffi_test_error_contains(prim_ffi_async_call(async_args[..], null, interp), "embedded NUL byte"),
+                pass,
+                fail);
+        }
+    }
     test_eq(interp, "ffi-async-call atoi neg",
         "(ffi-async-call atoi \"-42\")", -42, pass, fail);
     test_eq_double(interp, "ffi-async-call sqrt",
@@ -706,6 +696,10 @@ fn void run_advanced_ffi_system_surface_tests(Interp* interp, int* pass, int* fa
     test_error_contains(interp, "ffi-async-call type mismatch propagates",
         "(ffi-async-call strlen 123)",
         "expected String, got Integer", pass, fail);
+    setup(interp, "(define [ffi λ libc] (memchr (^Buffer buf) (^Integer c) (^Integer n)) ^ForeignHandle)");
+    test_error_contains(interp, "ffi-async-call rejects Buffer args before worker handoff",
+        "(ffi-async-call memchr \"abc\" 97 3)",
+        "Buffer arguments are not supported across worker handoff", pass, fail);
 
     // === SYSTEM PRIMITIVES TESTS ===
     // random — returns Float64 in [0,1)
@@ -714,6 +708,15 @@ fn void run_advanced_ffi_system_surface_tests(Interp* interp, int* pass, int* fa
     // random-int — returns int in [0,n)
     test_truthy(interp, "random-int range", "(let (r (random-int 10)) (and (>= r 0) (< r 10)))", pass, fail);
     test_truthy(interp, "random-int is int", "(int? (random-int 100))", pass, fail);
+    test_truthy(interp, "random-int large bound range",
+        "(let (r (random-int 9223372036854775807)) (and (>= r 0) (< r 9223372036854775807)))",
+        pass, fail);
+    test_error_contains(interp, "random-int rejects zero bound",
+        "(random-int 0)",
+        "random-int: bound must be positive", pass, fail);
+    test_error_contains(interp, "random-int rejects negative bound",
+        "(random-int -4)",
+        "random-int: bound must be positive", pass, fail);
     // time — returns epoch seconds (should be > 2020-01-01)
     test_gt(interp, "time epoch", "(time)", 1577836800, pass, fail);
     // time-ms — returns epoch milliseconds (> time * 1000)
@@ -721,10 +724,47 @@ fn void run_advanced_ffi_system_surface_tests(Interp* interp, int* pass, int* fa
     // getenv — HOME should exist, nonexistent returns nil
     test_str(interp, "getenv HOME", "(getenv \"HOME\")", pass, fail);
     test_nil(interp, "getenv missing", "(getenv \"OMNI_NONEXISTENT_VAR_XYZ\")", pass, fail);
+    {
+        Value* bad_system_string = advanced_io_nul_string(interp, "OMNI_BAD_", "NAME");
+        if (bad_system_string == null || bad_system_string.tag == ERROR) {
+            ftxui_record_result("system C API string boundary test setup", false, pass, fail);
+        } else {
+            Value*[1] sys_args = { bad_system_string };
+            ftxui_record_result(
+                "getenv rejects embedded NUL name before native call",
+                advanced_io_error_contains(prim_getenv(sys_args[..], null, interp), "embedded NUL byte"),
+                pass, fail);
+            ftxui_record_result(
+                "shell rejects embedded NUL command before native call",
+                advanced_io_error_contains(prim_shell(sys_args[..], null, interp), "embedded NUL byte"),
+                pass, fail);
+        }
+    }
     // shell — captures stdout
     test_str_val(interp, "shell echo", "(shell \"echo hello\")", "hello", pass, fail);
+    test_eq(interp, "shell captures stdout beyond 8192 bytes",
+        "(string-byte-length (shell \"printf '%9000s' | tr ' ' x\"))", 9000, pass, fail);
+    test_truthy(interp, "shell status tuple reports success",
+        "(let (r (shell \"true\" true)) (and (list? r) (= (car r) \"\") (= (car (cdr r)) 0)))",
+        pass, fail);
+    test_truthy(interp, "shell status tuple reports command failure",
+        "(let (r (shell \"false\" true)) (and (list? r) (= (car r) \"\") (= (car (cdr r)) 1)))",
+        pass, fail);
+    test_error_contains(interp, "shell rejects trailing arg",
+        "(shell \"true\" true false)",
+        "shell: arity mismatch: expected 1 or 2 arguments", pass, fail);
+    test_error_contains(interp, "exit rejects trailing arg without exiting",
+        "(exit 0 1)",
+        "exit: arity mismatch: expected 0 or 1 arguments", pass, fail);
     // sleep — returns void (tiny sleep to not slow tests)
+    test_tag_interp(interp, "sleep zero", "(sleep 0)", VOID, pass, fail);
     test_tag_interp(interp, "sleep tiny", "(sleep 0.001)", VOID, pass, fail);
+    test_error_contains(interp, "sleep rejects negative seconds",
+        "(sleep -1)",
+        "sleep: seconds must be non-negative finite and within range", pass, fail);
+    test_error_contains(interp, "sleep rejects overflow seconds",
+        "(sleep 4294968)",
+        "sleep: seconds must be non-negative finite and within range", pass, fail);
 
     run_advanced_uv_timer_callback_register_invoke_test(interp, pass, fail);
     run_advanced_uv_timer_callback_unhandle_idempotence_test(interp, pass, fail);
@@ -735,4 +775,5 @@ fn void run_advanced_ffi_system_surface_tests(Interp* interp, int* pass, int* fa
     run_advanced_ftxui_context_screen_lifecycle_test(pass, fail);
     run_advanced_ftxui_table_canvas_conversion_test(pass, fail);
     run_advanced_ftxui_component_callback_delivery_test(pass, fail);
+    run_advanced_ftxui_event_read_result_clear_guard_test(pass, fail);
 }

@@ -15,10 +15,10 @@ fn char[] int_to_string(long val, char[] buffer) {
     if (val == 0) { buffer[0] = '0'; return buffer[:1]; }
     usz len = 0;
     bool negative = val < 0;
-    if (negative) val = -val;
-    while (val > 0 && len < buffer.len - 1) {
-        buffer[len++] = (char)('0' + (val % 10));
-        val /= 10;
+    ulong magnitude = negative ? (val == long.min ? (ulong)long.max + (ulong)1 : (ulong)(-val)) : (ulong)val;
+    while (magnitude > 0 && len < buffer.len - 1) {
+        buffer[len++] = (char)('0' + (long)(magnitude % (ulong)10));
+        magnitude /= (ulong)10;
     }
     if (negative) buffer[len++] = '-';
     // Reverse in-place
@@ -69,7 +69,7 @@ fn char[] time_point_to_string(TimePoint tp, char[] buffer) {
         return buffer[:pos];
     }
 
-    if (tp.kind == TIME_POINT_DATETIMETZ && tp.tz_offset != 0) {
+    if (tp.kind == TIME_POINT_DATETIMETZ) {
         int tza = tp.tz_offset < 0 ? -tp.tz_offset : tp.tz_offset;
         int tzh = tza / 60;
         int tzm = tza % 60;
@@ -88,6 +88,10 @@ fn char[] time_point_to_string(TimePoint tp, char[] buffer) {
         if (tp.microsecond > 0) {
             buffer[pos++] = '.';
             pos += append_padded_int(buffer[pos..], tp.microsecond, 6);
+        }
+        if (tp.tz_offset == 0) {
+            buffer[pos++] = 'Z';
+            return buffer[:pos];
         }
         buffer[pos++] = sign;
         pos += append_padded_int(buffer[pos..], tzh, 2);

@@ -4,11 +4,25 @@ import std::core::mem;
 import std::io;
 
 int g_scheduler_force_result_list_cons_alloc_fail_nth = 0;
+int g_scheduler_force_thread_spawn_batch_handles_alloc_fail_nth = 0;
+int g_scheduler_force_thread_spawn_batch_results_alloc_fail_nth = 0;
 
 fn bool scheduler_should_force_result_list_cons_alloc_fail() @inline {
     if (g_scheduler_force_result_list_cons_alloc_fail_nth <= 0) return false;
     g_scheduler_force_result_list_cons_alloc_fail_nth--;
     return g_scheduler_force_result_list_cons_alloc_fail_nth == 0;
+}
+
+fn bool scheduler_should_force_thread_spawn_batch_handles_alloc_fail() @inline {
+    if (g_scheduler_force_thread_spawn_batch_handles_alloc_fail_nth <= 0) return false;
+    g_scheduler_force_thread_spawn_batch_handles_alloc_fail_nth--;
+    return g_scheduler_force_thread_spawn_batch_handles_alloc_fail_nth == 0;
+}
+
+fn bool scheduler_should_force_thread_spawn_batch_results_alloc_fail() @inline {
+    if (g_scheduler_force_thread_spawn_batch_results_alloc_fail_nth <= 0) return false;
+    g_scheduler_force_thread_spawn_batch_results_alloc_fail_nth--;
+    return g_scheduler_force_thread_spawn_batch_results_alloc_fail_nth == 0;
 }
 
 fn Value* scheduler_prepend_result_or_error(
@@ -118,12 +132,19 @@ fn Value* prim_thread_spawn_batch(Value*[] args, Env* env, Interp* interp) {
     for (usz i = 0; i < job_count; i++) {
         works[i] = {};
         Value* parse_err = scheduler_build_offload_work(cur.cons_val.car, &works[i], interp, false);
-        if (parse_err != null) return parse_err;
+        if (parse_err != null) {
+            scheduler_release_offload_work_range(works.ptr, 0, i + 1);
+            return parse_err;
+        }
         cur = cdr(cur);
     }
 
-    SchedulerOsThreadHandle[] handles = mem::new_array(SchedulerOsThreadHandle, job_count);
+    SchedulerOsThreadHandle[] handles = {};
+    if (!scheduler_should_force_thread_spawn_batch_handles_alloc_fail()) {
+        handles = mem::new_array(SchedulerOsThreadHandle, job_count);
+    }
     if (handles.ptr == null) {
+        scheduler_release_offload_work_range(works.ptr, 0, job_count);
         return scheduler_raise(
             interp,
             "scheduler/thread-spawn-batch-out-of-memory",
@@ -135,8 +156,12 @@ fn Value* prim_thread_spawn_batch(Value*[] args, Env* env, Interp* interp) {
     Value* begin_err = scheduler_begin_os_thread_work_jobs(works[..], &handles[0], interp);
     if (begin_err != null) return begin_err;
 
-    Value*[] results = mem::new_array(Value*, job_count);
+    Value*[] results = {};
+    if (!scheduler_should_force_thread_spawn_batch_results_alloc_fail()) {
+        results = mem::new_array(Value*, job_count);
+    }
     if (results.ptr == null) {
+        scheduler_drain_os_thread_handles(&handles[0], job_count, interp);
         return scheduler_raise(interp, "scheduler/thread-spawn-batch-out-of-memory", "thread-spawn-batch: out of memory");
     }
     defer mem::free(results.ptr);

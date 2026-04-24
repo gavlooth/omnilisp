@@ -2,9 +2,69 @@ module lisp;
 
 
 import std::io;
+import std::collections::list;
 import main;
 
+fn bool advanced_collections_float64_hash_regression(Interp* interp) {
+    double[16] values = {
+        -4096.5, -257.125, -17.25, -0.125,
+        0.125, 1.5, 2.5, 3.75,
+        8.125, 16.25, 31.5, 64.875,
+        128.0625, 257.5, 1024.03125, 4096.75
+    };
+    uint[16] hashes = {};
+    Value* dict = make_hashmap_checked(interp, 4, "test: Float64 dictionary allocation failed");
+    Value* set = make_set_checked(interp, 4, "test: Float64 set allocation failed");
+    Value* true_val = make_symbol(interp, interp.sym_true);
+    if (dict == null || dict.tag != HASHMAP || dict.hashmap_val == null ||
+        set == null || set.tag != SET || set.hashmap_val == null || true_val == null) {
+        return false;
+    }
+
+    for (usz i = 0; i < values.len; i++) {
+        Value* key = make_double(interp, values[i]);
+        hashes[i] = hash_value(key);
+        if (hashes[i] == 0) return false;
+        for (usz j = 0; j < i; j++) {
+            if (hashes[i] == hashes[j]) return false;
+        }
+        if (!hashmap_set_checked(dict.hashmap_val, key, make_int(interp, (long)i + 1000), interp)) return false;
+        if (!hashmap_set_checked(set.hashmap_val, key, true_val, interp)) return false;
+    }
+
+    for (usz i = 0; i < values.len; i++) {
+        Value* lookup_key = make_double(interp, values[i]);
+        Value* dict_value = hashmap_get(dict.hashmap_val, lookup_key);
+        Value* set_value = hashmap_get(set.hashmap_val, lookup_key);
+        if (dict_value == null || dict_value.tag != INT || dict_value.int_val != (long)i + 1000) return false;
+        if (set_value == null) return false;
+    }
+
+    Value* pos_zero = make_double(interp, 0.0);
+    Value* neg_zero = make_double(interp, -0.0);
+    if (!hashmap_key_equals(pos_zero, neg_zero)) return false;
+    if (hash_value(pos_zero) != hash_value(neg_zero)) return false;
+
+    double nan = 0.0 / 0.0;
+    Value* nan_a = make_double(interp, nan);
+    Value* nan_b = make_double(interp, nan);
+    if (hashmap_key_equals(nan_a, nan_b)) return false;
+    if (!hashmap_set_checked(dict.hashmap_val, nan_a, make_int(interp, 9090), interp)) return false;
+    if (hashmap_get(dict.hashmap_val, nan_b) != null) return false;
+    if (hashmap_get(dict.hashmap_val, nan_a) == null) return false;
+
+    return true;
+}
+
 fn void run_advanced_collections_dict_literal_tests(Interp* interp, int* pass, int* fail) {
+    if (advanced_collections_float64_hash_regression(interp)) {
+        emit_pass_literal("[PASS] Float64 dictionary and set keys use non-zero distinct hashes and preserve equality semantics");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] Float64 dictionary and set keys use non-zero distinct hashes and preserve equality semantics");
+        (*fail)++;
+    }
+
     // Dicts
     setup(interp, "(define hm1 (Dictionary 1 10 2 20 3 30))");
     test_eq(interp, "ref dict", "(ref hm1 2)", 20, pass, fail);
@@ -90,6 +150,7 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     run_advanced_collections_generic_ops_part7(interp, pass, fail);
     run_advanced_collections_generic_ops_part8(interp, pass, fail);
     run_advanced_collections_generic_ops_part9(interp, pass, fail);
+    run_ml_visualization_export_image_atomic_tests(interp, pass, fail);
 }
 
 fn void run_advanced_module_qualified_cached_tests(Interp* interp, int* pass, int* fail) {
@@ -406,7 +467,186 @@ fn void run_advanced_parser_module_edge_tests(Interp* interp, int* pass, int* fa
     }
 }
 
+fn bool module_test_parse_exprs_append(char[] source, Interp* interp, List{Expr*}* out) {
+    Lexer lex;
+    lex.init(source);
+    defer lex.destroy();
+
+    Parser p;
+    p.init(&lex, interp);
+    while (!lex.at_end() && !p.has_error) {
+        Expr* expr = p.parse_expr();
+        if (expr != null && !p.has_error) out.push(expr);
+    }
+    return !p.has_error;
+}
+
+fn bool module_test_symbol_exported(Module* mod, SymbolId name) {
+    if (mod == null) return false;
+    for (usz i = 0; i < mod.export_count; i++) {
+        if (mod.exports[i] == name) return true;
+    }
+    return false;
+}
+
+fn bool module_test_implicit_failure_rolls_back_and_retries(Interp* interp) {
+    SymbolId mod_name = interp.symbols.intern("implicit-rollback-retry-mod");
+    SymbolId value_name = interp.symbols.intern("implicit-rollback-value");
+
+    List{Expr*} failing_exprs;
+    defer failing_exprs.free();
+    if (!module_test_parse_exprs_append("(define implicit-rollback-value missing-implicit-rollback-source)", interp, &failing_exprs)) {
+        return false;
+    }
+
+    EvalResult first = jit_eval_implicit_module_file(
+        mod_name,
+        "/tmp/omni-implicit-rollback-retry.omni",
+        &failing_exprs,
+        failing_exprs.len(),
+        interp
+    );
+    if (!first.error.has_error) return false;
+    if (find_module(mod_name, interp) != null) return false;
+    if (find_module_by_path_any("/tmp/omni-implicit-rollback-retry.omni", interp) != null) return false;
+
+    List{Expr*} retry_exprs;
+    defer retry_exprs.free();
+    if (!module_test_parse_exprs_append("(define implicit-rollback-value 42)", interp, &retry_exprs)) return false;
+
+    EvalResult second = jit_eval_implicit_module_file(
+        mod_name,
+        "/tmp/omni-implicit-rollback-retry.omni",
+        &retry_exprs,
+        retry_exprs.len(),
+        interp
+    );
+    if (second.error.has_error) return false;
+
+    Module* mod = find_module(mod_name, interp);
+    if (mod == null || !mod.loaded || !module_test_symbol_exported(mod, value_name)) return false;
+    Value* value = mod.env.lookup(value_name);
+    return value != null && value.tag == INT && value.int_val == 42;
+}
+
+fn bool module_test_declared_trailing_failure_rolls_back(Interp* interp) {
+    SymbolId mod_name = interp.symbols.intern("declared-rollback-retry-mod");
+    SymbolId value_name = interp.symbols.intern("declared-rollback-value");
+
+    List{Expr*} failing_exprs;
+    defer failing_exprs.free();
+    if (!module_test_parse_exprs_append(
+        "(module declared-rollback-retry-mod (export declared-rollback-value) (define declared-rollback-value 7)) missing-declared-rollback-tail",
+        interp,
+        &failing_exprs
+    )) {
+        return false;
+    }
+
+    EvalResult first = jit_eval_declared_module_file(
+        &failing_exprs,
+        failing_exprs.len(),
+        "/tmp/omni-declared-rollback-retry.omni",
+        interp
+    );
+    if (!first.error.has_error) return false;
+    if (find_module(mod_name, interp) != null) return false;
+    if (find_module_by_path_any("/tmp/omni-declared-rollback-retry.omni", interp) != null) return false;
+
+    List{Expr*} retry_exprs;
+    defer retry_exprs.free();
+    if (!module_test_parse_exprs_append(
+        "(module declared-rollback-retry-mod (export declared-rollback-value) (define declared-rollback-value 9))",
+        interp,
+        &retry_exprs
+    )) {
+        return false;
+    }
+
+    EvalResult second = jit_eval_declared_module_file(
+        &retry_exprs,
+        retry_exprs.len(),
+        "/tmp/omni-declared-rollback-retry.omni",
+        interp
+    );
+    if (second.error.has_error) return false;
+
+    Module* mod = find_module(mod_name, interp);
+    if (mod == null || !mod.loaded || !module_test_symbol_exported(mod, value_name)) return false;
+    Value* value = mod.env.lookup(value_name);
+    return value != null && value.tag == INT && value.int_val == 9;
+}
+
+fn bool module_test_implicit_nested_growth_keeps_root_module_stable(Interp* interp) {
+    SymbolId mod_name = interp.symbols.intern("implicit-growth-root-mod");
+    SymbolId value_name = interp.symbols.intern("implicit-growth-export");
+
+    List{Expr*} exprs;
+    defer exprs.free();
+    for (usz i = 0; i < 40; i++) {
+        char[128] nested_buf;
+        if (try char[] nested = io::bprintf(
+            &nested_buf,
+            "(module implicit-growth-nested-%d (export v) (define v %d))",
+            (int)i,
+            (int)i
+        )) {
+            if (!module_test_parse_exprs_append(nested, interp, &exprs)) return false;
+        } else {
+            return false;
+        }
+    }
+    if (!module_test_parse_exprs_append("(define implicit-growth-export 77)", interp, &exprs)) return false;
+
+    EvalResult result = jit_eval_implicit_module_file(
+        mod_name,
+        "/tmp/omni-implicit-growth-root.omni",
+        &exprs,
+        exprs.len(),
+        interp
+    );
+    if (result.error.has_error) return false;
+
+    Module* mod = find_module(mod_name, interp);
+    if (mod == null || !mod.loaded || !module_test_symbol_exported(mod, value_name)) return false;
+    Value* value = mod.env.lookup(value_name);
+    return value != null && value.tag == INT && value.int_val == 77;
+}
+
 fn void run_advanced_runtime_import_path_edge_tests(Interp* interp, int* pass, int* fail) {
+    {
+        bool ok = module_test_implicit_failure_rolls_back_and_retries(interp);
+        if (ok) {
+            emit_pass_literal("[PASS] runtime implicit module load rolls back failed publication and retries");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] runtime implicit module load rolls back failed publication and retries");
+            (*fail)++;
+        }
+    }
+
+    {
+        bool ok = module_test_declared_trailing_failure_rolls_back(interp);
+        if (ok) {
+            emit_pass_literal("[PASS] runtime declared module trailing failure rolls back publication");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] runtime declared module trailing failure rolls back publication");
+            (*fail)++;
+        }
+    }
+
+    {
+        bool ok = module_test_implicit_nested_growth_keeps_root_module_stable(interp);
+        if (ok) {
+            emit_pass_literal("[PASS] runtime implicit module survives nested module-table growth");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] runtime implicit module survives nested module-table growth");
+            (*fail)++;
+        }
+    }
+
     {
         // Regression: module export growth must fail closed and preserve
         // existing exports when the replacement table cannot be allocated.

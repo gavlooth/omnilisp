@@ -22,16 +22,93 @@ fn void Compiler.collect_expr_generated_globals(Compiler* self, Expr* expr) {
     switch (expr.tag) {
         case E_DEFINE:
             self.add_global_if_missing(expr.define.name);
+            self.collect_expr_generated_globals(expr.define.value);
         case E_FFI_LIB:
             self.add_global_if_missing(expr.ffi_lib.name);
         case E_FFI_FN:
             if (expr.ffi_fn != null) {
                 self.add_global_if_missing(expr.ffi_fn.fn_name);
             }
+        case E_LAMBDA:
+            if (expr.lambda != null) self.collect_expr_generated_globals(expr.lambda.body);
+        case E_APP:
+            self.collect_expr_generated_globals(expr.app.func);
+            self.collect_expr_generated_globals(expr.app.arg);
+        case E_IF:
+            self.collect_expr_generated_globals(expr.if_expr.test);
+            self.collect_expr_generated_globals(expr.if_expr.then_branch);
+            self.collect_expr_generated_globals(expr.if_expr.else_branch);
+        case E_LET:
+            self.collect_expr_generated_globals(expr.let_expr.init);
+            self.collect_expr_generated_globals(expr.let_expr.body);
+            self.collect_pattern_generated_globals(expr.let_expr.pattern);
+        case E_RESET:
+            self.collect_expr_generated_globals(expr.reset.body);
+        case E_SHIFT:
+            self.collect_expr_generated_globals(expr.shift.body);
+        case E_PERFORM:
+            if (expr.perform.has_tag_expr) self.collect_expr_generated_globals(expr.perform.tag_expr);
+            self.collect_expr_generated_globals(expr.perform.arg);
+        case E_RESOLVE:
+            self.collect_expr_generated_globals(expr.resolve.value);
+        case E_HANDLE:
+            if (expr.handle != null) {
+                self.collect_expr_generated_globals(expr.handle.body);
+                for (usz hi = 0; hi < expr.handle.clause_count; hi++) {
+                    if (expr.handle.clauses[hi].has_effect_tag_expr) {
+                        self.collect_expr_generated_globals(expr.handle.clauses[hi].effect_tag_expr);
+                    }
+                    self.collect_expr_generated_globals(expr.handle.clauses[hi].handler_body);
+                }
+            }
+        case E_INDEX:
+            self.collect_expr_generated_globals(expr.index.collection);
+            self.collect_expr_generated_globals(expr.index.index);
+        case E_MATCH:
+            if (expr.match != null) {
+                self.collect_expr_generated_globals(expr.match.scrutinee);
+                for (usz mi = 0; mi < expr.match.clause_count; mi++) {
+                    self.collect_pattern_generated_globals(expr.match.clauses[mi].pattern);
+                    self.collect_expr_generated_globals(expr.match.clauses[mi].result);
+                }
+            }
+        case E_AND:
+            self.collect_expr_generated_globals(expr.and_expr.left);
+            self.collect_expr_generated_globals(expr.and_expr.right);
+        case E_OR:
+            self.collect_expr_generated_globals(expr.or_expr.left);
+            self.collect_expr_generated_globals(expr.or_expr.right);
+        case E_CALL:
+            if (expr.call != null) {
+                self.collect_expr_generated_globals(expr.call.func);
+                for (usz ai = 0; ai < expr.call.arg_count; ai++) {
+                    self.collect_expr_generated_globals(expr.call.args[ai]);
+                }
+            }
         case E_BLOCK:
             if (expr.block != null) {
                 for (usz bi = 0; bi < expr.block.expr_count; bi++) {
                     self.collect_expr_generated_globals(expr.block.exprs[bi]);
+                }
+            }
+        case E_SET:
+            self.collect_expr_generated_globals(expr.set_expr.value);
+        case E_QUASIQUOTE:
+            self.collect_expr_generated_globals(expr.quasiquote.body);
+        case E_UNQUOTE:
+            self.collect_expr_generated_globals(expr.unquote.body);
+        case E_UNQUOTE_SPLICING:
+            self.collect_expr_generated_globals(expr.unquote_splicing.body);
+        case E_MODULE:
+            if (expr.module_expr != null) {
+                for (usz mi = 0; mi < expr.module_expr.body_count; mi++) {
+                    self.collect_expr_generated_globals(expr.module_expr.body[mi]);
+                }
+            }
+        case E_WITH_MODULE:
+            if (expr.with_module != null) {
+                for (usz wi = 0; wi < expr.with_module.body_count; wi++) {
+                    self.collect_expr_generated_globals(expr.with_module.body[wi]);
                 }
             }
         case E_DEFTYPE:
@@ -48,11 +125,41 @@ fn void Compiler.collect_expr_generated_globals(Compiler* self, Expr* expr) {
     }
 }
 
+fn void Compiler.collect_pattern_generated_globals(Compiler* self, Pattern* pat) {
+    if (pat == null) return;
+
+    switch (pat.tag) {
+        case PAT_CONS:
+            self.collect_pattern_generated_globals(pat.car_pat);
+            self.collect_pattern_generated_globals(pat.cdr_pat);
+        case PAT_SEQ:
+            for (usz i = 0; i < pat.elem_count; i++) {
+                self.collect_pattern_generated_globals(pat.elements[i]);
+            }
+        case PAT_AS:
+            self.collect_pattern_generated_globals(pat.as_sub);
+        case PAT_CONSTRUCTOR:
+            for (usz i = 0; i < pat.ctor_sub_count; i++) {
+                self.collect_pattern_generated_globals(pat.ctor_sub_patterns[i]);
+            }
+        case PAT_GUARD:
+            self.collect_expr_generated_globals(pat.guard_pred);
+            self.collect_pattern_generated_globals(pat.guard_sub);
+        default:
+    }
+}
+
 fn void Compiler.collect_top_level_defines(Compiler* self, List{Expr*}* exprs) {
     foreach (expr : *exprs) {
         if (expr.tag == E_MODULE) {
             for (usz mi = 0; mi < expr.module_expr.body_count; mi++) {
                 self.collect_expr_generated_globals(expr.module_expr.body[mi]);
+            }
+        } else if (expr.tag == E_WITH_MODULE) {
+            if (expr.with_module != null) {
+                for (usz wi = 0; wi < expr.with_module.body_count; wi++) {
+                    self.collect_expr_generated_globals(expr.with_module.body[wi]);
+                }
             }
         } else if (expr.tag == E_IMPORT) {
             if (!expr.import_expr.has_path) {

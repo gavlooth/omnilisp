@@ -9,6 +9,8 @@ extern fn int omni_uv_fs_open(char* path, int flags, int mode) @extern("omni_uv_
 extern fn int omni_uv_fs_close(int fd) @extern("omni_uv_fs_close");
 extern fn long omni_uv_fs_read(int fd, char* buf, usz len) @extern("omni_uv_fs_read");
 extern fn long omni_uv_fs_write(int fd, char* buf, usz len) @extern("omni_uv_fs_write");
+extern fn usz omni_uv_fs_max_buf_len() @extern("omni_uv_fs_max_buf_len");
+extern fn void omni_uv_fs_debug_set_max_buf_len(usz len) @extern("omni_uv_fs_debug_set_max_buf_len");
 extern fn int omni_uv_fs_rename(char* src, char* dst) @extern("omni_uv_fs_rename");
 extern fn int omni_uv_fs_unlink(char* path) @extern("omni_uv_fs_unlink");
 extern fn int omni_uv_fs_stat_basic(char* path, ulong* size_out, uint* mode_out) @extern("omni_uv_fs_stat_basic");
@@ -60,15 +62,23 @@ fn void io_input_state_destroy(InterpInputState* state) {
         state.len = 0;
         state.cap = 0;
         state.mu.unlock();
-        return;
+    } else {
+        if (state.buf != null) {
+            mem::free(state.buf);
+            state.buf = null;
+        }
+        state.len = 0;
+        state.cap = 0;
+        state.closed = true;
     }
-    if (state.buf != null) {
-        mem::free(state.buf);
-        state.buf = null;
+    if (state.cv_ready) {
+        (void)state.cv.destroy();
+        state.cv_ready = false;
     }
-    state.len = 0;
-    state.cap = 0;
-    state.closed = true;
+    if (state.mu_ready) {
+        (void)state.mu.destroy();
+        state.mu_ready = false;
+    }
 }
 
 fn void io_input_state_wake(InterpInputState* state) {

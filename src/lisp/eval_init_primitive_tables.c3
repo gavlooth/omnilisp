@@ -224,7 +224,7 @@ fn bool register_regular_primitives_collections(Interp* interp) {
         { "yield", &prim_yield, -1 },
         { "coroutine?", &prim_coroutine_p, 1 },
         // System / OS
-        { "shell", &prim_shell, 1 },
+        { "shell", &prim_shell, -1 },
         { "random", &prim_random, 0 },
         { "random-int", &prim_random_int, 1 },
         { "getenv", &prim_getenv, 1 },
@@ -272,7 +272,7 @@ fn bool register_regular_primitives_collections(Interp* interp) {
 fn bool register_regular_primitives_io_and_deduce(Interp* interp) {
     PrimReg[] io_deduce_prims = {
         // Networking / async I/O (raw primitives for effect fast path)
-        { "__raw-tcp-connect", &prim_tcp_connect, 2 },
+        { "__raw-tcp-connect", &prim_tcp_connect, -1 },
         { "__raw-tcp-listen", &prim_tcp_listen, -1 },
         { "__raw-tcp-accept", &prim_tcp_accept, 1 },
         { "__raw-tcp-read", &prim_tcp_read, -1 },

@@ -73,6 +73,9 @@ fn Value* process_spawn_impl(Value*[] args, Env* env, Interp* interp, ProcessSpa
     if (!is_string(cmd_v)) {
         return io_raise(interp, "io/process-spawn-cmd-not-string", "process-spawn: cmd must be a string");
     }
+    if (c_api_string_contains_nul(cmd_v.str_chars[:cmd_v.str_len])) {
+        return io_raise(interp, "io/process-spawn-invalid-cmd", "process-spawn: cmd contains embedded NUL byte");
+    }
 
     char* cmd_heap = copy_to_heap_c_string(cmd_v.str_chars[:cmd_v.str_len]);
     if (cmd_heap == null) {

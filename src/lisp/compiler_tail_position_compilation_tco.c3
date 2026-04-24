@@ -7,6 +7,159 @@ import main;
 // SECTION 8b2: TAIL-POSITION COMPILATION (TCO)
 // =============================================================================
 
+fn CompiledModule* Compiler.find_inline_compiled_module(Compiler* self, SymbolId module_name) {
+    for (usz i = 0; i < self.compiled_module_count; i++) {
+        if (self.compiled_modules[i].name == module_name) {
+            return &self.compiled_modules[i];
+        }
+    }
+    return null;
+}
+
+fn bool Compiler.resolve_with_module_exports(
+    Compiler* self,
+    Expr* expr,
+    SymbolId** exports_out,
+    usz* export_count_out,
+    bool* inline_compiled_out
+) {
+    if (expr == null || expr.with_module == null || exports_out == null || export_count_out == null || inline_compiled_out == null) {
+        self.set_compile_error("compiler: scoped module open is malformed");
+        return false;
+    }
+
+    SymbolId module_name = expr.with_module.import_expr.name;
+    CompiledModule* inline_mod = self.find_inline_compiled_module(module_name);
+    if (inline_mod != null) {
+        *exports_out = inline_mod.exports;
+        *export_count_out = inline_mod.export_count;
+        *inline_compiled_out = true;
+        return true;
+    }
+
+    Module* loaded_mod = null;
+    if (expr.with_module.import_expr.has_path && expr.with_module.import_expr.path != null) {
+        loaded_mod = find_module_by_path_any(expr.with_module.import_expr.path[:expr.with_module.import_expr.path_len], self.interp);
+    } else {
+        loaded_mod = find_module(module_name, self.interp);
+    }
+    if (loaded_mod != null && loaded_mod.loaded && loaded_mod.exports != null) {
+        *exports_out = loaded_mod.exports;
+        *export_count_out = loaded_mod.export_count;
+        *inline_compiled_out = false;
+        return true;
+    }
+
+    self.set_compile_error("compiler: scoped module open requires a known loaded module or inline-compiled module");
+    return false;
+}
+
+fn void Compiler.emit_with_module_open_binding_source(Compiler* self, SymbolId module_name, SymbolId export_name, bool inline_compiled) {
+    if (inline_compiled) {
+        self.emit_symbol_name(export_name);
+        return;
+    }
+
+    self.emit("aot::lookup_module_export(\"");
+    self.emit_escaped(self.interp.symbols.get_name(module_name));
+    self.emit("\", \"");
+    self.emit_escaped(self.interp.symbols.get_name(export_name));
+    self.emit("\")");
+}
+
+fn void Compiler.restore_module_open_bindings(
+    Compiler* self,
+    List{SymbolId}* saved_exports,
+    List{SymbolId}* saved_aliases
+) {
+    self.module_open_exports.free();
+    self.module_open_aliases.free();
+    for (usz i = 0; i < saved_exports.len(); i++) {
+        self.module_open_exports.push(saved_exports.entries[i]);
+    }
+    for (usz i = 0; i < saved_aliases.len(); i++) {
+        self.module_open_aliases.push(saved_aliases.entries[i]);
+    }
+    saved_exports.free();
+    saved_aliases.free();
+}
+
+fn usz Compiler.compile_with_module_open_flat_common(Compiler* self, Expr* expr, bool tail) {
+    if (self.has_error) return self.emit_nil_temp();
+
+    SymbolId* exports = null;
+    usz export_count = 0;
+    bool inline_compiled = false;
+    if (!self.resolve_with_module_exports(expr, &exports, &export_count, &inline_compiled)) {
+        return self.emit_nil_temp();
+    }
+
+    List{SymbolId} saved_exports;
+    List{SymbolId} saved_aliases;
+    for (usz i = 0; i < self.module_open_exports.len(); i++) {
+        saved_exports.push(self.module_open_exports.entries[i]);
+    }
+    for (usz i = 0; i < self.module_open_aliases.len(); i++) {
+        saved_aliases.push(self.module_open_aliases.entries[i]);
+    }
+    defer self.restore_module_open_bindings(&saved_exports, &saved_aliases);
+
+    usz id = self.next_result();
+    self.emit_temp_decl(id);
+    self.emit(";\n");
+    self.emit_indent();
+    self.emit("{\n");
+    self.indent++;
+
+    for (usz i = 0; i < export_count; i++) {
+        SymbolId export_name = exports[i];
+        char[64] alias_buf;
+        long alias_id = (long)self.temp_counter + (long)i;
+        char[] alias_text = compiler_format_generated_name_id(alias_buf[..], "_aot_with_", alias_id);
+        SymbolId alias_sym = self.interp.symbols.intern(alias_text);
+        if (alias_sym == INVALID_SYMBOL_ID) {
+            self.set_compile_error("compiler: invalid scoped module alias");
+            break;
+        }
+
+        self.module_open_exports.push(export_name);
+        self.module_open_aliases.push(alias_sym);
+
+        self.emit_indent();
+        self.emit("lisp::Value* ");
+        self.emit_symbol_name(alias_sym);
+        self.emit(" = ");
+        self.emit_with_module_open_binding_source(expr.with_module.import_expr.name, export_name, inline_compiled);
+        self.emit(";\n");
+    }
+
+    if (!self.has_error) {
+        usz last_r = 0;
+        if (expr.with_module.body_count > 0) {
+            for (usz i = 0; i + 1 < expr.with_module.body_count; i++) {
+                self.compile_to_temp(expr.with_module.body[i]);
+            }
+            if (tail) {
+                last_r = self.compile_to_temp_tail(expr.with_module.body[expr.with_module.body_count - 1]);
+            } else {
+                last_r = self.compile_to_temp(expr.with_module.body[expr.with_module.body_count - 1]);
+            }
+        } else {
+            last_r = self.emit_nil_temp();
+        }
+        self.emit_indent();
+        self.emit_temp_ref(id);
+        self.emit(" = ");
+        self.emit_temp_ref(last_r);
+        self.emit(";\n");
+    }
+
+    self.indent--;
+    self.emit_indent();
+    self.emit("}\n");
+    return id;
+}
+
 /**
  * compile_module_flat — Flat-style module compilation.
  * Compiles module body expressions inline, registers module in table.
@@ -141,9 +294,15 @@ fn usz Compiler.compile_import_flat(Compiler* self, Expr* expr) {
         && imp.import_count == 0
         && compiler_has_inline_compiled_module(self, imp.name);
 
+    usz id = self.next_result();
+    self.emit_temp_decl(id);
+    self.emit(";\n");
+
     if (!inline_noop) {
+        usz import_err_r = self.next_result();
         self.emit_indent();
-        self.emit("(void)aot::import_module(\"");
+        self.emit_temp_decl(import_err_r);
+        self.emit(" = aot::import_module(\"");
         self.emit_escaped(self.interp.symbols.get_name(imp.name));
         self.emit("\", ");
         if (imp.has_path) {
@@ -155,31 +314,54 @@ fn usz Compiler.compile_import_flat(Compiler* self, Expr* expr) {
         }
         self.emit(imp.import_all ? "true" : "false");
         self.emit(");\n");
+        self.emit_indent();
+        self.emit_temp_ref(id);
+        self.emit(" = (");
+        self.emit_temp_ref(import_err_r);
+        self.emit(" != null && ");
+        self.emit_temp_ref(import_err_r);
+        self.emit(".tag == lisp::ValueTag.ERROR) ? ");
+        self.emit_temp_ref(import_err_r);
+        self.emit(" : aot::make_void();\n");
 
         for (usz ii = 0; ii < imp.import_count; ii++) {
             SymbolId bind_name = (uint)imp.aliases[ii] != 0 ? imp.aliases[ii] : imp.imports[ii];
+            usz define_err_r = self.next_result();
             self.emit_indent();
-            self.emit("aot::define_var(\"");
+            self.emit_temp_decl(define_err_r);
+            self.emit(" = aot::define_var(\"");
             self.emit_escaped(self.interp.symbols.get_name(bind_name));
             self.emit("\", aot::lookup_var(\"");
             self.emit_escaped(self.interp.symbols.get_name(imp.imports[ii]));
             self.emit("\"));\n");
+            self.emit_indent();
+            self.emit("if (");
+            self.emit_temp_ref(id);
+            self.emit(" == null || ");
+            self.emit_temp_ref(id);
+            self.emit(".tag != lisp::ValueTag.ERROR) ");
+            self.emit_temp_ref(id);
+            self.emit(" = ");
+            self.emit_temp_ref(define_err_r);
+            self.emit(" != null ? ");
+            self.emit_temp_ref(define_err_r);
+            self.emit(" : aot::make_void();\n");
         }
+    } else {
+        self.emit_indent();
+        self.emit_temp_ref(id);
+        self.emit(" = aot::make_void(); // import: inline module\n");
     }
 
-    usz id = self.next_result();
-    self.emit_temp_decl(id);
-    if (inline_noop) {
-        self.emit(" = aot::make_void(); // import: inline module\n");
-    } else {
-        self.emit(" = aot::make_void();\n");
-    }
     return id;
 }
 
 fn usz Compiler.compile_with_module_open_flat(Compiler* self, Expr* expr) {
-    self.set_compile_error("compiler: scoped module open is not supported by AOT yet");
-    return self.emit_nil_temp();
+    return self.compile_with_module_open_flat_common(expr, false);
+}
+
+fn usz Compiler.compile_with_module_open_flat_tail(Compiler* self, Expr* expr) {
+    return self.compile_with_module_open_flat_common(expr, true);
 }
 
 /**

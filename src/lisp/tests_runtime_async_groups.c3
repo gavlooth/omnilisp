@@ -4,10 +4,44 @@ module lisp;
 import std::io;
 import main;
 
+fn bool async_error_contains(Value* value, char[] expected) {
+    return value != null &&
+        value.tag == ERROR &&
+        value.str_chars != null &&
+        str_contains(value.str_chars[:value.str_len], expected);
+}
+
+fn void test_raw_tcp_connect_finite_contract(Interp* interp, int* pass, int* fail) {
+    Value* host = make_string(interp, "127.0.0.1");
+    Value* port = make_int(interp, 1);
+    Value* ignored = make_nil(interp);
+    Value*[3] direct_args = { host, port, ignored };
+    Value* direct_result = prim_tcp_connect(direct_args[..], null, interp);
+
+    Value* packed = make_cons(
+        interp,
+        host,
+        make_cons(interp, port, make_cons(interp, ignored, make_nil(interp)))
+    );
+    Value*[1] packed_args = { packed };
+    Value* packed_result = prim_tcp_connect(packed_args[..], null, interp);
+
+    bool ok = async_error_contains(direct_result, "tcp-connect: expected (tcp-connect host port)") &&
+        async_error_contains(packed_result, "tcp-connect: expected (tcp-connect host port)");
+    if (ok) {
+        emit_pass("raw tcp-connect primitive rejects trailing direct and packed args");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] raw tcp-connect primitive rejects trailing direct and packed args");
+        (*fail)++;
+    }
+}
+
 fn void run_async_tests(Interp* interp, int* pass, int* fail) {
     emit_test_section_banner("Async I/O Tests");
     run_async_tests_io_tls(interp, pass, fail);
     run_async_tests_repl_server(interp, pass, fail);
+    test_raw_tcp_connect_finite_contract(interp, pass, fail);
 
     // listener lifecycle
     test_tag(interp, "tcp-listen open/close",
@@ -30,6 +64,21 @@ fn void run_async_tests(Interp* interp, int* pass, int* fail) {
     test_error_contains(interp, "tcp-read requires fiber context",
         "(tcp-read nil)",
         "requires running fiber context", pass, fail);
+    test_error_contains(interp, "tcp-read rejects non-integer max-bytes",
+        "(await (spawn (lambda () (tcp-read nil \"x\"))))",
+        "max-bytes must be an integer", pass, fail);
+    test_error_contains(interp, "tcp-read rejects non-integer timeout",
+        "(await (spawn (lambda () (tcp-read nil 1 \"x\"))))",
+        "timeout-ms must be an integer", pass, fail);
+    test_error_contains(interp, "tcp-read rejects requests above read cap",
+        "(await (spawn (lambda () (tcp-read nil 65537))))",
+        "max-bytes must be <= 65536", pass, fail);
+    test_error_contains(interp, "raw tcp-listen rejects trailing direct arg",
+        "(__raw-tcp-listen \"127.0.0.1\" 0 8 'ignored)",
+        "tcp-listen: expected (tcp-listen host port [backlog])", pass, fail);
+    test_error_contains(interp, "raw tcp-listen rejects trailing packed arg",
+        "(__raw-tcp-listen (cons \"127.0.0.1\" (cons 0 (cons 8 (cons 'ignored nil)))))",
+        "tcp-listen: expected (tcp-listen host port [backlog])", pass, fail);
     test_error_contains(interp, "tcp-write requires fiber context",
         "(tcp-write nil \"x\")",
         "requires running fiber context", pass, fail);
@@ -135,6 +184,32 @@ fn void run_async_tests(Interp* interp, int* pass, int* fail) {
         "  (await pf))",
         pass, fail);
 
+    test_truthy(interp, "pipe-listen preserves pre-existing regular file",
+        "(block "
+        "  (define p (string-append \"/tmp/omni_pipe_regular_guard_\" (String (% (time-ms) 1000000)) \".sock\")) "
+        "  (define h (fs-open p 577 420)) "
+        "  (fs-write h \"keep\") "
+        "  (fs-close h) "
+        "  (define pf (spawn (lambda () "
+        "    (handle "
+        "      (block "
+        "        (define listener (pipe-listen p)) "
+        "        (tcp-close listener) "
+        "        false) "
+        "      (raise msg true))))) "
+        "  (define failed-closed (await pf)) "
+        "  (define got "
+        "    (handle "
+        "      (block "
+        "        (define rh (fs-open p 0)) "
+        "        (define payload (fs-read rh 4)) "
+        "        (fs-close rh) "
+        "        payload) "
+        "      (raise msg \"__missing__\"))) "
+        "  (handle (fs-unlink p) (raise msg nil)) "
+        "  (and failed-closed (= got \"keep\")))",
+        pass, fail);
+
     // fiber-safe UDP receive path: recv in fiber uses async wakeup bridge
     test_truthy(interp, "udp-recv in fiber via async bridge",
         "(block "
@@ -150,6 +225,21 @@ fn void run_async_tests(Interp* interp, int* pass, int* fail) {
         "  (udp-close recv) "
         "  (= got \"pong\"))",
         pass, fail);
+    test_error_contains(interp, "udp-recv rejects requests above read cap",
+        "(udp-recv nil 65537)",
+        "max-bytes must be <= 65536", pass, fail);
+    test_error_contains(interp, "raw udp-bind rejects trailing direct arg",
+        "(__raw-udp-bind nil \"127.0.0.1\" 0 'ignored)",
+        "udp-bind: expected (udp-bind handle host port)", pass, fail);
+    test_error_contains(interp, "raw udp-bind rejects trailing packed arg",
+        "(__raw-udp-bind (cons nil (cons \"127.0.0.1\" (cons 0 (cons 'ignored nil)))))",
+        "udp-bind: expected (udp-bind handle host port)", pass, fail);
+    test_error_contains(interp, "raw udp-send rejects trailing direct arg",
+        "(__raw-udp-send nil \"127.0.0.1\" 9 \"x\" 'ignored)",
+        "udp-send: expected (udp-send handle host port data)", pass, fail);
+    test_error_contains(interp, "raw udp-send rejects trailing packed arg",
+        "(__raw-udp-send (cons nil (cons \"127.0.0.1\" (cons 9 (cons \"x\" (cons 'ignored nil))))))",
+        "udp-send: expected (udp-send handle host port data)", pass, fail);
 }
 
 fn void run_async_tests_isolated(int* pass, int* fail) {

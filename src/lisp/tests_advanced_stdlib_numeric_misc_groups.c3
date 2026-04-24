@@ -61,6 +61,17 @@ fn void run_advanced_stdlib_sort_bitwise_hof_tests(Interp* interp, int* pass, in
     test_eq(interp, "sort length", "(length (sort (quote (5 3 1 4 2))))", 5, pass, fail);
     test_eq(interp, "sort last", "(car (cdr (cdr (sort (quote (3 1 2))))))", 3, pass, fail);
     test_eq(interp, "sort-by custom", "(car (sort-by (lambda (a) (lambda (b) (- a b))) (quote (3 1 2))))", 1, pass, fail);
+    test_truthy(interp, "sort orders BigInteger exactly",
+        "(= (map String (sort (list (BigInteger \"9007199254740993\") (BigInteger \"9007199254740991\") (BigInteger \"9007199254740992\")))) (quote (\"9007199254740991\" \"9007199254740992\" \"9007199254740993\")))",
+        pass, fail);
+    test_truthy(interp, "sort orders BigFloat numerically",
+        "(= (map String (sort (list (BigFloat \"2.5\") (BigFloat \"1.25\")))) (quote (\"1.25\" \"2.5\")))",
+        pass, fail);
+    test_eq(interp, "sort handles list longer than old fixed buffer", "(length (sort (range 257)))", 257, pass, fail);
+    test_eq(interp, "sort-by two-arg comparator handles list longer than old fixed buffer",
+        "(car (sort-by (lambda (a b) (> a b)) (range 257)))", 256, pass, fail);
+    test_truthy(interp, "sort-by boolean false comparator result is falsy",
+        "(= (sort-by (lambda (a b) false) (quote (3 1 2))) (quote (3 1 2)))", pass, fail);
     test_error_contains(interp, "sort rejects non-list",
         "(sort 42)", "sort: expected list argument", pass, fail);
     test_error_contains(interp, "sort rejects improper list tail",
@@ -123,9 +134,18 @@ fn void run_advanced_stdlib_string_predicate_format_tests(Interp* interp, int* p
     test_nil(interp, "string-contains? no", "(string-contains? \"hello\" \"xyz\")", pass, fail);
     test_eq(interp, "string-index-of found", "(string-index-of \"hello world\" \"world\")", 6, pass, fail);
     test_eq(interp, "string-index-of not", "(string-index-of \"hello\" \"xyz\")", -1, pass, fail);
+    test_eq(interp, "string-index-of codepoint after UTF-8 prefix",
+        "(string-index-of \"éx\" \"x\")", 1, pass, fail);
+    test_eq(interp, "string-index-of multibyte needle returns codepoint index",
+        "(string-index-of \"aéx\" \"éx\")", 1, pass, fail);
+    test_eq(interp, "string-index-of after mixed UTF-8 prefix",
+        "(string-index-of \"éx🙂z\" \"z\")", 3, pass, fail);
     test_str(interp, "string-replace", "(string-replace \"hello world\" \"world\" \"there\")", pass, fail);
     test_str(interp, "char-at", "(char-at \"hello\" 1)", pass, fail);
     test_str(interp, "string-repeat", "(string-repeat \"ab\" 3)", pass, fail);
+    test_error_contains(interp, "string-repeat rejects output size overflow",
+        "(string-repeat \"abc\" 9223372036854775807)",
+        "string-repeat: output size overflow", pass, fail);
     test_error_contains(interp, "string-join rejects non-string element",
         "(string-join \",\" (quote (\"a\" 1 \"b\")))", "string-join: expected string elements", pass, fail);
 

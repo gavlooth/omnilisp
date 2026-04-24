@@ -19,6 +19,47 @@ fn bool dns_test_value_equals(Value* value, char[] expected) {
     return true;
 }
 
+fn bool dns_test_error_contains(Value* value, char[] expected) {
+    if (value == null || value.tag != ERROR || value.str_chars == null) return false;
+    if (expected.len > value.str_len) return false;
+    for (usz i = 0; i <= value.str_len - expected.len; i++) {
+        bool match = true;
+        for (usz j = 0; j < expected.len; j++) {
+            if (value.str_chars[i + j] != expected[j]) {
+                match = false;
+                break;
+            }
+        }
+        if (match) return true;
+    }
+    return false;
+}
+
+fn Value* dns_test_nul_string(Interp* interp, char[] prefix, char[] suffix) {
+    char[256] bytes;
+    if (prefix.len + suffix.len + 1 > bytes.len) return null;
+    usz n = 0;
+    for (usz i = 0; i < prefix.len; i++) bytes[n++] = prefix[i];
+    bytes[n++] = (char)0;
+    for (usz i = 0; i < suffix.len; i++) bytes[n++] = suffix[i];
+    return make_string(interp, bytes[0:n]);
+}
+
+fn void run_async_dns_c_api_string_boundary_test(Interp* interp, int* pass, int* fail) {
+    Value* bad_host = dns_test_nul_string(interp, "local", "host");
+    Value*[1] args = { bad_host };
+    bool ok = bad_host != null &&
+        bad_host.tag == STRING &&
+        dns_test_error_contains(prim_dns_resolve(args[..], null, interp), "hostname contains embedded NUL byte");
+    if (ok) {
+        emit_pass_literal("[PASS] dns-resolve rejects embedded NUL hostname before native call");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] dns-resolve rejects embedded NUL hostname before native call");
+        (*fail)++;
+    }
+}
+
 fn void run_async_dns_render_tests(Interp* interp, int* pass, int* fail) {
     void* ai4 = null;
     void* ai6 = null;
@@ -43,6 +84,7 @@ fn void run_async_dns_render_tests(Interp* interp, int* pass, int* fail) {
 
 fn void run_async_tests_io_tls(Interp* interp, int* pass, int* fail) {
     run_async_dns_render_tests(interp, pass, fail);
+    run_async_dns_c_api_string_boundary_test(interp, pass, fail);
 
     // DNS resolve localhost (fiber-only path)
     test_str_val(interp, "dns-resolve localhost (fiber)",
@@ -51,6 +93,15 @@ fn void run_async_tests_io_tls(Interp* interp, int* pass, int* fail) {
     // async-sleep returns void (fiber-only path)
     test_tag(interp, "async-sleep returns void (fiber)",
         "(await (spawn (lambda () (async-sleep 1))))", VOID, pass, fail);
+    test_error_contains(interp, "async-sleep rejects zero duration",
+        "(await (spawn (lambda () (async-sleep 0))))",
+        "async-sleep: ms must be positive", pass, fail);
+    test_error_contains(interp, "async-sleep rejects negative duration",
+        "(await (spawn (lambda () (async-sleep -1))))",
+        "async-sleep: ms must be positive", pass, fail);
+    test_error_contains(interp, "async-sleep rejects too-large duration",
+        "(await (spawn (lambda () (async-sleep 4294968))))",
+        "async-sleep: ms must be positive", pass, fail);
 
     // DNS resolve returns a string (fiber-only path)
     test_str(interp, "dns-resolve returns string (fiber)",
@@ -62,6 +113,9 @@ fn void run_async_tests_io_tls(Interp* interp, int* pass, int* fail) {
     test_error_contains(interp, "async-sleep requires fiber context",
         "(async-sleep 1)",
         "async-sleep: requires running fiber context", pass, fail);
+    test_error_contains(interp, "tls-connect rejects overlong hostname before native offload",
+        "(tls-connect nil (string-repeat \"a\" 256))",
+        "tls-connect: hostname must be <= 255 bytes", pass, fail);
 
     test_error_contains(interp, "read-file requires fiber context",
         "(read-file \"/tmp/omni-read-file-nonfiber.txt\")",
@@ -113,6 +167,50 @@ fn void run_async_tests_io_tls(Interp* interp, int* pass, int* fail) {
         "  ok)",
         pass, fail);
 
+    test_truthy(interp, "async read-lines empty file returns empty list",
+        "(block "
+        "  (define p (string-append \"/tmp/omni-read-lines-empty-\" (String (time-ms)) \".txt\")) "
+        "  (define ok "
+        "    (await "
+        "      (spawn (lambda () "
+        "        (write-file p \"\") "
+        "        (define lines (read-lines p)) "
+        "        (= (length lines) 0))))) "
+        "  (fs-unlink p) "
+        "  ok)",
+        pass, fail);
+
+    test_truthy(interp, "async read-lines preserves final unterminated line",
+        "(block "
+        "  (define p (string-append \"/tmp/omni-read-lines-no-trailing-\" (String (time-ms)) \".txt\")) "
+        "  (define ok "
+        "    (await "
+        "      (spawn (lambda () "
+        "        (write-file p \"a\\nb\") "
+        "        (define lines (read-lines p)) "
+        "        (and (= (length lines) 2) "
+        "             (and (= (car lines) \"a\") "
+        "                  (= (car (cdr lines)) \"b\"))))))) "
+        "  (fs-unlink p) "
+        "  ok)",
+        pass, fail);
+
+    test_truthy(interp, "async read-lines preserves trailing newline line shape",
+        "(block "
+        "  (define p (string-append \"/tmp/omni-read-lines-trailing-\" (String (time-ms)) \".txt\")) "
+        "  (define ok "
+        "    (await "
+        "      (spawn (lambda () "
+        "        (write-file p \"a\\nb\\n\") "
+        "        (define lines (read-lines p)) "
+        "        (and (= (length lines) 3) "
+        "             (and (= (car lines) \"a\") "
+        "                  (and (= (car (cdr lines)) \"b\") "
+        "                       (= (car (cdr (cdr lines))) \"\")))))))) "
+        "  (fs-unlink p) "
+        "  ok)",
+        pass, fail);
+
     test_truthy(interp, "async file ops large payload roundtrip",
         "(block "
         "  (define p (string-append \"/tmp/omni-async-large-\" (String (time-ms)) \".txt\")) "
@@ -129,6 +227,21 @@ fn void run_async_tests_io_tls(Interp* interp, int* pass, int* fail) {
         "  (fs-unlink p) "
         "  ok)",
         pass, fail);
+
+    omni_uv_fs_debug_set_max_buf_len(3);
+    test_truthy(interp, "async write-file chunks across native buffer boundary",
+        "(block "
+        "  (define p (string-append \"/tmp/omni-async-chunked-write-\" (String (time-ms)) \".txt\")) "
+        "  (define ok "
+        "    (await "
+        "      (spawn (lambda () "
+        "        (write-file p \"abcdefghi\") "
+        "        (define text (read-file p)) "
+        "        (= text \"abcdefghi\"))))) "
+        "  (fs-unlink p) "
+        "  ok)",
+        pass, fail);
+    omni_uv_fs_debug_set_max_buf_len(0);
 
     test_str_val(interp, "async write-file missing-path payload code",
         "(block "
@@ -196,6 +309,12 @@ fn void run_async_tests_io_tls(Interp* interp, int* pass, int* fail) {
     test_str_val(interp, "tls-read non-positive max-bytes payload code",
         "(handle (tls-read nil 0) (raise msg (String (ref msg 'code))))",
         "io/tls-read-max-bytes-invalid", pass, fail);
+    test_error_contains(interp, "tls-read rejects requests above read cap",
+        "(tls-read nil 65537)",
+        "max-bytes must be <= 65536", pass, fail);
+    test_str_val(interp, "tls-read above read cap payload code",
+        "(handle (tls-read nil 65537) (raise msg (String (ref msg 'code))))",
+        "io/tls-read-max-bytes-too-large", pass, fail);
     test_error_contains(interp, "tls-write requires fiber context",
         "(tls-write nil \"ping\")",
         "requires running fiber context", pass, fail);
@@ -474,4 +593,10 @@ fn void run_async_tests_io_tls(Interp* interp, int* pass, int* fail) {
     test_error_contains(interp, "tls-server-wrap rejects non-stream handle",
         "(__raw-tls-server-wrap nil \"cert.pem\" \"key.pem\")",
         "invalid TCP stream handle", pass, fail);
+    test_error_contains(interp, "tls-server-wrap rejects extra direct arg",
+        "(__raw-tls-server-wrap nil \"cert.pem\" \"key.pem\" 'extra)",
+        "expected (tls-server-wrap tcp-handle cert-pem-path key-pem-path)", pass, fail);
+    test_error_contains(interp, "tls-server-wrap rejects extra packed arg",
+        "(__raw-tls-server-wrap '(nil \"cert.pem\" \"key.pem\" extra))",
+        "expected (tls-server-wrap tcp-handle cert-pem-path key-pem-path)", pass, fail);
 }

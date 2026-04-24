@@ -111,6 +111,19 @@ void omni_ftxui_event_destroy(omni_ftxui_event_t* event) {
     delete event;
 }
 
+void omni_ftxui_event_read_result_clear(omni_ftxui_event_read_result* result) {
+    if (result == nullptr) return;
+    if (result->initialized == kEventReadResultMagic) delete[] result->text;
+    result->size = sizeof(omni_ftxui_event_read_result);
+    result->abi_version = OMNI_FTXUI_SHIM_ABI_VERSION;
+    result->initialized = kEventReadResultMagic;
+    result->text = nullptr;
+    result->text_len = 0;
+    result->has_event = false;
+    result->kind = OMNI_FTXUI_EVENT_CUSTOM;
+    result->dropped_events = 0;
+}
+
 #if OMNI_FTXUI_HAS_BACKEND
 static omni_ftxui_captured_event_t capture_event_payload(const ftxui::Event& event) {
     omni_ftxui_captured_event_t out;
@@ -392,9 +405,20 @@ omni_ftxui_status omni_ftxui_session_create(
     if (session == nullptr) return ctx_fail(context, OMNI_FTXUI_STATUS_OUT_OF_MEMORY, "session_create: allocation failed");
     session->screen = screen;
     session->root = root;
-    auto captured_root = ftxui::CatchEvent(root->component, [session](ftxui::Event event) {
-        session->event = capture_event_payload(event);
-        session->has_event = true;
+    auto captured_root = ftxui::CatchEvent(root->component, [session, context](ftxui::Event event) {
+        try {
+            if (session->events.size() >= kSessionEventQueueLimit) {
+                session->events.pop_front();
+                session->dropped_events++;
+            }
+            session->events.push_back(capture_event_payload(event));
+        } catch (const std::bad_alloc&) {
+            session->dropped_events++;
+            ctx_fail(context, OMNI_FTXUI_STATUS_OUT_OF_MEMORY, "session event capture: out of memory");
+        } catch (...) {
+            session->dropped_events++;
+            ctx_fail(context, OMNI_FTXUI_STATUS_INTERNAL_ERROR, "session event capture: exception");
+        }
         return false;
     });
     session->loop = std::make_unique<ftxui::Loop>(screen->screen.get(), std::move(captured_root));
@@ -477,16 +501,31 @@ omni_ftxui_status omni_ftxui_session_take_event(
     return ctx_fail(context, OMNI_FTXUI_STATUS_BACKEND_UNAVAILABLE, "session_take_event: FTXUI backend unavailable");
 #else
     return status_try(context, "session_take_event: out of memory", "session_take_event: exception", [&]() -> omni_ftxui_status {
-    out_event->has_event = session->has_event;
-    out_event->kind = session->event.kind;
-    out_event->text[0] = '\0';
-    if (session->has_event) {
-        size_t copy_len = std::min(session->event.text.size(), sizeof(out_event->text) - 1);
-        std::copy_n(session->event.text.data(), copy_len, out_event->text);
-        out_event->text[copy_len] = '\0';
+    omni_ftxui_event_read_result_clear(out_event);
+    out_event->dropped_events = session->dropped_events;
+    session->dropped_events = 0;
+    if (session->events.empty()) {
+        ctx_clear(context);
+        return OMNI_FTXUI_STATUS_OK;
     }
-    session->has_event = false;
-    session->event = {};
+    const omni_ftxui_captured_event_t& front = session->events.front();
+    char* text = nullptr;
+    if (!front.text.empty()) {
+        if (front.text.size() == std::numeric_limits<size_t>::max()) {
+            return ctx_fail(context, OMNI_FTXUI_STATUS_OUT_OF_MEMORY, "session_take_event: text too large");
+        }
+        text = new (std::nothrow) char[front.text.size() + 1];
+        if (text == nullptr) {
+            return ctx_fail(context, OMNI_FTXUI_STATUS_OUT_OF_MEMORY, "session_take_event: text allocation failed");
+        }
+        std::copy_n(front.text.data(), front.text.size(), text);
+        text[front.text.size()] = '\0';
+    }
+    out_event->has_event = true;
+    out_event->kind = front.kind;
+    out_event->text = text;
+    out_event->text_len = front.text.size();
+    session->events.pop_front();
     ctx_clear(context);
     return OMNI_FTXUI_STATUS_OK;
     });

@@ -25,9 +25,9 @@ fn Value* prim_tls_server_wrap(Value*[] args, Env* env, Interp* interp) {
         if (!is_cons(packed)) return tls_raise_async(interp, "io/tls-server-wrap-expected-args", "tls-server-wrap: expected (tls-server-wrap tcp-handle cert-pem-path key-pem-path)");
         key_path_v = car(packed);
         packed = cdr(packed);
-        if (is_cons(packed)) return tls_raise_async(interp, "io/tls-server-wrap-expected-args", "tls-server-wrap: expected (tls-server-wrap tcp-handle cert-pem-path key-pem-path)");
+        if (!is_nil(packed)) return tls_raise_async(interp, "io/tls-server-wrap-expected-args", "tls-server-wrap: expected (tls-server-wrap tcp-handle cert-pem-path key-pem-path)");
     } else {
-        if (args.len < 3) return tls_raise_async(interp, "io/tls-server-wrap-expected-args", "tls-server-wrap: expected (tls-server-wrap tcp-handle cert-pem-path key-pem-path)");
+        if (args.len != 3) return tls_raise_async(interp, "io/tls-server-wrap-expected-args", "tls-server-wrap: expected (tls-server-wrap tcp-handle cert-pem-path key-pem-path)");
         tcp_v = args[0];
         cert_path_v = args[1];
         key_path_v = args[2];
@@ -62,7 +62,33 @@ fn Value* prim_tls_server_wrap(Value*[] args, Env* env, Interp* interp) {
         return tls_raise_async(interp, "io/tls-server-wrap-out-of-memory", "tls-server-wrap: out of memory");
     }
 
-    th.server_creds = omni_tls_server_creds_load((ZString)cert_path_v.str_chars, (ZString)key_path_v.str_chars);
+    CApiStringResult cert_path = c_api_string_dup_no_nul(cert_path_v.str_chars[:cert_path_v.str_len]);
+    if (cert_path.contains_nul) {
+        tls_handle_free(th);
+        mem::free(th);
+        return tls_raise_async(interp, "io/tls-server-wrap-invalid-cert-path", "tls-server-wrap: cert-pem-path contains embedded NUL byte");
+    }
+    if (!cert_path.ok) {
+        tls_handle_free(th);
+        mem::free(th);
+        return tls_raise_async(interp, "io/tls-server-wrap-out-of-memory", "tls-server-wrap: out of memory");
+    }
+    defer c_api_string_free(&cert_path);
+
+    CApiStringResult key_path = c_api_string_dup_no_nul(key_path_v.str_chars[:key_path_v.str_len]);
+    if (key_path.contains_nul) {
+        tls_handle_free(th);
+        mem::free(th);
+        return tls_raise_async(interp, "io/tls-server-wrap-invalid-key-path", "tls-server-wrap: key-pem-path contains embedded NUL byte");
+    }
+    if (!key_path.ok) {
+        tls_handle_free(th);
+        mem::free(th);
+        return tls_raise_async(interp, "io/tls-server-wrap-out-of-memory", "tls-server-wrap: out of memory");
+    }
+    defer c_api_string_free(&key_path);
+
+    th.server_creds = omni_tls_server_creds_load(cert_path.ptr, key_path.ptr);
     if (th.server_creds == null) {
         char[256] ebuf;
         char[] msg = tls_message_with_cause(&ebuf, "tls-server-wrap: failed to load server cert/key PEM files (RSA key required)");

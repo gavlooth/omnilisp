@@ -19,7 +19,8 @@ fn usz json_repl_zero_based(usz pos) @inline {
 
 fn void json_repl_print_json_hex_byte(char c) {
     char[] hex = "0123456789abcdef";
-    io::printf("%c%c", hex[(usz)(c >> 4) & 0xF], hex[(usz)c & 0xF]);
+    uint byte = (uint)c & 0xFF;
+    io::printf("%c%c", hex[(usz)((byte >> 4) & 0xF)], hex[(usz)(byte & 0xF)]);
 }
 
 fn void json_repl_print_json_escaped_string(char[] value) {
@@ -37,7 +38,8 @@ fn void json_repl_print_json_escaped_string(char[] value) {
             case '\t':
                 io::print("\\t");
             default:
-                if (c < 0x20) {
+                uint byte = (uint)c & 0xFF;
+                if (byte < 0x20) {
                     io::print("\\u00");
                     json_repl_print_json_hex_byte(c);
                 } else {

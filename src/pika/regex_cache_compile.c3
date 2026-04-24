@@ -6,8 +6,10 @@ fn CompiledRegex* regex_compile(char[] pattern) {
     CompiledRegex* rx = mem::new(CompiledRegex);
     rx.valid = true;
     rx.start_clause = -1;
+    rx.active_refs = 0;
     rx.anchored_start = false;
     rx.anchored_end = false;
+    rx.cached = false;
 
     RegexTokenizer tok = regex_tokenizer_new(pattern);
 
@@ -82,7 +84,7 @@ fn CompiledRegex* regex_get_compiled_cached(char[] pattern) {
     regex_cache_ensure_init();
 
     int existing = regex_cache_find(pattern);
-    if (existing >= 0) return g_regex_cache[existing].rx;
+    if (existing >= 0) return regex_cache_retain_locked(g_regex_cache[existing].rx);
 
     CompiledRegex* rx = regex_compile(pattern);
     if (rx == null) {
@@ -110,21 +112,23 @@ fn CompiledRegex* regex_get_compiled_cached(char[] pattern) {
         if (g_regex_cache_len < g_regex_cache_cap) {
             g_regex_cache[g_regex_cache_len].pattern = regex_cache_copy_pattern(pattern);
             g_regex_cache[g_regex_cache_len].rx = rx;
+            rx.cached = true;
             regex_cache_touch(g_regex_cache_len);
             g_regex_cache_len++;
-            return rx;
+            return regex_cache_retain_locked(rx);
         }
     }
 
     int evict_idx = regex_cache_find_lru_index();
     if (evict_idx >= 0) {
         if (g_regex_cache[evict_idx].pattern.len > 0) mem::free(g_regex_cache[evict_idx].pattern.ptr);
-        regex_free(g_regex_cache[evict_idx].rx);
+        regex_cache_detach_locked(g_regex_cache[evict_idx].rx);
         g_regex_cache[evict_idx].pattern = regex_cache_copy_pattern(pattern);
         g_regex_cache[evict_idx].rx = rx;
+        rx.cached = true;
         regex_cache_touch(evict_idx);
         g_regex_cache_evictions++;
-        return rx;
+        return regex_cache_retain_locked(rx);
     }
 
     // Conservative fallback: if cache bookkeeping is inconsistent, do not cache this entry.
@@ -133,7 +137,7 @@ fn CompiledRegex* regex_get_compiled_cached(char[] pattern) {
     return null;
 }
 
-fn void regex_release_parser_state(ParserState* st) {
+fn void pika_release_parser_state(ParserState* st) {
     st.q.free();
     if (st.matches_cap > 0) mem::free(st.matches.ptr);
     if (st.submatches_cap > 0) mem::free(st.submatches.ptr);
@@ -158,20 +162,19 @@ fn void regex_matches_push(RegexMatch[]* matches, int* count, int* cap, RegexMat
 
 fn RegexMatch regex_search_compiled(char[] pattern, char[] input, bool* usable) {
     regex_cache_lock();
-    defer regex_cache_unlock();
-
     *usable = false;
     CompiledRegex* rx = regex_get_compiled_cached(pattern);
+    regex_cache_unlock();
     if (rx == null) return no_match();
+    defer regex_cache_release(rx);
 
     *usable = true;
-    if (input.len == 0) return no_match();
 
     ParserState st = parse_simple(&rx.grammar, input);
-    defer regex_release_parser_state(&st);
+    defer pika_release_parser_state(&st);
 
     int start = rx.anchored_start ? 0 : 0;
-    int end = rx.anchored_start ? 0 : (int)input.len - 1;
+    int end = rx.anchored_start ? 0 : (int)input.len;
     for (int i = start; i <= end; i++) {
         int mid = lookup_best_match_id(i, rx.start_clause, &st);
         if (mid >= 0) {
@@ -185,15 +188,15 @@ fn RegexMatch regex_search_compiled(char[] pattern, char[] input, bool* usable) 
 
 fn RegexMatch regex_fullmatch_compiled(char[] pattern, char[] input, bool* usable) {
     regex_cache_lock();
-    defer regex_cache_unlock();
-
     *usable = false;
     CompiledRegex* rx = regex_get_compiled_cached(pattern);
+    regex_cache_unlock();
     if (rx == null) return no_match();
+    defer regex_cache_release(rx);
 
     *usable = true;
     ParserState st = parse_simple(&rx.grammar, input);
-    defer regex_release_parser_state(&st);
+    defer pika_release_parser_state(&st);
 
     int mid = lookup_best_match_id(0, rx.start_clause, &st);
     if (mid < 0) return no_match();
@@ -207,28 +210,28 @@ fn RegexMatch regex_fullmatch_compiled(char[] pattern, char[] input, bool* usabl
 
 fn RegexMatch[] regex_find_all_compiled(char[] pattern, char[] input, int* count, bool* usable) {
     regex_cache_lock();
-    defer regex_cache_unlock();
 
-    RegexMatch[] matches;
+    RegexMatch[] matches = {};
     int cap = 0;
     int match_count = 0;
     *count = 0;
     *usable = false;
 
     CompiledRegex* rx = regex_get_compiled_cached(pattern);
+    regex_cache_unlock();
     if (rx == null) return matches;
+    defer regex_cache_release(rx);
 
     *usable = true;
-    if (input.len == 0) return matches;
 
     ParserState st = parse_simple(&rx.grammar, input);
-    defer regex_release_parser_state(&st);
+    defer pika_release_parser_state(&st);
 
     int pos = 0;
-    while (pos < (int)input.len) {
+    while (pos <= (int)input.len) {
         bool found = false;
         int start = rx.anchored_start ? 0 : pos;
-        int end = rx.anchored_start ? 0 : (int)input.len - 1;
+        int end = rx.anchored_start ? 0 : (int)input.len;
 
         for (int i = start; i <= end; i++) {
             if (i < pos) continue;
@@ -241,8 +244,11 @@ fn RegexMatch[] regex_find_all_compiled(char[] pattern, char[] input, int* count
             Match* mm = &st.matches[mid];
             RegexMatch m = regex_mk_match(mm.first, mm.last, input);
             regex_matches_push(&matches, &match_count, &cap, m);
-            pos = m.end + 1;
-            if (pos <= m.start) pos = m.start + 1; // Avoid infinite loop on empty match
+            if (m.end < m.start) {
+                pos = m.start + 1;
+            } else {
+                pos = m.end + 1;
+            }
             found = true;
             break;
         }
@@ -253,4 +259,3 @@ fn RegexMatch[] regex_find_all_compiled(char[] pattern, char[] input, int* count
     *count = match_count;
     return match_count > 0 ? matches[:(usz)match_count] : matches;
 }
-

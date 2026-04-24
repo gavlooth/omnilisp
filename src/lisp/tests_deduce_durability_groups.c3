@@ -427,7 +427,7 @@ fn bool deduce_test_run_main_script(char[] script_path) {
     if (try char[] rendered = io::bprintf(
         &cmd_buf,
         "ASAN_OPTIONS=detect_leaks=0:halt_on_error=1:abort_on_error=1 "
-        "LD_LIBRARY_PATH=/usr/local/lib ./build/main %s",
+        "LD_LIBRARY_PATH=\"${LD_LIBRARY_PATH:-/usr/local/lib}:/usr/local/lib\" ./build/main %s",
         (ZString)script_path
     )) {
         cmd = rendered;

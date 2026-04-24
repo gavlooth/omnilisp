@@ -19,7 +19,12 @@ fn BindHeaderParseResult parse_ffi_dep_headers(lisp::LibclangHandle* clang, lisp
     BindHeaderParseResult result = {};
     for (usz hi = 0; hi < dep.header_count; hi++) {
         char* header = &dep.headers[hi];
-        usz hlen = cstr_len(header);
+        usz hlen = 0;
+        if (!cli_cstr_len(header, &hlen)) {
+            result.path_too_long = true;
+            result.failed_header = header;
+            return result;
+        }
         lisp::ParsedFunc* out_ptr = result.func_count < max_funcs ? &funcs[result.func_count] : null;
         lisp::ParseHeaderResult parsed = lisp::parse_header_checked(clang, header[:hlen],
             out_ptr, max_funcs - result.func_count,

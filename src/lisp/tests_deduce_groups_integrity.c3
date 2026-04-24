@@ -2,6 +2,131 @@ module lisp;
 
 import std::io;
 
+fn bool deduce_test_payload_code_equals(Interp* interp, Value* payload, char[] expected_code) {
+    Value* code = deduce_rule_test_dict_get(interp, payload, "code");
+    return code != null &&
+           code.tag == SYMBOL &&
+           deduce_name_equals(interp.symbols.get_name(code.sym_val), expected_code);
+}
+
+fn void run_deduce_fact_lmdb_read_failure_tests(Interp* interp, int* pass, int* fail) {
+    bool ok = false;
+    EvalResult setup_result = run(
+        "(block "
+        "  (define db-fact-read-fail (deduce 'open 'memory)) "
+        "  (define [relation db-fact-read-fail] rel-fact-read-fail (key id) (name)) "
+        "  true)",
+        interp
+    );
+
+    Value* rel_val = interp.global_env.lookup(interp.symbols.intern("rel-fact-read-fail"));
+    if (!setup_result.error.has_error &&
+        rel_val != null &&
+        rel_val.tag == FFI_HANDLE &&
+        rel_val.ffi_val != null &&
+        rel_val.ffi_val.lib_handle != null) {
+        bool saved_force = g_deduce_force_fact_existing_read_fail;
+        g_deduce_force_fact_existing_read_fail = true;
+        EvalResult r = run(
+            "(handle (deduce 'fact! rel-fact-read-fail 1 \"Alice\") (raise payload payload))",
+            interp
+        );
+        g_deduce_force_fact_existing_read_fail = saved_force;
+        ok = !r.error.has_error &&
+             deduce_test_payload_code_equals(interp, r.value, "deduce/fact-read-failed");
+        run_clear_stale_raise_state(interp);
+    }
+
+    if (ok) {
+        emit_pass_literal("[PASS] deduce fact! fails closed when existing-fact LMDB read fails");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] deduce fact! fails closed when existing-fact LMDB read fails");
+        (*fail)++;
+    }
+}
+
+fn void run_deduce_reference_scan_open_failure_tests(Interp* interp, int* pass, int* fail) {
+    bool ok = false;
+    EvalResult setup_result = run(
+        "(block "
+        "  (define db-ref-scan-open-fail (deduce 'open 'memory)) "
+        "  (define [relation db-ref-scan-open-fail] ref-scan-users (key id) (name)) "
+        "  (define [relation db-ref-scan-open-fail] ref-scan-audit (ref ref-scan-users id user-id) (action)) "
+        "  (deduce 'fact! ref-scan-users 7 \"Ada\") "
+        "  true)",
+        interp
+    );
+
+    Value* users_val = interp.global_env.lookup(interp.symbols.intern("ref-scan-users"));
+    if (!setup_result.error.has_error &&
+        users_val != null &&
+        users_val.tag == FFI_HANDLE &&
+        users_val.ffi_val != null &&
+        users_val.ffi_val.lib_handle != null) {
+        Relation* users = (Relation*)users_val.ffi_val.lib_handle;
+        DeduceDb* db = users.db;
+        if (db != null && db.relation_schemas != null) {
+            SymbolId saved_name = (SymbolId)0;
+            DeduceRelationSchema* audit_schema = null;
+            for (usz i = 0; i < db.relation_schema_count; i++) {
+                DeduceRelationSchema* schema = &db.relation_schemas[i];
+                if (schema.reference_constraint_count > 0 &&
+                    schema.reference_constraints != null &&
+                    schema.reference_constraints[0].target_relation == users.name) {
+                    audit_schema = schema;
+                    saved_name = schema.name;
+                    schema.name = interp.symbols.intern("__deduce_missing_source_for_scan");
+                    break;
+                }
+            }
+
+            EvalResult r = run(
+                "(handle (deduce/retract! ref-scan-users 7 \"Ada\") (raise payload payload))",
+                interp
+            );
+            if (audit_schema != null) audit_schema.name = saved_name;
+            ok = !r.error.has_error &&
+                 deduce_test_payload_code_equals(interp, r.value, "deduce/retract-reference-integrity-scan-failed");
+            run_clear_stale_raise_state(interp);
+        }
+    }
+
+    if (ok) {
+        emit_pass_literal("[PASS] deduce retract! fails closed when reference source relation cannot open");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] deduce retract! fails closed when reference source relation cannot open");
+        (*fail)++;
+    }
+}
+
+fn void run_deduce_fact_reference_scan_failure_tests(Interp* interp, int* pass, int* fail) {
+    bool saved_force = g_deduce_force_fact_reference_scan_end_fail;
+    g_deduce_force_fact_reference_scan_end_fail = true;
+    EvalResult r = run(
+        "(block "
+        "  (define db-ref-scan-fail (deduce 'open 'memory)) "
+        "  (define [relation db-ref-scan-fail] ref-scan-fail-users (key id) (name)) "
+        "  (define [relation db-ref-scan-fail] ref-scan-fail-audit (ref ref-scan-fail-users id user-id) (action)) "
+        "  (handle (deduce 'fact! ref-scan-fail-audit 99 \"login\") (raise payload payload)))",
+        interp
+    );
+    g_deduce_force_fact_reference_scan_end_fail = saved_force;
+
+    bool ok = !r.error.has_error &&
+              deduce_test_payload_code_equals(interp, r.value, "deduce/fact-reference-integrity-scan-failed");
+    run_clear_stale_raise_state(interp);
+
+    if (ok) {
+        emit_pass_literal("[PASS] deduce fact! fails closed when reference target scan fails");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] deduce fact! fails closed when reference target scan fails");
+        (*fail)++;
+    }
+}
+
 fn void run_deduce_key_integrity_fact_tests(Interp* interp, int* pass, int* fail) {
     deduce_test_expect_true_symbol(
         interp,

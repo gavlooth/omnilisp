@@ -1,6 +1,10 @@
 module main;
 
+import std::io;
+
 extern fn char* c_getenv(char* name) @extern("getenv");
+
+const usz CLI_CSTR_MAX_LEN = 65536;
 
 fn bool mem_stats_enabled() {
     char* raw = c_getenv("OMNI_MEM_STATS");
@@ -12,10 +16,48 @@ fn bool mem_telemetry_enabled() {
     return raw != null && raw[0] != 0 && raw[0] != '0';
 }
 
-fn usz cstr_len(char* s) @inline {
+fn bool cstr_len_bounded(char* s, usz max_len, usz* out_len, bool* out_truncated = null) @inline {
+    if (out_len != null) *out_len = 0;
+    if (out_truncated != null) *out_truncated = false;
+    if (s == null) return true;
+
     usz n = 0;
-    while (n < 65536 && s[n] != 0) n++;
-    return n;
+    while (n < max_len && s[n] != 0) n++;
+    bool truncated = n == max_len && s[n] != 0;
+    if (out_len != null) *out_len = n;
+    if (out_truncated != null) *out_truncated = truncated;
+    return !truncated;
+}
+
+fn bool cli_cstr_len(char* s, usz* out_len) @inline {
+    return cstr_len_bounded(s, CLI_CSTR_MAX_LEN, out_len);
+}
+
+fn bool cli_cstr_slice(char* s, char[]* out_slice) @inline {
+    if (s == null) {
+        *out_slice = "";
+        return true;
+    }
+    usz len = 0;
+    if (!cli_cstr_len(s, &len)) return false;
+    *out_slice = s[:len];
+    return true;
+}
+
+fn int print_cli_cstr_too_long(char[] label, bool json = false) {
+    if (json) {
+        char[192] msg_buf;
+        if (try msg = io::bprintf(&msg_buf, "%s is too long (maximum %d bytes)",
+                (ZString)label.ptr, (int)CLI_CSTR_MAX_LEN)) {
+            print_cli_error_json("cli/argument-too-long", msg);
+        } else {
+            print_cli_error_json("cli/argument-too-long", "CLI argument is too long");
+        }
+        return 1;
+    }
+    io::printfn("Error: %s is too long (maximum %d bytes)",
+        (ZString)label.ptr, (int)CLI_CSTR_MAX_LEN);
+    return 1;
 }
 
 fn bool cstr_contains(char[] haystack, char[] needle) {

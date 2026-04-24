@@ -34,7 +34,7 @@ fn void Compiler.emit_main_start(Compiler* self) {
     self.indent++;
 
     // Initialize AOT interpreter
-    self.emit_line("if (!aot::aot_init()) return 1;");
+    self.emit_line("if (!aot::aot_process_init()) return 1;");
     self.emit_newline();
 
     // Initialize all global variables to nil
@@ -55,7 +55,7 @@ fn void Compiler.emit_main_start(Compiler* self) {
 fn void Compiler.emit_main_end(Compiler* self) {
     self.emit_newline();
     // Shutdown AOT interpreter
-    self.emit_line("aot::aot_shutdown();");
+    self.emit_line("aot::aot_process_shutdown();");
     self.emit_line("return 0;");
     self.indent--;
     self.emit("}\n");

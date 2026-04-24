@@ -23,9 +23,11 @@ fn usz Compiler.compile_explain_flat(Compiler* self, Expr* expr) {
         usz func_r = self.compile_to_temp(target.call.func);
         usz args_list = self.emit_nil_temp();
         if (target_arg_count > 0) {
-            usz[] arg_temps = self.compile_call_arg_temps(target.call.args, target_arg_count);
+            usz[] arg_temps = {};
+            if (!self.compile_call_arg_temps(target.call.args, target_arg_count, &arg_temps)) return usz.max;
             defer mem::free(arg_temps.ptr);
             args_list = self.build_arg_list_from_temps(arg_temps, target_arg_count);
+            if (args_list == usz.max) return usz.max;
         }
 
         usz id = self.next_result();

@@ -120,6 +120,7 @@ fn Env* make_env(Interp* interp, Env* parent) {
     main::ScopeRegion* target = interp.current_scope;
 
     Env* env = use_escape_lane ? interp.alloc_env_escape() : interp.alloc_env();
+    if (env == null) return null;
     env.is_inline = true;
     env.bindings = &env.inline_bindings[0];
     env.binding_count = 0;
@@ -132,9 +133,9 @@ fn Env* make_env(Interp* interp, Env* parent) {
     env.owner_scope = target;
     env.owner_escape_lane = use_escape_lane;
     if (use_escape_lane) {
-        main::scope_register_dtor_escape(target, (void*)env, &scope_dtor_env);
+        if (!main::scope_register_dtor_escape(target, (void*)env, &scope_dtor_env)) return null;
     } else {
-        main::scope_register_dtor(target, (void*)env, &scope_dtor_env);
+        if (!main::scope_register_dtor(target, (void*)env, &scope_dtor_env)) return null;
     }
     return env;
 }

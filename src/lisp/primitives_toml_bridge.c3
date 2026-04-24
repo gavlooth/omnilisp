@@ -165,7 +165,11 @@ fn Value* toml_datum_to_omni(OmniTomlDatum* datum, Interp* interp) {
         }
         case TOML_TABLE: {
             usz count = (usz)omni_toml_datum_table_size(datum);
-            Value* dict = make_hashmap_checked(interp, (uint)(count < 8 ? 8 : count * 2), "toml-parse: out of memory");
+            uint capacity = 0;
+            if (!hashmap_capacity_hint_for_entry_count(count, &capacity)) {
+                return data_format_raise(interp, "type/out-of-memory", "toml-parse: table is too large");
+            }
+            Value* dict = make_hashmap_checked(interp, capacity, "toml-parse: out of memory");
             if (dict == null || dict.tag != HASHMAP) return dict;
             for (usz i = 0; i < count; i++) {
                 char* key = omni_toml_datum_table_key(datum, (int)i);
@@ -205,9 +209,7 @@ fn Value* toml_datum_to_omni(OmniTomlDatum* datum, Interp* interp) {
             }
 
             if (typ == TOML_DATETIMETZ) {
-                if (tz != 0) {
-                    kind = TIME_POINT_DATETIMETZ;
-                }
+                kind = TIME_POINT_DATETIMETZ;
                 return make_time_point(interp, kind, year, month, day, hour, minute, second, usec, tz);
             }
             return make_time_point(interp, TIME_POINT_DATETIME, year, month, day, hour, minute, second, usec, 0);

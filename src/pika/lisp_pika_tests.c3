@@ -149,8 +149,8 @@ fn void test_pika_primitive_re_match_pos(lisp::Interp* interp) {
     }
 
     lisp::Value* end = rest.cons_val.car;
-    if (end.tag == lisp::ValueTag.INT && end.int_val == 8) {
-        pika_emit_pass("[PASS] re-match-pos: returns (4 8)");
+    if (end.tag == lisp::ValueTag.INT && end.int_val == 9) {
+        pika_emit_pass("[PASS] re-match-pos: returns (4 9)");
     } else {
         io::printn("[FAIL] re-match-pos: wrong end position");
     }

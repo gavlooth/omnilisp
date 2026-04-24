@@ -190,6 +190,14 @@ fn Value* prim_substring(Value*[] args, Env* env, Interp* interp) {
 /**
  * (string-split s sep) -> list of strings
  */
+fn bool string_split_separator_matches(char* str, usz str_len, usz start, char* sep, usz sep_len) {
+    if (sep_len == 0 || start > str_len || sep_len > str_len - start) return false;
+    for (usz i = 0; i < sep_len; i++) {
+        if (str[start + i] != sep[i]) return false;
+    }
+    return true;
+}
+
 <*
 @require interp != null
 *>
@@ -204,13 +212,17 @@ fn Value* prim_string_split(Value*[] args, Env* env, Interp* interp) {
 
     char* str = args[0].str_chars;
     usz str_len = args[0].str_len;
-    char delim = args[1].str_chars[0];
+    char* sep = args[1].str_chars;
+    usz sep_len = args[1].str_len;
 
     Value* parts = make_nil(interp);
     usz start = 0;
 
-    for (usz i = 0; i <= str_len; i++) {
-        if (i == str_len || str[i] == delim) {
+    usz i = 0;
+    while (i <= str_len) {
+        bool at_end = i == str_len;
+        bool at_sep = !at_end && string_split_separator_matches(str, str_len, i, sep, sep_len);
+        if (at_end || at_sep) {
             usz part_len = i - start;
             Value* part;
             if (part_len == 0) {
@@ -222,7 +234,14 @@ fn Value* prim_string_split(Value*[] args, Env* env, Interp* interp) {
             Value* next = make_cons_or_error(interp, part, parts, "string-split: failed to allocate result list");
             if (next == null || next.tag == ERROR) return next;
             parts = next;
-            start = i + 1;
+            if (at_sep) {
+                i += sep_len;
+                start = i;
+            } else {
+                i++;
+            }
+        } else {
+            i++;
         }
     }
 

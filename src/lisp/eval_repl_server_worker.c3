@@ -36,7 +36,10 @@ fn void repl_server_worker_run_command(ReplServerWorker* worker, ReplServerComma
                     return;
                 }
             }
-            if (!repl_server_send_session_event(output, command.id_ptr[:command.id_len], session_id)) return;
+            if (!repl_server_send_session_event(output, command.id_ptr[:command.id_len], session_id)) {
+                repl_server_close_session(session);
+                return;
+            }
             (void)repl_server_send_done(output, command.id_ptr[:command.id_len], session_id);
             return;
         }
@@ -83,7 +86,6 @@ fn void repl_server_worker_thread_entry(void* ctx_ptr) {
     @pool_init(mem, 65536)
     {
         main::thread_registry_init();
-        defer main::thread_registry_shutdown();
 
         while (true) {
             worker.mu.lock();
@@ -154,4 +156,20 @@ fn void repl_server_worker_shutdown(ReplServerWorker* worker) {
     omni_uv_thread_free(worker.thread_handle);
     worker.thread_handle = null;
     worker.thread_started = false;
+}
+
+fn void repl_server_worker_destroy(ReplServerWorker* worker) {
+    if (worker == null) return;
+    repl_server_worker_shutdown(worker);
+    repl_server_worker_clear_queued_commands(worker);
+    if (worker.cv_ready) {
+        (void)worker.cv.destroy();
+        worker.cv_ready = false;
+    }
+    if (worker.mu_ready) {
+        (void)worker.mu.destroy();
+        worker.mu_ready = false;
+    }
+    worker.conn = null;
+    worker.output = null;
 }

@@ -14,12 +14,81 @@ struct FfiAsyncCallCtx {
     long[FFI_ASYNC_MAX_ARGS] int_storage;
     double[FFI_ASYNC_MAX_ARGS] dbl_storage;
     void*[FFI_ASYNC_MAX_ARGS] ptr_storage;
+    char*[FFI_ASYNC_MAX_ARGS] owned_strings;
     int ret_type;
 }
 
 fn void ffi_async_call_ctx_free(void* raw_ctx) {
     if (raw_ctx == null) return;
+    FfiAsyncCallCtx* ctx = (FfiAsyncCallCtx*)raw_ctx;
+    for (usz i = 0; i < FFI_ASYNC_MAX_ARGS; i++) {
+        if (ctx.owned_strings[i] != null) {
+            mem::free(ctx.owned_strings[i]);
+            ctx.owned_strings[i] = null;
+        }
+    }
     mem::free(raw_ctx);
+}
+
+fn Value* ffi_async_own_string_arg(FfiAsyncCallCtx* ctx, Value* arg, usz arg_index, Interp* interp) {
+    if (ctx == null || arg_index >= FFI_ASYNC_MAX_ARGS) {
+        return ffi_raise(interp, "ffi/invalid-state", "ffi-async-call: internal argument ownership error");
+    }
+    if ((FfiTypeTag)ctx.arg_types[arg_index] != FFI_TYPE_STRING) return null;
+    if (arg == null || arg.tag == NIL) {
+        ctx.ptr_storage[arg_index] = null;
+        ctx.arg_values[arg_index] = (void*)&ctx.ptr_storage[arg_index];
+        return null;
+    }
+    if (arg.tag != STRING) {
+        return ffi_arg_type_error(interp, arg_index, interp.sym_String, arg);
+    }
+
+    CApiStringResult owned = c_api_string_dup_no_nul(arg.str_chars[:arg.str_len]);
+    if (owned.contains_nul) {
+        return ffi_raise(interp, "ffi/invalid-argument", "ffi-async-call: string argument contains embedded NUL byte");
+    }
+    if (owned.too_long) {
+        return ffi_raise(interp, "ffi/invalid-argument", "ffi-async-call: string argument is too large");
+    }
+    if (!owned.ok || owned.ptr == null) {
+        return ffi_raise(interp, "ffi/out-of-memory", "ffi-async-call: failed to copy string argument");
+    }
+
+    ctx.owned_strings[arg_index] = owned.ptr;
+    ctx.ptr_storage[arg_index] = (void*)owned.ptr;
+    ctx.arg_values[arg_index] = (void*)&ctx.ptr_storage[arg_index];
+    return null;
+}
+
+fn bool ffi_async_string_arg_copy_contract_for_tests(Interp* interp) {
+    if (interp == null) return false;
+    Value* arg = make_string(interp, "async-copy");
+    if (arg == null || arg.tag != STRING) return false;
+
+    FfiAsyncCallCtx* ctx = (FfiAsyncCallCtx*)mem::malloc(FfiAsyncCallCtx.sizeof);
+    if (ctx == null) return false;
+    *ctx = {};
+    ctx.arg_types[0] = (int)FfiTypeTag.FFI_TYPE_STRING;
+    ctx.ptr_storage[0] = (void*)arg.str_chars;
+    ctx.arg_values[0] = (void*)&ctx.ptr_storage[0];
+
+    Value* err = ffi_async_own_string_arg(ctx, arg, 0, interp);
+    bool ok = err == null &&
+        ctx.owned_strings[0] != null &&
+        ctx.ptr_storage[0] == (void*)ctx.owned_strings[0] &&
+        ctx.ptr_storage[0] != (void*)arg.str_chars &&
+        ffi_c_string_len(ctx.owned_strings[0]) == arg.str_len;
+    if (ok) {
+        for (usz i = 0; i < arg.str_len; i++) {
+            if (ctx.owned_strings[0][i] != arg.str_chars[i]) {
+                ok = false;
+                break;
+            }
+        }
+    }
+    ffi_async_call_ctx_free((void*)ctx);
+    return ok;
 }
 
 fn bool ffi_async_set_string_result(OffloadCompletion* completion, char* text) {
@@ -59,6 +128,8 @@ fn OffloadCompletion* ffi_async_offload_callback(OffloadWork work) {
     }
 
     long ret_int = 0;
+    uint ret_u32 = 0;
+    ulong ret_u64 = 0;
     float ret_f32 = 0.0f;
     double ret_dbl = 0.0;
     void* ret_ptr = null;
@@ -68,9 +139,13 @@ fn OffloadCompletion* ffi_async_offload_callback(OffloadWork work) {
         case FFI_TYPE_BOOL:
         case FFI_TYPE_INT32:
         case FFI_TYPE_INT64:
-        case FFI_TYPE_UINT32:
-        case FFI_TYPE_UINT64:
             ret_storage = (void*)&ret_int;
+            break;
+        case FFI_TYPE_UINT32:
+            ret_storage = (void*)&ret_u32;
+            break;
+        case FFI_TYPE_UINT64:
+            ret_storage = (void*)&ret_u64;
             break;
         case FFI_TYPE_FLOAT32:
             ret_storage = (void*)&ret_f32;
@@ -106,10 +181,20 @@ fn OffloadCompletion* ffi_async_offload_callback(OffloadWork work) {
         case FFI_TYPE_INT:
         case FFI_TYPE_INT32:
         case FFI_TYPE_INT64:
-        case FFI_TYPE_UINT32:
-        case FFI_TYPE_UINT64:
             completion.kind = OFFLOAD_RES_INT;
             completion.int_result = ret_int;
+            break;
+        case FFI_TYPE_UINT32:
+            completion.kind = OFFLOAD_RES_INT;
+            completion.int_result = (long)ret_u32;
+            break;
+        case FFI_TYPE_UINT64:
+            if (ret_u64 > (ulong)long.max) {
+                scheduler_set_offload_error(completion, "ffi-async: UInt64 return exceeds Integer range");
+            } else {
+                completion.kind = OFFLOAD_RES_INT;
+                completion.int_result = (long)ret_u64;
+            }
             break;
         case FFI_TYPE_BOOL:
             completion.kind = OFFLOAD_RES_INT;
@@ -205,13 +290,22 @@ fn Value* prim_ffi_async_call(Value*[] args, Env* env, Interp* interp) {
     for (usz i = 0; i < nargs; i++) {
         Value* arg = args[i + 1];
         if (i < bound.param_count) {
+            if (bound.param_types[i] == FFI_TYPE_BUFFER) {
+                ffi_async_call_ctx_free((void*)ctx);
+                return ffi_raise(interp, "ffi/unsupported",
+                    "ffi-async-call: Buffer arguments are not supported across worker handoff");
+            }
             FfiHandlePolicy* policy = bound.param_handle_policies != null
                 ? &bound.param_handle_policies[i]
                 : null;
             if (Value* err = ffi_pack_call_arg(arg, bound.param_types[i], i, policy,
                 &ctx.int_storage[i], &ctx.dbl_storage[i], &ctx.ptr_storage[i],
                 &ctx.arg_types[i], &ctx.arg_values[i], interp)) {
-                mem::free(ctx);
+                ffi_async_call_ctx_free((void*)ctx);
+                return err;
+            }
+            if (Value* err = ffi_async_own_string_arg(ctx, arg, i, interp)) {
+                ffi_async_call_ctx_free((void*)ctx);
                 return err;
             }
         } else {
@@ -226,8 +320,12 @@ fn Value* prim_ffi_async_call(Value*[] args, Env* env, Interp* interp) {
                 interp
             );
             if (err != null) {
-                mem::free(ctx);
+                ffi_async_call_ctx_free((void*)ctx);
                 return err;
+            }
+            if (Value* own_err = ffi_async_own_string_arg(ctx, arg, i, interp)) {
+                ffi_async_call_ctx_free((void*)ctx);
+                return own_err;
             }
         }
     }

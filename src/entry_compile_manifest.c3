@@ -4,10 +4,6 @@ import std::io;
 import std::collections::list;
 import lisp;
 
-extern fn int compile_manifest_getpid() @extern("getpid");
-extern fn int compile_manifest_uv_rename(char* src, char* dst) @extern("omni_uv_fs_rename");
-extern fn int compile_manifest_uv_unlink(char* path) @extern("omni_uv_fs_unlink");
-
 bool g_compile_manifest_force_fail_before_rename = false;
 
 fn void compile_manifest_append_json_hex4(DString* out, int value) {
@@ -68,17 +64,103 @@ fn void compile_manifest_emit_ffi_libraries(
 ) {
     if (expr == null) return;
 
-    if (expr.tag == lisp::ExprTag.E_MODULE && expr.module_expr != null) {
-        for (usz i = 0; i < expr.module_expr.body_count; i++) {
-            compile_manifest_emit_ffi_libraries(out, expr.module_expr.body[i], first_entry, interp);
-        }
-        return;
-    }
-    if (expr.tag == lisp::ExprTag.E_BLOCK && expr.block != null) {
-        for (usz i = 0; i < expr.block.expr_count; i++) {
-            compile_manifest_emit_ffi_libraries(out, expr.block.exprs[i], first_entry, interp);
-        }
-        return;
+    switch (expr.tag) {
+        case lisp::ExprTag.E_LAMBDA:
+            if (expr.lambda != null) compile_manifest_emit_ffi_libraries(out, expr.lambda.body, first_entry, interp);
+            return;
+        case lisp::ExprTag.E_APP:
+            compile_manifest_emit_ffi_libraries(out, expr.app.func, first_entry, interp);
+            compile_manifest_emit_ffi_libraries(out, expr.app.arg, first_entry, interp);
+            return;
+        case lisp::ExprTag.E_IF:
+            compile_manifest_emit_ffi_libraries(out, expr.if_expr.test, first_entry, interp);
+            compile_manifest_emit_ffi_libraries(out, expr.if_expr.then_branch, first_entry, interp);
+            compile_manifest_emit_ffi_libraries(out, expr.if_expr.else_branch, first_entry, interp);
+            return;
+        case lisp::ExprTag.E_LET:
+            compile_manifest_emit_ffi_libraries(out, expr.let_expr.init, first_entry, interp);
+            compile_manifest_emit_ffi_libraries(out, expr.let_expr.body, first_entry, interp);
+            return;
+        case lisp::ExprTag.E_RESET:
+            compile_manifest_emit_ffi_libraries(out, expr.reset.body, first_entry, interp);
+            return;
+        case lisp::ExprTag.E_SHIFT:
+            compile_manifest_emit_ffi_libraries(out, expr.shift.body, first_entry, interp);
+            return;
+        case lisp::ExprTag.E_PERFORM:
+            if (expr.perform.has_tag_expr) compile_manifest_emit_ffi_libraries(out, expr.perform.tag_expr, first_entry, interp);
+            compile_manifest_emit_ffi_libraries(out, expr.perform.arg, first_entry, interp);
+            return;
+        case lisp::ExprTag.E_RESOLVE:
+            compile_manifest_emit_ffi_libraries(out, expr.resolve.value, first_entry, interp);
+            return;
+        case lisp::ExprTag.E_HANDLE:
+            if (expr.handle != null) {
+                compile_manifest_emit_ffi_libraries(out, expr.handle.body, first_entry, interp);
+                for (usz i = 0; i < expr.handle.clause_count; i++) {
+                    if (expr.handle.clauses[i].has_effect_tag_expr) {
+                        compile_manifest_emit_ffi_libraries(out, expr.handle.clauses[i].effect_tag_expr, first_entry, interp);
+                    }
+                    compile_manifest_emit_ffi_libraries(out, expr.handle.clauses[i].handler_body, first_entry, interp);
+                }
+            }
+            return;
+        case lisp::ExprTag.E_INDEX:
+            compile_manifest_emit_ffi_libraries(out, expr.index.collection, first_entry, interp);
+            compile_manifest_emit_ffi_libraries(out, expr.index.index, first_entry, interp);
+            return;
+        case lisp::ExprTag.E_MATCH:
+            if (expr.match != null) {
+                compile_manifest_emit_ffi_libraries(out, expr.match.scrutinee, first_entry, interp);
+                for (usz i = 0; i < expr.match.clause_count; i++) {
+                    compile_manifest_emit_ffi_libraries(out, expr.match.clauses[i].result, first_entry, interp);
+                }
+            }
+            return;
+        case lisp::ExprTag.E_AND:
+            compile_manifest_emit_ffi_libraries(out, expr.and_expr.left, first_entry, interp);
+            compile_manifest_emit_ffi_libraries(out, expr.and_expr.right, first_entry, interp);
+            return;
+        case lisp::ExprTag.E_OR:
+            compile_manifest_emit_ffi_libraries(out, expr.or_expr.left, first_entry, interp);
+            compile_manifest_emit_ffi_libraries(out, expr.or_expr.right, first_entry, interp);
+            return;
+        case lisp::ExprTag.E_CALL:
+            if (expr.call != null) {
+                compile_manifest_emit_ffi_libraries(out, expr.call.func, first_entry, interp);
+                for (usz i = 0; i < expr.call.arg_count; i++) {
+                    compile_manifest_emit_ffi_libraries(out, expr.call.args[i], first_entry, interp);
+                }
+            }
+            return;
+        case lisp::ExprTag.E_MODULE:
+            if (expr.module_expr != null) {
+                for (usz i = 0; i < expr.module_expr.body_count; i++) {
+                    compile_manifest_emit_ffi_libraries(out, expr.module_expr.body[i], first_entry, interp);
+                }
+            }
+            return;
+        case lisp::ExprTag.E_WITH_MODULE:
+            if (expr.with_module != null) {
+                for (usz i = 0; i < expr.with_module.body_count; i++) {
+                    compile_manifest_emit_ffi_libraries(out, expr.with_module.body[i], first_entry, interp);
+                }
+            }
+            return;
+        case lisp::ExprTag.E_BLOCK:
+            if (expr.block != null) {
+                for (usz i = 0; i < expr.block.expr_count; i++) {
+                    compile_manifest_emit_ffi_libraries(out, expr.block.exprs[i], first_entry, interp);
+                }
+            }
+            return;
+        case lisp::ExprTag.E_SET:
+            compile_manifest_emit_ffi_libraries(out, expr.set_expr.value, first_entry, interp);
+            return;
+        case lisp::ExprTag.E_DEFINE:
+            compile_manifest_emit_ffi_libraries(out, expr.define.value, first_entry, interp);
+            break;
+        default:
     }
 
     if (expr.tag != lisp::ExprTag.E_FFI_LIB) return;
@@ -110,17 +192,103 @@ fn void compile_manifest_emit_ffi_functions(
 ) {
     if (expr == null) return;
 
-    if (expr.tag == lisp::ExprTag.E_MODULE && expr.module_expr != null) {
-        for (usz i = 0; i < expr.module_expr.body_count; i++) {
-            compile_manifest_emit_ffi_functions(out, expr.module_expr.body[i], first_entry, interp);
-        }
-        return;
-    }
-    if (expr.tag == lisp::ExprTag.E_BLOCK && expr.block != null) {
-        for (usz i = 0; i < expr.block.expr_count; i++) {
-            compile_manifest_emit_ffi_functions(out, expr.block.exprs[i], first_entry, interp);
-        }
-        return;
+    switch (expr.tag) {
+        case lisp::ExprTag.E_LAMBDA:
+            if (expr.lambda != null) compile_manifest_emit_ffi_functions(out, expr.lambda.body, first_entry, interp);
+            return;
+        case lisp::ExprTag.E_APP:
+            compile_manifest_emit_ffi_functions(out, expr.app.func, first_entry, interp);
+            compile_manifest_emit_ffi_functions(out, expr.app.arg, first_entry, interp);
+            return;
+        case lisp::ExprTag.E_IF:
+            compile_manifest_emit_ffi_functions(out, expr.if_expr.test, first_entry, interp);
+            compile_manifest_emit_ffi_functions(out, expr.if_expr.then_branch, first_entry, interp);
+            compile_manifest_emit_ffi_functions(out, expr.if_expr.else_branch, first_entry, interp);
+            return;
+        case lisp::ExprTag.E_LET:
+            compile_manifest_emit_ffi_functions(out, expr.let_expr.init, first_entry, interp);
+            compile_manifest_emit_ffi_functions(out, expr.let_expr.body, first_entry, interp);
+            return;
+        case lisp::ExprTag.E_RESET:
+            compile_manifest_emit_ffi_functions(out, expr.reset.body, first_entry, interp);
+            return;
+        case lisp::ExprTag.E_SHIFT:
+            compile_manifest_emit_ffi_functions(out, expr.shift.body, first_entry, interp);
+            return;
+        case lisp::ExprTag.E_PERFORM:
+            if (expr.perform.has_tag_expr) compile_manifest_emit_ffi_functions(out, expr.perform.tag_expr, first_entry, interp);
+            compile_manifest_emit_ffi_functions(out, expr.perform.arg, first_entry, interp);
+            return;
+        case lisp::ExprTag.E_RESOLVE:
+            compile_manifest_emit_ffi_functions(out, expr.resolve.value, first_entry, interp);
+            return;
+        case lisp::ExprTag.E_HANDLE:
+            if (expr.handle != null) {
+                compile_manifest_emit_ffi_functions(out, expr.handle.body, first_entry, interp);
+                for (usz i = 0; i < expr.handle.clause_count; i++) {
+                    if (expr.handle.clauses[i].has_effect_tag_expr) {
+                        compile_manifest_emit_ffi_functions(out, expr.handle.clauses[i].effect_tag_expr, first_entry, interp);
+                    }
+                    compile_manifest_emit_ffi_functions(out, expr.handle.clauses[i].handler_body, first_entry, interp);
+                }
+            }
+            return;
+        case lisp::ExprTag.E_INDEX:
+            compile_manifest_emit_ffi_functions(out, expr.index.collection, first_entry, interp);
+            compile_manifest_emit_ffi_functions(out, expr.index.index, first_entry, interp);
+            return;
+        case lisp::ExprTag.E_MATCH:
+            if (expr.match != null) {
+                compile_manifest_emit_ffi_functions(out, expr.match.scrutinee, first_entry, interp);
+                for (usz i = 0; i < expr.match.clause_count; i++) {
+                    compile_manifest_emit_ffi_functions(out, expr.match.clauses[i].result, first_entry, interp);
+                }
+            }
+            return;
+        case lisp::ExprTag.E_AND:
+            compile_manifest_emit_ffi_functions(out, expr.and_expr.left, first_entry, interp);
+            compile_manifest_emit_ffi_functions(out, expr.and_expr.right, first_entry, interp);
+            return;
+        case lisp::ExprTag.E_OR:
+            compile_manifest_emit_ffi_functions(out, expr.or_expr.left, first_entry, interp);
+            compile_manifest_emit_ffi_functions(out, expr.or_expr.right, first_entry, interp);
+            return;
+        case lisp::ExprTag.E_CALL:
+            if (expr.call != null) {
+                compile_manifest_emit_ffi_functions(out, expr.call.func, first_entry, interp);
+                for (usz i = 0; i < expr.call.arg_count; i++) {
+                    compile_manifest_emit_ffi_functions(out, expr.call.args[i], first_entry, interp);
+                }
+            }
+            return;
+        case lisp::ExprTag.E_MODULE:
+            if (expr.module_expr != null) {
+                for (usz i = 0; i < expr.module_expr.body_count; i++) {
+                    compile_manifest_emit_ffi_functions(out, expr.module_expr.body[i], first_entry, interp);
+                }
+            }
+            return;
+        case lisp::ExprTag.E_WITH_MODULE:
+            if (expr.with_module != null) {
+                for (usz i = 0; i < expr.with_module.body_count; i++) {
+                    compile_manifest_emit_ffi_functions(out, expr.with_module.body[i], first_entry, interp);
+                }
+            }
+            return;
+        case lisp::ExprTag.E_BLOCK:
+            if (expr.block != null) {
+                for (usz i = 0; i < expr.block.expr_count; i++) {
+                    compile_manifest_emit_ffi_functions(out, expr.block.exprs[i], first_entry, interp);
+                }
+            }
+            return;
+        case lisp::ExprTag.E_SET:
+            compile_manifest_emit_ffi_functions(out, expr.set_expr.value, first_entry, interp);
+            return;
+        case lisp::ExprTag.E_DEFINE:
+            compile_manifest_emit_ffi_functions(out, expr.define.value, first_entry, interp);
+            break;
+        default:
     }
 
     if (expr.tag != lisp::ExprTag.E_FFI_FN || expr.ffi_fn == null || expr.ffi_fn.is_variadic) return;
@@ -157,9 +325,71 @@ fn bool compile_manifest_has_ffi_decl(lisp::Expr* expr) {
     if (expr == null) return false;
     if (expr.tag == lisp::ExprTag.E_FFI_LIB) return true;
     if (expr.tag == lisp::ExprTag.E_FFI_FN && expr.ffi_fn != null && !expr.ffi_fn.is_variadic) return true;
+    if (expr.tag == lisp::ExprTag.E_LAMBDA) {
+        return expr.lambda != null && compile_manifest_has_ffi_decl(expr.lambda.body);
+    }
+    if (expr.tag == lisp::ExprTag.E_APP) {
+        return compile_manifest_has_ffi_decl(expr.app.func) || compile_manifest_has_ffi_decl(expr.app.arg);
+    }
+    if (expr.tag == lisp::ExprTag.E_IF) {
+        return compile_manifest_has_ffi_decl(expr.if_expr.test)
+            || compile_manifest_has_ffi_decl(expr.if_expr.then_branch)
+            || compile_manifest_has_ffi_decl(expr.if_expr.else_branch);
+    }
+    if (expr.tag == lisp::ExprTag.E_LET) {
+        return compile_manifest_has_ffi_decl(expr.let_expr.init)
+            || compile_manifest_has_ffi_decl(expr.let_expr.body);
+    }
+    if (expr.tag == lisp::ExprTag.E_RESET) return compile_manifest_has_ffi_decl(expr.reset.body);
+    if (expr.tag == lisp::ExprTag.E_SHIFT) return compile_manifest_has_ffi_decl(expr.shift.body);
+    if (expr.tag == lisp::ExprTag.E_PERFORM) {
+        return (expr.perform.has_tag_expr && compile_manifest_has_ffi_decl(expr.perform.tag_expr))
+            || compile_manifest_has_ffi_decl(expr.perform.arg);
+    }
+    if (expr.tag == lisp::ExprTag.E_RESOLVE) return compile_manifest_has_ffi_decl(expr.resolve.value);
+    if (expr.tag == lisp::ExprTag.E_HANDLE && expr.handle != null) {
+        if (compile_manifest_has_ffi_decl(expr.handle.body)) return true;
+        for (usz i = 0; i < expr.handle.clause_count; i++) {
+            if (expr.handle.clauses[i].has_effect_tag_expr &&
+                compile_manifest_has_ffi_decl(expr.handle.clauses[i].effect_tag_expr)) return true;
+            if (compile_manifest_has_ffi_decl(expr.handle.clauses[i].handler_body)) return true;
+        }
+        return false;
+    }
+    if (expr.tag == lisp::ExprTag.E_INDEX) {
+        return compile_manifest_has_ffi_decl(expr.index.collection)
+            || compile_manifest_has_ffi_decl(expr.index.index);
+    }
+    if (expr.tag == lisp::ExprTag.E_MATCH && expr.match != null) {
+        if (compile_manifest_has_ffi_decl(expr.match.scrutinee)) return true;
+        for (usz i = 0; i < expr.match.clause_count; i++) {
+            if (compile_manifest_has_ffi_decl(expr.match.clauses[i].result)) return true;
+        }
+        return false;
+    }
+    if (expr.tag == lisp::ExprTag.E_AND) {
+        return compile_manifest_has_ffi_decl(expr.and_expr.left)
+            || compile_manifest_has_ffi_decl(expr.and_expr.right);
+    }
+    if (expr.tag == lisp::ExprTag.E_OR) {
+        return compile_manifest_has_ffi_decl(expr.or_expr.left)
+            || compile_manifest_has_ffi_decl(expr.or_expr.right);
+    }
+    if (expr.tag == lisp::ExprTag.E_CALL && expr.call != null) {
+        if (compile_manifest_has_ffi_decl(expr.call.func)) return true;
+        for (usz i = 0; i < expr.call.arg_count; i++) {
+            if (compile_manifest_has_ffi_decl(expr.call.args[i])) return true;
+        }
+        return false;
+    }
     if (expr.tag == lisp::ExprTag.E_MODULE && expr.module_expr != null) {
         for (usz i = 0; i < expr.module_expr.body_count; i++) {
             if (compile_manifest_has_ffi_decl(expr.module_expr.body[i])) return true;
+        }
+    }
+    if (expr.tag == lisp::ExprTag.E_WITH_MODULE && expr.with_module != null) {
+        for (usz i = 0; i < expr.with_module.body_count; i++) {
+            if (compile_manifest_has_ffi_decl(expr.with_module.body[i])) return true;
         }
     }
     if (expr.tag == lisp::ExprTag.E_BLOCK && expr.block != null) {
@@ -167,82 +397,60 @@ fn bool compile_manifest_has_ffi_decl(lisp::Expr* expr) {
             if (compile_manifest_has_ffi_decl(expr.block.exprs[i])) return true;
         }
     }
+    if (expr.tag == lisp::ExprTag.E_SET) return compile_manifest_has_ffi_decl(expr.set_expr.value);
+    if (expr.tag == lisp::ExprTag.E_DEFINE) return compile_manifest_has_ffi_decl(expr.define.value);
     return false;
 }
 
-fn bool compile_manifest_copy_path_cstr(char[] path, char[] path_buf, char[]* out_path) {
-    if (out_path != null) *out_path = "";
-    if (path.len == 0 || path.len >= path_buf.len) return false;
-    for (usz i = 0; i < path.len; i++) {
-        path_buf[i] = path[i];
+fn EntryFileWriteKind compile_manifest_unlink_failure_kind(char[] path) {
+    EntryFileReadKind read_kind = ENTRY_FILE_READ_GENERIC_FAILURE;
+    if (classify_file_read_path(path, &read_kind)) return ENTRY_FILE_WRITE_GENERIC_FAILURE;
+    switch (read_kind) {
+        case ENTRY_FILE_READ_PERMISSION_DENIED:
+            return ENTRY_FILE_WRITE_PERMISSION_DENIED;
+        case ENTRY_FILE_READ_PATH_FAILURE:
+            return ENTRY_FILE_WRITE_PATH_FAILURE;
+        default:
+            return ENTRY_FILE_WRITE_GENERIC_FAILURE;
     }
-    path_buf[path.len] = 0;
-    if (out_path != null) *out_path = path_buf[:path.len];
-    return true;
 }
 
-fn bool compile_manifest_build_atomic_temp_path(char[] final_path, char[] temp_buf, char[]* out_temp_path) {
-    if (out_temp_path != null) *out_temp_path = "";
-
-    char[32] suffix_buf;
-    char[] suffix = "";
-    if (try rendered = io::bprintf(&suffix_buf, ".tmp.%d", compile_manifest_getpid())) {
-        suffix = rendered;
-    } else {
+fn bool compile_manifest_remove_stale(
+    DString* manifest_path_builder,
+    char[]* manifest_path_out,
+    EntryFileWriteKind* write_kind_out
+) {
+    char[] stale_manifest_path = manifest_path_builder.str_view().copy(mem);
+    if (stale_manifest_path.len > 0) {
+        int unlink_rc = entry_file_uv_unlink((ZString)stale_manifest_path.ptr);
+        if (unlink_rc == 0) {
+            mem::free(stale_manifest_path.ptr);
+            return true;
+        }
+        EntryFileReadKind read_kind = ENTRY_FILE_READ_GENERIC_FAILURE;
+        if (!classify_file_read_path(stale_manifest_path, &read_kind) &&
+            read_kind == ENTRY_FILE_READ_NOT_FOUND) {
+            mem::free(stale_manifest_path.ptr);
+            return true;
+        }
+        *manifest_path_out = stale_manifest_path;
+        *write_kind_out = compile_manifest_unlink_failure_kind(stale_manifest_path);
         return false;
     }
-
-    if (final_path.len == 0 || final_path.len > temp_buf.len || suffix.len > temp_buf.len - final_path.len) {
-        return false;
-    }
-    usz temp_len = final_path.len + suffix.len;
-    if (temp_len >= temp_buf.len) return false;
-    for (usz i = 0; i < final_path.len; i++) {
-        temp_buf[i] = final_path[i];
-    }
-    for (usz i = 0; i < suffix.len; i++) {
-        temp_buf[final_path.len + i] = suffix[i];
-    }
-    temp_buf[temp_len] = 0;
-    if (out_temp_path != null) *out_temp_path = temp_buf[:temp_len];
-    return true;
+    return false;
 }
 
 fn bool compile_manifest_write_atomic_text(char[] final_path, char[] text) {
-    char[4096] final_path_buf;
     char[4160] temp_path_buf;
-    char[] final_path_cstr = "";
     char[] temp_path = "";
-    if (!compile_manifest_copy_path_cstr(final_path, final_path_buf[..], &final_path_cstr)) return false;
-    if (!compile_manifest_build_atomic_temp_path(final_path_cstr, temp_path_buf[..], &temp_path)) return false;
-
-    (void)compile_manifest_uv_unlink((ZString)temp_path.ptr);
-
+    EntryFileWriteKind kind = ENTRY_FILE_WRITE_GENERIC_FAILURE;
+    if (!entry_write_text_staged(final_path, text, temp_path_buf[..], &temp_path, &kind)) return false;
     bool committed = false;
-    if (try file = io::file::open((String)temp_path, "w")) {
-        defer if (!committed) (void)compile_manifest_uv_unlink((ZString)temp_path.ptr);
-        char[] remaining = text;
-        bool write_ok = true;
-        while (write_ok && remaining.len > 0) {
-            usz? written_opt = file.write(remaining);
-            if (catch err = written_opt) {
-                write_ok = false;
-                break;
-            }
-            if (written_opt == 0) {
-                write_ok = false;
-                break;
-            }
-            remaining = remaining[written_opt..];
-        }
-        if (catch err = file.close()) write_ok = false;
-        if (!write_ok) return false;
-        if (g_compile_manifest_force_fail_before_rename) return false;
-        if (compile_manifest_uv_rename((ZString)temp_path.ptr, (ZString)final_path_cstr.ptr) != 0) return false;
-        committed = true;
-        return true;
-    }
-    return false;
+    defer if (!committed) entry_cleanup_staged_text(temp_path);
+    if (g_compile_manifest_force_fail_before_rename) return false;
+    if (!entry_commit_staged_text(temp_path, final_path, &kind)) return false;
+    committed = true;
+    return true;
 }
 
 fn bool write_compile_ffi_manifest(
@@ -256,8 +464,22 @@ fn bool write_compile_ffi_manifest(
     *manifest_path_out = "";
     *write_kind_out = ENTRY_FILE_WRITE_GENERIC_FAILURE;
 
+    DString manifest_path_builder;
+    manifest_path_builder.init(mem, output_path.len + 32);
+    defer manifest_path_builder.free();
+    manifest_path_builder.append_string((String)output_path);
+    manifest_path_builder.append_string(".ffi-manifest.json");
+
     List{lisp::Expr*} exprs = lisp::parse_program(source, interp);
-    if (exprs.len() == 0) return true;
+    if (exprs.len() == 0) {
+        return compile_manifest_remove_stale(&manifest_path_builder, manifest_path_out, write_kind_out);
+    }
+    defer exprs.free();
+
+    lisp::Compiler compiler;
+    compiler.init(interp);
+    defer compiler.free();
+    if (!compiler.expand_program_macros_for_analysis(&exprs)) return false;
 
     bool has_ffi = false;
     for (usz i = 0; i < exprs.len(); i++) {
@@ -266,13 +488,10 @@ fn bool write_compile_ffi_manifest(
             break;
         }
     }
-    if (!has_ffi) return true;
+    if (!has_ffi) {
+        return compile_manifest_remove_stale(&manifest_path_builder, manifest_path_out, write_kind_out);
+    }
 
-    DString manifest_path_builder;
-    manifest_path_builder.init(mem, output_path.len + 32);
-    defer manifest_path_builder.free();
-    manifest_path_builder.append_string((String)output_path);
-    manifest_path_builder.append_string(".ffi-manifest.json");
     char[] manifest_path = manifest_path_builder.str_view().copy(mem);
     if (manifest_path.len == 0) return false;
     *manifest_path_out = manifest_path;

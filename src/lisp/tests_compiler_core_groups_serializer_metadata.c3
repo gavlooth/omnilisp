@@ -8,6 +8,23 @@ import lisp::aot;
 
 fn void run_compiler_group_serializer_roundtrip_tests(Interp* interp, usz* pass, usz* fail) {
     {
+        Compiler compiler;
+        compiler.init(interp);
+        defer compiler.free();
+
+        List{char} buf;
+        defer buf.free();
+        compiler.serialize_value_to_buf(make_int(interp, long.min), &buf);
+
+        char[] actual = "";
+        if (buf.len() > 0) {
+            actual = buf.entries[:buf.len()];
+        }
+        bool ok = compiler_str_eq(actual, "-9223372036854775808");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: integer serializer preserves long.min"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: integer serializer preserves long.min"); }
+    }
+    {
         bool ok = compiler_serializes_to_roundtrip(
             interp,
             "(lambda (x) x)",
@@ -219,6 +236,40 @@ fn void run_compiler_group_foreign_handle_metadata_dict_tests(Interp* interp, us
         } else {
             fail++;
             io::printn("[FAIL] Compiler: compose atomic manifest output path");
+        }
+    }
+    {
+        int manifest_pid = compiler_test_getpid();
+        usz manifest_seq = g_compiler_bindgen_temp_seq++;
+        char[512] manifest_path_buf;
+        if (try manifest_rendered = io::bprintf(
+            &manifest_path_buf,
+            "/tmp/omni_compile_output_commit_fail-%d-%d.c3.ffi-manifest.json",
+            manifest_pid,
+            (int)manifest_seq
+        )) {
+            char[] manifest_path = manifest_rendered;
+            defer (void)io::file::delete((String)manifest_path);
+            bool setup = compiler_write_text_file(manifest_path, "stale manifest");
+            main::cleanup_compile_sidecar_on_output_commit_failure(manifest_path);
+
+            bool manifest_missing = false;
+            if (try ignored = io::file::load_temp((String)manifest_path)) {
+                (void)ignored;
+                manifest_missing = false;
+            } else {
+                manifest_missing = true;
+            }
+            compiler_test_finish_bool(
+                setup && manifest_missing,
+                "Compiler: compile output commit failure removes sidecar manifest",
+                "[FAIL] Compiler: compile output commit failure removes sidecar manifest",
+                pass,
+                fail
+            );
+        } else {
+            fail++;
+            io::printn("[FAIL] Compiler: compose output commit failure manifest path");
         }
     }
 }

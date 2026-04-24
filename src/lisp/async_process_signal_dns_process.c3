@@ -14,9 +14,9 @@ fn Value* make_process_wait_result(Interp* interp, int pid, int exit_code, int t
     bool keep_out = false;
     HashMapSetRollback[3] out_rollbacks = {};
     defer if (!keep_out && out.hashmap_val != null) {
-foreach (out_rollback : out_rollbacks) {
+        foreach (out_rollback : out_rollbacks) {
             hashmap_cleanup_rollback_record(&out_rollback, interp);
-}
+        }
         boundary_cleanup_materialized_value(null, out, interp.root_scope);
     }
     SymbolId pid_sym = interp.symbols.intern("pid");
@@ -72,6 +72,9 @@ fn Value* prim_process_wait(Value*[] args, Env* env, Interp* interp) {
 
     Value* handle_v = value_to_process_handle_arg(target_v, interp);
     ProcessHandle* ph = get_process_handle(handle_v);
+    if (ph != null && ph.wait_status_ready) {
+        return make_process_wait_result(interp, ph.wait_pid, ph.wait_exit_code, ph.wait_term_signal);
+    }
     if (ph == null || !ph.open || ph.uv_process == null) {
         return io_raise(interp, "io/process-wait-invalid-handle", "process-wait: invalid or closed process handle");
     }
@@ -100,9 +103,10 @@ fn Value* prim_process_wait(Value*[] args, Env* env, Interp* interp) {
         return io_raise(interp, "io/process-wait-failed", "process-wait: wait failed");
     }
 
+    process_handle_store_wait_status(ph, pid, wait_ctx.exit_code, wait_ctx.term_signal);
     close_process_handle(ph);
 
-    return make_process_wait_result(interp, pid, wait_ctx.exit_code, wait_ctx.term_signal);
+    return make_process_wait_result(interp, ph.wait_pid, ph.wait_exit_code, ph.wait_term_signal);
 }
 
 // (process-kill process-handle|process-dict sig) -> void
@@ -120,7 +124,11 @@ fn Value* prim_process_kill(Value*[] args, Env* env, Interp* interp) {
             return io_raise(interp, "io/process-kill-expected-handle-sig", "process-kill: expected (process-kill handle sig)");
         }
         sig_v = car(packed);
-    } else if (args.len >= 2) {
+        packed = cdr(packed);
+        if (!is_nil(packed)) {
+            return io_raise(interp, "io/process-kill-expected-handle-sig", "process-kill: expected (process-kill handle sig)");
+        }
+    } else if (args.len == 2) {
         target_v = args[0];
         sig_v = args[1];
     } else {
@@ -130,6 +138,13 @@ fn Value* prim_process_kill(Value*[] args, Env* env, Interp* interp) {
     if (!is_int(sig_v)) {
         return io_raise(interp, "io/process-kill-sig-not-integer", "process-kill: sig must be an integer");
     }
+
+    long raw_sig = sig_v.int_val;
+    int max_sig = omni_uv_process_max_signal();
+    if (raw_sig <= 0 || max_sig <= 0 || raw_sig > (long)max_sig || raw_sig > (long)int.max) {
+        return io_raise(interp, "io/process-kill-invalid-sig", "process-kill: sig is out of range");
+    }
+    int sig = (int)raw_sig;
 
     Value* handle_v = value_to_process_handle_arg(target_v, interp);
     ProcessHandle* ph = get_process_handle(handle_v);
@@ -141,13 +156,6 @@ fn Value* prim_process_kill(Value*[] args, Env* env, Interp* interp) {
     }
     defer process_handle_end_use(ph);
 
-    int sig = SIGKILL_VAL;
-    if (sig_v.int_val > 0) {
-        if (sig_v.int_val > (long)int.max) {
-            return io_raise(interp, "io/process-kill-invalid-sig", "process-kill: sig is out of range");
-        }
-        sig = (int)sig_v.int_val;
-    }
     int kill_status = omni_uv_process_kill(ph.uv_process, sig);
     if (kill_status < 0) {
         return io_raise(interp, "io/process-kill-failed", "process-kill: kill failed");

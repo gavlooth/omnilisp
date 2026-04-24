@@ -350,7 +350,13 @@ fn Value* tensor_graph_run_usz_array(Value* value, Interp* interp, char[] label,
     }
     *out_count = value.array_val.length;
     if (value.array_val.length == 0) return null;
+    if (value.array_val.length > usz.max / usz.sizeof) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "tensor/run: failed to allocate graph scratch array", null);
+    }
     usz* items = mem::new_array(usz, value.array_val.length);
+    if (items == null) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "tensor/run: failed to allocate graph scratch array", null);
+    }
     for (usz i = 0; i < value.array_val.length; i++) {
         Value* item = value.array_val.items[i];
         if (item == null || item.tag != INT || item.int_val < 0) {
@@ -525,7 +531,13 @@ fn Value* prim_tensor_run(Value*[] args, Env* env, Interp* interp) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/invalid-argument", "tensor/run: capture output id is invalid", null);
     }
 
+    if (nodes.array_val.length > usz.max / Value*.sizeof) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "tensor/run: graph result table is too large", null);
+    }
     Value*[] results = mem::new_array(Value*, nodes.array_val.length);
+    if (nodes.array_val.length > 0 && results.ptr == null) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "tensor/run: failed to allocate graph result table", null);
+    }
     defer mem::free(results.ptr);
     for (usz i = 0; i < results.len; i++) results[i] = null;
 

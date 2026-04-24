@@ -21,6 +21,38 @@ fn bool time_point_arg_in_range(Value* v, long min, long max) @inline {
     return v != null && v.tag == INT && v.int_val >= min && v.int_val <= max;
 }
 
+fn bool data_calendar_is_leap_year(int year) @inline {
+    return (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+}
+
+fn int data_calendar_month_days(int year, int month) @inline {
+    switch (month) {
+        case 1:
+        case 3:
+        case 5:
+        case 7:
+        case 8:
+        case 10:
+        case 12:
+            return 31;
+        case 4:
+        case 6:
+        case 9:
+        case 11:
+            return 30;
+        case 2:
+            return data_calendar_is_leap_year(year) ? 29 : 28;
+        default:
+            return 0;
+    }
+}
+
+fn bool data_calendar_date_valid(int year, int month, int day) @inline {
+    if (year < 0 || year > 9999 || month < 1 || month > 12) return false;
+    int max_day = data_calendar_month_days(year, month);
+    return day >= 1 && day <= max_day;
+}
+
 fn int data_hex_digit_value(char c) @inline {
     if (c >= '0' && c <= '9') return (int)(c - '0');
     if (c >= 'a' && c <= 'f') return 10 + (int)(c - 'a');
@@ -39,6 +71,17 @@ fn int data_base64_value(char c) @inline {
     if (c == '+') return 62;
     if (c == '/') return 63;
     return -1;
+}
+
+fn bool data_base64_decoded_len_checked(usz clean_count, usz padding_count, usz* out) {
+    if (out == null) return false;
+    if (clean_count % 4 != 0 || padding_count > 2) return false;
+
+    usz decoded = 0;
+    if (!lisp_checked_mul_usz(clean_count / 4, 3, &decoded)) return false;
+    if (padding_count > decoded) return false;
+    *out = decoded - padding_count;
+    return true;
 }
 
 <*
@@ -118,8 +161,11 @@ fn Value* prim_base64(Value*[] args, Env* env, Interp* interp) {
         return data_format_raise(interp, "type/arg-mismatch", "base64: expected input length to be a multiple of 4");
     }
 
-    usz byte_count = clean_count == 0 ? 0 : (clean_count / 4) * 3 - padding_count;
-    Value* arr = make_array(interp, byte_count);
+    usz byte_count = 0;
+    if (!data_base64_decoded_len_checked(clean_count, padding_count, &byte_count)) {
+        return data_format_raise(interp, "type/out-of-memory", "base64: decoded output is too large");
+    }
+    Value* arr = make_array_checked(interp, byte_count, "base64: out of memory");
     if (arr == null || arr.tag != ARRAY || arr.array_val == null) return arr;
 
     int[4] vals;
@@ -168,6 +214,11 @@ fn bool data_uuid_char_valid(char c) @inline {
     return data_hex_digit_value(c) >= 0;
 }
 
+fn char data_uuid_canonical_char(char c) @inline {
+    if (c >= 'A' && c <= 'F') return (char)(c - 'A' + 'a');
+    return c;
+}
+
 <*
 @require interp != null
 *>
@@ -177,15 +228,19 @@ fn Value* prim_uuid(Value*[] args, Env* env, Interp* interp) {
     }
     char[] text = args[0].str_chars[:args[0].str_len];
     if (text.len != 36) return data_format_raise(interp, "type/arg-mismatch", "uuid: expected canonical 36-character UUID");
+    char[36] canonical;
     for (usz i = 0; i < text.len; i++) {
         bool dash_pos = i == 8 || i == 13 || i == 18 || i == 23;
         if (dash_pos) {
             if (text[i] != '-') return data_format_raise(interp, "type/arg-mismatch", "uuid: invalid dash position");
+            canonical[i] = '-';
         } else if (!data_uuid_char_valid(text[i])) {
             return data_format_raise(interp, "type/arg-mismatch", "uuid: invalid hex digit");
+        } else {
+            canonical[i] = data_uuid_canonical_char(text[i]);
         }
     }
-    return make_string(interp, text);
+    return make_string(interp, canonical[..]);
 }
 
 fn bool data_parse_2_digits(char[] text, usz offset, int* out) {
@@ -225,7 +280,7 @@ fn Value* prim_time_parse_iso_utc(Value* arg, Interp* interp) {
         !data_parse_2_digits(text, 17, &second)) {
         return data_format_raise(interp, "type/arg-mismatch", "time: invalid ISO-8601 digits");
     }
-    if (month < 1 || month > 12 || day < 1 || day > 31 ||
+    if (!data_calendar_date_valid(year, month, day) ||
         hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 60) {
         return data_format_raise(interp, "type/arg-mismatch", "time: ISO-8601 components out of range");
     }
@@ -233,9 +288,12 @@ fn Value* prim_time_parse_iso_utc(Value* arg, Interp* interp) {
 }
 
 fn bool time_point_date_args_in_range(Value* year, Value* month, Value* day) @inline {
-    return time_point_arg_in_range(year, 0, 9999) &&
-        time_point_arg_in_range(month, 1, 12) &&
-        time_point_arg_in_range(day, 1, 31);
+    if (!time_point_arg_in_range(year, 0, 9999) ||
+        !time_point_arg_in_range(month, 1, 12) ||
+        !time_point_arg_in_range(day, 1, 31)) {
+        return false;
+    }
+    return data_calendar_date_valid((int)year.int_val, (int)month.int_val, (int)day.int_val);
 }
 
 fn bool time_point_time_args_in_range(Value* hour, Value* minute, Value* second, Value* microsecond) @inline {

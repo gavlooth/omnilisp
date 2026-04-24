@@ -60,6 +60,7 @@ fn bool run_compiler_tests(Interp* _unused_interp, int* out_pass = null, int* ou
 
     // Use a fresh interp for compiler tests since each compile_to_c3 call
     // parses the entire stdlib prelude, consuming many expr pool entries.
+    main::thread_registry_init();
     Interp* interp = (Interp*)mem::malloc(Interp.sizeof);
     if (interp == null) {
         io::printn("[FAIL] Compiler bootstrap allocation");

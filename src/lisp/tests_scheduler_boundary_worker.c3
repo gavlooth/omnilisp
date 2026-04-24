@@ -56,7 +56,7 @@ fn void run_scheduler_offload_worker_retry_full_wakeup_boundary_tests(Interp* in
         work.fiber_id = 0;
         work.task_id = NO_TASK;
         work.op = OFFLOAD_SLEEP_MS;
-        work.int_arg = 0;
+        work.int_arg = 1;
         work.shared = null;
         bool queued = scheduler_enqueue_offload(work);
         if (!queued) {

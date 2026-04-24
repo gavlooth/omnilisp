@@ -384,39 +384,99 @@ typedef struct omni_tls_session_cache_entry {
     struct omni_tls_session_cache_entry *next;
 } omni_tls_session_cache_entry;
 
+#ifndef OMNI_TLS_CLIENT_SESSION_CACHE_CAP
+#define OMNI_TLS_CLIENT_SESSION_CACHE_CAP 64
+#endif
+
 static omni_tls_session_cache_entry *g_omni_tls_session_cache_head = NULL;
+static size_t g_omni_tls_session_cache_count = 0;
 static pthread_mutex_t g_omni_tls_session_cache_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_once_t g_omni_tls_session_cache_atexit_once = PTHREAD_ONCE_INIT;
+
+void omni_tls_client_session_cache_clear(void);
 
 static void omni_tls_session_cache_entry_free(omni_tls_session_cache_entry *entry) {
     if (entry == NULL) return;
+    memset(&entry->params, 0, sizeof(entry->params));
     free(entry->hostname);
     entry->hostname = NULL;
     free(entry);
 }
 
-static omni_tls_session_cache_entry *omni_tls_session_cache_find_locked(const char *hostname) {
+static void omni_tls_session_cache_register_atexit(void) {
+    atexit(omni_tls_client_session_cache_clear);
+}
+
+static void omni_tls_session_cache_ensure_atexit(void) {
+    pthread_once(&g_omni_tls_session_cache_atexit_once, omni_tls_session_cache_register_atexit);
+}
+
+static omni_tls_session_cache_entry *omni_tls_session_cache_find_locked(
+        const char *hostname,
+        omni_tls_session_cache_entry **out_prev) {
+    omni_tls_session_cache_entry *prev = NULL;
     omni_tls_session_cache_entry *cur = g_omni_tls_session_cache_head;
+    if (out_prev != NULL) *out_prev = NULL;
     while (cur != NULL) {
         if (cur->hostname != NULL && strcmp(cur->hostname, hostname) == 0) {
+            if (out_prev != NULL) *out_prev = prev;
             return cur;
         }
+        prev = cur;
         cur = cur->next;
     }
     return NULL;
 }
 
+static void omni_tls_session_cache_move_to_front_locked(
+        omni_tls_session_cache_entry *entry,
+        omni_tls_session_cache_entry *prev) {
+    if (entry == NULL || prev == NULL) return;
+    prev->next = entry->next;
+    entry->next = g_omni_tls_session_cache_head;
+    g_omni_tls_session_cache_head = entry;
+}
+
+static void omni_tls_session_cache_evict_tail_locked(void) {
+    omni_tls_session_cache_entry *prev = NULL;
+    omni_tls_session_cache_entry *cur = g_omni_tls_session_cache_head;
+    if (cur == NULL) return;
+
+    while (cur->next != NULL) {
+        prev = cur;
+        cur = cur->next;
+    }
+
+    if (prev != NULL) {
+        prev->next = NULL;
+    } else {
+        g_omni_tls_session_cache_head = NULL;
+    }
+    if (g_omni_tls_session_cache_count > 0) g_omni_tls_session_cache_count--;
+    omni_tls_session_cache_entry_free(cur);
+}
+
+static void omni_tls_session_cache_evict_to_capacity_locked(void) {
+    while (g_omni_tls_session_cache_count > OMNI_TLS_CLIENT_SESSION_CACHE_CAP) {
+        omni_tls_session_cache_evict_tail_locked();
+    }
+}
+
 int omni_tls_client_session_cache_load(void *client_ctx, const char *hostname) {
     omni_tls_session_cache_entry *entry;
+    omni_tls_session_cache_entry *prev = NULL;
     if (client_ctx == NULL || hostname == NULL || hostname[0] == '\0') return 0;
 
+    omni_tls_session_cache_ensure_atexit();
     pthread_mutex_lock(&g_omni_tls_session_cache_lock);
-    entry = omni_tls_session_cache_find_locked(hostname);
+    entry = omni_tls_session_cache_find_locked(hostname, &prev);
     if (entry == NULL) {
         pthread_mutex_unlock(&g_omni_tls_session_cache_lock);
         return 0;
     }
 
     br_ssl_engine_set_session_parameters((br_ssl_engine_context *)client_ctx, &entry->params);
+    omni_tls_session_cache_move_to_front_locked(entry, prev);
     pthread_mutex_unlock(&g_omni_tls_session_cache_lock);
     return 1;
 }
@@ -424,13 +484,16 @@ int omni_tls_client_session_cache_load(void *client_ctx, const char *hostname) {
 int omni_tls_client_session_cache_store(void *client_ctx, const char *hostname) {
     br_ssl_session_parameters params;
     omni_tls_session_cache_entry *entry;
+    omni_tls_session_cache_entry *prev = NULL;
     if (client_ctx == NULL || hostname == NULL || hostname[0] == '\0') return 0;
+    if (OMNI_TLS_CLIENT_SESSION_CACHE_CAP == 0) return 0;
 
     memset(&params, 0, sizeof(params));
     br_ssl_engine_get_session_parameters((br_ssl_engine_context *)client_ctx, &params);
 
+    omni_tls_session_cache_ensure_atexit();
     pthread_mutex_lock(&g_omni_tls_session_cache_lock);
-    entry = omni_tls_session_cache_find_locked(hostname);
+    entry = omni_tls_session_cache_find_locked(hostname, &prev);
     if (entry == NULL) {
         entry = (omni_tls_session_cache_entry *)malloc(sizeof(*entry));
         if (entry == NULL) {
@@ -446,9 +509,42 @@ int omni_tls_client_session_cache_store(void *client_ctx, const char *hostname) 
         }
         entry->next = g_omni_tls_session_cache_head;
         g_omni_tls_session_cache_head = entry;
+        g_omni_tls_session_cache_count++;
+    } else {
+        omni_tls_session_cache_move_to_front_locked(entry, prev);
     }
 
     entry->params = params;
+    omni_tls_session_cache_evict_to_capacity_locked();
     pthread_mutex_unlock(&g_omni_tls_session_cache_lock);
     return 1;
+}
+
+void omni_tls_client_session_cache_clear(void) {
+    omni_tls_session_cache_entry *cur;
+
+    pthread_mutex_lock(&g_omni_tls_session_cache_lock);
+    cur = g_omni_tls_session_cache_head;
+    g_omni_tls_session_cache_head = NULL;
+    g_omni_tls_session_cache_count = 0;
+    pthread_mutex_unlock(&g_omni_tls_session_cache_lock);
+
+    while (cur != NULL) {
+        omni_tls_session_cache_entry *next = cur->next;
+        cur->next = NULL;
+        omni_tls_session_cache_entry_free(cur);
+        cur = next;
+    }
+}
+
+size_t omni_tls_client_session_cache_size(void) {
+    size_t count;
+    pthread_mutex_lock(&g_omni_tls_session_cache_lock);
+    count = g_omni_tls_session_cache_count;
+    pthread_mutex_unlock(&g_omni_tls_session_cache_lock);
+    return count;
+}
+
+size_t omni_tls_client_session_cache_capacity(void) {
+    return OMNI_TLS_CLIENT_SESSION_CACHE_CAP;
 }

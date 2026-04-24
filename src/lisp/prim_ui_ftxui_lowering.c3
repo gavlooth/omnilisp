@@ -55,7 +55,39 @@ fn Value* ui_ftxui_lower_node(
         options.abi_version = OMNI_FTXUI_ABI_VERSION;
         options.kind = OMNI_FTXUI_COMPONENT_BUTTON;
         options.label = label;
-        return ui_ftxui_create_component(state, &options, null, 0, out_component, interp);
+        OmniFtxuiComponent* button_component = null;
+        Value* create_err = ui_ftxui_create_component(state, &options, null, 0, &button_component, interp);
+        if (create_err != null) return create_err;
+
+        Value* message_value = ui_ftxui_dict_get(props, "message", interp);
+        if (message_value == null || is_nil(message_value)) {
+            *out_component = button_component;
+            return null;
+        }
+
+        char* message = null;
+        Value* message_err = ui_ftxui_require_stringish(
+            message_value,
+            &message,
+            interp,
+            "ui-ftxui: button 'message' must be string-like"
+        );
+        if (message_err != null) return message_err;
+        defer if (message != null) mem::free(message);
+
+        OmniFtxuiComponent* action_component = null;
+        OmniFtxuiStatus status = omni_ftxui_component_wrap_message_action(
+            state.context,
+            state.screen,
+            button_component,
+            message,
+            &action_component
+        );
+        if (status != OMNI_FTXUI_STATUS_OK) return ui_ftxui_raise_status(state, "component_wrap_message_action", status, interp);
+        track_err = ui_ftxui_track_component_or_oom(state, action_component, interp);
+        if (track_err != null) return track_err;
+        *out_component = action_component;
+        return null;
     }
 
     if (ui_ftxui_str_eq(kind_name, "input")) {

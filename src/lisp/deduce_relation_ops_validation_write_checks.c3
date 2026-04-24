@@ -44,7 +44,8 @@ fn Value* deduce_assert_retract_check_reference_integrity(
 
                 MdbDbi source_dbi = 0;
                 if (!deduce_open_relation_dbi_by_symbol(rel.db, txn, schema.name, &source_dbi, interp)) {
-                    continue;
+                    return deduce_raise(interp, "deduce/retract-reference-integrity-scan-failed",
+                        "retract!: reference integrity source relation open failed");
                 }
 
                 MdbCursor* cursor = null;
@@ -61,12 +62,12 @@ fn Value* deduce_assert_retract_check_reference_integrity(
                 while (rc == MDB_SUCCESS) {
                     usz? decoded_count = decode_tuple((char*)existing_key.mv_data, existing_key.mv_size, decoded, interp);
                     if (catch err = decoded_count) {
-                        rc = mdb_cursor_get(cursor, &existing_key, &existing_data, MDB_NEXT);
-                        continue;
+                        return deduce_raise(interp, "deduce/retract-reference-integrity-scan-failed",
+                            "retract!: reference integrity tuple decode failed");
                     }
                     if (decoded_count != schema.arity) {
-                        rc = mdb_cursor_get(cursor, &existing_key, &existing_data, MDB_NEXT);
-                        continue;
+                        return deduce_raise(interp, "deduce/retract-reference-integrity-scan-failed",
+                            "retract!: reference integrity tuple arity mismatch");
                     }
                     if (local_pos >= decoded.len ||
                         deduce_compare_value(decoded[local_pos], tuple_vals[target_pos]) != 0) {
@@ -100,6 +101,10 @@ fn Value* deduce_assert_retract_check_reference_integrity(
                         "retract!: referenced target tuple is still in use",
                         data
                     );
+                }
+                if (rc != MDB_NOTFOUND) {
+                    return deduce_raise(interp, "deduce/retract-reference-integrity-scan-failed",
+                        "retract!: reference integrity scan failed");
                 }
             }
         }
@@ -137,18 +142,22 @@ fn Value* deduce_assert_bulk_target_clear_drop_reference_integrity(
     while (rc == MDB_SUCCESS) {
         usz? decoded_count = decode_tuple((char*)existing_key.mv_data, existing_key.mv_size, decoded, interp);
         if (catch err = decoded_count) {
-            rc = mdb_cursor_get(cursor, &existing_key, &existing_data, MDB_NEXT);
-            continue;
+            return deduce_raise(interp, "deduce/retract-reference-integrity-scan-failed",
+                "deduce: reference integrity tuple decode failed");
         }
         if (decoded_count != rel.col_count) {
-            rc = mdb_cursor_get(cursor, &existing_key, &existing_data, MDB_NEXT);
-            continue;
+            return deduce_raise(interp, "deduce/retract-reference-integrity-scan-failed",
+                "deduce: reference integrity tuple arity mismatch");
         }
 
         Value* ref_err = deduce_assert_retract_check_reference_integrity(rel, txn, decoded, &existing_key, interp);
         if (ref_err != null) return ref_err;
 
         rc = mdb_cursor_get(cursor, &existing_key, &existing_data, MDB_NEXT);
+    }
+    if (rc != MDB_NOTFOUND) {
+        return deduce_raise(interp, "deduce/retract-reference-integrity-scan-failed",
+            "deduce: reference integrity scan failed");
     }
 
     return null;

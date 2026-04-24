@@ -86,19 +86,60 @@ fn void run_ml_validation_benchmarks(Interp* interp) {
     );
 }
 
+fn Value* tensor_graph_run_test_set_graph_field(Value* graph, Interp* interp, char[] key, Value* value, Value* prior) {
+    if (prior != null) return prior;
+    return nn_dict_set(graph, interp, key, value);
+}
+
+fn Value* tensor_graph_run_test_set_graph_symbol(Value* graph, Interp* interp, char[] key, char[] value, Value* prior) {
+    if (prior != null) return prior;
+    return nn_dict_set_symbol(graph, interp, key, value);
+}
+
+fn Value* tensor_graph_run_test_oversized_result_graph(Interp* interp) {
+    Value* graph = nn_make_dict(interp, 8);
+    Value* nodes = make_array(interp, 0);
+    Value* schedule = make_array(interp, 0);
+    Value* command_batches = make_array(interp, 0);
+    if (graph == null || nodes == null || schedule == null || command_batches == null ||
+        graph.tag == ERROR || nodes.tag == ERROR || schedule.tag == ERROR || command_batches.tag == ERROR ||
+        nodes.array_val == null) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "tensor/run test: failed to allocate oversized graph fixture", null);
+    }
+
+    Value* setup_err = null;
+    setup_err = tensor_graph_run_test_set_graph_symbol(graph, interp, "kind", "tensor-graph", setup_err);
+    setup_err = tensor_graph_run_test_set_graph_symbol(graph, interp, "backend", "vulkan", setup_err);
+    setup_err = tensor_graph_run_test_set_graph_symbol(graph, interp, "dtype", "Float32", setup_err);
+    setup_err = tensor_graph_run_test_set_graph_field(graph, interp, "schedule", schedule, setup_err);
+    setup_err = tensor_graph_run_test_set_graph_field(graph, interp, "nodes", nodes, setup_err);
+    setup_err = tensor_graph_run_test_set_graph_field(graph, interp, "command-batches", command_batches, setup_err);
+    setup_err = tensor_graph_run_test_set_graph_field(graph, interp, "output", make_int(interp, 0), setup_err);
+    if (setup_err != null) return setup_err;
+
+    nodes.array_val.length = usz.max / Value*.sizeof + 1;
+    defer nodes.array_val.length = 0;
+    Value*[1] args = { graph };
+    return prim_tensor_run(args[0:1], null, interp);
+}
+
 fn void run_advanced_collections_generic_ops_part9(Interp* interp, int* pass, int* fail) {
     test_truthy(interp, "ml/plot returns FTXUI graph node for scalar array series",
         "(let (plot (ml/plot [1 2 3]) props (ref plot 'props) series (ref props 'series)) (and (= (ref plot 'kind) 'graph) (= (ref props 'visualization) 'ml/plot) (= (ref props 'backend) 'ftxui) (= (ref props 'title) \"ML Plot\") (= (length series) 3) (= (ref series 0) 1.0) (= (ref series 2) 3.0) (= (ref plot 'children) nil)))", pass, fail);
-    test_truthy(interp, "ml/plot preserves x/y metadata while exposing graph y series",
-        "(let (plot (ml/plot [[0 1] [2 5]]) props (ref plot 'props) x (ref props 'x) y (ref props 'series)) (and (= (length x) 2) (= (length y) 2) (= (ref x 1) 2.0) (= (ref y 1) 5.0)))", pass, fail);
+    test_truthy(interp, "ml/plot preserves explicit x/y metadata while exposing graph y series",
+        "(let (plot (ml/plot [[0 1] [2 5]] (Dictionary 'plot-kind 'xy)) props (ref plot 'props) x (ref props 'x) y (ref props 'series)) (and (= (ref props 'plot-kind) 'xy) (= (length x) 2) (= (length y) 2) (= (ref x 1) 2.0) (= (ref y 1) 5.0)))", pass, fail);
     test_truthy(interp, "ml/plot accepts Float32 rank-1 CPU Tensor series",
         "(let (plot (ml/plot (Tensor Float32 [3] [1 2 3])) series (ref (ref plot 'props) 'series)) (and (= (length series) 3) (= (ref series 0) 1.0) (= (ref series 2) 3.0)))", pass, fail);
     test_truthy(interp, "ml/loss-curve returns titled FTXUI graph node",
         "(let (plot (ml/loss-curve [1.0 0.5 0.25] (Dictionary 'title \"train loss\" 'width 40 'height 8)) props (ref plot 'props) series (ref props 'series)) (and (= (ref plot 'kind) 'graph) (= (ref props 'visualization) 'ml/loss-curve) (= (ref props 'title) \"train loss\") (= (ref props 'width) 40) (= (ref props 'height) 8) (= (length series) 3) (= (ref series 2) 0.25)))", pass, fail);
     test_truthy(interp, "ml/plot supports multi-series overlays as graph-compatible data",
         "(let (plot (ml/plot [[1 2 3] [3 2 1]] (Dictionary 'legend [\"up\" \"down\"])) props (ref plot 'props) all (ref props 'series-list) first (ref all 0) second (ref all 1)) (and (= (ref plot 'kind) 'graph) (= (ref props 'plot-kind) 'multi-series) (= (length all) 2) (= (ref first 2) 3.0) (= (ref second 0) 3.0) (= (ref (ref props 'legend) 1) \"down\")))", pass, fail);
+    test_truthy(interp, "ml/plot requires explicit mode for ambiguous two-wide nested data",
+        "(and (= (handle (ml/plot [[1 2] [3 4]]) (raise msg (ref msg 'code))) 'ml/invalid-visualization) (let (plot (ml/plot [[1 2] [3 4]] (Dictionary 'plot-kind 'multi-series)) props (ref plot 'props) all (ref props 'series-list) first (ref all 0) second (ref all 1)) (and (= (ref props 'plot-kind) 'multi-series) (= (length all) 2) (= (length first) 2) (= (ref first 1) 2.0) (= (ref second 0) 3.0))))", pass, fail);
     test_truthy(interp, "ml/plot applies x data-window zoom to graph series",
-        "(let (plot (ml/plot [10 20 30 40] (Dictionary 'zoom (Dictionary 'x-min 1 'x-max 2 'y-min 0))) props (ref plot 'props) series (ref props 'series) zoom (ref props 'zoom)) (and (= (ref props 'plot-kind) 'line) (= (length series) 2) (= (ref series 0) 20.0) (= (ref series 1) 30.0) (= (ref zoom 'mode) 'data-window) (= (ref zoom 'interactive) false) (= (ref zoom 'x-min) 1.0)))", pass, fail);
+        "(let (plot (ml/plot [10 20 30 40] (Dictionary 'zoom (Dictionary 'x-min 1 'x-max 2 'y-min 0 'y-max 35))) props (ref plot 'props) series (ref props 'series) zoom (ref props 'zoom)) (and (= (ref props 'plot-kind) 'line) (= (length series) 2) (= (ref series 0) 20.0) (= (ref series 1) 30.0) (= (ref zoom 'mode) 'data-window) (= (ref zoom 'interactive) false) (= (ref zoom 'x-min) 1.0) (= (ref zoom 'y-min) 0.0) (= (ref zoom 'y-max) 35.0)))", pass, fail);
+    test_truthy(interp, "ml/plot records y-only zoom without x-window filtering",
+        "(let (plot (ml/plot [10 20 30] (Dictionary 'zoom (Dictionary 'y-min 0 'y-max 100))) props (ref plot 'props) series (ref props 'series) zoom (ref props 'zoom)) (and (= (length series) 3) (= (ref series 0) 10.0) (= (ref series 2) 30.0) (= (ref zoom 'y-min) 0.0) (= (ref zoom 'y-max) 100.0)))", pass, fail);
     test_truthy(interp, "ml/scatter preserves x/y points and marker metadata",
         "(let (plot (ml/scatter [[0 1] [2 5]] (Dictionary 'marker 'cross)) props (ref plot 'props) points (ref props 'points) point (ref points 1)) (and (= (ref plot 'kind) 'graph) (= (ref props 'plot-kind) 'scatter) (= (ref props 'marker) 'cross) (= (ref point 0) 2.0) (= (ref point 1) 5.0)))", pass, fail);
     test_truthy(interp, "ml/bar-chart and ml/histogram return typed graph data",
@@ -199,6 +240,8 @@ fn void run_advanced_collections_generic_ops_part9(Interp* interp, int* pass, in
         "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (k (Kernel (Dictionary 'backend 'vulkan 'operation 'sqrt-f32 'inputs (Array (Dictionary 'name 'x 'dtype 'Float32 'shape (Array 'n))) 'outputs (Array (Dictionary 'name 'z 'dtype 'Float32 'shape (Array 'n))))) p (kernel/capture k (Dictionary 'x (to-device (Tensor Float32 [2] [4 1]) 'vulkan)) (Dictionary)) node (ref (ref p 'nodes) 0) key (ref p 'invalidation-key)) (and (= (ref p 'kind) 'kernel-graph) (= (ref p 'family) 'unary-f32) (= (ref p 'node-count) 1) (= (ref node 'execution) 'direct-helper) (= (ref (ref p 'inputs) 0) 'x) (= (ref (ref p 'outputs) 0) 'z) (= (ref (ref p 'shape) 0) 2) (= (ref key 0) 'vulkan) (= (ref key 1) 'sqrt-f32))) true))", pass, fail);
     test_truthy(interp, "kernel/capture validates placement and push data without fallback",
         "(let (k (Kernel (Dictionary 'backend 'vulkan 'operation 'sqrt-f32 'inputs (Array (Dictionary 'name 'x 'dtype 'Float32 'shape (Array 'n))) 'outputs (Array (Dictionary 'name 'z 'dtype 'Float32 'shape (Array 'n)))))) (and (= (handle (kernel/capture k (Dictionary 'x (Tensor Float32 [1] [1])) (Dictionary)) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) (= (handle (kernel/capture k (Dictionary 'x (Tensor Float32 [1] [1])) (Dictionary 'scalar (Float32 1.0))) (raise msg (ref msg 'code))) 'tensor/invalid-argument)))", pass, fail);
+    test_truthy(interp, "kernel/capture revalidates forged and mutated Kernel dictionaries",
+        "(let (bad-workgroup (Kernel (Dictionary 'backend 'vulkan 'operation 'sqrt-f32 'inputs (Array (Dictionary 'name 'x 'dtype 'Float32 'shape (Array 'n))) 'outputs (Array (Dictionary 'name 'z 'dtype 'Float32 'shape (Array 'n))))) bad-source (Kernel (Dictionary 'backend 'vulkan 'operation 'sqrt-f32 'inputs (Array (Dictionary 'name 'x 'dtype 'Float32 'shape (Array 'n))) 'outputs (Array (Dictionary 'name 'z 'dtype 'Float32 'shape (Array 'n))))) forged-key (Dictionary 'kind 'kernel 'backend 'vulkan 'operation 'sqrt-f32 'inputs (Array (Dictionary 'name 'x 'dtype 'Float32 'shape (Array 'n))) 'outputs (Array (Dictionary 'name 'z 'dtype 'Float32 'shape (Array 'n))) 'unknown true) set-workgroup (set! bad-workgroup 'workgroup (Array 64 0 1)) set-source (set! bad-source 'source (Dictionary 'format 'spirv 'words (Array 0 65536 0 1 0)))) (and (= (handle (kernel/capture bad-workgroup (Dictionary 'x (Tensor Float32 [1] [1])) (Dictionary)) (raise msg (ref msg 'code))) 'nn/invalid-spec) (= (handle (kernel/capture bad-source (Dictionary 'x (Tensor Float32 [1] [1])) (Dictionary)) (raise msg (ref msg 'code))) 'nn/invalid-spec) (= (handle (kernel/capture forged-key (Dictionary 'x (Tensor Float32 [1] [1])) (Dictionary)) (raise msg (ref msg 'code))) 'nn/invalid-spec)))", pass, fail);
     test_truthy(interp, "tensor/capture returns Vulkan Float32 map command-batch planning metadata",
         "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (x (Tensor Float32 [2] [1 2]) y (to-device (map sqrt (map + x (Float32 3.0))) 'vulkan) g (tensor/capture y) nodes (ref g 'nodes) schedule (ref g 'schedule) batches (ref g 'command-batches) batch (ref batches 0) dispatches (ref batch 'dispatches) fplan (ref g 'fusion-plan) fgroup (ref (ref fplan 'candidates) 0) add-node (ref nodes 1) last (ref nodes 2) key (ref g 'invalidation-key)) (and (= (device y) 'vulkan) (= (ref g 'kind) 'tensor-graph) (= (ref g 'family) 'map-expression) (= (ref g 'node-count) 3) (= (ref g 'output) 2) (= (ref g 'launch-count) 2) (= (ref g 'dispatch-count) 2) (= (ref g 'barrier-count) 1) (= (ref g 'execution) 'not-launched) (= (ref g 'command-batching) 'metadata) (= (ref g 'command-batch-count) 1) (= (ref g 'batching-policy) 'serial-single-command-buffer-candidate) (= (ref g 'submission) 'not-submitted) (ref g 'requires-runtime-support) (= (ref g 'fusion) 'none) (= (ref fplan 'kind) 'tensor-fusion-plan) (= (ref fplan 'policy) 'eligibility-only) (ref fplan 'eligible) (= (ref fplan 'candidate-count) 1) (= (ref fplan 'barrier-count) 0) (not (ref fplan 'fused)) (= (ref fgroup 'kind) 'map-chain) (= (ref fgroup 'operation-count) 2) (= (ref (ref fgroup 'nodes) 0) 1) (= (ref (ref fgroup 'nodes) 1) 2) (not (ref fgroup 'fused)) (= (length batches) 1) (= (ref batch 'execution) 'command-buffer-candidate) (= (ref batch 'submission) 'not-submitted) (= (ref batch 'launch-count) 2) (= (ref batch 'dispatch-count) 2) (= (ref batch 'barrier-count) 1) (= (ref batch 'barrier-policy) 'shader-write-to-shader-read-between-dispatches) (= (ref (ref batch 'nodes) 0) 1) (= (ref (ref batch 'nodes) 1) 2) (= (ref (ref batch 'schedule-steps) 0) 1) (= (ref (ref batch 'schedule-steps) 1) 2) (= (ref (ref batch 'depends-on) 0) 0) (= (ref (ref dispatches 0) 'node) 1) (= (ref (ref dispatches 0) 'operation) 'add) (= (ref (ref dispatches 1) 'node) 2) (= (ref (ref dispatches 1) 'operation) 'sqrt) (= (ref (ref schedule 0) 'node) 0) (= (ref (ref schedule 0) 'execution) 'external-buffer) (= (length (ref (ref schedule 0) 'depends-on)) 0) (= (ref (ref schedule 1) 'node) 1) (= (ref (ref schedule 1) 'execution) 'direct-helper) (= (ref (ref (ref schedule 1) 'depends-on) 0) 0) (ref (ref schedule 1) 'launch) (= (ref (ref schedule 2) 'node) 2) (= (ref (ref schedule 2) 'execution) 'direct-helper) (= (ref (ref (ref schedule 2) 'depends-on) 0) 1) (ref (ref schedule 2) 'launch) (= (ref (ref nodes 0) 'kind) 'tensor-source) (= (ref add-node 'kind) 'tensor-map) (= (ref add-node 'operation) 'add) (= (ref add-node 'right-scalar) (Float32 3.0)) (= (ref last 'kind) 'tensor-map) (= (ref last 'operation) 'sqrt) (= (ref (ref g 'shape) 0) 2) (= (ref key 0) 'vulkan))) true))", pass, fail);
     test_truthy(interp, "tensor/capture returns selected-region-plan for scalar native chain",
@@ -207,6 +250,62 @@ fn void run_advanced_collections_generic_ops_part9(Interp* interp, int* pass, in
         "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (x (Tensor Float32 [2] [1 2]) y (to-device (map * (map + x (Float32 3.0)) (Float32 2.0)) 'vulkan) g (tensor/capture y) out (tensor/run g) cpu (to-device out 'cpu)) (and (= (ref g 'kind) 'tensor-graph) (= (device out) 'vulkan) (< (abs (- (ref cpu [0]) (Float32 8.0))) (Float32 0.000001)) (< (abs (- (ref cpu [1]) (Float32 10.0))) (Float32 0.000001)))) true))", pass, fail);
     test_truthy(interp, "tensor/run rejects binary map nodes with both scalar sides",
         "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (x (Tensor Float32 [2] [1 2]) y (to-device (map + x (Float32 3.0)) 'vulkan) g (tensor/capture y) node (ref (ref g 'nodes) 1) changed-left (set! node 'left-scalar (Float32 1.0)) changed-right (set! node 'right-scalar (Float32 2.0))) (= (handle (tensor/run g) (raise msg (ref msg 'code))) 'tensor/invalid-argument)) true))", pass, fail);
+    {
+        Value* result = tensor_graph_run_test_oversized_result_graph(interp);
+        bool ok = runtime_alloc_error_matches(result, "tensor/run: graph result table is too large");
+        if (ok) {
+            emit_pass_literal("[PASS] tensor/run graph result table allocation guard fails closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] tensor/run graph result table allocation guard fails closed (result=%s)",
+                runtime_alloc_error_text(result)
+            );
+            (*fail)++;
+        }
+    }
+    {
+        Value* scratch = make_array(interp, 0);
+        if (scratch != null && scratch.tag == ARRAY && scratch.array_val != null) {
+            scratch.array_val.length = usz.max / usz.sizeof + 1;
+        }
+        defer if (scratch != null && scratch.tag == ARRAY && scratch.array_val != null) {
+            scratch.array_val.length = 0;
+        }
+        usz* axis_items = null;
+        usz axis_count = 0;
+        Value* axis_result = tensor_graph_run_usz_array(
+            scratch,
+            interp,
+            "tensor/run: contract left axes are invalid",
+            &axis_items,
+            &axis_count
+        );
+        usz* shape_items = null;
+        usz shape_count = 0;
+        Value* shape_result = tensor_graph_run_usz_array(
+            scratch,
+            interp,
+            "tensor/run: contract output shape is invalid",
+            &shape_items,
+            &shape_count
+        );
+        bool ok = runtime_alloc_error_matches(axis_result, "tensor/run: failed to allocate graph scratch array") &&
+            runtime_alloc_error_matches(shape_result, "tensor/run: failed to allocate graph scratch array") &&
+            axis_items == null &&
+            shape_items == null;
+        if (ok) {
+            emit_pass_literal("[PASS] tensor/run contract axis/shape scratch allocation guards fail closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] tensor/run contract axis/shape scratch allocation guards fail closed (axis=%s shape=%s)",
+                runtime_alloc_error_text(axis_result),
+                runtime_alloc_error_text(shape_result)
+            );
+            (*fail)++;
+        }
+    }
     {
         TensorVal view = {};
         view.kind = TENSOR_PAYLOAD_VIEW;
@@ -499,6 +598,11 @@ fn void run_advanced_collections_generic_ops_part9(Interp* interp, int* pass, in
         "(let (path \"/tmp/omni-optimizer-checkpoint-test.json\" state (Dictionary 'velocity (Dictionary 'w (Tensor Float32 [1] [0.5]))) saved (ml/save-optimizer (Dictionary 'kind 'sgd 'learning-rate 0.1 'momentum 0.9) state path) bundle (ml/load-optimizer path) cleanup (fs-unlink path)) (and (= (ref (ref bundle 'spec) 'kind) 'sgd) (= (ref (ref (ref (ref bundle 'state) 'velocity) 'w) [0]) (Float32 0.5))))", pass, fail);
     test_truthy(interp, "ml/load-optimizer rejects wrong payload and invalid spec",
         "(and (= (handle (ml/load-optimizer (nn/save-spec (nn/dense 1 1))) (raise msg (ref msg 'code))) 'nn/invalid-spec) (= (handle (ml/save-optimizer (Dictionary 'kind 'adam 'learning-rate 0.1 'beta1 1.0) (Dictionary)) (raise msg (ref msg 'code))) 'tensor/invalid-argument))", pass, fail);
+    test_truthy(interp, "ml/load-optimizer rejects out-of-range Float32 checkpoint scalar",
+        "(= (handle (ml/load-optimizer \"{\\\"tag\\\":\\\"omni-nn-checkpoint\\\",\\\"version\\\":1,\\\"payload-kind\\\":\\\"optimizer\\\",\\\"payload\\\":{\\\"tag\\\":\\\"float32\\\",\\\"value\\\":1e100}}\") (raise msg (ref msg 'code))) 'nn/invalid-spec)",
+        pass, fail);
+    test_error_contains(interp, "ml/load-optimizer source type diagnostic names caller", "(ml/load-optimizer 42)", "ml/load-optimizer", pass, fail);
+    test_error_contains(interp, "ml/load-optimizer missing path diagnostic names caller", "(ml/load-optimizer \"/tmp/omni-worker-k-missing-checkpoint-dir/optimizer.json\")", "ml/load-optimizer", pass, fail);
     test_truthy(interp, "tensor-backends exposes narrow optimizer capabilities",
         "(let (cpu-backend (ref (tensor-backends) 0) cuda-backend (ref (tensor-backends) 1) vulkan-backend (ref (tensor-backends) 3) cuda-native-or-map (or (ref cuda-backend 'elementwise-map-float32) (ref cuda-backend 'ml-optimizer-sgd-float32))) (and (ref cpu-backend 'ml-optimizer-sgd-float64) (ref cpu-backend 'ml-optimizer-sgd-float32) (ref cpu-backend 'ml-optimizer-adam-float64) (ref cpu-backend 'ml-optimizer-adam-float32) (ref cpu-backend 'ml-optimizer-adamw-float64) (ref cpu-backend 'ml-optimizer-adamw-float32) (ref cpu-backend 'ml-optimizer-rmsprop-float64) (ref cpu-backend 'ml-optimizer-rmsprop-float32) (ref cpu-backend 'ml-clip-gradients-float32) (= (ref cuda-backend 'ml-optimizer-sgd-float32) cuda-native-or-map) (= (ref cuda-backend 'ml-optimizer-adam-float32) cuda-native-or-map) (= (ref cuda-backend 'ml-optimizer-adamw-float32) cuda-native-or-map) (= (ref cuda-backend 'ml-optimizer-rmsprop-float32) cuda-native-or-map) (= (ref cuda-backend 'ml-optimizer) false) (= (ref vulkan-backend 'ml-optimizer-sgd-float64) (ref vulkan-backend 'float64)) (= (ref vulkan-backend 'ml-optimizer-sgd-float32) (ref vulkan-backend 'float32)) (= (ref vulkan-backend 'ml-optimizer-adam-float64) (ref vulkan-backend 'float64)) (= (ref vulkan-backend 'ml-optimizer-adam-float32) (ref vulkan-backend 'float32)) (= (ref vulkan-backend 'ml-optimizer-adamw-float64) (ref vulkan-backend 'float64)) (= (ref vulkan-backend 'ml-optimizer-adamw-float32) (ref vulkan-backend 'float32)) (= (ref vulkan-backend 'ml-optimizer-rmsprop-float64) (ref vulkan-backend 'float64)) (= (ref vulkan-backend 'ml-optimizer-rmsprop-float32) (ref vulkan-backend 'float32)) (= (ref vulkan-backend 'ml-clip-gradients-float32) (ref vulkan-backend 'float32)) (= (ref vulkan-backend 'ml-optimizer) false)))", pass, fail);
     test_truthy(interp, "ml/optimizer-step SGD CUDA Float32 stateless update stays on device",

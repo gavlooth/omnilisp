@@ -32,10 +32,14 @@ fn void run_pika_tests(Interp* interp, int* pass, int* fail) {
         "(re-fullmatch \"^hello$\" \"hello\")", "hello", pass, fail);
     test_tag(interp, "re-fullmatch rejects partial",
         "(re-fullmatch \"hello\" \"hello world\")", NIL, pass, fail);
+    test_str_val(interp, "re-fullmatch zero-length-capable pattern matches empty input",
+        "(re-fullmatch \"a*\" \"\")", "", pass, fail);
     test_tag(interp, "re-match start anchor rejects non-zero start",
         "(re-match \"^abc\" \"xabc\")", NIL, pass, fail);
     test_str_val(interp, "re-match end anchor matches suffix at end",
         "(re-match \"abc$\" \"xabc\")", "abc", pass, fail);
+    test_str_val(interp, "re-match zero-length-capable pattern matches empty input",
+        "(re-match \"a*\" \"\")", "", pass, fail);
     test_str_val(interp, "re-fullmatch bounded exact {n}",
         "(re-fullmatch \"ab{3}\" \"abbb\")", "abbb", pass, fail);
     test_str_val(interp, "re-fullmatch bounded range {n,m}",
@@ -107,30 +111,138 @@ fn void run_pika_tests(Interp* interp, int* pass, int* fail) {
         "(length (re-find-all \"a\" \"abracadabra\"))", 5, pass, fail);
     test_str_val(interp, "re-find-all first",
         "(car (re-find-all \"[0-9]+\" \"a1 b22 c333\"))", "1", pass, fail);
+    test_eq(interp, "re-find-all zero-length-capable pattern matches empty input",
+        "(length (re-find-all \"a*\" \"\"))", 1, pass, fail);
+    test_str_val(interp, "re-find-all empty-input zero-length match is empty string",
+        "(car (re-find-all \"a*\" \"\"))", "", pass, fail);
 
     // Regex: re-split
     test_eq(interp, "re-split count",
         "(length (re-split \" \" \"hello world foo\"))", 3, pass, fail);
     test_str_val(interp, "re-split first",
         "(car (re-split \" \" \"hello world\"))", "hello", pass, fail);
+    test_eq(interp, "re-split preserves leading trailing and consecutive empty fields",
+        "(length (re-split \",\" \",a,,b,\"))", 5, pass, fail);
+    test_str_val(interp, "re-split preserves leading empty field",
+        "(ref (re-split \",\" \",a,,b,\") 0)", "", pass, fail);
+    test_str_val(interp, "re-split preserves consecutive empty field",
+        "(ref (re-split \",\" \",a,,b,\") 2)", "", pass, fail);
+    test_str_val(interp, "re-split preserves trailing empty field",
+        "(ref (re-split \",\" \",a,,b,\") 4)", "", pass, fail);
+    test_str_val(interp, "re-split no match on empty input returns empty field",
+        "(car (re-split \",\" \"\"))", "", pass, fail);
 
     // Regex: re-replace
     test_str_val(interp, "re-replace first",
         "(re-replace \"[0-9]+\" \"X\" \"a1b2c3\")", "aXb2c3", pass, fail);
     test_str(interp, "re-replace global returns string",
         "(re-replace \"a\" \"X\" \"abaca\" 'global)", pass, fail);
+    test_str_val(interp, "re-replace global replaces every match",
+        "(re-replace \"a\" \"X\" \"abaca\" 'global)", "XbXcX", pass, fail);
     test_eq(interp, "re-replace first preserves >1024 output",
         "(string-byte-length (re-replace \"a\" (string-repeat \"b\" 1500) \"a\"))", 1500, pass, fail);
     test_eq(interp, "re-replace global preserves >1024 output",
         "(string-byte-length (re-replace \"a\" \"abcdef\" (string-repeat \"a\" 300) 'global))", 1800, pass, fail);
+    test_str_val(interp, "re-replace rejects unknown fourth symbol",
+        "(handle (re-replace \"a\" \"X\" \"a\" 'all) (raise msg (String (ref msg 'code))))",
+        "regex/re-replace-invalid-mode", pass, fail);
+    test_str_val(interp, "re-replace rejects numeric fourth argument",
+        "(handle (re-replace \"a\" \"X\" \"a\" 2) (raise msg (String (ref msg 'code))))",
+        "regex/re-replace-invalid-mode", pass, fail);
+    test_str_val(interp, "re-replace rejects extra arguments",
+        "(handle (re-replace \"a\" \"X\" \"a\" 'global 'extra) (raise msg (String (ref msg 'code))))",
+        "regex/re-replace-expected-pattern-replacement-input", pass, fail);
 
     // Regex: re-match-pos
     test_eq(interp, "re-match-pos start",
         "(car (re-match-pos \"hello\" \"say hello\"))", 4, pass, fail);
+    test_eq(interp, "re-match-pos codepoint start after UTF-8 prefix",
+        "(car (re-match-pos \"x\" \"éx\"))", 1, pass, fail);
+    test_eq(interp, "re-match-pos codepoint end after UTF-8 prefix",
+        "(car (cdr (re-match-pos \"xy\" \"éxy\")))", 3, pass, fail);
+    test_eq(interp, "re-match-pos zero-length-capable empty input start",
+        "(car (re-match-pos \"a*\" \"\"))", 0, pass, fail);
+    test_eq(interp, "re-match-pos zero-length-capable empty input end",
+        "(car (cdr (re-match-pos \"a*\" \"\")))", 0, pass, fail);
 
     // Regex: re-find-all-pos
     test_eq(interp, "re-find-all-pos count",
         "(length (re-find-all-pos \"a\" \"abaca\"))", 3, pass, fail);
+    test_eq(interp, "re-find-all-pos codepoint second start after UTF-8 prefix",
+        "(car (car (cdr (re-find-all-pos \"x\" \"éxax\"))))", 3, pass, fail);
+    test_eq(interp, "re-find-all-pos codepoint second end after UTF-8 prefix",
+        "(car (cdr (car (cdr (re-find-all-pos \"x\" \"éxax\")))))", 4, pass, fail);
+    test_eq(interp, "re-find-all-pos zero-length-capable empty input count",
+        "(length (re-find-all-pos \"a*\" \"\"))", 1, pass, fail);
+    test_eq(interp, "re-find-all-pos zero-length-capable empty input start",
+        "(car (car (re-find-all-pos \"a*\" \"\")))", 0, pass, fail);
+    test_eq(interp, "re-find-all-pos zero-length-capable empty input end",
+        "(car (cdr (car (re-find-all-pos \"a*\" \"\"))))", 0, pass, fail);
+
+    {
+        int saved_force = pika::g_regex_force_result_string_alloc_fail_nth;
+        pika::g_regex_force_result_string_alloc_fail_nth = 1;
+        test_truthy_interp(interp, "re-match result string allocation raises structured code",
+            "(= (handle (re-match \"a\" \"a\") (raise msg (ref msg 'code))) 'regex/re-match-out-of-memory)",
+            pass, fail);
+        pika::g_regex_force_result_string_alloc_fail_nth = saved_force;
+    }
+    {
+        int saved_force = pika::g_regex_force_result_string_alloc_fail_nth;
+        pika::g_regex_force_result_string_alloc_fail_nth = 1;
+        test_truthy_interp(interp, "re-fullmatch result string allocation raises structured code",
+            "(= (handle (re-fullmatch \"a\" \"a\") (raise msg (ref msg 'code))) 'regex/re-fullmatch-out-of-memory)",
+            pass, fail);
+        pika::g_regex_force_result_string_alloc_fail_nth = saved_force;
+    }
+    {
+        int saved_force = pika::g_regex_force_result_string_alloc_fail_nth;
+        pika::g_regex_force_result_string_alloc_fail_nth = 1;
+        test_truthy_interp(interp, "re-find-all result string allocation raises structured code",
+            "(= (handle (re-find-all \"a\" \"a\") (raise msg (ref msg 'code))) 'regex/re-find-all-out-of-memory)",
+            pass, fail);
+        pika::g_regex_force_result_string_alloc_fail_nth = saved_force;
+    }
+    {
+        int saved_force = pika::g_regex_force_result_string_alloc_fail_nth;
+        pika::g_regex_force_result_string_alloc_fail_nth = 1;
+        test_truthy_interp(interp, "re-split result string allocation raises structured code",
+            "(= (handle (re-split \" \" \"a b\") (raise msg (ref msg 'code))) 'regex/re-split-out-of-memory)",
+            pass, fail);
+        pika::g_regex_force_result_string_alloc_fail_nth = saved_force;
+    }
+    {
+        int saved_force = g_value_force_make_cons_or_error_alloc_fail_nth;
+        g_value_force_make_cons_or_error_alloc_fail_nth = 1;
+        test_truthy_interp(interp, "re-find-all cons allocation raises structured code",
+            "(= (handle (re-find-all \"a\" \"a\") (raise msg (ref msg 'code))) 'regex/re-find-all-out-of-memory)",
+            pass, fail);
+        g_value_force_make_cons_or_error_alloc_fail_nth = saved_force;
+    }
+    {
+        int saved_force = g_value_force_make_cons_or_error_alloc_fail_nth;
+        g_value_force_make_cons_or_error_alloc_fail_nth = 1;
+        test_truthy_interp(interp, "re-split cons allocation raises structured code",
+            "(= (handle (re-split \" \" \"a b\") (raise msg (ref msg 'code))) 'regex/re-split-out-of-memory)",
+            pass, fail);
+        g_value_force_make_cons_or_error_alloc_fail_nth = saved_force;
+    }
+    {
+        int saved_force = g_value_force_make_cons_or_error_alloc_fail_nth;
+        g_value_force_make_cons_or_error_alloc_fail_nth = 1;
+        test_truthy_interp(interp, "re-match-pos cons allocation raises structured code",
+            "(= (handle (re-match-pos \"a\" \"a\") (raise msg (ref msg 'code))) 'regex/re-match-pos-out-of-memory)",
+            pass, fail);
+        g_value_force_make_cons_or_error_alloc_fail_nth = saved_force;
+    }
+    {
+        int saved_force = g_value_force_make_cons_or_error_alloc_fail_nth;
+        g_value_force_make_cons_or_error_alloc_fail_nth = 1;
+        test_truthy_interp(interp, "re-find-all-pos cons allocation raises structured code",
+            "(= (handle (re-find-all-pos \"a\" \"a\") (raise msg (ref msg 'code))) 'regex/re-find-all-pos-out-of-memory)",
+            pass, fail);
+        g_value_force_make_cons_or_error_alloc_fail_nth = saved_force;
+    }
 
     // Regex: escaped chars
     test_str(interp, "re-match \\d",
@@ -216,6 +328,15 @@ fn void run_pika_tests(Interp* interp, int* pass, int* fail) {
         "  '(rule op (first \"+\" \"-\" \"*\" \"/\")))) "
         "  (String (car (pika/parse g \"1+2\"))))",
         "start", pass, fail);
+    test_str_val(interp, "pika/grammar rejects unresolved rule reference",
+        "(handle (pika/grammar 'g-undefined-rule '(rule start missing)) (raise msg (String (ref msg 'code))))",
+        "parser/grammar-undefined-rule", pass, fail);
+    test_str_val(interp, "pika/grammar rejects duplicate grammar name",
+        "(handle (block (pika/grammar 'g-duplicate-name '(rule start \"a\")) (pika/grammar 'g-duplicate-name '(rule start \"b\"))) (raise msg (String (ref msg 'code))))",
+        "parser/grammar-duplicate-name", pass, fail);
+    test_str_val(interp, "pika/grammar rejects duplicate rule name",
+        "(handle (pika/grammar 'g-duplicate-rule '(rule start \"a\") '(rule start \"b\")) (raise msg (String (ref msg 'code))))",
+        "parser/grammar-duplicate-rule", pass, fail);
     test_tag(interp, "pika/parse scan clause basic",
         "(block (pika/grammar 'g-scan '(rule start (scan \"[a-z]+\"))) (pika/parse 'g-scan \"abc\"))",
         CONS, pass, fail);
@@ -270,6 +391,39 @@ fn void run_pika_tests(Interp* interp, int* pass, int* fail) {
     test_str_val(interp, "pika/parse-lisp utf8 symbol drift fails closed",
         "(handle (pika/parse-lisp \"\xce\xbb\") (raise msg (String (ref msg 'code))))",
         "parser/parse-lisp-grammar-drift", pass, fail);
+    {
+        bool saved_force = g_value_force_make_string_alloc_fail;
+        g_value_force_make_string_alloc_fail = true;
+        EvalResult r = run("(pika/parse-lisp \"(+ 1 2)\")", interp);
+        g_value_force_make_string_alloc_fail = saved_force;
+        bool ok = r.error.has_error || (r.value != null && r.value.tag == ERROR);
+        if (ok) {
+            emit_pass_literal("[PASS] pika/parse-lisp parse-tree string allocation fails closed");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] pika/parse-lisp parse-tree string allocation fails closed");
+            (*fail)++;
+        }
+    }
+    {
+        int saved_force = g_value_force_make_cons_or_error_alloc_fail_nth;
+        g_value_force_make_cons_or_error_alloc_fail_nth = 1;
+        EvalResult r = run(
+            "(block "
+            "  (pika/grammar 'g-parse-oom '(rule start \"a\")) "
+            "  (pika/parse 'g-parse-oom \"a\"))",
+            interp
+        );
+        g_value_force_make_cons_or_error_alloc_fail_nth = saved_force;
+        bool ok = r.error.has_error || (r.value != null && r.value.tag == ERROR);
+        if (ok) {
+            emit_pass_literal("[PASS] pika/parse parse-tree cons allocation fails closed");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] pika/parse parse-tree cons allocation fails closed");
+            (*fail)++;
+        }
+    }
     test_eq(interp, "pika/eval-lisp literal",
         "(pika/eval-lisp \"42\")",
         42, pass, fail);
@@ -297,11 +451,15 @@ fn void run_pika_tests(Interp* interp, int* pass, int* fail) {
         starts[0] = "start";
         pika::RuleEntry[] rules = rb.to_array();
         pika::Grammar grammar = pika::make_grammar(starts, rules);
+        mem::free(starts.ptr);
+        defer pika::regex_release_grammar_allocations(&grammar);
+        defer pika::regex_release_rule_builder(&rb, true);
 
         char[64] input_buf;
         for (int i = 0; i < 40; i++) input_buf[i] = 'a';
         char[] input = input_buf[:40];
         pika::ParserState st = pika::parse_simple(&grammar, input);
+        defer pika::pika_release_parser_state(&st);
         int top_match = pika::find_match_at(&st, "start", 0);
 
         bool parse_tree_ok = top_match >= 0;
@@ -430,6 +588,33 @@ fn void run_pika_tests(Interp* interp, int* pass, int* fail) {
             (*pass)++;
         } else {
             io::printn("[FAIL] regex public API reports unusable compiled path and explicit cause counters");
+            (*fail)++;
+        }
+    }
+    {
+        pika::regex_cache_reset();
+        pika::regex_cache_lock();
+        pika::CompiledRegex* retained = pika::regex_get_compiled_cached("a+");
+        bool retained_ok = retained != null && retained.active_refs == 1 && retained.cached;
+        pika::regex_cache_unlock();
+
+        pika::regex_cache_reset();
+        bool detached_ok = retained != null && retained.active_refs == 1 && !retained.cached;
+        bool match_ok = false;
+        if (retained != null) {
+            pika::ParserState st = pika::parse_simple(&retained.grammar, "aa");
+            defer pika::pika_release_parser_state(&st);
+            int mid = pika::lookup_best_match_id(0, retained.start_clause, &st);
+            match_ok = mid >= 0 && st.matches[mid].first == 0 && st.matches[mid].last == 1;
+        }
+        pika::regex_cache_release(retained);
+
+        bool ok = retained_ok && detached_ok && match_ok;
+        if (ok) {
+            emit_pass_literal("[PASS] regex cache retained compiled regex survives reset until release");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] regex cache retained compiled regex survives reset until release");
             (*fail)++;
         }
     }

@@ -41,6 +41,7 @@ fn void ffi_dlopen_registry_unlock() @inline {
 
 fn bool ffi_dlopen_registry_copy_path(char[] path, char* out_path, usz out_cap) {
     if (path.len == 0 || out_path == null || out_cap == 0 || path.len >= out_cap) return false;
+    if (c_api_string_contains_nul(path)) return false;
     for (usz i = 0; i < path.len; i++) out_path[i] = path[i];
     out_path[path.len] = 0;
     return true;
@@ -48,6 +49,7 @@ fn bool ffi_dlopen_registry_copy_path(char[] path, char* out_path, usz out_cap) 
 
 fn int ffi_dlopen_registry_find(char[] path) {
     if (path.len == 0 || path.len >= FFI_DLOPEN_REGISTRY_PATH_CAP) return -1;
+    if (c_api_string_contains_nul(path)) return -1;
     for (uint i = 0; i < g_dlopen_registry_count; i++) {
         char[] entry_path = g_dlopen_registry[i].path[:ffi_c_string_len(&g_dlopen_registry[i].path[0])];
         if (ffi_char_slice_equals(path, entry_path)) {
@@ -55,6 +57,22 @@ fn int ffi_dlopen_registry_find(char[] path) {
         }
     }
     return -1;
+}
+
+fn bool ffi_dlopen_registry_ensure_slot_for_new_entry() {
+    if (g_dlopen_registry_count < g_dlopen_registry_capacity) return true;
+    if (g_dlopen_registry_capacity > uint.max / 2) return false;
+
+    uint new_cap = g_dlopen_registry_capacity == 0 ? 4 : g_dlopen_registry_capacity * 2;
+    if ((usz)new_cap > usz.max / DlopenRegistryEntry.sizeof) return false;
+
+    DlopenRegistryEntry* new_entries = (DlopenRegistryEntry*)mem::realloc(
+        g_dlopen_registry, DlopenRegistryEntry.sizeof * new_cap);
+    if (new_entries == null) return false;
+
+    g_dlopen_registry = new_entries;
+    g_dlopen_registry_capacity = new_cap;
+    return true;
 }
 
 /**
@@ -78,21 +96,10 @@ fn void* ffi_dlopen_registry_acquire(char[] path) {
     if (!ffi_dlopen_registry_copy_path(path, &c_path[0], FFI_DLOPEN_REGISTRY_PATH_CAP)) return null;
 
     (void)dlerror();
+    if (!ffi_dlopen_registry_ensure_slot_for_new_entry()) return null;
+
     void* handle = dlopen((ZString)&c_path[0], RTLD_LAZY);
     if (handle == null) return null;
-
-    if (g_dlopen_registry_count >= g_dlopen_registry_capacity) {
-        if (g_dlopen_registry_capacity > uint.max / 2) return null;
-        uint new_cap = g_dlopen_registry_capacity == 0 ? 4 : g_dlopen_registry_capacity * 2;
-        DlopenRegistryEntry* new_entries = (DlopenRegistryEntry*)mem::realloc(
-            g_dlopen_registry, DlopenRegistryEntry.sizeof * new_cap);
-        if (new_entries == null) {
-            dlclose(handle);
-            return null;
-        }
-        g_dlopen_registry = new_entries;
-        g_dlopen_registry_capacity = new_cap;
-    }
 
     DlopenRegistryEntry* entry = &g_dlopen_registry[g_dlopen_registry_count];
     usz len = path.len;

@@ -560,6 +560,44 @@ fn void run_jit_policy_handle_continuation_alloc_failure_test(Interp* interp, in
     }
 }
 
+fn void run_jit_policy_continuation_wrapper_alloc_failure_test(Interp* interp, int* pass, int* fail) {
+    (void)interp;
+    bool saved_force = g_value_force_make_continuation_wrapper_alloc_fail;
+
+    Interp* other = (Interp*)mem::malloc(Interp.sizeof);
+    bool ok = other != null;
+    if (ok) {
+        other.init();
+        g_value_force_make_continuation_wrapper_alloc_fail = true;
+        EvalResult r = run("(checkpoint (capture k k))", other);
+        g_value_force_make_continuation_wrapper_alloc_fail = saved_force;
+
+        char[] msg = "";
+        if (r.error.has_error) {
+            msg = r.error.message[:256];
+        } else if (r.value != null && r.value.tag == ERROR) {
+            msg = r.value.str_chars[:r.value.str_len];
+        }
+        ok = (r.error.has_error || (r.value != null && r.value.tag == ERROR)) &&
+            jit_policy_str_contains(msg, "continuation: failed to allocate wrapper");
+
+        other.destroy();
+        mem::free(other);
+    } else {
+        g_value_force_make_continuation_wrapper_alloc_fail = saved_force;
+    }
+
+    if (ok) {
+        emit_pass_literal("[PASS] jit policy: checkpoint continuation wrapper allocation fails closed");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] jit policy: checkpoint continuation wrapper allocation fails closed");
+        (*fail)++;
+    }
+}
+
+
+
 fn void run_jit_policy_handler_arg_list_alloc_failure_test(Interp* interp, int* pass, int* fail) {
     (void)interp;
     Interp* other = (Interp*)mem::malloc(Interp.sizeof);
@@ -674,6 +712,154 @@ fn void run_jit_policy_handle_clause_bind_failure_releases_continuation_test(Int
         (*pass)++;
     } else {
         io::printn("[FAIL] jit policy: handle clause bind failure releases continuation");
+        (*fail)++;
+    }
+}
+
+fn void run_jit_policy_signal_suspend_failure_clears_handler_state_test(Interp* interp, int* pass, int* fail) {
+    (void)interp;
+    Interp* other = (Interp*)mem::malloc(Interp.sizeof);
+    bool ok = other != null;
+    if (ok) other.init();
+
+    main::StackCtx* ctx = null;
+    HandleEffectState* state = null;
+    Value* result = null;
+    bool handled = false;
+    Continuation* saved_head = null;
+    if (ok) {
+        ctx = main::stack_ctx_create(&other.stack_ctx_pool);
+        ok = ctx != null;
+    }
+    if (ok) {
+        state = (HandleEffectState*)mem::malloc(HandleEffectState.sizeof);
+        ok = state != null;
+    }
+    if (ok) {
+        handle_effect_state_init(state, other);
+        SymbolId tag = other.symbols.intern("ask");
+        SymbolId[1] tags = { tag };
+        EffectHandler handler = {
+            .tags = &tags[0],
+            .clauses = null,
+            .closures = null,
+            .clause_count = 1,
+            .handler_env = null,
+            .body_expr = null,
+            .body_env = null,
+            .strict_mode = false,
+            .effect_state = state,
+        };
+        saved_head = other.continuation_head;
+        StackCtxDeferEntry* saved_defer_heap = ctx.defer_heap;
+        usz saved_defer_capacity = ctx.defer_capacity;
+        other.handler_stack[other.handler_count++] = handler;
+        ctx.defer_heap = (StackCtxDeferEntry*)1;
+        ctx.defer_capacity = 0;
+        handled = jit_signal_try_resume_handler(other, ctx, tag, make_nil(other), &result);
+        ctx.defer_heap = saved_defer_heap;
+        ctx.defer_capacity = saved_defer_capacity;
+        ok = handled &&
+             result != null &&
+             result.tag == ERROR &&
+             jit_policy_str_contains(result.str_chars[:result.str_len], "failed to register suspend scope guard") &&
+             !state.signaled &&
+             state.signal_tag == (SymbolId)0 &&
+             state.signal_arg == null &&
+             other.continuation_head == saved_head;
+        other.handler_count--;
+    }
+
+    if (state != null) handle_effect_state_release(state);
+    if (ctx != null) main::stack_ctx_destroy(ctx, &other.stack_ctx_pool);
+    if (other != null) {
+        other.destroy();
+        mem::free(other);
+    }
+
+    if (ok) {
+        emit_pass_literal("[PASS] jit policy: signal suspend failure clears handler state");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] jit policy: signal suspend failure clears handler state (handled=%s result_tag=%d signaled=%s)",
+            handled ? "yes" : "no",
+            result != null ? (int)result.tag : -1,
+            state != null && state.signaled ? "yes" : "no"
+        );
+        (*fail)++;
+    }
+}
+
+fn void run_jit_policy_shift_suspend_failure_discards_continuation_test(Interp* interp, int* pass, int* fail) {
+    (void)interp;
+    Interp* other = (Interp*)mem::malloc(Interp.sizeof);
+    bool ok = other != null;
+    if (ok) other.init();
+
+    main::StackCtx* ctx = null;
+    main::StackCtx* saved_current = main::g_current_stack_ctx;
+    Continuation* saved_head = null;
+    Value* result = null;
+    ResetValueState state = {};
+    StackCtxDeferEntry* saved_defer_heap = null;
+    usz saved_defer_capacity = 0;
+    if (ok) {
+        ctx = main::stack_ctx_create(&other.stack_ctx_pool);
+        ok = ctx != null;
+    }
+    if (ok) {
+        saved_head = other.continuation_head;
+        saved_defer_heap = ctx.defer_heap;
+        saved_defer_capacity = ctx.defer_capacity;
+        state.body = make_nil(other);
+        state.interp = other;
+        state.shifted = false;
+        state.shift_body = null;
+        state.shift_k = null;
+        other.current_reset_state = &state;
+        main::g_current_stack_ctx = ctx;
+        ctx.defer_heap = (StackCtxDeferEntry*)1;
+        ctx.defer_capacity = 0;
+        result = jit_shift_value(other, make_nil(other));
+        Continuation* head = other.continuation_head;
+        ok = result != null &&
+             result.tag == ERROR &&
+             jit_policy_str_contains(result.str_chars[:result.str_len], "failed to register suspend scope guard") &&
+             head != null &&
+             head != saved_head &&
+             head.ctx == null &&
+             head.handle_state == null &&
+             !head.handle_retained &&
+             head.next_owned == saved_head &&
+             !state.shifted &&
+             state.shift_body == null &&
+             state.shift_k == null;
+        ctx.defer_heap = saved_defer_heap;
+        ctx.defer_capacity = saved_defer_capacity;
+        if (!ok) {
+            io::printfn(
+                "[FAIL] jit policy: shift suspend failure discards continuation (result_tag=%d head_ctx=%s head_retained=%s shifted=%s)",
+                result != null ? (int)result.tag : -1,
+                head != null && head.ctx == null ? "null" : "live",
+                head != null && !head.handle_retained ? "no" : "yes",
+                state.shifted ? "yes" : "no"
+            );
+        }
+    }
+
+    other.current_reset_state = null;
+    main::g_current_stack_ctx = saved_current;
+    if (ctx != null) main::stack_ctx_destroy(ctx, &other.stack_ctx_pool);
+    if (other != null) {
+        other.destroy();
+        mem::free(other);
+    }
+
+    if (ok) {
+        emit_pass_literal("[PASS] jit policy: shift suspend failure discards continuation");
+        (*pass)++;
+    } else {
         (*fail)++;
     }
 }

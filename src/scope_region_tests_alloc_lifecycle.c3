@@ -157,6 +157,48 @@ fn ScopeRegionTestCounts run_scope_region_alloc_lifecycle_tests() {
         mem::free(counter);
     }
 
+    // Test 2e: Destructor metadata allocation fails closed
+    {
+        ScopeRegion* s = scope_create(null);
+        int* counter = (int*)mem::malloc(int.sizeof);
+        bool setup_ok = s != null && counter != null;
+        bool temp_registered = true;
+        bool escape_registered = true;
+        if (setup_ok) {
+            *counter = 0;
+            g_scope_force_dtor_alloc_oom = true;
+            temp_registered = scope_register_dtor(s, (void*)counter, fn void(void* ptr) {
+                int* c = (int*)ptr;
+                *c = *c + 1;
+            });
+            g_scope_force_dtor_alloc_oom = false;
+            g_scope_force_escape_dtor_alloc_oom = true;
+            escape_registered = scope_register_dtor_escape(s, (void*)counter, fn void(void* ptr) {
+                int* c = (int*)ptr;
+                *c = *c + 10;
+            });
+            g_scope_force_escape_dtor_alloc_oom = false;
+            scope_release(s);
+            s = null;
+        }
+
+        bool ok = setup_ok && !temp_registered && !escape_registered && *counter == 0;
+        if (ok) {
+            passed++;
+        } else {
+            io::printfn(
+                "FAIL: destructor registration OOM temp=%s escape=%s counter=%d",
+                temp_registered ? "yes" : "no",
+                escape_registered ? "yes" : "no",
+                counter != null ? *counter : -1);
+            failed++;
+            if (s != null) scope_release(s);
+        }
+        g_scope_force_dtor_alloc_oom = false;
+        g_scope_force_escape_dtor_alloc_oom = false;
+        if (counter != null) mem::free(counter);
+    }
+
     // Test 3: Chunk overflow (allocate more than initial chunk)
     {
         ScopeRegion* s = scope_create(null);

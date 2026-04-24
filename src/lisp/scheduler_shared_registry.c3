@@ -59,6 +59,48 @@ fn void scheduler_shared_registry_drain_retired(usz budget = 64) {
     }
 }
 
+fn void scheduler_shared_registry_shutdown() {
+    SharedRegistry* registry = &g_scheduler.shared_registry;
+    if (!registry.initialized) return;
+
+    SharedHandleBlob*[SHARED_REGISTRY_CAPACITY + SHARED_RETIRED_QUEUE_CAPACITY] to_free;
+    usz to_free_count = 0;
+
+    registry.mu.lock();
+    for (usz i = 0; i < SHARED_REGISTRY_CAPACITY; i++) {
+        SharedRegistryEntry* entry = &registry.entries[i];
+        if (entry.active && entry.payload != null) {
+            to_free[to_free_count++] = entry.payload;
+        }
+        entry.active = false;
+        entry.kind = SHARED_HANDLE_BLOB;
+        entry.generation = scheduler_shared_registry_next_generation(entry.generation);
+        entry.payload = null;
+    }
+    while (registry.retire_count > 0) {
+        SharedRetiredPayload* retired = &registry.retired[registry.retire_head];
+        if (retired.payload != null) {
+            to_free[to_free_count++] = retired.payload;
+        }
+        retired.slot = SHARED_REGISTRY_CAPACITY;
+        retired.generation = 0;
+        retired.payload = null;
+        registry.retire_head = (registry.retire_head + 1) % SHARED_RETIRED_QUEUE_CAPACITY;
+        registry.retire_count--;
+    }
+    registry.retire_head = 0;
+    registry.retire_tail = 0;
+    registry.retire_overflow_count = 0;
+    registry.next_slot = 0;
+    registry.initialized = false;
+    registry.mu.unlock();
+    (void)registry.mu.destroy();
+
+    for (usz i = 0; i < to_free_count; i++) {
+        scheduler_shared_registry_free_payload(to_free[i]);
+    }
+}
+
 fn void scheduler_domain_safe_point(SchedulerDomain* domain) @inline {
     if (!scheduler_domain_is_local(domain)) return;
     scheduler_shared_registry_drain_retired(64);
@@ -152,6 +194,36 @@ fn SharedHandleBlob* scheduler_shared_registry_resolve_blob(SharedHandle* handle
     if (!entry.active || entry.generation != handle.generation || entry.kind != handle.kind) return null;
     if (handle.payload != null && entry.payload != handle.payload) return null;
     return entry.payload;
+}
+
+fn bool scheduler_shared_registry_copy_blob_bytes(SharedHandle* handle, char** out_bytes, usz* out_len) {
+    if (out_bytes != null) *out_bytes = null;
+    if (out_len != null) *out_len = 0;
+    if (handle == null || handle.kind != SHARED_HANDLE_BLOB || out_bytes == null) return false;
+
+    SharedRegistry* registry = &g_scheduler.shared_registry;
+    if (!registry.initialized || handle.slot >= SHARED_REGISTRY_CAPACITY) return false;
+
+    registry.mu.lock();
+    defer registry.mu.unlock();
+
+    SharedRegistryEntry* entry = &registry.entries[handle.slot];
+    if (!entry.active || entry.generation != handle.generation || entry.kind != handle.kind) return false;
+    if (handle.payload != null && entry.payload != handle.payload) return false;
+
+    SharedHandleBlob* payload = entry.payload;
+    if (payload == null || payload.bytes == null) return false;
+
+    usz len = payload.len;
+    if (len == usz.max) return false;
+    char* owned = (char*)mem::malloc(len + 1);
+    if (owned == null) return false;
+    for (usz i = 0; i < len; i++) owned[i] = payload.bytes[i];
+    owned[len] = 0;
+
+    *out_bytes = owned;
+    if (out_len != null) *out_len = len;
+    return true;
 }
 
 fn bool scheduler_shared_destroy(SharedHandle* handle) {

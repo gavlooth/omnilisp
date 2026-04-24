@@ -147,6 +147,7 @@ fn Value* scheduler_begin_os_thread_work_jobs(
         Value* err = scheduler_begin_os_thread_work_job(works[i], &handles[i], interp);
         if (err != null) {
             scheduler_rollback_os_thread_handles(handles, i);
+            scheduler_release_offload_work_range(works.ptr, i + 1, works.len);
             return err;
         }
     }

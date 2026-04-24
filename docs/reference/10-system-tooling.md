@@ -24,6 +24,8 @@
 ;; Sorting
 (sort '(3 1 2))              ;; => (1 2 3)
 (sort-by (λ (a b) (> a b)) '(1 3 2))   ;; => (3 2 1)
+;; `sort-by` also accepts curried comparators. Positive numeric or truthy results
+;; move the left item after the right item; `nil` and `false` do not.
 
 ;; Read
 (read-string "(+ 1 2)")     ;; => Lisp value (unevaluated)

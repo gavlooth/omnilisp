@@ -1,5 +1,15 @@
 module lisp;
 
+fn bool deduce_query_literal_ordered_numeric(Value* value) @inline {
+    return value != null && is_numeric_value(value) && !is_fixed_complex(value) && value.tag != BIG_COMPLEX;
+}
+
+fn bool deduce_query_literal_store_numeric_result(Value* result, Value** out_value) @inline {
+    if (result == null || result.tag == ERROR || out_value == null) return false;
+    *out_value = result;
+    return true;
+}
+
 fn bool deduce_query_expr_try_extract_numeric_call_value(
     Expr* expr,
     char[] func_name,
@@ -26,24 +36,13 @@ fn bool deduce_query_expr_try_extract_numeric_call_value(
         Value* rhs = null;
         if (!deduce_query_expr_try_extract_literal_value(expr.call.args[0], row_param, capture_env, interp, &lhs)) return false;
         if (!deduce_query_expr_try_extract_literal_value(expr.call.args[1], row_param, capture_env, interp, &rhs)) return false;
-        if (lhs == null || rhs == null || !is_number(lhs) || !is_number(rhs) ||
-            is_fixed_complex(lhs) || is_fixed_complex(rhs) || lhs.tag == BIG_COMPLEX || rhs.tag == BIG_COMPLEX) return false;
-        bool result;
-        if (is_double(lhs) || is_double(rhs) || is_float32(lhs) || is_float32(rhs)) {
-            double left = to_double(lhs);
-            double right = to_double(rhs);
-            result = deduce_name_equals(func_name, "<") ? left < right
-                : deduce_name_equals(func_name, "<=") ? left <= right
-                : deduce_name_equals(func_name, ">") ? left > right
-                : left >= right;
-        } else {
-            long left = lhs.int_val;
-            long right = rhs.int_val;
-            result = deduce_name_equals(func_name, "<") ? left < right
-                : deduce_name_equals(func_name, "<=") ? left <= right
-                : deduce_name_equals(func_name, ">") ? left > right
-                : left >= right;
-        }
+        if (!deduce_query_literal_ordered_numeric(lhs) || !deduce_query_literal_ordered_numeric(rhs)) return false;
+        int cmp = 0;
+        if (!numeric_values_compare(lhs, rhs, &cmp)) return false;
+        bool result = deduce_name_equals(func_name, "<") ? cmp < 0
+            : deduce_name_equals(func_name, "<=") ? cmp <= 0
+            : deduce_name_equals(func_name, ">") ? cmp > 0
+            : cmp >= 0;
         *out_value = result ? make_symbol(interp, interp.sym_true) : make_nil(interp);
         return *out_value != null;
     }
@@ -60,12 +59,12 @@ fn bool deduce_query_expr_try_extract_numeric_call_value(
     if (expr.call.arg_count >= 1) {
         if (expr.call.args[0] == null) return false;
         if (!deduce_query_expr_try_extract_literal_value(expr.call.args[0], row_param, capture_env, interp, &arg0)) return false;
-        if (arg0 == null || !is_number(arg0) || is_fixed_complex(arg0) || arg0.tag == BIG_COMPLEX) return false;
+        if (!deduce_query_literal_ordered_numeric(arg0)) return false;
     }
     if (expr.call.arg_count >= 2) {
         if (expr.call.args[1] == null) return false;
         if (!deduce_query_expr_try_extract_literal_value(expr.call.args[1], row_param, capture_env, interp, &arg1)) return false;
-        if (arg1 == null || !is_number(arg1) || is_fixed_complex(arg1) || arg1.tag == BIG_COMPLEX) return false;
+        if (!deduce_query_literal_ordered_numeric(arg1)) return false;
     }
 
     if (deduce_name_equals(func_name, "+")) {
@@ -74,179 +73,118 @@ fn bool deduce_query_expr_try_extract_numeric_call_value(
             return true;
         }
         if (expr.call.arg_count != 2) return false;
-        if (is_double(arg0) || is_double(arg1) || is_float32(arg0) || is_float32(arg1)) {
-            *out_value = make_double(interp, to_double(arg0) + to_double(arg1));
-            return *out_value != null;
-        }
-        *out_value = make_int(interp, arg0.int_val + arg1.int_val);
-        return *out_value != null;
+        return deduce_query_literal_store_numeric_result(numeric_add2(interp, arg0, arg1), out_value);
     }
     if (deduce_name_equals(func_name, "-")) {
         if (expr.call.arg_count == 1) {
-            if (is_double(arg0) || is_float32(arg0)) {
-                *out_value = make_double(interp, -to_double(arg0));
-                return *out_value != null;
-            }
-            *out_value = make_int(interp, -arg0.int_val);
-            return *out_value != null;
+            return deduce_query_literal_store_numeric_result(numeric_neg1(interp, arg0), out_value);
         }
         if (expr.call.arg_count != 2) return false;
-        if (is_double(arg0) || is_double(arg1) || is_float32(arg0) || is_float32(arg1)) {
-            *out_value = make_double(interp, to_double(arg0) - to_double(arg1));
-            return *out_value != null;
-        }
-        *out_value = make_int(interp, arg0.int_val - arg1.int_val);
-        return *out_value != null;
+        return deduce_query_literal_store_numeric_result(numeric_sub2(interp, arg0, arg1), out_value);
     }
     if (deduce_name_equals(func_name, "*")) {
         if (expr.call.arg_count != 2) return false;
-        if (is_double(arg0) || is_double(arg1) || is_float32(arg0) || is_float32(arg1)) {
-            *out_value = make_double(interp, to_double(arg0) * to_double(arg1));
-            return *out_value != null;
-        }
-        *out_value = make_int(interp, arg0.int_val * arg1.int_val);
-        return *out_value != null;
+        return deduce_query_literal_store_numeric_result(numeric_mul2(interp, arg0, arg1), out_value);
     }
     if (deduce_name_equals(func_name, "/")) {
         if (expr.call.arg_count != 2) return false;
-        if (is_double(arg0) || is_double(arg1) || is_float32(arg0) || is_float32(arg1)) {
-            double rhs = to_double(arg1);
-            if (rhs == 0.0) return false;
-            *out_value = make_double(interp, to_double(arg0) / rhs);
-            return *out_value != null;
-        }
-        if (arg1.int_val == 0) return false;
-        *out_value = make_int(interp, arg0.int_val / arg1.int_val);
-        return *out_value != null;
+        Value*[2] args = { arg0, arg1 };
+        return deduce_query_literal_store_numeric_result(prim_div(args[..], null, interp), out_value);
     }
     if (deduce_name_equals(func_name, "abs")) {
         if (expr.call.arg_count != 1) return false;
-        if (is_double(arg0) || is_float32(arg0)) {
-            *out_value = make_double(interp, deduce_c_fabs(to_double(arg0)));
-            return *out_value != null;
-        }
-        long n = arg0.int_val;
-        *out_value = make_int(interp, n < 0 ? -n : n);
-        return *out_value != null;
+        Value*[1] args = { arg0 };
+        return deduce_query_literal_store_numeric_result(prim_abs(args[..], null, interp), out_value);
     }
     if (deduce_name_equals(func_name, "floor")) {
         if (expr.call.arg_count != 1) return false;
-        double value = to_double(arg0);
-        long out = 0;
-        double floor_v = deduce_c_floor(value);
-        if (floor_v != floor_v || floor_v > (double)long.max || floor_v < (double)long.min) {
-            return false;
-        }
-        out = (long)floor_v;
-        *out_value = make_int(interp, out);
-        return *out_value != null;
+        Value*[1] args = { arg0 };
+        return deduce_query_literal_store_numeric_result(prim_floor(args[..], null, interp), out_value);
     }
     if (deduce_name_equals(func_name, "ceiling")) {
         if (expr.call.arg_count != 1) return false;
-        double value = to_double(arg0);
-        double ceil_v = deduce_c_ceil(value);
-        if (ceil_v != ceil_v || ceil_v > (double)long.max || ceil_v < (double)long.min) {
-            return false;
-        }
-        *out_value = make_int(interp, (long)ceil_v);
-        return *out_value != null;
+        Value*[1] args = { arg0 };
+        return deduce_query_literal_store_numeric_result(prim_ceiling(args[..], null, interp), out_value);
     }
     if (deduce_name_equals(func_name, "round")) {
         if (expr.call.arg_count != 1) return false;
-        double value = to_double(arg0);
-        double round_v = deduce_c_round(value);
-        if (round_v != round_v || round_v > (double)long.max || round_v < (double)long.min) {
-            return false;
-        }
-        *out_value = make_int(interp, (long)round_v);
-        return *out_value != null;
+        Value*[1] args = { arg0 };
+        return deduce_query_literal_store_numeric_result(prim_round(args[..], null, interp), out_value);
     }
     if (deduce_name_equals(func_name, "truncate")) {
         if (expr.call.arg_count != 1) return false;
-        double value = to_double(arg0);
-        if (value != value || value > (double)long.max || value < (double)long.min) {
-            return false;
-        }
-        *out_value = make_int(interp, (long)value);
-        return *out_value != null;
+        Value*[1] args = { arg0 };
+        return deduce_query_literal_store_numeric_result(prim_truncate(args[..], null, interp), out_value);
     }
     if (deduce_name_equals(func_name, "sqrt")) {
         if (expr.call.arg_count != 1) return false;
-        *out_value = make_double(interp, deduce_c_sqrt(to_double(arg0)));
-        return *out_value != null;
+        Value*[1] args = { arg0 };
+        return deduce_query_literal_store_numeric_result(prim_sqrt(args[..], null, interp), out_value);
     }
     if (deduce_name_equals(func_name, "exp")) {
         if (expr.call.arg_count != 1) return false;
-        *out_value = make_double(interp, deduce_c_exp(to_double(arg0)));
-        return *out_value != null;
+        Value*[1] args = { arg0 };
+        return deduce_query_literal_store_numeric_result(prim_exp(args[..], null, interp), out_value);
     }
     if (deduce_name_equals(func_name, "log")) {
         if (expr.call.arg_count != 1) return false;
-        *out_value = make_double(interp, deduce_c_log(to_double(arg0)));
-        return *out_value != null;
+        Value*[1] args = { arg0 };
+        return deduce_query_literal_store_numeric_result(prim_log(args[..], null, interp), out_value);
     }
     if (deduce_name_equals(func_name, "log10")) {
         if (expr.call.arg_count != 1) return false;
-        *out_value = make_double(interp, deduce_c_log10(to_double(arg0)));
-        return *out_value != null;
+        Value*[1] args = { arg0 };
+        return deduce_query_literal_store_numeric_result(prim_log10(args[..], null, interp), out_value);
     }
     if (deduce_name_equals(func_name, "min")) {
         if (expr.call.arg_count != 2) return false;
-        if (is_double(arg0) || is_double(arg1) || is_float32(arg0) || is_float32(arg1)) {
-            *out_value = make_double(interp, to_double(arg0) < to_double(arg1) ? to_double(arg0) : to_double(arg1));
-            return *out_value != null;
-        }
-        *out_value = make_int(interp, arg0.int_val < arg1.int_val ? arg0.int_val : arg1.int_val);
-        return *out_value != null;
+        Value*[2] args = { arg0, arg1 };
+        return deduce_query_literal_store_numeric_result(prim_min(args[..], null, interp), out_value);
     }
     if (deduce_name_equals(func_name, "max")) {
         if (expr.call.arg_count != 2) return false;
-        if (is_double(arg0) || is_double(arg1) || is_float32(arg0) || is_float32(arg1)) {
-            *out_value = make_double(interp, to_double(arg0) > to_double(arg1) ? to_double(arg0) : to_double(arg1));
-            return *out_value != null;
-        }
-        *out_value = make_int(interp, arg0.int_val > arg1.int_val ? arg0.int_val : arg1.int_val);
-        return *out_value != null;
+        Value*[2] args = { arg0, arg1 };
+        return deduce_query_literal_store_numeric_result(prim_max(args[..], null, interp), out_value);
     }
     if (deduce_name_equals(func_name, "pow")) {
         if (expr.call.arg_count != 2) return false;
-        *out_value = make_double(interp, deduce_c_pow(to_double(arg0), to_double(arg1)));
-        return *out_value != null;
+        Value*[2] args = { arg0, arg1 };
+        return deduce_query_literal_store_numeric_result(prim_pow(args[..], null, interp), out_value);
     }
     if (deduce_name_equals(func_name, "sin")) {
         if (expr.call.arg_count != 1) return false;
-        *out_value = make_double(interp, deduce_c_sin(to_double(arg0)));
-        return *out_value != null;
+        Value*[1] args = { arg0 };
+        return deduce_query_literal_store_numeric_result(prim_sin(args[..], null, interp), out_value);
     }
     if (deduce_name_equals(func_name, "cos")) {
         if (expr.call.arg_count != 1) return false;
-        *out_value = make_double(interp, deduce_c_cos(to_double(arg0)));
-        return *out_value != null;
+        Value*[1] args = { arg0 };
+        return deduce_query_literal_store_numeric_result(prim_cos(args[..], null, interp), out_value);
     }
     if (deduce_name_equals(func_name, "tan")) {
         if (expr.call.arg_count != 1) return false;
-        *out_value = make_double(interp, deduce_c_tan(to_double(arg0)));
-        return *out_value != null;
+        Value*[1] args = { arg0 };
+        return deduce_query_literal_store_numeric_result(prim_tan(args[..], null, interp), out_value);
     }
     if (deduce_name_equals(func_name, "asin")) {
         if (expr.call.arg_count != 1) return false;
-        *out_value = make_double(interp, deduce_c_asin(to_double(arg0)));
-        return *out_value != null;
+        Value*[1] args = { arg0 };
+        return deduce_query_literal_store_numeric_result(prim_asin(args[..], null, interp), out_value);
     }
     if (deduce_name_equals(func_name, "acos")) {
         if (expr.call.arg_count != 1) return false;
-        *out_value = make_double(interp, deduce_c_acos(to_double(arg0)));
-        return *out_value != null;
+        Value*[1] args = { arg0 };
+        return deduce_query_literal_store_numeric_result(prim_acos(args[..], null, interp), out_value);
     }
     if (deduce_name_equals(func_name, "atan")) {
         if (expr.call.arg_count != 1) return false;
-        *out_value = make_double(interp, deduce_c_atan(to_double(arg0)));
-        return *out_value != null;
+        Value*[1] args = { arg0 };
+        return deduce_query_literal_store_numeric_result(prim_atan(args[..], null, interp), out_value);
     }
     if (deduce_name_equals(func_name, "atan2")) {
         if (expr.call.arg_count != 2) return false;
-        *out_value = make_double(interp, deduce_c_atan2(to_double(arg0), to_double(arg1)));
-        return *out_value != null;
+        Value*[2] args = { arg0, arg1 };
+        return deduce_query_literal_store_numeric_result(prim_atan2(args[..], null, interp), out_value);
     }
     return false;
 }

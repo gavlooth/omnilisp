@@ -39,7 +39,9 @@ fn void init_prim_hash_collections_math_bitwise(SymbolTable* st) {
     prim_hash_insert(st.intern("toml"), "aot::lookup_prim(\"toml\")");
     prim_hash_insert(st.intern("csv-parse"), "aot::lookup_prim(\"csv-parse\")");
     prim_hash_insert(st.intern("csv-emit"), "aot::lookup_prim(\"csv-emit\")");
+    prim_hash_insert(st.intern("hex"), "aot::lookup_prim(\"hex\")");
     prim_hash_insert(st.intern("base64"), "aot::lookup_prim(\"base64\")");
+    prim_hash_insert(st.intern("uuid"), "aot::lookup_prim(\"uuid\")");
     prim_hash_insert(st.intern("TimePoint"), "aot::lookup_prim(\"TimePoint\")");
     prim_hash_insert(st.intern("time-point?"), "aot::lookup_prim(\"time-point?\")");
     prim_hash_insert(st.intern("is?"), "aot::lookup_prim(\"is?\")");

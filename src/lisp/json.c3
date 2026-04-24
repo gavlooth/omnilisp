@@ -9,7 +9,9 @@ fn Value* json_raise(Interp* interp, char[] code, char[] message) @inline {
 // ============================================================
 
 fn Value* json_val_to_omni(YyjsonVal* val, Interp* interp) {
-    if (val == null) return make_nil(interp);
+    if (val == null) {
+        return json_raise(interp, "parser/invalid-state", "json-parse: internal parser state missing value");
+    }
 
     if (omni_yyjson_is_null(val) != 0) {
         return make_nil(interp);
@@ -38,11 +40,15 @@ fn Value* json_val_to_omni(YyjsonVal* val, Interp* interp) {
         if (arr == null || arr.tag != ARRAY) return arr;
         if (count == 0) return arr;
         YyjsonArrIter* iter = omni_yyjson_arr_iter_new(val);
-        if (iter == null) return make_nil(interp);
+        if (iter == null) {
+            return json_raise(interp, "parser/out-of-memory", "json-parse: failed to allocate array iterator");
+        }
         defer omni_yyjson_arr_iter_free(iter);
         for (usz i = 0; i < count; i++) {
             YyjsonVal* elem = omni_yyjson_arr_iter_next(iter);
-            if (elem == null) return make_nil(interp);
+            if (elem == null) {
+                return json_raise(interp, "parser/invalid-state", "json-parse: array iterator ended before declared size");
+            }
             Value* v = json_val_to_omni(elem, interp);
             if (v != null && v.tag == ERROR) return v;
             Value* promoted = boundary_promote_to_root(v, interp);
@@ -55,17 +61,27 @@ fn Value* json_val_to_omni(YyjsonVal* val, Interp* interp) {
     }
     if (omni_yyjson_is_obj(val) != 0) {
         usz count = omni_yyjson_obj_size(val);
-        Value* dict = make_hashmap_checked(interp, (uint)(count < 8 ? 8 : count * 2), "json-parse: out of memory");
+        uint capacity = 0;
+        if (!hashmap_capacity_hint_for_entry_count(count, &capacity)) {
+            return json_raise(interp, "parser/out-of-memory", "json-parse: object is too large");
+        }
+        Value* dict = make_hashmap_checked(interp, capacity, "json-parse: out of memory");
         if (dict == null || dict.tag != HASHMAP) return dict;
         if (count == 0) return dict;
         YyjsonObjIter* iter = omni_yyjson_obj_iter_new(val);
-        if (iter == null) return make_nil(interp);
+        if (iter == null) {
+            return json_raise(interp, "parser/out-of-memory", "json-parse: failed to allocate object iterator");
+        }
         defer omni_yyjson_obj_iter_free(iter);
         for (usz i = 0; i < count; i++) {
             YyjsonVal* key = omni_yyjson_obj_iter_next(iter);
-            if (key == null) return make_nil(interp);
+            if (key == null) {
+                return json_raise(interp, "parser/invalid-state", "json-parse: object iterator ended before declared size");
+            }
             YyjsonVal* v = omni_yyjson_obj_iter_get_val(key);
-            if (v == null) return make_nil(interp);
+            if (v == null) {
+                return json_raise(interp, "parser/invalid-state", "json-parse: object iterator returned key without value");
+            }
 
             char* ks = omni_yyjson_get_str(key);
             usz klen = omni_yyjson_get_len(key);
@@ -82,7 +98,7 @@ fn Value* json_val_to_omni(YyjsonVal* val, Interp* interp) {
         return dict;
     }
 
-    return make_nil(interp);
+    return json_raise(interp, "parser/invalid-state", "json-parse: unsupported parser value type");
 }
 
 <*
@@ -108,7 +124,10 @@ fn Value* prim_json_get(Value*[] args, Env* env, Interp* interp) {
         char[] token_raw = pointer[start:i - start];
 
         JsonPointerToken token = json_pointer_decode_token(token_raw);
-        if (!token.ok) return json_raise(interp, "parser/invalid-argument", "json-get: invalid pointer escape sequence");
+        if (!token.ok) {
+            if (token.allocation_failed) return json_raise(interp, "parser/out-of-memory", "json-get: failed to allocate pointer token");
+            return json_raise(interp, "parser/invalid-argument", "json-get: invalid pointer escape sequence");
+        }
 
         current = json_pointer_lookup(current, token.text, interp);
         if (token.owned) json_pointer_token_release(&token);

@@ -2,6 +2,14 @@ module lisp;
 
 import std::core::mem;
 
+fn Value* deduce_aggregate_sum_output_value(DeduceAggregateTermState* state, Interp* interp) {
+    if (state == null || interp == null) return null;
+    if (state.sum_value != null) return state.sum_value;
+    return state.sum_is_double
+        ? make_double(interp, state.sum_double_value)
+        : make_int(interp, state.sum_int_value);
+}
+
 fn Value* deduce_build_aggregate_group_head_tuple(
     DeduceRuleSignature* sig,
     DeduceAggregateGroup* group,
@@ -37,9 +45,11 @@ fn Value* deduce_build_aggregate_group_head_tuple(
                         head_tuple[i] = make_int(interp, state.count_value);
                         break;
                     case DEDUCE_AGGREGATE_SUM:
-                        head_tuple[i] = state.sum_is_double
-                            ? make_double(interp, state.sum_double_value)
-                            : make_int(interp, state.sum_int_value);
+                        head_tuple[i] = deduce_aggregate_sum_output_value(state, interp);
+                        if (head_tuple[i] == null || head_tuple[i].tag == ERROR) {
+                            return deduce_raise(interp, "deduce/analyze-out-of-memory",
+                                "deduce/analyze: failed to materialize aggregate sum");
+                        }
                         break;
                     case DEDUCE_AGGREGATE_MIN:
                     case DEDUCE_AGGREGATE_MAX:
@@ -152,9 +162,12 @@ fn Value* deduce_naive_materialize_aggregate_groups(
                             exec.head_tuple[i] = make_int(exec.interp, state.count_value);
                             break;
                         case DEDUCE_AGGREGATE_SUM:
-                            exec.head_tuple[i] = state.sum_is_double
-                                ? make_double(exec.interp, state.sum_double_value)
-                                : make_int(exec.interp, state.sum_int_value);
+                            exec.head_tuple[i] = deduce_aggregate_sum_output_value(state, exec.interp);
+                            if (exec.head_tuple[i] == null || exec.head_tuple[i].tag == ERROR) {
+                                deduce_encoded_tuples_release(tuples, tuple_count);
+                                return deduce_raise(exec.interp, "deduce/analyze-out-of-memory",
+                                    "deduce/analyze: failed to materialize aggregate sum");
+                            }
                             break;
                         case DEDUCE_AGGREGATE_MIN:
                         case DEDUCE_AGGREGATE_MAX:

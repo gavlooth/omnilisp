@@ -705,9 +705,75 @@ fn bool ml_image_pixel_channel(MlImageExportSpec* spec, usz row, usz col, usz ch
     return ml_reduction_read(spec.tensor, logical, out_value);
 }
 
+fn bool ml_image_copy_path_cstr(char[] path, char[]* out_path, char** out_heap) {
+    if (out_path != null) *out_path = "";
+    if (out_heap != null) *out_heap = null;
+    if (path.len == 0 || path.len == usz.max) return false;
+
+    char* heap = (char*)mem::malloc(path.len + 1);
+    if (heap == null) return false;
+    for (usz i = 0; i < path.len; i++) {
+        if (path[i] == 0) {
+            mem::free(heap);
+            return false;
+        }
+        heap[i] = path[i];
+    }
+    heap[path.len] = 0;
+
+    if (out_path != null) *out_path = heap[:path.len];
+    if (out_heap != null) *out_heap = heap;
+    return true;
+}
+
+fn bool ml_image_build_atomic_temp_path(char[] final_path, char[]* out_temp_path, char** out_heap) {
+    if (out_temp_path != null) *out_temp_path = "";
+    if (out_heap != null) *out_heap = null;
+    if (final_path.len == 0) return false;
+
+    char[64] suffix_buf;
+    char[] suffix = "";
+    if (try rendered = io::bprintf(&suffix_buf, ".tmp.%d", c_getpid())) {
+        suffix = rendered;
+    } else {
+        return false;
+    }
+
+    if (final_path.len > usz.max - suffix.len) return false;
+    usz temp_len = final_path.len + suffix.len;
+    if (temp_len == usz.max) return false;
+
+    char* heap = (char*)mem::malloc(temp_len + 1);
+    if (heap == null) return false;
+    for (usz i = 0; i < final_path.len; i++) heap[i] = final_path[i];
+    for (usz i = 0; i < suffix.len; i++) heap[final_path.len + i] = suffix[i];
+    heap[temp_len] = 0;
+
+    if (out_temp_path != null) *out_temp_path = heap[:temp_len];
+    if (out_heap != null) *out_heap = heap;
+    return true;
+}
+
 fn Value* ml_image_export_ppm(MlImageExportSpec* spec, Interp* interp, MlImageRangeMode resolved_range) {
     if (spec == null || spec.tensor == null) return ml_visualization_invalid(interp, "ml/export-image: missing tensor image state");
-    if (try file = io::file::open((String)spec.path, "w")) {
+    char[] final_path = "";
+    char[] temp_path = "";
+    char* final_path_heap = null;
+    char* temp_path_heap = null;
+    if (!ml_image_copy_path_cstr(spec.path, &final_path, &final_path_heap) ||
+        !ml_image_build_atomic_temp_path(final_path, &temp_path, &temp_path_heap)) {
+        if (final_path_heap != null) mem::free(final_path_heap);
+        return raise_error_with_payload_names(interp, "io", "io/write-failed", "ml/export-image: failed to prepare image output path", null);
+    }
+    defer if (final_path_heap != null) mem::free(final_path_heap);
+    defer if (temp_path_heap != null) mem::free(temp_path_heap);
+
+    (void)omni_uv_fs_unlink((ZString)temp_path.ptr);
+
+    bool committed = false;
+    defer if (!committed) (void)omni_uv_fs_unlink((ZString)temp_path.ptr);
+
+    if (try file = io::file::open((String)temp_path, "w")) {
         bool close_needed = true;
         defer if (close_needed) (void)file.close();
         char[128] line;
@@ -758,6 +824,10 @@ fn Value* ml_image_export_ppm(MlImageExportSpec* spec, Interp* interp, MlImageRa
             return raise_error_with_payload_names(interp, "io", "io/write-failed", "ml/export-image: failed to close image file", null);
         }
         close_needed = false;
+        if (omni_uv_fs_rename((ZString)temp_path.ptr, (ZString)final_path.ptr) != 0) {
+            return raise_error_with_payload_names(interp, "io", "io/write-failed", "ml/export-image: failed to rename image file into place", null);
+        }
+        committed = true;
         return null;
     }
     return raise_error_with_payload_names(interp, "io", "io/write-failed", "ml/export-image: failed to open image file for writing", null);

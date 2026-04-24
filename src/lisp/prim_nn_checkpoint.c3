@@ -128,7 +128,7 @@ fn Value* nn_ckpt_encode_list(Value* value, Interp* interp) {
 *>
 fn Value* nn_ckpt_encode_dict(Value* value, Interp* interp) {
     HashMap* hm = value.hashmap_val;
-    Value* entries = make_array_checked(interp, hm.capacity, "nn/checkpoint: out of memory");
+    Value* entries = make_array_checked(interp, (usz)hm.count, "nn/checkpoint: out of memory");
     if (entries == null || entries.tag == ERROR) return entries;
     if (entries.tag != ARRAY || entries.array_val == null) return nn_oom(interp);
     foreach (entry : hm.entries[0:hm.capacity]) {
@@ -292,9 +292,12 @@ fn Value* nn_ckpt_decode_dict(Value* encoded, Interp* interp) {
     if (entries == null || entries.tag != ARRAY || entries.array_val == null) {
         return nn_ckpt_invalid(interp, "checkpoint.entries", "encoded dictionary entries", entries);
     }
+    if (entries.array_val.length > ((usz)uint.max - (usz)4) / (usz)2) {
+        return nn_ckpt_invalid(interp, "checkpoint.entries", "dictionary entry count within capacity limit", entries);
+    }
     Value* out = nn_make_dict(interp, (uint)(entries.array_val.length * 2 + 4));
     if (out == null || out.tag == ERROR) return out;
-foreach (item : entries.array_val.items[0:entries.array_val.length]) {
+    foreach (item : entries.array_val.items[0:entries.array_val.length]) {
         Value* pair = item;
         if (pair == null || pair.tag != ARRAY || pair.array_val == null || pair.array_val.length != 2) {
             return nn_ckpt_invalid(interp, "checkpoint.entries", "key/value pair", pair);
@@ -372,9 +375,11 @@ fn Value* nn_ckpt_decode_value(Value* encoded, Interp* interp) {
     }
     if (nn_ckpt_string_is(tag, "float32")) {
         double number = 0.0;
+        float narrowed = 0.0f;
         Value* value = nn_ckpt_string_field(encoded, interp, "value");
         if (!nn_ckpt_number_to_double(value, &number)) return nn_ckpt_invalid(interp, "checkpoint.float32", "number value", value);
-        return make_float32(interp, (float)number);
+        if (!conversion_try_double_to_float32(number, &narrowed)) return nn_ckpt_invalid(interp, "checkpoint.float32", "number value representable as Float32", value);
+        return make_float32(interp, narrowed);
     }
     if (nn_ckpt_string_is(tag, "string")) {
         Value* value = nn_ckpt_string_field(encoded, interp, "value");
@@ -422,19 +427,19 @@ fn bool nn_ckpt_source_is_json(Value* source) {
 <*
 @require interp != null : "nn_ckpt_load_source: null interp"
 *>
-fn Value* nn_ckpt_load_source(Value* source, Interp* interp) {
-    if (source == null || source.tag != STRING) return primitive_arg_type_raise(interp, "nn/load", 0, "JSON checkpoint string or path", source);
+fn Value* nn_ckpt_load_source(Value* source, Interp* interp, char[] prim_name, char[] read_error_message) {
+    if (source == null || source.tag != STRING) return primitive_arg_type_raise(interp, prim_name, 0, "JSON checkpoint string or path", source);
     if (nn_ckpt_source_is_json(source)) return source;
     char[] path = source.str_chars[:source.str_len];
     if (try content = io::file::load_temp((String)path)) return make_string(interp, content);
-    return nn_ckpt_io_error(interp, "nn/load: failed to read checkpoint path");
+    return nn_ckpt_io_error(interp, read_error_message);
 }
 
 <*
 @require interp != null : "nn_ckpt_parse_root: null interp"
 *>
-fn Value* nn_ckpt_parse_root(Value* source, Interp* interp, char[] expected_kind) {
-    Value* text = nn_ckpt_load_source(source, interp);
+fn Value* nn_ckpt_parse_root(Value* source, Interp* interp, char[] expected_kind, char[] prim_name, char[] read_error_message) {
+    Value* text = nn_ckpt_load_source(source, interp, prim_name, read_error_message);
     if (text == null || text.tag == ERROR) return text;
     Value*[1] parse_args = { text };
     Value* root = prim_json_parse(parse_args[0:1], null, interp);
@@ -495,7 +500,7 @@ fn Value* prim_nn_save_spec(Value*[] args, Env* env, Interp* interp) {
 *>
 fn Value* prim_nn_load_spec(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) return primitive_arity_raise(interp, "nn/load-spec", "1 argument: JSON checkpoint string or path", args.len);
-    Value* payload = nn_ckpt_parse_root(args[0], interp, "spec");
+    Value* payload = nn_ckpt_parse_root(args[0], interp, "spec", "nn/load-spec", "nn/load-spec: failed to read checkpoint path");
     if (payload == null || payload.tag == ERROR) return payload;
     Value* spec = nn_ckpt_decode_value(payload, interp);
     if (spec == null || spec.tag == ERROR) return spec;
@@ -519,7 +524,7 @@ fn Value* prim_nn_save(Value*[] args, Env* env, Interp* interp) {
 *>
 fn Value* prim_nn_load(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) return primitive_arity_raise(interp, "nn/load", "1 argument: JSON checkpoint string or path", args.len);
-    Value* payload = nn_ckpt_parse_root(args[0], interp, "model");
+    Value* payload = nn_ckpt_parse_root(args[0], interp, "model", "nn/load", "nn/load: failed to read checkpoint path");
     if (payload == null || payload.tag == ERROR) return payload;
     Value* model = nn_ckpt_decode_value(payload, interp);
     if (model == null || model.tag == ERROR) return model;

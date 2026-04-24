@@ -1,10 +1,16 @@
 module lisp;
 
+const usz DEDUCE_TUPLE_MAX_STRING_BYTES = 0xFFFF;
+
 // ============================================================
 // Tuple encoding: Values → bytes for LMDB storage
 // ============================================================
 // Encode a tuple of Values into a byte buffer. Format: [tag byte][data]...
 // Tags: 0=nil, 1=int(8 bytes LE), 2=double(8 bytes), 3=string(2 byte len + data), 4=symbol(4 byte id), 5=time-point(1 kind byte + 8 ints LE), 6=float32(4 bytes)
+fn bool deduce_tuple_string_len_supported(usz len) @inline {
+    return len <= DEDUCE_TUPLE_MAX_STRING_BYTES;
+}
+
 fn usz write_i32_le(char* buf, usz pos, int value) {
     buf[pos++] = (char)(value & 0xFF);
     buf[pos++] = (char)((value >> 8) & 0xFF);
@@ -33,7 +39,7 @@ foreach (val : vals) {
             increment = 5;
         } else if (v.tag == STRING) {
             usz slen = v.str_len;
-            if (slen > 0xFFFF) slen = 0xFFFF;
+            if (!deduce_tuple_string_len_supported(slen)) return WRITE_FAILED~;
             if (!deduce_checked_add_usz(3, slen, &increment)) return WRITE_FAILED~;
         } else if (v.tag == SYMBOL) {
             increment = 5;
@@ -76,7 +82,7 @@ foreach (item : vals) {
             for (usz j = 0; j < 4; j++) buf[pos++] = fp[j];
         } else if (v.tag == STRING) {
             usz slen = v.str_len;
-            if (slen > 0xFFFF) slen = 0xFFFF;
+            if (!deduce_tuple_string_len_supported(slen)) return WRITE_FAILED~;
             if (pos + 3 + slen > buf_size) return WRITE_FAILED~;
             buf[pos++] = 3;
             buf[pos++] = (char)(slen & 0xFF);
@@ -104,8 +110,7 @@ foreach (item : vals) {
             pos = write_i32_le(buf, pos, v.time_point_val.microsecond);
             pos = write_i32_le(buf, pos, v.time_point_val.tz_offset);
         } else {
-            if (pos >= buf_size) return WRITE_FAILED~;
-            buf[pos++] = 0;  // unsupported → nil
+            return WRITE_FAILED~;
         }
 }
     return pos;
@@ -138,7 +143,7 @@ fn usz? decode_tuple(char* buf, usz buf_size, Value*[] out, Interp* interp) {
             usz slen = (usz)(uint)(char)buf[pos] | ((usz)(uint)(char)buf[pos + 1] << 8);
             pos += 2;
             if (pos + slen > buf_size) return READ_FAILED~;
-            out[count++] = make_string(interp, buf[pos..pos + slen - 1]);
+            out[count++] = make_string(interp, buf[pos:slen]);
             pos += slen;
         } else if (tag == 4) {
             if (pos + 4 > buf_size) return READ_FAILED~;
@@ -154,7 +159,7 @@ fn usz? decode_tuple(char* buf, usz buf_size, Value*[] out, Interp* interp) {
             v.sym_val = (SymbolId)sid;
             out[count++] = v;
         } else if (tag == 5) {
-            if (pos + 32 > buf_size) return READ_FAILED~;
+            if (pos + 33 > buf_size) return READ_FAILED~;
             TimePointKind kind = (TimePointKind)buf[pos++];
             int year = read_i32_le(buf, pos); pos += 4;
             int month = read_i32_le(buf, pos); pos += 4;
@@ -176,5 +181,6 @@ fn usz? decode_tuple(char* buf, usz buf_size, Value*[] out, Interp* interp) {
             return READ_FAILED~;  // unknown tag = malformed data
         }
     }
+    if (pos != buf_size) return READ_FAILED~;
     return count;
 }

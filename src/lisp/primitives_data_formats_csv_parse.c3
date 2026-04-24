@@ -88,19 +88,22 @@ fn Value* csv_rows_push_row(Value* rows, Value* row, Interp* interp) {
     return null;
 }
 
-fn Value* csv_flush_field(Value* row, CsvFieldBuf* field, Interp* interp) {
-    if (field.len == 0 && row.array_val.length == 0) {
+fn Value* csv_flush_field(Value* row, CsvFieldBuf* field, bool* field_started, Interp* interp) {
+    if (field.len == 0 && row.array_val.length == 0 && (field_started == null || !*field_started)) {
         return null;
     }
 
-    return csv_row_push_field(row, field, interp);
+    Value* err = csv_row_push_field(row, field, interp);
+    if (err == null && field_started != null) *field_started = false;
+    return err;
 }
 
-fn Value* csv_flush_row(Value* rows, Value* row, CsvFieldBuf* field, Interp* interp) {
-    if (field.len == 0 && row.array_val.length == 0) return null;
+fn Value* csv_flush_row(Value* rows, Value* row, CsvFieldBuf* field, bool* field_started, Interp* interp) {
+    if (field.len == 0 && row.array_val.length == 0 && (field_started == null || !*field_started)) return null;
 
     Value* err = csv_row_push_field(row, field, interp);
     if (err != null) return err;
+    if (field_started != null) *field_started = false;
     return csv_rows_push_row(rows, row, interp);
 }
 
@@ -116,7 +119,7 @@ fn Value* prim_csv_parse(Value*[] args, Env* env, Interp* interp) {
     }
 
     CsvParseOptions opts;
-    opts.delimiter = ',';
+    opts.delimiter = ",";
     opts.strict = true;
     if (args.len == 2) {
         if (Value* err = parse_csv_parse_options(args[1], &opts, interp)) return err;
@@ -138,8 +141,9 @@ fn Value* prim_csv_parse(Value*[] args, Env* env, Interp* interp) {
 
     bool in_quotes = false;
     bool after_quote = false;
+    bool field_started = false;
     bool strict = opts.strict;
-    char delimiter = opts.delimiter;
+    char[] delimiter = opts.delimiter;
 
     usz i = 0;
     while (i <= src.len) {
@@ -152,15 +156,15 @@ fn Value* prim_csv_parse(Value*[] args, Env* env, Interp* interp) {
                 return data_format_raise(interp, "type/arg-mismatch", "csv-parse: unterminated quoted field");
             }
 
-            if (Value* err = csv_flush_row(rows, row, &field, interp)) return err;
+            if (Value* err = csv_flush_row(rows, row, &field, &field_started, interp)) return err;
             break;
         }
 
         if (after_quote) {
-            if (ch == delimiter) {
+            if (csv_slice_matches(src, i, delimiter)) {
                 after_quote = false;
-                if (Value* err = csv_flush_field(row, &field, interp)) return err;
-                i++;
+                if (Value* err = csv_flush_field(row, &field, &field_started, interp)) return err;
+                i += delimiter.len;
                 continue;
             }
 
@@ -169,11 +173,12 @@ fn Value* prim_csv_parse(Value*[] args, Env* env, Interp* interp) {
                 if (strict && !csv_line_ending_is_crlf(ch, next)) {
                     return data_format_raise(interp, "type/arg-mismatch", "csv-parse: strict mode requires CRLF line endings");
                 }
-                if (Value* err = csv_flush_field(row, &field, interp)) return err;
+                if (Value* err = csv_flush_field(row, &field, &field_started, interp)) return err;
 
                 if (Value* err = csv_rows_push_row(rows, row, interp)) return err;
                 row = csv_make_row(interp);
                 if (row == null || row.tag != ARRAY) return row;
+                field_started = false;
 
                 if (ch == '\r' && next == '\n') {
                     i += 2;
@@ -212,23 +217,25 @@ fn Value* prim_csv_parse(Value*[] args, Env* env, Interp* interp) {
 
         if (ch == '\r') {
             if (next == '\n') {
-                if (Value* err = csv_flush_field(row, &field, interp)) return err;
+                if (Value* err = csv_flush_field(row, &field, &field_started, interp)) return err;
                 if (row.array_val.length > 0) {
                     if (Value* err = csv_rows_push_row(rows, row, interp)) return err;
                 }
 
                 row = csv_make_row(interp);
                 if (row == null || row.tag != ARRAY) return row;
+                field_started = false;
                 i += 2;
                 continue;
             }
             if (!strict) {
-                if (Value* err = csv_flush_field(row, &field, interp)) return err;
+                if (Value* err = csv_flush_field(row, &field, &field_started, interp)) return err;
                 if (row.array_val.length > 0) {
                     if (Value* err = csv_rows_push_row(rows, row, interp)) return err;
                 }
                 row = csv_make_row(interp);
                 if (row == null || row.tag != ARRAY) return row;
+                field_started = false;
                 i++;
                 continue;
             }
@@ -240,13 +247,14 @@ fn Value* prim_csv_parse(Value*[] args, Env* env, Interp* interp) {
             if (strict) {
                 return data_format_raise(interp, "type/arg-mismatch", "csv-parse: strict mode requires CRLF line endings");
             }
-            if (Value* err = csv_flush_field(row, &field, interp)) return err;
+            if (Value* err = csv_flush_field(row, &field, &field_started, interp)) return err;
             if (row.array_val.length > 0) {
                 if (Value* err = csv_rows_push_row(rows, row, interp)) return err;
             }
 
             row = csv_make_row(interp);
             if (row == null || row.tag != ARRAY) return row;
+            field_started = false;
             i++;
             continue;
         }
@@ -259,13 +267,14 @@ fn Value* prim_csv_parse(Value*[] args, Env* env, Interp* interp) {
                 continue;
             }
             in_quotes = true;
+            field_started = true;
             i++;
             continue;
         }
 
-        if (ch == delimiter) {
+        if (csv_slice_matches(src, i, delimiter)) {
             if (Value* err = csv_row_push_field(row, &field, interp)) return err;
-            i++;
+            i += delimiter.len;
             continue;
         }
 

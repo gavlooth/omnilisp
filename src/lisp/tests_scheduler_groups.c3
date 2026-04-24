@@ -4,7 +4,36 @@ module lisp;
 import std::io;
 import std::core::mem;
 import main;
+
+fn void run_scheduler_shutdown_reclaims_runtime_state_test(Interp* interp, int* pass, int* fail) {
+    (void)interp;
+    scheduler_init();
+    bool initialized = g_scheduler_initialized && g_scheduler.thread_task_mu_ready &&
+        g_scheduler.thread_task_cv_ready && g_scheduler.reliable_wakeups.initialized &&
+        g_scheduler.shared_registry.initialized;
+    SharedHandle* live_shared = scheduler_publish_shared("shutdown payload");
+    bool shared_registered = live_shared != null &&
+        live_shared.slot < SHARED_REGISTRY_CAPACITY &&
+        g_scheduler.shared_registry.entries[live_shared.slot].active;
+    bool shutdown_ok = scheduler_shutdown();
+    bool cleared = !g_scheduler_initialized && !g_scheduler.thread_task_mu_ready &&
+        !g_scheduler.thread_task_cv_ready && !g_scheduler.reliable_wakeups.initialized &&
+        !g_scheduler.shared_registry.initialized &&
+        g_scheduler.uv_loop == null && g_scheduler.async_handle == null;
+    if (live_shared != null) mem::free(live_shared);
+    scheduler_init();
+    bool reinitialized = g_scheduler_initialized;
+    if (initialized && shared_registered && shutdown_ok && cleared && reinitialized) {
+        emit_pass_literal("[PASS] scheduler shutdown reclaims runtime state and can reinitialize");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] scheduler shutdown reclaims runtime state and can reinitialize");
+        (*fail)++;
+    }
+}
+
 fn void run_scheduler_spawn_and_await_tests(Interp* interp, int* pass, int* fail) {
+    run_scheduler_shutdown_reclaims_runtime_state_test(interp, pass, fail);
     run_scheduler_spawn_basic_tests(interp, pass, fail);
     run_scheduler_spawn_error_tests(interp, pass, fail);
     run_scheduler_offload_setup_error_tests(interp, pass, fail);
@@ -387,6 +416,7 @@ fn void run_scheduler_tests(Interp* interp, int* pass, int* fail) {
     run_scheduler_task_join_timeout_then_join_boundary_tests(interp, pass, fail);
     run_scheduler_custom_offload_task_join_boundary_tests(interp, pass, fail);
     run_scheduler_shared_retire_queue_boundary_tests(interp, pass, fail);
+    run_scheduler_shared_bytes_copy_release_boundary_tests(interp, pass, fail);
     run_scheduler_wakeup_ready_barrier_boundary_tests(interp, pass, fail);
     run_scheduler_mixed_boundary_state_restore_tests(interp, pass, fail);
     run_scheduler_wakeup_offload_error_boundary_tests(interp, pass, fail);

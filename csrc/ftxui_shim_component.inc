@@ -348,6 +348,12 @@ omni_ftxui_status omni_ftxui_component_wrap_renderer(
         omni_ftxui_status r = OMNI_FTXUI_STATUS_OK;
         try {
             r = state->callback(state->user_data, state->context, &out);
+            std::unique_ptr<omni_ftxui_element_t, decltype(&omni_ftxui_element_destroy)> owned(
+                out,
+                omni_ftxui_element_destroy
+            );
+            if (r != OMNI_FTXUI_STATUS_OK || owned == nullptr) return ftxui::text("");
+            return owned->element;
         } catch (const std::bad_alloc&) {
             ctx_fail(state->context, OMNI_FTXUI_STATUS_OUT_OF_MEMORY, "render callback: out of memory");
             return ftxui::text("");
@@ -358,8 +364,6 @@ omni_ftxui_status omni_ftxui_component_wrap_renderer(
             ctx_fail(state->context, OMNI_FTXUI_STATUS_INTERNAL_ERROR, "render callback: unknown exception");
             return ftxui::text("");
         }
-        if (r != OMNI_FTXUI_STATUS_OK || out == nullptr) return ftxui::text("");
-        return out->element;
     });
     auto* out = make_component(std::move(wrapped));
     if (out == nullptr) return ctx_fail(context, OMNI_FTXUI_STATUS_OUT_OF_MEMORY, "component_wrap_renderer: allocation failed");
@@ -482,6 +486,63 @@ omni_ftxui_status omni_ftxui_component_wrap_action(
     auto* out = make_component(std::move(wrapped));
     if (out == nullptr) {
         return ctx_fail(context, OMNI_FTXUI_STATUS_OUT_OF_MEMORY, "component_wrap_action: allocation failed");
+    }
+    component_retain_keep_alive(out, base);
+    out->keep_alive.push_back(state);
+    *out_component = out;
+    ctx_clear(context);
+    return OMNI_FTXUI_STATUS_OK;
+    });
+#endif
+}
+
+omni_ftxui_status omni_ftxui_component_wrap_message_action(
+    omni_ftxui_context_t* context,
+    omni_ftxui_screen_t* screen,
+    omni_ftxui_component_t* base,
+    const char* message,
+    omni_ftxui_component_t** out_component
+) {
+    if (screen == nullptr || base == nullptr || message == nullptr || out_component == nullptr) {
+        return ctx_fail(context, OMNI_FTXUI_STATUS_INVALID_ARGUMENT, "component_wrap_message_action: null argument");
+    }
+#if !OMNI_FTXUI_HAS_BACKEND
+    return ctx_fail(context, OMNI_FTXUI_STATUS_BACKEND_UNAVAILABLE, "component_wrap_message_action: FTXUI backend unavailable");
+#else
+    return status_try(context, "component_wrap_message_action: out of memory", "component_wrap_message_action: exception", [&]() -> omni_ftxui_status {
+    struct MessageActionState {
+        omni_ftxui_context_t* context;
+        std::shared_ptr<ftxui::ScreenInteractive> screen;
+        std::string message;
+    };
+    auto state = std::make_shared<MessageActionState>();
+    state->context = context;
+    state->screen = screen->screen;
+    state->message = message;
+
+    auto wrapped = ftxui::CatchEvent(base->component, [state](ftxui::Event e) {
+        bool should_fire = e == ftxui::Event::Return;
+        if (!should_fire && e.is_character()) {
+            should_fire = e.character() == " ";
+        }
+        if (!should_fire) return false;
+        try {
+            state->screen->PostEvent(ftxui::Event::Special(state->message));
+            return true;
+        } catch (const std::bad_alloc&) {
+            ctx_fail(state->context, OMNI_FTXUI_STATUS_OUT_OF_MEMORY, "message action: out of memory");
+            return false;
+        } catch (const std::exception&) {
+            ctx_fail(state->context, OMNI_FTXUI_STATUS_INTERNAL_ERROR, "message action: exception");
+            return false;
+        } catch (...) {
+            ctx_fail(state->context, OMNI_FTXUI_STATUS_INTERNAL_ERROR, "message action: unknown exception");
+            return false;
+        }
+    });
+    auto* out = make_component(std::move(wrapped));
+    if (out == nullptr) {
+        return ctx_fail(context, OMNI_FTXUI_STATUS_OUT_OF_MEMORY, "component_wrap_message_action: allocation failed");
     }
     component_retain_keep_alive(out, base);
     out->keep_alive.push_back(state);

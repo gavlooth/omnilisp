@@ -13,12 +13,15 @@ fn lisp::Value* lookup_prim(char[] name) {
     return lisp::make_nil(interp);
 }
 
-fn void define_var(char[] name, lisp::Value* val) {
+fn lisp::Value* define_var(char[] name, lisp::Value* val) @nodiscard {
     lisp::Interp* interp = aot_bridge_interp();
-    if (interp == null) return;
+    if (interp == null) return aot_make_error_best_effort(null, "aot define-var: runtime interpreter unavailable");
     lisp::SymbolId sid = (lisp::SymbolId)0;
-    if (!aot_intern_checked(interp, name, &sid)) return;
-    lisp::env_define_with_barrier(interp.global_env, sid, val, interp);
+    if (!aot_intern_checked(interp, name, &sid)) return aot_make_error_best_effort(interp, "aot define-var: invalid or uninternable symbol");
+    if (lisp::Value* bind_err = lisp::env_define_with_barrier_result(interp.global_env, sid, val, interp)) {
+        return bind_err;
+    }
+    return null;
 }
 
 fn lisp::Value* lookup_var(char[] name) {
@@ -27,6 +30,42 @@ fn lisp::Value* lookup_var(char[] name) {
     lisp::SymbolId sid = (lisp::SymbolId)0;
     if (!aot_intern_checked(interp, name, &sid)) return aot_make_error_best_effort(interp, "aot lookup-var: invalid or uninternable symbol");
     lisp::Value* v = interp.global_env.lookup(sid);
+    return v != null ? v : lisp::make_nil(interp);
+}
+
+fn lisp::Value* lookup_module_export(char[] module_name, char[] export_name) {
+    lisp::Interp* interp = aot_bridge_interp();
+    if (interp == null) return aot_make_error_best_effort(null, "aot lookup-module-export: runtime interpreter unavailable");
+
+    lisp::SymbolId module_sid = (lisp::SymbolId)0;
+    lisp::SymbolId export_sid = (lisp::SymbolId)0;
+    if (!aot_intern_checked(interp, module_name, &module_sid)) {
+        return aot_make_error_best_effort(interp, "aot lookup-module-export: invalid or uninternable module name");
+    }
+    if (!aot_intern_checked(interp, export_name, &export_sid)) {
+        return aot_make_error_best_effort(interp, "aot lookup-module-export: invalid or uninternable export name");
+    }
+
+    lisp::Module* mod = lisp::find_module(module_sid, interp);
+    if (mod == null || !mod.loaded || mod.env == null) {
+        return aot_make_error_best_effort(interp, "aot lookup-module-export: module not loaded");
+    }
+
+    bool exported = false;
+    if (mod.export_count > 0 && mod.exports == null) {
+        return aot_make_error_best_effort(interp, "aot lookup-module-export: module exports unavailable");
+    }
+    for (usz i = 0; i < mod.export_count; i++) {
+        if ((lisp::SymbolId)mod.exports[i] == export_sid) {
+            exported = true;
+            break;
+        }
+    }
+    if (!exported) {
+        return aot_make_error_best_effort(interp, "aot lookup-module-export: symbol not exported from module");
+    }
+
+    lisp::Value* v = mod.env.lookup(export_sid);
     return v != null ? v : lisp::make_nil(interp);
 }
 

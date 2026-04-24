@@ -2,7 +2,7 @@ module lisp;
 
 // Mirror of csrc/ftxui_shim.h. Keep this file aligned with the C header.
 
-const uint OMNI_FTXUI_ABI_VERSION = 3;
+const uint OMNI_FTXUI_ABI_VERSION = 4;
 
 alias OmniFtxuiStatus = int;
 alias OmniFtxuiContext = void;

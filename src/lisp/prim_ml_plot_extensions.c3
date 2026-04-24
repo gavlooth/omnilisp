@@ -196,7 +196,10 @@ fn Value* ml_plot_ext_try_multi_series(Value* input, Value* options, Interp* int
     if (!is_array(first) && !is_cons(first)) return null;
     usz first_count = 0;
     if (!tensor_container_count(first, &first_count) || first_count == 0) return null;
-    if (first_count == 2 && !ml_plot_ext_option_plot_kind_is(options, interp, "multi-series")) return null;
+    if (first_count == 2 && !ml_plot_ext_option_plot_kind_is(options, interp, "multi-series")) {
+        if (ml_plot_ext_option_plot_kind_is(options, interp, "xy")) return null;
+        return ml_visualization_invalid(interp, "ml/plot: ambiguous two-wide nested input requires plot-kind 'xy or 'multi-series");
+    }
 
     Value* series_list = make_array_checked(interp, count, "ml/plot: failed to allocate series-list");
     if (series_list == null || series_list.tag == ERROR) return series_list;

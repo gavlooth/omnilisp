@@ -244,12 +244,14 @@ backend `ftxui` and exactly one `render_tree`. `ui.update_session` applies
 incremental `invalidate_tree`, `post_event_tree`, and `close_tree` effects.
 `ui.render_session` runs one non-blocking loop iteration and returns `true`
 while the session remains live. `ui.close_session` releases the handle and is
-idempotent. `ui.read_event_session` runs one blocking loop step and returns
-`nil` when no event was captured, or a dictionary with `kind` and optional
-`text` fields for the captured event. Character events use
+idempotent. `ui.read_event_session` first drains already captured events in FIFO
+order, then runs one blocking loop step when the session queue is empty. It
+returns `nil` when no event was captured, or a dictionary with `kind` and
+optional `text` fields for the captured event. Character events use
 `{'kind 'character 'text "..."}`; known special keys use symbolic kinds such as
 `'arrow-left`, `'return`, or `'escape`; FTXUI payload-free custom events use
-`{'kind 'custom}`.
+`{'kind 'custom}`. Activating a high-level `ui.nodes.button` posts the button's
+stored message as a special event with the message text in `text`.
 
 Example:
 

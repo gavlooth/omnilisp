@@ -27,7 +27,13 @@ fn Value* prim_async_sleep(Value*[] args, Env* env, Interp* interp) {
     }
 
     long ms = args[0].int_val;
-    if (ms <= 0) return make_void(interp);
+    if (!scheduler_sleep_ms_in_range(ms)) {
+        return io_raise(
+            interp,
+            "io/async-sleep-ms-out-of-range",
+            "async-sleep: ms must be positive and within scheduler range"
+        );
+    }
 
     usz fiber_id = g_scheduler.current_fiber_id;
     PendingSleep* sleep = &g_scheduler.pending_sleeps[fiber_id];

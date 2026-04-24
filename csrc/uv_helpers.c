@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 #include "../deps/src/libuv/include/uv.h"
 
 typedef void (*omni_uv_timer_callback_fn)(void* user_data);
@@ -10,6 +11,23 @@ typedef struct omni_uv_timer_callback_handle {
     int open;
     int invoke_count;
 } omni_uv_timer_callback_handle_t;
+
+static size_t g_omni_uv_fs_debug_max_buf_len = 0;
+
+static size_t omni_uv_fs_effective_max_buf_len(void) {
+    if (g_omni_uv_fs_debug_max_buf_len != 0 && g_omni_uv_fs_debug_max_buf_len < (size_t)UINT_MAX) {
+        return g_omni_uv_fs_debug_max_buf_len;
+    }
+    return (size_t)UINT_MAX;
+}
+
+size_t omni_uv_fs_max_buf_len(void) {
+    return omni_uv_fs_effective_max_buf_len();
+}
+
+void omni_uv_fs_debug_set_max_buf_len(size_t len) {
+    g_omni_uv_fs_debug_max_buf_len = len;
+}
 
 void* omni_uv_getaddrinfo_req_new(void) {
     return malloc(sizeof(uv_getaddrinfo_t));
@@ -67,20 +85,46 @@ int omni_uv_fs_close(int fd) {
 
 long omni_uv_fs_read(int fd, char* buf, size_t len) {
     if (fd < 0 || buf == NULL) return UV_EINVAL;
-    uv_fs_t req;
-    uv_buf_t iov = uv_buf_init(buf, (unsigned int)len);
-    long r = (long)uv_fs_read(NULL, &req, fd, &iov, 1, -1, NULL);
-    uv_fs_req_cleanup(&req);
-    return r;
+    if (len == 0) return 0;
+    size_t total = 0;
+    size_t max_chunk = omni_uv_fs_effective_max_buf_len();
+    if (max_chunk == 0) return UV_EINVAL;
+    while (total < len) {
+        size_t remaining = len - total;
+        size_t chunk_len = remaining > max_chunk ? max_chunk : remaining;
+        uv_fs_t req;
+        uv_buf_t iov = uv_buf_init(buf + total, (unsigned int)chunk_len);
+        long r = (long)uv_fs_read(NULL, &req, fd, &iov, 1, -1, NULL);
+        uv_fs_req_cleanup(&req);
+        if (r < 0) return total > 0 ? (long)total : r;
+        if (r == 0) break;
+        total += (size_t)r;
+        if ((size_t)r < chunk_len) break;
+        if (total > (size_t)LONG_MAX) return UV_EOVERFLOW;
+    }
+    return (long)total;
 }
 
 long omni_uv_fs_write(int fd, char* buf, size_t len) {
     if (fd < 0 || buf == NULL) return UV_EINVAL;
-    uv_fs_t req;
-    uv_buf_t iov = uv_buf_init(buf, (unsigned int)len);
-    long r = (long)uv_fs_write(NULL, &req, fd, &iov, 1, -1, NULL);
-    uv_fs_req_cleanup(&req);
-    return r;
+    if (len == 0) return 0;
+    size_t total = 0;
+    size_t max_chunk = omni_uv_fs_effective_max_buf_len();
+    if (max_chunk == 0) return UV_EINVAL;
+    while (total < len) {
+        size_t remaining = len - total;
+        size_t chunk_len = remaining > max_chunk ? max_chunk : remaining;
+        uv_fs_t req;
+        uv_buf_t iov = uv_buf_init(buf + total, (unsigned int)chunk_len);
+        long r = (long)uv_fs_write(NULL, &req, fd, &iov, 1, -1, NULL);
+        uv_fs_req_cleanup(&req);
+        if (r < 0) return total > 0 ? (long)total : r;
+        if (r == 0) break;
+        total += (size_t)r;
+        if ((size_t)r < chunk_len) break;
+        if (total > (size_t)LONG_MAX) return UV_EOVERFLOW;
+    }
+    return (long)total;
 }
 
 int omni_uv_fs_rename(char* src, char* dst) {
@@ -158,12 +202,11 @@ int omni_uv_fs_scandir_join(char* path, char** out_buf, size_t* out_len) {
 
         memcpy(out + len, ent.name, name_len);
         len += name_len;
-        out[len++] = '\n';
+        out[len++] = '\0';
     }
 
     uv_fs_req_cleanup(&req);
 
-    if (len > 0) len--;  // trim trailing newline
     out[len] = '\0';
     *out_buf = out;
     *out_len = len;

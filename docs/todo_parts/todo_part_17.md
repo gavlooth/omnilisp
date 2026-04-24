@@ -106,7 +106,7 @@ Source: `AUDIT_REPORT_VULKAN_CUDA_ML_2026-04-23.md`.
   - negative-memory constraint: do not rely on ordinary `x > 0.0` if
     signed-zero behavior matters.
 
-- [ ] `SCOPED-MODULE-AOT-001` add AOT lowering for scoped module open.
+- [x] `SCOPED-MODULE-AOT-001` add AOT lowering for scoped module open.
   - classification: runtime behavior, structural compiler/runtime parity.
   - blocker/task: `(with mod body...)` is implemented for JIT/runtime but AOT
     currently emits an explicit unsupported diagnostic for `E_WITH_MODULE`.
@@ -122,3 +122,9 @@ Source: `AUDIT_REPORT_VULKAN_CUDA_ML_2026-04-23.md`.
   - negative-memory constraint: do not implement AOT scoped open as
     `import 'all` plus global cleanup; that would be scope-observable and
     unsafe around errors.
+  - done 2026-04-25: `AUDIT-048` closed after AOT lowering gained scoped
+    module open support with generated local aliases, tail-position lowering,
+    alias-shadowing preservation, and compile-mode runtime bootstrap for module
+    export resolution.
+  - validation: compiler slice and scoped-module open compiler regressions
+    recorded in `AUDIT.md`.

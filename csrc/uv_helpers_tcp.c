@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include "../deps/src/libuv/include/uv.h"
@@ -19,6 +20,33 @@ static int omni_uv_set_fd_blocking(int fd) {
     if (flags < 0) return UV_EIO;
     if ((flags & O_NONBLOCK) == 0) return 0;
     if (fcntl(fd, F_SETFL, flags & ~O_NONBLOCK) < 0) return UV_EIO;
+    return 0;
+}
+
+static int omni_uv_set_fd_cloexec(int fd) {
+    if (fd < 0) return UV_EINVAL;
+    int flags = fcntl(fd, F_GETFD, 0);
+    if (flags < 0) return UV_EIO;
+    if ((flags & FD_CLOEXEC) != 0) return 0;
+    if (fcntl(fd, F_SETFD, flags | FD_CLOEXEC) < 0) return UV_EIO;
+    return 0;
+}
+
+static int omni_uv_tcp_parse_addr(char* ip, int port, struct sockaddr_storage* storage) {
+    if (ip == NULL || storage == NULL) return UV_EINVAL;
+    memset(storage, 0, sizeof(*storage));
+    if (strchr(ip, ':') != NULL) {
+        struct sockaddr_in6 addr6;
+        int status = uv_ip6_addr(ip, port, &addr6);
+        if (status < 0) return status;
+        memcpy(storage, &addr6, sizeof(addr6));
+        return 0;
+    }
+
+    struct sockaddr_in addr4;
+    int status = uv_ip4_addr(ip, port, &addr4);
+    if (status < 0) return status;
+    memcpy(storage, &addr4, sizeof(addr4));
     return 0;
 }
 
@@ -53,6 +81,10 @@ int omni_uv_tcp_connect_detach_fd(void* tcp_handle, int* out_fd) {
 
     int dup_fd = dup((int)raw_fd);
     if (dup_fd < 0) return UV_EIO;
+    if (omni_uv_set_fd_cloexec(dup_fd) < 0) {
+        (void)close(dup_fd);
+        return UV_EIO;
+    }
     if (omni_uv_set_fd_blocking(dup_fd) < 0) {
         (void)close(dup_fd);
         return UV_EIO;
@@ -92,8 +124,8 @@ int omni_uv_tcp_connect_start(
         return init_status;
     }
 
-    struct sockaddr_in addr;
-    int addr_status = uv_ip4_addr(ip, port, &addr);
+    struct sockaddr_storage addr;
+    int addr_status = omni_uv_tcp_parse_addr(ip, port, &addr);
     if (addr_status < 0) {
         uv_close((uv_handle_t*)tcp, omni_uv_close_free_handle_cb);
         (void)uv_run((uv_loop_t*)loop, UV_RUN_NOWAIT);
@@ -131,6 +163,10 @@ int omni_uv_tcp_accept_start(
 
     int dup_listener_fd = dup(listener_fd);
     if (dup_listener_fd < 0) return UV_EIO;
+    if (omni_uv_set_fd_cloexec(dup_listener_fd) < 0) {
+        (void)close(dup_listener_fd);
+        return UV_EIO;
+    }
 
     uv_tcp_t* server = (uv_tcp_t*)calloc(1, sizeof(uv_tcp_t));
     if (server == NULL) {
@@ -195,6 +231,10 @@ int omni_uv_tcp_accept_detach_fd(void* server_handle, void* client_handle, int* 
 
     int dup_fd = dup((int)raw_fd);
     if (dup_fd < 0) return UV_EIO;
+    if (omni_uv_set_fd_cloexec(dup_fd) < 0) {
+        (void)close(dup_fd);
+        return UV_EIO;
+    }
     if (omni_uv_set_fd_blocking(dup_fd) < 0) {
         (void)close(dup_fd);
         return UV_EIO;
@@ -250,8 +290,8 @@ int omni_uv_tcp_listen_fd(char* ip, int port, int backlog, int* out_fd) {
         return init_status;
     }
 
-    struct sockaddr_in addr;
-    int addr_status = uv_ip4_addr(ip, port, &addr);
+    struct sockaddr_storage addr;
+    int addr_status = omni_uv_tcp_parse_addr(ip, port, &addr);
     if (addr_status < 0) {
         omni_uv_close_tcp_and_drain(&loop, &server);
         (void)uv_loop_close(&loop);
@@ -282,6 +322,12 @@ int omni_uv_tcp_listen_fd(char* ip, int port, int backlog, int* out_fd) {
 
     int dup_fd = dup((int)raw_fd);
     if (dup_fd < 0) {
+        omni_uv_close_tcp_and_drain(&loop, &server);
+        (void)uv_loop_close(&loop);
+        return UV_EIO;
+    }
+    if (omni_uv_set_fd_cloexec(dup_fd) < 0) {
+        (void)close(dup_fd);
         omni_uv_close_tcp_and_drain(&loop, &server);
         (void)uv_loop_close(&loop);
         return UV_EIO;

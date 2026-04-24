@@ -93,3 +93,26 @@ fn Value* scheduler_join_os_thread_handles(
     }
     return null;
 }
+
+fn void scheduler_drain_os_thread_handles(
+    SchedulerOsThreadHandle* handles,
+    usz count,
+    Interp* interp
+) {
+    if (handles == null) return;
+    for (usz i = 0; i < count; i++) {
+        if (handles[i].thread_id == NO_OS_THREAD || handles[i].generation == 0) continue;
+        Value* ignored = scheduler_thread_join_impl(
+            handles[i].thread_id,
+            handles[i].generation,
+            -1,
+            &handles[i],
+            interp
+        );
+        (void)ignored;
+        if (scheduler_os_thread_exists(handles[i].thread_id, handles[i].generation)) {
+            scheduler_drop_os_thread(handles[i].thread_id, handles[i].generation);
+        }
+        handles[i] = {};
+    }
+}

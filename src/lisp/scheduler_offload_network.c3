@@ -1,12 +1,14 @@
 module lisp;
 
 fn bool scheduler_offload_compress(bool gzip_mode, SharedHandle* input, OffloadCompletion* completion) {
-    char[] input_bytes = "";
-    if (!scheduler_project_shared(input, &input_bytes)) {
+    char* input_heap = null;
+    usz input_len = 0;
+    if (!scheduler_copy_shared_bytes_owned(input, &input_heap, &input_len)) {
         scheduler_set_offload_error(completion, "offload: missing input");
         return false;
     }
-    usz input_len = input_bytes.len;
+    defer mem::free(input_heap);
+    char[] input_bytes = input_heap[:input_len];
 
     DeflateCompressor* compressor = libdeflate_alloc_compressor(6);
     if (compressor == null) {
@@ -69,11 +71,14 @@ fn bool scheduler_offload_accept_fd(long raw_fd, OffloadCompletion* completion) 
 }
 
 fn bool scheduler_offload_tcp_connect(SharedHandle* host_blob, int port, OffloadCompletion* completion) {
-    char[] host = "";
-    if (!scheduler_project_shared(host_blob, &host)) {
+    char* host_heap = null;
+    usz host_len = 0;
+    if (!scheduler_copy_shared_bytes_owned(host_blob, &host_heap, &host_len)) {
         scheduler_set_offload_error(completion, "offload tcp-connect: missing host");
         return false;
     }
+    defer mem::free(host_heap);
+    char[] host = host_heap[:host_len];
     // host is stored as null-terminated bytes in the blob
     void* result = null;
     if (!resolve_host_and_port(host, port, &result)) {
@@ -95,11 +100,14 @@ fn bool scheduler_offload_tcp_connect(SharedHandle* host_blob, int port, Offload
 }
 
 fn bool scheduler_offload_http_get(SharedHandle* url_blob, OffloadCompletion* completion) {
-    char[] url = "";
-    if (!scheduler_project_shared(url_blob, &url)) {
+    char* url_heap = null;
+    usz url_len = 0;
+    if (!scheduler_copy_shared_bytes_owned(url_blob, &url_heap, &url_len)) {
         scheduler_set_offload_error(completion, "offload http-get: missing url");
         return false;
     }
+    defer mem::free(url_heap);
+    char[] url = url_heap[:url_len];
     ParsedUrl parsed = {};
     if (catch err = parse_url(url, &parsed)) {
         scheduler_set_offload_error(completion, "offload http-get: invalid url");

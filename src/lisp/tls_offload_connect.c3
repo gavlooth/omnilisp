@@ -14,7 +14,7 @@ struct TlsConnectOffloadReq {
 
 fn char* tls_dup_string(char[] src, usz max_len = usz.max) {
     usz len = src.len;
-    if (len > max_len) len = max_len;
+    if (len > max_len) return null;
     if (len == usz.max) return null;
     char* out = (char*)mem::malloc(len + 1);
     if (out == null) return null;

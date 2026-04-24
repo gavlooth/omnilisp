@@ -70,6 +70,9 @@ fn bool expr_contains_perform(Expr* e) {
             return expr_contains_perform(e.define.value);
         case E_RESOLVE:
             return expr_contains_perform(e.resolve.value);
+        case E_WITH_MODULE:
+            if (e.with_module == null) return false;
+            return expr_slice_contains_perform(e.with_module.body, e.with_module.body_count);
         case E_RESET:
             return false;
         case E_HANDLE:
@@ -115,6 +118,9 @@ fn bool expr_contains_shift(Expr* e) {
             return expr_contains_shift(e.perform.arg);
         case E_RESOLVE:
             return expr_contains_shift(e.resolve.value);
+        case E_WITH_MODULE:
+            if (e.with_module == null) return false;
+            return expr_slice_contains_shift(e.with_module.body, e.with_module.body_count);
         case E_RESET:
             // shift inside reset is delimited — doesn't escape to named-let scope
             return false;

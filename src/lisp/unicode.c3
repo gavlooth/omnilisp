@@ -44,6 +44,17 @@ fn Value* prim_string_normalize(Value*[] args, Env* env, Interp* interp) {
     return v;
 }
 
+fn Value* unicode_reverse_list_or_error(Interp* interp, Value* reversed, char[] message) {
+    Value* result = make_nil(interp);
+    while (is_cons(reversed)) {
+        Value* next = make_cons_or_error(interp, reversed.cons_val.car, result, message);
+        if (next == null || next.tag == ERROR) return next;
+        result = next;
+        reversed = reversed.cons_val.cdr;
+    }
+    return result;
+}
+
 // ============================================================
 // (string-graphemes s) — split into list of grapheme clusters
 // ============================================================
@@ -58,9 +69,7 @@ fn Value* prim_string_graphemes(Value*[] args, Env* env, Interp* interp) {
     char[] src = args[0].str_chars[:args[0].str_len];
 
     // Collect grapheme cluster boundaries
-    Value* result = make_nil(interp);
-    Value*[512] clusters;
-    int cluster_count = 0;
+    Value* clusters = make_nil(interp);
 
     usz cluster_start = 0;
     int prev_cp = -1;
@@ -74,11 +83,11 @@ fn Value* prim_string_graphemes(Value*[] args, Env* env, Interp* interp) {
 
         if (prev_cp >= 0 && utf8proc_grapheme_break_stateful(prev_cp, cp, &state)) {
             // Grapheme boundary — emit cluster
-            if (cluster_count < 512) {
-                Value* cluster = make_string(interp, src[cluster_start..pos - 1]);
-                if (cluster != null && cluster.tag == ERROR) return cluster;
-                clusters[cluster_count++] = cluster;
-            }
+            Value* cluster = make_string(interp, src[cluster_start..pos - 1]);
+            if (cluster != null && cluster.tag == ERROR) return cluster;
+            Value* next = make_cons_or_error(interp, cluster, clusters, "string-graphemes: failed to allocate result list");
+            if (next == null || next.tag == ERROR) return next;
+            clusters = next;
             cluster_start = pos;
         }
 
@@ -87,18 +96,15 @@ fn Value* prim_string_graphemes(Value*[] args, Env* env, Interp* interp) {
     }
 
     // Last cluster
-    if (cluster_start < src.len && cluster_count < 512) {
+    if (cluster_start < src.len) {
         Value* cluster = make_string(interp, src[cluster_start..]);
         if (cluster != null && cluster.tag == ERROR) return cluster;
-        clusters[cluster_count++] = cluster;
+        Value* next = make_cons_or_error(interp, cluster, clusters, "string-graphemes: failed to allocate result list");
+        if (next == null || next.tag == ERROR) return next;
+        clusters = next;
     }
 
-    // Build list in reverse
-    for (int i = cluster_count - 1; i >= 0; i--) {
-        result = make_cons(interp, clusters[i], result);
-    }
-
-    return result;
+    return unicode_reverse_list_or_error(interp, clusters, "string-graphemes: failed to allocate result list");
 }
 
 // ============================================================
@@ -114,24 +120,20 @@ fn Value* prim_string_codepoints(Value*[] args, Env* env, Interp* interp) {
 
     char[] src = args[0].str_chars[:args[0].str_len];
 
-    Value*[1024] cps;
-    int count = 0;
+    Value* cps = make_nil(interp);
     usz pos = 0;
 
-    while (pos < src.len && count < 1024) {
+    while (pos < src.len) {
         int cp = 0;
         long consumed = utf8proc_iterate((Utf8Char*)&src[pos], (long)(src.len - pos), &cp);
         if (consumed < 1) { pos++; continue; }
-        cps[count++] = make_int(interp, (long)cp);
+        Value* next = make_cons_or_error(interp, make_int(interp, (long)cp), cps, "string-codepoints: failed to allocate result list");
+        if (next == null || next.tag == ERROR) return next;
+        cps = next;
         pos += (usz)consumed;
     }
 
-    Value* result = make_nil(interp);
-    for (int i = count - 1; i >= 0; i--) {
-        result = make_cons(interp, cps[i], result);
-    }
-
-    return result;
+    return unicode_reverse_list_or_error(interp, cps, "string-codepoints: failed to allocate result list");
 }
 
 // ============================================================

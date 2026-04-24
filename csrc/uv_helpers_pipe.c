@@ -3,6 +3,8 @@
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <errno.h>
+#include <sys/stat.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include "../deps/src/libuv/include/uv.h"
@@ -23,6 +25,32 @@ static int omni_uv_set_fd_blocking(int fd) {
     if ((flags & O_NONBLOCK) == 0) return 0;
     if (fcntl(fd, F_SETFL, flags & ~O_NONBLOCK) < 0) return UV_EIO;
     return 0;
+}
+
+static int omni_uv_set_fd_cloexec(int fd) {
+    if (fd < 0) return UV_EINVAL;
+    int flags = fcntl(fd, F_GETFD, 0);
+    if (flags < 0) return UV_EIO;
+    if ((flags & FD_CLOEXEC) != 0) return 0;
+    if (fcntl(fd, F_SETFD, flags | FD_CLOEXEC) < 0) return UV_EIO;
+    return 0;
+}
+
+static int omni_uv_pipe_fail_if_path_exists(char* path) {
+    if (path == NULL) return UV_EINVAL;
+
+    struct stat st;
+    if (lstat(path, &st) == 0) return UV_EADDRINUSE;
+    if (errno == ENOENT) return 0;
+    return uv_translate_sys_error(errno);
+}
+
+static void omni_uv_pipe_unlink_owned_socket_path(char* path) {
+    if (path == NULL) return;
+
+    struct stat st;
+    if (lstat(path, &st) != 0) return;
+    if (S_ISSOCK(st.st_mode)) (void)unlink(path);
 }
 
 typedef struct omni_uv_pipe_connect_ctx {
@@ -98,6 +126,9 @@ int omni_uv_pipe_listen_start(
     }
     if (backlog < 1) backlog = 1;
 
+    int path_status = omni_uv_pipe_fail_if_path_exists(path);
+    if (path_status < 0) return path_status;
+
     uv_pipe_t* server = (uv_pipe_t*)calloc(1, sizeof(uv_pipe_t));
     if (server == NULL) return UV_ENOMEM;
 
@@ -106,8 +137,6 @@ int omni_uv_pipe_listen_start(
         free(server);
         return init_status;
     }
-
-    (void)unlink(path);
 
     int bind_status = uv_pipe_bind(server, path);
     if (bind_status < 0) {
@@ -118,6 +147,7 @@ int omni_uv_pipe_listen_start(
 
     int listen_status = uv_listen((uv_stream_t*)server, backlog, omni_uv_pipe_noop_connection_cb);
     if (listen_status < 0) {
+        omni_uv_pipe_unlink_owned_socket_path(path);
         uv_close((uv_handle_t*)server, omni_uv_close_free_handle_cb);
         (void)uv_run((uv_loop_t*)loop, UV_RUN_NOWAIT);
         return listen_status;
@@ -133,6 +163,12 @@ int omni_uv_pipe_listen_start(
 
     int dup_fd = dup((int)raw_fd);
     if (dup_fd < 0) {
+        uv_close((uv_handle_t*)server, omni_uv_close_free_handle_cb);
+        (void)uv_run((uv_loop_t*)loop, UV_RUN_NOWAIT);
+        return UV_EIO;
+    }
+    if (omni_uv_set_fd_cloexec(dup_fd) < 0) {
+        (void)close(dup_fd);
         uv_close((uv_handle_t*)server, omni_uv_close_free_handle_cb);
         (void)uv_run((uv_loop_t*)loop, UV_RUN_NOWAIT);
         return UV_EIO;
@@ -233,6 +269,12 @@ int omni_uv_pipe_connect_fd(char* path, int* out_fd) {
         (void)uv_loop_close(&loop);
         return UV_EIO;
     }
+    if (omni_uv_set_fd_cloexec(dup_fd) < 0) {
+        (void)close(dup_fd);
+        omni_uv_close_pipe_and_drain(&loop, &pipe);
+        (void)uv_loop_close(&loop);
+        return UV_EIO;
+    }
     if (omni_uv_set_fd_blocking(dup_fd) < 0) {
         (void)close(dup_fd);
         omni_uv_close_pipe_and_drain(&loop, &pipe);
@@ -251,6 +293,9 @@ int omni_uv_pipe_listen_fd(char* path, int backlog, int* out_fd) {
     if (path == NULL || out_fd == NULL) return UV_EINVAL;
     if (backlog < 1) backlog = 1;
 
+    int path_status = omni_uv_pipe_fail_if_path_exists(path);
+    if (path_status < 0) return path_status;
+
     uv_loop_t loop;
     memset(&loop, 0, sizeof(loop));
     int loop_status = uv_loop_init(&loop);
@@ -264,8 +309,6 @@ int omni_uv_pipe_listen_fd(char* path, int backlog, int* out_fd) {
         return init_status;
     }
 
-    (void)unlink(path);
-
     int bind_status = uv_pipe_bind(&server, path);
     if (bind_status < 0) {
         omni_uv_close_pipe_and_drain(&loop, &server);
@@ -275,6 +318,7 @@ int omni_uv_pipe_listen_fd(char* path, int backlog, int* out_fd) {
 
     int listen_status = uv_listen((uv_stream_t*)&server, backlog, omni_uv_pipe_noop_connection_cb);
     if (listen_status < 0) {
+        omni_uv_pipe_unlink_owned_socket_path(path);
         omni_uv_close_pipe_and_drain(&loop, &server);
         (void)uv_loop_close(&loop);
         return listen_status;
@@ -290,6 +334,12 @@ int omni_uv_pipe_listen_fd(char* path, int backlog, int* out_fd) {
 
     int dup_fd = dup((int)raw_fd);
     if (dup_fd < 0) {
+        omni_uv_close_pipe_and_drain(&loop, &server);
+        (void)uv_loop_close(&loop);
+        return UV_EIO;
+    }
+    if (omni_uv_set_fd_cloexec(dup_fd) < 0) {
+        (void)close(dup_fd);
         omni_uv_close_pipe_and_drain(&loop, &server);
         (void)uv_loop_close(&loop);
         return UV_EIO;
@@ -323,8 +373,16 @@ int omni_unix_socket_listen_fd(char* path, int backlog, int* out_fd) {
 
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0) return UV_EIO;
+    if (omni_uv_set_fd_cloexec(fd) < 0) {
+        close(fd);
+        return UV_EIO;
+    }
 
-    unlink(path);
+    int path_status = omni_uv_pipe_fail_if_path_exists(path);
+    if (path_status < 0) {
+        close(fd);
+        return path_status;
+    }
 
     if (bind(fd, (const struct sockaddr*)&addr, addr_len) < 0) {
         close(fd);
@@ -332,7 +390,7 @@ int omni_unix_socket_listen_fd(char* path, int backlog, int* out_fd) {
     }
     if (listen(fd, backlog) < 0) {
         close(fd);
-        unlink(path);
+        omni_uv_pipe_unlink_owned_socket_path(path);
         return UV_EIO;
     }
 

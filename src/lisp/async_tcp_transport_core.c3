@@ -48,7 +48,7 @@ fn Value* prim_tcp_write(Value*[] args, Env* env, Interp* interp) {
 *>
 fn Value* prim_tcp_read(Value*[] args, Env* env, Interp* interp) {
     // fault: lisp::ARITY_MISMATCH
-    if (args.len < 1) return io_raise(interp, "io/tcp-read-expected-handle-max-bytes", "tcp-read: expected (tcp-read handle [max-bytes])");
+    if (args.len < 1) return io_raise(interp, "io/tcp-read-expected-handle-max-bytes", "tcp-read: expected (tcp-read handle [max-bytes] [timeout-ms])");
     if (!scheduler_is_running_fiber_context()) {
         return tcp_raise_fiber_required(interp, "tcp-read", "io/tcp-read-fiber-required");
     }
@@ -56,15 +56,16 @@ fn Value* prim_tcp_read(Value*[] args, Env* env, Interp* interp) {
         return tcp_raise_loop_unavailable(interp, "tcp-read", "io/tcp-read-libuv-unavailable");
     }
 
-    TcpHandle* th = get_tcp_handle(args[0]);
+    Value* handle_v = null;
+    usz max_bytes = 0;
+    long timeout_ms = -1;
+    if (Value* opt_err = parse_tcp_read_args(args, &handle_v, &max_bytes, &timeout_ms, interp)) return opt_err;
+
+    TcpHandle* th = get_tcp_handle(handle_v);
     // fault: lisp::TYPE_MISMATCH
     if (th == null || !th.connected || th.mode != TCP_STREAM) {
         return io_raise(interp, "io/tcp-read-invalid-stream-handle", "tcp-read: invalid or closed stream handle");
     }
-
-    usz max_bytes = 0;
-    long timeout_ms = -1;
-    if (Value* opt_err = parse_tcp_read_options(args, &max_bytes, &timeout_ms, interp)) return opt_err;
 
     // Async bridge: register a non-blocking read with libuv and suspend this
     // fiber until data is ready.

@@ -214,6 +214,9 @@ fn bool is_special_form_symbol(SymbolId sym, Interp* interp) {
         || (uint)sym == (uint)interp.sym_capture
         || (uint)sym == (uint)interp.sym_signal
         || (uint)sym == (uint)interp.sym_handle
+        || (uint)sym == (uint)interp.sym_resolve
+        || (uint)sym == (uint)interp.sym_with
+        || (uint)sym == (uint)interp.sym_with_continuation
         || (uint)sym == (uint)interp.sym_match
         || (uint)sym == (uint)interp.sym_quasiquote
         || (uint)sym == (uint)interp.sym_unquote
@@ -225,5 +228,8 @@ fn bool is_special_form_symbol(SymbolId sym, Interp* interp) {
         || (uint)sym == (uint)interp.sym_false
         || (uint)sym == (uint)interp.sym_module
         || (uint)sym == (uint)interp.sym_import
-        || (uint)sym == (uint)interp.sym_export;
+        || (uint)sym == (uint)interp.sym_export
+        || (uint)sym == (uint)interp.sym_export_from
+        || (uint)sym == (uint)interp.sym_pipe
+        || macro_symbol_name_eq(interp, sym, "explain");
 }

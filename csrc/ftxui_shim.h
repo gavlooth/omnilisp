@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-#define OMNI_FTXUI_SHIM_ABI_VERSION 3u
+#define OMNI_FTXUI_SHIM_ABI_VERSION 4u
 
 typedef struct omni_ftxui_context_t omni_ftxui_context_t;
 typedef struct omni_ftxui_app_t omni_ftxui_app_t;
@@ -137,9 +137,12 @@ typedef struct omni_ftxui_event_spec {
 typedef struct omni_ftxui_event_read_result {
     uint32_t size;
     uint32_t abi_version;
+    uint32_t initialized;
     bool has_event;
     omni_ftxui_event_kind kind;
-    char text[256];
+    char* text;
+    size_t text_len;
+    size_t dropped_events;
 } omni_ftxui_event_read_result;
 
 typedef omni_ftxui_status (*omni_ftxui_graph_callback_fn)(
@@ -231,6 +234,10 @@ typedef struct omni_ftxui_plot_options {
     size_t heatmap_rows;
     size_t heatmap_cols;
     omni_ftxui_plot_marker marker;
+    int32_t has_y_min;
+    int32_t has_y_max;
+    double y_min;
+    double y_max;
 } omni_ftxui_plot_options;
 
 typedef enum omni_ftxui_decorator_kind {
@@ -494,6 +501,7 @@ omni_ftxui_status omni_ftxui_session_take_event(
     omni_ftxui_session_t* session,
     omni_ftxui_event_read_result* out_event
 );
+void omni_ftxui_event_read_result_clear(omni_ftxui_event_read_result* result);
 
 omni_ftxui_status omni_ftxui_element_create(
     omni_ftxui_context_t* context,
@@ -566,6 +574,13 @@ omni_ftxui_status omni_ftxui_component_wrap_action(
     omni_ftxui_context_t* context,
     omni_ftxui_component_t* base,
     const omni_ftxui_callback_options* callbacks,
+    omni_ftxui_component_t** out_component
+);
+omni_ftxui_status omni_ftxui_component_wrap_message_action(
+    omni_ftxui_context_t* context,
+    omni_ftxui_screen_t* screen,
+    omni_ftxui_component_t* base,
+    const char* message,
     omni_ftxui_component_t** out_component
 );
 omni_ftxui_status omni_ftxui_component_from_element(

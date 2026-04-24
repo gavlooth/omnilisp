@@ -12,7 +12,7 @@ struct CsvFieldBuf {
 }
 
 struct CsvParseOptions {
-    char delimiter;
+    char[] delimiter;
     bool strict;
 }
 
@@ -21,9 +21,9 @@ const int CSV_QUOTE_ALWAYS = 1;
 const int CSV_QUOTE_NONE = 2;
 
 struct CsvEmitOptions {
-    char delimiter;
+    char[] delimiter;
     char[] line_ending;
-    char quote_char;
+    char[] quote_char;
     int quote_style;
     char[] nil_as;
     bool strict;
@@ -41,12 +41,12 @@ fn bool csv_is_symbol_name(Value* v, char[] name, Interp* interp) {
 
 fn Value* parse_csv_char_option(
     Value* value,
-    char* out_char,
+    char[]* out_char,
     char[] option_name,
     Interp* interp,
     char[] context
 ) {
-    if (value == null || value.tag != STRING || value.str_len != 1) {
+    if (value == null || value.tag != STRING) {
         if (string_equals(context, "csv-parse") && string_equals(option_name, "delimiter")) {
             return data_format_raise(interp, "type/arg-mismatch", "csv-parse: delimiter must be a one-character string");
         }
@@ -60,7 +60,22 @@ fn Value* parse_csv_char_option(
         return data_format_raise(interp, "type/arg-mismatch", "option must be a one-character string");
     }
 
-    *out_char = value.str_chars[0];
+    char[] chars = value.str_chars[:value.str_len];
+    if (chars.len == 0 || !utf8_valid(chars) || utf8_strlen(chars) != 1) {
+        if (string_equals(context, "csv-parse") && string_equals(option_name, "delimiter")) {
+            return data_format_raise(interp, "type/arg-mismatch", "csv-parse: delimiter must be a one-character string");
+        }
+        if (string_equals(context, "csv-emit") && string_equals(option_name, "delimiter")) {
+            return data_format_raise(interp, "type/arg-mismatch", "csv-emit: delimiter must be a one-character string");
+        }
+        if (string_equals(context, "csv-emit") && string_equals(option_name, "quote-char")) {
+            return data_format_raise(interp, "type/arg-mismatch", "csv-emit: quote-char must be a one-character string");
+        }
+
+        return data_format_raise(interp, "type/arg-mismatch", "option must be a one-character string");
+    }
+
+    *out_char = chars;
     return null;
 }
 

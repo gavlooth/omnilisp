@@ -47,9 +47,18 @@ fn Value* prim_fs_stat(Value*[] args, Env* env, Interp* interp) {
         return io_fs_raise(interp, "io/fs-stat-expected-path", "fs-stat: expected (fs-stat path)");
     }
 
+    CApiStringResult path = c_api_string_dup_no_nul(args[0].str_chars[:args[0].str_len]);
+    if (path.contains_nul) {
+        return io_fs_raise(interp, "io/fs-stat-invalid-path", "fs-stat: path contains embedded NUL byte");
+    }
+    if (!path.ok) {
+        return io_fs_raise(interp, "io/fs-stat-out-of-memory", "fs-stat: out of memory");
+    }
+    defer c_api_string_free(&path);
+
     ulong size_out = 0;
     uint mode_out = 0;
-    int status = fs_uv_stat_basic((ZString)args[0].str_chars, &size_out, &mode_out);
+    int status = fs_uv_stat_basic(path.ptr, &size_out, &mode_out);
     if (status < 0) {
         return io_fs_raise(interp, "io/fs-stat-failed", "fs-stat: stat failed");
     }
@@ -84,9 +93,18 @@ fn Value* prim_fs_readdir(Value*[] args, Env* env, Interp* interp) {
         return io_fs_raise(interp, "io/fs-readdir-expected-path", "fs-readdir: expected (fs-readdir path)");
     }
 
+    CApiStringResult path = c_api_string_dup_no_nul(args[0].str_chars[:args[0].str_len]);
+    if (path.contains_nul) {
+        return io_fs_raise(interp, "io/fs-readdir-invalid-path", "fs-readdir: path contains embedded NUL byte");
+    }
+    if (!path.ok) {
+        return io_fs_raise(interp, "io/fs-readdir-out-of-memory", "fs-readdir: out of memory");
+    }
+    defer c_api_string_free(&path);
+
     char* joined = null;
     usz joined_len = 0;
-    int status = fs_uv_scandir_join((ZString)args[0].str_chars, &joined, &joined_len);
+    int status = fs_uv_scandir_join(path.ptr, &joined, &joined_len);
     if (status < 0) {
         return io_fs_raise(interp, "io/fs-readdir-failed", "fs-readdir: scandir failed");
     }
@@ -99,11 +117,10 @@ fn Value* prim_fs_readdir(Value*[] args, Env* env, Interp* interp) {
     if (joined == null || joined_len == 0) return out;
 
     usz start = 0;
-    for (usz i = 0; i <= joined_len; i++) {
-        if (i == joined_len || joined[i] == '\n') {
-            usz line_len = i - start;
-            if (line_len > 0) {
-                Value* name_v = make_string(interp, joined[start:line_len]);
+    for (usz i = 0; i < joined_len; i++) {
+        if (joined[i] == 0) {
+            if (i >= start) {
+                Value* name_v = make_string(interp, joined[start:i - start]);
                 if (name_v == null || name_v.tag == ERROR) return name_v;
                 if (!fs_array_push(out, name_v, interp)) {
                     return io_fs_raise(interp, "io/fs-readdir-out-of-memory", "fs-readdir: out of memory");
@@ -123,7 +140,25 @@ fn Value* prim_fs_rename(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2 || !is_string(args[0]) || !is_string(args[1])) {
         return io_fs_raise(interp, "io/fs-rename-expected-src-dst", "fs-rename: expected (fs-rename src dst)");
     }
-    int status = fs_uv_rename((ZString)args[0].str_chars, (ZString)args[1].str_chars);
+    CApiStringResult src = c_api_string_dup_no_nul(args[0].str_chars[:args[0].str_len]);
+    if (src.contains_nul) {
+        return io_fs_raise(interp, "io/fs-rename-invalid-src", "fs-rename: src contains embedded NUL byte");
+    }
+    if (!src.ok) {
+        return io_fs_raise(interp, "io/fs-rename-out-of-memory", "fs-rename: out of memory");
+    }
+    defer c_api_string_free(&src);
+
+    CApiStringResult dst = c_api_string_dup_no_nul(args[1].str_chars[:args[1].str_len]);
+    if (dst.contains_nul) {
+        return io_fs_raise(interp, "io/fs-rename-invalid-dst", "fs-rename: dst contains embedded NUL byte");
+    }
+    if (!dst.ok) {
+        return io_fs_raise(interp, "io/fs-rename-out-of-memory", "fs-rename: out of memory");
+    }
+    defer c_api_string_free(&dst);
+
+    int status = fs_uv_rename(src.ptr, dst.ptr);
     if (status < 0) {
         return io_fs_raise(interp, "io/fs-rename-failed", "fs-rename: rename failed");
     }
@@ -138,7 +173,16 @@ fn Value* prim_fs_unlink(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_string(args[0])) {
         return io_fs_raise(interp, "io/fs-unlink-expected-path", "fs-unlink: expected (fs-unlink path)");
     }
-    int status = fs_uv_unlink((ZString)args[0].str_chars);
+    CApiStringResult path = c_api_string_dup_no_nul(args[0].str_chars[:args[0].str_len]);
+    if (path.contains_nul) {
+        return io_fs_raise(interp, "io/fs-unlink-invalid-path", "fs-unlink: path contains embedded NUL byte");
+    }
+    if (!path.ok) {
+        return io_fs_raise(interp, "io/fs-unlink-out-of-memory", "fs-unlink: out of memory");
+    }
+    defer c_api_string_free(&path);
+
+    int status = fs_uv_unlink(path.ptr);
     if (status < 0) {
         return io_fs_raise(interp, "io/fs-unlink-failed", "fs-unlink: unlink failed");
     }

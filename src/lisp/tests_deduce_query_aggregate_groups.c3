@@ -2,6 +2,78 @@ module lisp;
 
 import std::io;
 
+fn void run_deduce_aggregate_big_numeric_sum_tests(Interp* interp, int* pass, int* fail) {
+    DeduceRuleTermKind[1] term_kinds = { DEDUCE_RULE_TERM_AGGREGATE };
+    DeduceAggregateOpKind[1] aggregate_ops = { DEDUCE_AGGREGATE_SUM };
+    uint[1] var_ids = { 0 };
+    Value*[1] literals = { null };
+    DeduceRuleSignature sig = {};
+    sig.head_term_count = 1;
+    sig.head_term_kinds = &term_kinds[0];
+    sig.head_term_aggregate_ops = &aggregate_ops[0];
+    sig.head_term_var_ids = &var_ids[0];
+    sig.head_term_literals = &literals[0];
+
+    bool[1] var_bound = { true };
+    Value*[1] var_values = { null };
+    Value*[1] head_values = { null };
+    Value*[1] head_tuple = { null };
+
+    {
+        DeduceAggregateTermState[1] term_states;
+        term_states[0] = {};
+        DeduceAggregateGroup group = {};
+        group.head_values = &head_values[0];
+        group.term_states = &term_states[0];
+
+        var_values[0] = make_big_integer_from_string(interp, "9223372036854775808");
+        Value* err = deduce_aggregate_group_note_binding(&group, &sig, var_bound[..], var_values[..], interp);
+        var_values[0] = make_big_integer_from_string(interp, "2");
+        if (err == null) err = deduce_aggregate_group_note_binding(&group, &sig, var_bound[..], var_values[..], interp);
+        if (err == null) err = deduce_build_aggregate_group_head_tuple(&sig, &group, group.term_states, head_tuple[..], interp);
+
+        Value* expected = make_big_integer_from_string(interp, "9223372036854775810");
+        int cmp = 0;
+        bool ok = err == null && head_tuple[0] != null && head_tuple[0].tag == BIG_INTEGER &&
+            expected != null && expected.tag == BIG_INTEGER &&
+            numeric_values_compare(head_tuple[0], expected, &cmp) && cmp == 0;
+        if (ok) {
+            emit_pass_literal("[PASS] deduce sum aggregate accepts BigInteger inputs");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] deduce sum aggregate accepts BigInteger inputs");
+            (*fail)++;
+        }
+    }
+
+    {
+        DeduceAggregateTermState[1] term_states;
+        term_states[0] = {};
+        DeduceAggregateGroup group = {};
+        group.head_values = &head_values[0];
+        group.term_states = &term_states[0];
+
+        var_values[0] = make_big_float_from_string(interp, "1.25");
+        Value* err = deduce_aggregate_group_note_binding(&group, &sig, var_bound[..], var_values[..], interp);
+        var_values[0] = make_big_float_from_string(interp, "2.5");
+        if (err == null) err = deduce_aggregate_group_note_binding(&group, &sig, var_bound[..], var_values[..], interp);
+        if (err == null) err = deduce_build_aggregate_group_head_tuple(&sig, &group, group.term_states, head_tuple[..], interp);
+
+        Value* expected = make_big_float_from_string(interp, "3.75");
+        int cmp = 0;
+        bool ok = err == null && head_tuple[0] != null && head_tuple[0].tag == BIG_FLOAT &&
+            expected != null && expected.tag == BIG_FLOAT &&
+            numeric_values_compare(head_tuple[0], expected, &cmp) && cmp == 0;
+        if (ok) {
+            emit_pass_literal("[PASS] deduce sum aggregate accepts BigFloat inputs");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] deduce sum aggregate accepts BigFloat inputs");
+            (*fail)++;
+        }
+    }
+}
+
 fn void run_deduce_aggregate_rule_tests(Interp* interp, int* pass, int* fail) {
     if (deduce_query_filter_try_run_targeted_why_result(interp, pass, fail)) return;
 
@@ -201,5 +273,6 @@ fn void run_deduce_aggregate_rule_tests(Interp* interp, int* pass, int* fail) {
             (*fail)++;
         }
     }
-}
 
+    run_deduce_aggregate_big_numeric_sum_tests(interp, pass, fail);
+}

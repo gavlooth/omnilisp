@@ -37,7 +37,9 @@ fn int run_init(int argc, char** argv, int init_idx) {
     if (extra != null) {
         return print_unexpected_mode_arg("--init", extra);
     }
-    usz name_len = cstr_len(name);
+    usz name_len = 0;
+    if (!cli_cstr_len(name, &name_len)) return print_cli_cstr_too_long("--init project name");
+    if (!init_project_name_is_valid(name[:name_len])) return print_init_invalid_project_name();
 
     bool project_root_created = false;
     bool success = false;

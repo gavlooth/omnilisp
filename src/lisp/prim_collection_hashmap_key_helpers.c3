@@ -38,6 +38,15 @@ fn uint hash_value(Value* key) {
     if (key == null) return 0;
     switch (key.tag) {
         case INT: return murmur_finalizer((uint)key.int_val);
+        case DOUBLE: {
+            // hashmap_key_equals uses DOUBLE == semantics: +0.0 and -0.0
+            // are equal, while distinct NaN values are not. Fold signed zero
+            // before rendering; NaN may share one stable hash because equality
+            // still rejects distinct NaN keys during probing.
+            double val = key.double_val == 0.0 ? 0.0 : key.double_val;
+            char[64] buf;
+            return fnv1a(double_to_string(val, &buf));
+        }
         case FLOAT32: {
             char[64] buf;
             return fnv1a(double_to_string((double)key.float32_val, &buf));
@@ -255,9 +264,11 @@ fn int hashmap_iteration_key_compare(Value* left, Value* right, Interp* interp) 
     }
 }
 
+bool g_hashmap_force_sorted_slots_alloc_fail = false;
+
 fn uint[] hashmap_sorted_slots(HashMap* map, Interp* interp) {
     usz count = map == null ? 0 : (usz)map.count;
-    uint[] slots = mem::new_array(uint, count);
+    uint[] slots = g_hashmap_force_sorted_slots_alloc_fail ? {} : mem::new_array(uint, count);
     if (slots.ptr == null || count == 0) return slots;
 
     usz used = 0;
@@ -290,15 +301,7 @@ fn Value* hashmap_keys_list_canonical(HashMap* map, Interp* interp) {
 
     uint[] slots = hashmap_sorted_slots(map, interp);
     if (slots.ptr == null) {
-        // Fallback under allocation pressure.
-        Value* fallback = make_nil(interp);
-        for (uint i = 0; i < map.capacity; i++) {
-            if (map.entries[i].key == null) continue;
-            Value* next = make_cons_or_error(interp, map.entries[i].key, fallback, "keys: failed to allocate result list");
-            if (next == null || next.tag == ERROR) return next;
-            fallback = next;
-        }
-        return fallback;
+        return collection_raise(interp, "runtime/out-of-memory", "keys: failed to allocate canonical order scratch");
     }
     defer mem::free(slots.ptr);
 
@@ -317,15 +320,7 @@ fn Value* hashmap_values_list_canonical(HashMap* map, Interp* interp) {
 
     uint[] slots = hashmap_sorted_slots(map, interp);
     if (slots.ptr == null) {
-        // Fallback under allocation pressure.
-        Value* fallback = make_nil(interp);
-        for (uint i = 0; i < map.capacity; i++) {
-            if (map.entries[i].key == null) continue;
-            Value* next = make_cons_or_error(interp, map.entries[i].value, fallback, "values: failed to allocate result list");
-            if (next == null || next.tag == ERROR) return next;
-            fallback = next;
-        }
-        return fallback;
+        return collection_raise(interp, "runtime/out-of-memory", "values: failed to allocate canonical order scratch");
     }
     defer mem::free(slots.ptr);
 

@@ -23,15 +23,15 @@ fn char* find_check_option_like_arg(int argc, char** argv, int check_idx) {
     return null;
 }
 
-fn char[] check_resolve_path(char* input_file, char[] abs_buf) {
-    char[] input = input_file[:cstr_len(input_file)];
+fn char[] check_resolve_path(char[] input, char[] abs_buf) {
     if (input.len == 0) return input;
     if (input[0] == '/') return input;
 
     char* cwd = c_getcwd(&abs_buf[0], abs_buf.len);
     if (cwd == null) return input;
 
-    usz cwd_len = cstr_len(cwd);
+    usz cwd_len = 0;
+    if (!cstr_len_bounded(cwd, abs_buf.len - 1, &cwd_len)) return input;
     if (cwd_len + 1 + input.len > abs_buf.len) return input;
     abs_buf[cwd_len] = '/';
     for (usz i = 0; i < input.len; i++) {
@@ -108,9 +108,10 @@ fn int run_check_mode(int argc, char** argv, int check_idx) {
         return print_unexpected_mode_arg("--check", extra);
     }
 
-    char[] input_path = input_file[:cstr_len(input_file)];
+    char[] input_path;
+    if (!cli_cstr_slice(input_file, &input_path)) return print_cli_cstr_too_long("--check input file", json);
     char[4096] abs_buf = {};
-    char[] resolved_path = check_resolve_path(input_file, abs_buf[..]);
+    char[] resolved_path = check_resolve_path(input_path, abs_buf[..]);
 
     EntryFileReadKind read_kind = ENTRY_FILE_READ_GENERIC_FAILURE;
     if (!classify_file_read_path(input_path, &read_kind)) {
