@@ -6105,3 +6105,41 @@ Unresolved issues:
   telemetry, and commit-path migration remain open roadmap items.
 
 Signature: GPT-5 Codex
+
+## 2026-04-24 memory boundary mutation epoch implementation
+
+Objective:
+- Implement `MEM-BOUNDARY-EPOCH-001` after the planner/passport commit.
+
+Changes made:
+- Added pointer-keyed stable graph mutation epochs in
+  `src/lisp/stable_escape_epoch.c3`.
+- Split passport snapshot code into `src/lisp/stable_escape_store_passport.c3`
+  so `src/lisp/stable_escape_store.c3` remains under the code-file line gate.
+- Prepared graph nodes now snapshot mutation epochs, and passport validation
+  rejects stale prepared graphs through epoch mismatch before deep shape checks.
+- Env binding writes, dictionary/set writes, and array write/push helpers now
+  stamp the specific mutated frame/container.
+- Closed `MEM-BOUNDARY-EPOCH-001`; next checkpoint is
+  `MEM-BOUNDARY-TRANSPLANT-001`.
+
+Commands run:
+- C3 diagnostics for touched C3 files.
+- `c3c build --obj-out obj`
+- `scripts/run_validation_container.sh env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `scripts/run_validation_container.sh valgrind --leak-check=full --error-exitcode=99 env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+
+Key results:
+- Build passed.
+- Bounded container `memory-lifetime-smoke` passed with `254 passed, 0 failed`.
+- Bounded container Valgrind `memory-lifetime-smoke` passed with
+  `254 passed, 0 failed`.
+- A first global-epoch attempt failed `boundary nested effect payload graph`
+  with `253 passed, 1 failed`; it was replaced with pointer-keyed epochs.
+
+Current checkpoint:
+- `MEM-BOUNDARY-EPOCH-001` is closed.
+- Next memory-boundary implementation checkpoint is
+  `MEM-BOUNDARY-TRANSPLANT-001`.
+
+Signature: GPT-5 Codex

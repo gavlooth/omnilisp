@@ -132,6 +132,7 @@ fn Value* env_set_with_barrier_result(Env* env, SymbolId name, Value* value, Int
                     return stored;
                 }
                 cur.bindings[idx].value = stored;
+                stable_graph_note_mutation_ptr((void*)cur);
                 return null;
             }
         } else {
@@ -143,6 +144,7 @@ fn Value* env_set_with_barrier_result(Env* env, SymbolId name, Value* value, Int
                         return stored;
                     }
                     cur.bindings[i].value = stored;
+                    stable_graph_note_mutation_ptr((void*)cur);
                     return null;
                 }
             }

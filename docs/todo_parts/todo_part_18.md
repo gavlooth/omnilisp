@@ -73,14 +73,14 @@ Source: `docs/plans/memory-boundary-proof-planner-roadmap-2026-04-24.md`.
   - negative-memory constraint: stable handles prove liveness; they do not own
     ordinary Omni language values.
 
-- [ ] `MEM-BOUNDARY-EPOCH-001` add mutation epoch invalidation for passport validation.
+- [x] `MEM-BOUNDARY-EPOCH-001` add mutation epoch invalidation for passport validation.
   - classification: runtime behavior, structural overhaul.
-  - task: add cheap epoch snapshots for graph-carrying mutable values and use
-    them to fail stale prepared handles before deep graph validation.
-  - next step: start with arrays, dictionaries, sets, and closure env binding
-    mutation sites, then extend to mutable cons paths if needed.
-  - prerequisites: stable graph passport fields from
-    `MEM-BOUNDARY-PASSPORT-001`.
+  - done 2026-04-24: added pointer-keyed mutation epochs, prepared-node epoch
+    snapshots, passport stale-epoch validation, and mutation stamps for env
+    binding writes, dictionary/set writes, and array write/push helpers.
+  - validation: `c3c build --obj-out obj`; bounded container
+    `memory-lifetime-smoke` (`254 passed, 0 failed`); bounded container
+    Valgrind `memory-lifetime-smoke` (`254 passed, 0 failed`).
   - negative-memory constraint: do not weaken existing structural mutation drift
     tests while adding epoch short-circuiting.
 

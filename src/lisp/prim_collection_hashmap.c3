@@ -173,10 +173,12 @@ fn bool hashmap_set_symbol_checked(HashMap* map, SymbolId key, Value* value, Int
             entry.key = key_value;
             entry.value = value;
             map.count++;
+            stable_graph_note_mutation_ptr((void*)map);
             return true;
         }
         if (entry.key.tag == SYMBOL && entry.key.sym_val == key) {
             entry.value = value;
+            stable_graph_note_mutation_ptr((void*)map);
             return true;
         }
     }
@@ -221,6 +223,7 @@ fn bool hashmap_grow_checked(HashMap* map, Interp* interp) {
         }
     }
     mem::free(old_entries);
+    stable_graph_note_mutation_ptr((void*)map);
     return true;
 }
 
@@ -255,10 +258,12 @@ fn bool hashmap_set_checked(HashMap* map, Value* key, Value* value, Interp* inte
             entry.key = key;
             entry.value = value;
             map.count++;
+            stable_graph_note_mutation_ptr((void*)map);
             return true;
         }
         if (hashmap_key_equals(entry.key, key)) {
             entry.value = value;
+            stable_graph_note_mutation_ptr((void*)map);
             return true;
         }
     }
@@ -299,6 +304,7 @@ fn bool hashmap_set_checked_rollback_record(
             entry.key = key;
             entry.value = value;
             map.count++;
+            stable_graph_note_mutation_ptr((void*)map);
             if (rollback != null) {
                 rollback.original_key = original_key;
                 rollback.inserted_key = key;
@@ -310,6 +316,7 @@ fn bool hashmap_set_checked_rollback_record(
         }
         if (hashmap_key_equals(entry.key, key)) {
             entry.value = value;
+            stable_graph_note_mutation_ptr((void*)map);
             if (rollback != null) {
                 rollback.original_key = original_key;
                 rollback.inserted_key = key;
@@ -366,6 +373,7 @@ fn bool hashmap_remove(HashMap* map, Value* key) {
             map.entries[j].key = null;
             map.entries[j].value = null;
             map.count--;
+            stable_graph_note_mutation_ptr((void*)map);
             return true;
         }
     }

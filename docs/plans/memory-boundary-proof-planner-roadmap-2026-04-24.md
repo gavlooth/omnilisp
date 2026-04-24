@@ -171,7 +171,12 @@ Add epoch snapshots to passport validation for graph-carrying mutable values,
 then route prepared-handle liveness through epoch checks before deeper shape
 validation.
 
-Tracked by `MEM-BOUNDARY-EPOCH-001`.
+Closed 2026-04-24 by `MEM-BOUNDARY-EPOCH-001`: prepared nodes now snapshot a
+pointer-keyed graph mutation epoch, env/hashmap/array mutation helpers stamp
+their mutated frame/container, and passport validation rejects stale prepared
+graphs before relying on the deeper shape walk. The pointer-keyed design avoids
+invalidating unrelated prepared graphs when an independent env or container is
+mutated.
 
 ### Phase 4: Transplant Proof Object
 
@@ -232,9 +237,9 @@ FFI, JIT/eval boundary, or mutation semantics.
 
 ## Next Checkpoint
 
-The next concrete deliverable is `MEM-BOUNDARY-EPOCH-001`: add cheap mutation
-epoch snapshots for graph-carrying mutable values and use them to reject stale
-passports before deep prepared-graph validation.
+The next concrete deliverable is `MEM-BOUNDARY-TRANSPLANT-001`: replace ad hoc
+scope splice checks with a `BoundaryTransplantProof` object before changing any
+transplant success behavior.
 
 ## Agent Assignments
 

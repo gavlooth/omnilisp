@@ -189,6 +189,7 @@ fn Value* prim_array_set(Value*[] args, Env* env, Interp* interp) {
     Value* promoted = array_promote_or_error(args[2], interp);
     if (promoted == null || promoted.tag == ERROR) return promoted;
     args[0].array_val.items[(usz)idx] = promoted;
+    stable_graph_note_mutation_ptr((void*)args[0].array_val);
     return make_void(interp);
 }
 
@@ -283,5 +284,6 @@ fn Value* prim_array_push(Value*[] args, Env* env, Interp* interp) {
     Value* promoted = array_promote_or_error(args[1], interp);
     if (promoted == null || promoted.tag == ERROR) return promoted;
     vec.items[vec.length++] = promoted;
+    stable_graph_note_mutation_ptr((void*)vec);
     return make_void(interp);
 }

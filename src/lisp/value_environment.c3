@@ -10,6 +10,7 @@ fn bool Env.define(Env* self, SymbolId name, Value* value) @nodiscard {
         usz idx = self.hash_lookup(name);
         if (idx != ~(usz)0) {
             self.bindings[idx].value = value;
+            stable_graph_note_mutation_ptr((void*)self);
             return true;
         }
     } else {
@@ -17,6 +18,7 @@ fn bool Env.define(Env* self, SymbolId name, Value* value) @nodiscard {
         for (usz i = 0; i < self.binding_count; i++) {
             if (self.bindings[i].name == name) {
                 self.bindings[i].value = value;
+                stable_graph_note_mutation_ptr((void*)self);
                 return true;
             }
         }
@@ -63,6 +65,7 @@ fn bool Env.define(Env* self, SymbolId name, Value* value) @nodiscard {
             self.hash_insert(name, new_idx);
         }
     }
+    stable_graph_note_mutation_ptr((void*)self);
     return true;
 }
 
@@ -108,12 +111,14 @@ fn void? Env.set(Env* self, SymbolId name, Value* value) {
         usz idx = self.hash_lookup(name);
         if (idx != ~(usz)0) {
             self.bindings[idx].value = value;
+            stable_graph_note_mutation_ptr((void*)self);
             return;
         }
     } else {
         for (usz i = 0; i < self.binding_count; i++) {
             if (self.bindings[i].name == name) {
                 self.bindings[i].value = value;
+                stable_graph_note_mutation_ptr((void*)self);
                 return;
             }
         }

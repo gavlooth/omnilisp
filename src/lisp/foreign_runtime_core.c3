@@ -180,6 +180,7 @@ fn bool foreign_runtime_array_push_value(Value* arr_v, Interp* interp, Value* va
     value = boundary_promote_to_root(value, interp);
     if (value == null || value.tag == ERROR) return false;
     arr.items[arr.length++] = value;
+    stable_graph_note_mutation_ptr((void*)arr);
     return true;
 }
 

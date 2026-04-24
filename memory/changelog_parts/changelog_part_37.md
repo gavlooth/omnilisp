@@ -4729,6 +4729,17 @@
   - Validation passed: `c3c build --obj-out obj`; bounded container
     `memory-lifetime-smoke` (`254 passed, 0 failed`); bounded container
     Valgrind `memory-lifetime-smoke` (`254 passed, 0 failed`).
+- Implemented and closed `MEM-BOUNDARY-EPOCH-001`.
+  - Added a pointer-keyed stable graph mutation epoch table and prepared-node
+    epoch snapshots.
+  - Passport validation now rejects stale prepared graphs through epoch mismatch
+    before relying on the deeper shape walk.
+  - Env binding writes, dictionary/set writes, and array write/push helpers now
+    stamp the specific mutated frame/container instead of globally invalidating
+    unrelated prepared graphs.
+  - Validation passed: `c3c build --obj-out obj`; bounded container
+    `memory-lifetime-smoke` (`254 passed, 0 failed`); bounded container
+    Valgrind `memory-lifetime-smoke` (`254 passed, 0 failed`).
 
 ## 2026-04-24 Vulkan/CUDA/ML audit Critical/High remediation
 

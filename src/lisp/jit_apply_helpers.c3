@@ -172,6 +172,7 @@ fn Value* jit_array_escape_set(Interp* interp, Value* array, long index, Value* 
     if (value != null && (promoted == null || promoted.tag == ERROR)) return promoted;
     array.array_val.items[(usz)index] = promoted;
     if ((usz)index >= array.array_val.length) array.array_val.length = (usz)index + 1;
+    stable_graph_note_mutation_ptr((void*)array.array_val);
     return array;
 }
 

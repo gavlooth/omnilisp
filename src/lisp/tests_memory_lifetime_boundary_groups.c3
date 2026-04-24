@@ -824,11 +824,8 @@ fn void run_memory_lifetime_boundary_transition_regression_tests(Interp* interp,
         if (setup_ok) {
             prepared_root = make_cons(interp, make_int(interp, 6060), make_nil(interp));
             setup_ok = prepared_root != null && prepared_root.tag == CONS;
-            if (setup_ok) {
-                setup_ok = stable_escape_store_prepare_value(interp, prepared_root, &handle);
-            }
+            if (setup_ok) setup_ok = stable_escape_store_prepare_value(interp, prepared_root, &handle);
         }
-
         bool before_live = setup_ok && stable_escape_store_handle_is_alive(interp, &handle);
         if (setup_ok) {
             prepared_root.cons_val.car = make_int(interp, 6061);
@@ -842,7 +839,6 @@ fn void run_memory_lifetime_boundary_transition_regression_tests(Interp* interp,
                                     stable_escape_store_resolve_value(interp, &handle) == null &&
                                     stable_escape_store_prepared_node_count(interp, &handle) == 0;
         bool retire_ok = setup_ok && stable_escape_store_retire(interp, &handle);
-
         if (before_live && mutation_invalidated && retire_ok) {
             emit_pass_literal("[PASS] lifetime: stable escape prepared cons invalidates after child mutation");
             (*pass)++;
@@ -883,8 +879,14 @@ fn void run_memory_lifetime_boundary_transition_regression_tests(Interp* interp,
         }
 
         bool before_live = setup_ok && stable_escape_store_handle_is_alive(interp, &handle);
+        uint epoch_before = setup_ok ? stable_graph_mutation_epoch_snapshot() : 0;
         bool mutation_ok = setup_ok && env_set_with_barrier_checked(captured_env, captured_sym, make_int(interp, 7071), interp);
-        bool mutation_invalidated = mutation_ok &&
+        uint epoch_after = setup_ok ? stable_graph_mutation_epoch_snapshot() : 0;
+        StableGraphPassport stale_passport = {};
+        bool stale_passport_ok = mutation_ok && stable_escape_store_passport_snapshot(interp, &handle, &stale_passport);
+        bool mutation_invalidated = mutation_ok && stale_passport_ok &&
+                                    epoch_after != epoch_before && stale_passport.mutation_epoch == epoch_before &&
+                                    stale_passport.invalidation_reason == STABLE_GRAPH_PASSPORT_PREPARED_GRAPH_STALE &&
                                     !stable_escape_store_handle_is_alive(interp, &handle) &&
                                     stable_escape_store_resolve_value(interp, &handle) == null;
         bool retire_ok = setup_ok && stable_escape_store_retire(interp, &handle);

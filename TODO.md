@@ -32,7 +32,7 @@ split gate applies to code files only.
 - The memory boundary architecture verification blockers from
   `docs/plans/memory-boundary-architecture-spec-2026-04-24.md` are closed in
   Part 18.
-- The next memory-boundary work is `MEM-BOUNDARY-EPOCH-001` in Part 18,
+- The next memory-boundary work is `MEM-BOUNDARY-TRANSPLANT-001` in Part 18,
   continuing the proof-driven optimizer roadmap in
   `docs/plans/memory-boundary-proof-planner-roadmap-2026-04-24.md`.
 - No open stable-escape prepared-materialization rollout items remain in Part 16.

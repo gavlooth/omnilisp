@@ -29,6 +29,7 @@ enum StableGraphPassportInvalidationReason : char {
 struct StableEscapePreparedNode {
     ValueTag tag;
     Value* source;
+    uint mutation_epoch;
     usz child_offset;
     usz child_count;
 }
@@ -51,6 +52,7 @@ struct StableGraphPassport {
     usz prepared_node_count;
     usz prepared_edge_count;
     usz prepared_root_index;
+    uint mutation_epoch;
     uint policy_flags;
     uint risk_flags;
     StableGraphPassportInvalidationReason invalidation_reason;
@@ -226,6 +228,7 @@ fn bool stable_escape_prepare_graph_node(
                 .child_offset = STABLE_ESCAPE_PREPARED_INVALID_INDEX,
                 .child_count = 0
             };
+            scratch.nodes[closure_index].mutation_epoch = stable_graph_value_mutation_epoch(value);
             if (!stable_escape_prepared_register_seen(scratch, value, closure_index)) return false;
 
             usz env_child_offset = STABLE_ESCAPE_PREPARED_INVALID_INDEX;
@@ -250,6 +253,7 @@ fn bool stable_escape_prepare_graph_node(
                 .child_offset = STABLE_ESCAPE_PREPARED_INVALID_INDEX,
                 .child_count = 0
             };
+            scratch.nodes[node_index].mutation_epoch = stable_graph_value_mutation_epoch(value);
             if (!stable_escape_prepared_register_seen(scratch, value, node_index)) return false;
 
             usz car_index = STABLE_ESCAPE_PREPARED_INVALID_INDEX;
@@ -273,6 +277,7 @@ fn bool stable_escape_prepare_graph_node(
                 .child_offset = STABLE_ESCAPE_PREPARED_INVALID_INDEX,
                 .child_count = 0
             };
+            scratch.nodes[array_index].mutation_epoch = stable_graph_value_mutation_epoch(value);
             if (!stable_escape_prepared_register_seen(scratch, value, array_index)) return false;
 
             if (value.array_val.length > STABLE_ESCAPE_PREPARED_MAX_EDGES) return false;
@@ -303,6 +308,7 @@ fn bool stable_escape_prepare_graph_node(
                 .child_offset = STABLE_ESCAPE_PREPARED_INVALID_INDEX,
                 .child_count = 0
             };
+            scratch.nodes[hashmap_index].mutation_epoch = stable_graph_value_mutation_epoch(value);
             if (!stable_escape_prepared_register_seen(scratch, value, hashmap_index)) return false;
 
             HashMap* map = value.hashmap_val;
@@ -338,6 +344,7 @@ fn bool stable_escape_prepare_graph_node(
                 .child_offset = STABLE_ESCAPE_PREPARED_INVALID_INDEX,
                 .child_count = 0
             };
+            scratch.nodes[set_index].mutation_epoch = stable_graph_value_mutation_epoch(value);
             if (!stable_escape_prepared_register_seen(scratch, value, set_index)) return false;
 
             HashMap* set_map = value.hashmap_val;
@@ -476,6 +483,7 @@ fn bool stable_escape_store_prepared_nodes_alive(
     foreach (node : entry.prepared_nodes[0:entry.prepared_node_count]) {
         if (node.source == null) return false;
         if (node.source.tag != node.tag) return false;
+        if (node.mutation_epoch != stable_graph_value_mutation_epoch(node.source)) return false;
         if (!boundary_ptr_in_scope_chain_scan_unchecked((void*)node.source, entry.owner_scope)) {
             return false;
         }
@@ -757,6 +765,7 @@ fn bool stable_escape_store_prepare_value(
                 .prepared_node_count = scratch.node_count,
                 .prepared_edge_count = scratch.edge_count,
                 .prepared_root_index = root_index,
+                .mutation_epoch = stable_graph_mutation_epoch_snapshot(),
                 .policy_flags = STABLE_GRAPH_PASSPORT_POLICY_OWNER_SCOPE_CHAIN | STABLE_GRAPH_PASSPORT_POLICY_PREPARED_GRAPH,
                 .risk_flags = scratch.risk_flags,
                 .invalidation_reason = STABLE_GRAPH_PASSPORT_VALID
@@ -788,31 +797,6 @@ fn bool stable_escape_store_handle_is_alive(Interp* interp, StableEscapeHandle* 
     if (entry.owner_scope.escape_generation != entry.owner_escape_generation) return false;
     if (!stable_escape_store_root_publishable_in_owner_scope(entry.root, entry.owner_scope)) return false;
     if (!stable_escape_store_prepared_nodes_alive(entry)) return false;
-    return true;
-}
-
-fn bool stable_escape_store_passport_snapshot(Interp* interp, StableEscapeHandle* handle, StableGraphPassport* out_passport) {
-    if (handle == null || out_passport == null || handle.kind != STABLE_ESCAPE_HANDLE_ROOT_VALUE) return false;
-    StableEscapeStore* store = stable_escape_store_from_interp(interp);
-    if (store == null || !store.initialized || handle.slot >= STABLE_ESCAPE_STORE_CAPACITY) return false;
-    store.mu.lock();
-    defer store.mu.unlock();
-    StableEscapeStoreEntry* entry = &store.entries[handle.slot];
-    if (!entry.active || entry.kind != handle.kind || entry.generation != handle.generation || entry.root != handle.root) {
-        return false;
-    }
-    StableGraphPassportInvalidationReason reason = STABLE_GRAPH_PASSPORT_VALID;
-    if (entry.owner_scope == null || entry.owner_scope.generation == 0) {
-        reason = STABLE_GRAPH_PASSPORT_OWNER_SCOPE_INVALID;
-    } else if (entry.owner_scope.escape_generation != entry.owner_escape_generation) {
-        reason = STABLE_GRAPH_PASSPORT_OWNER_ESCAPE_CHANGED;
-    } else if (!stable_escape_store_root_publishable_in_owner_scope(entry.root, entry.owner_scope)) {
-        reason = STABLE_GRAPH_PASSPORT_ROOT_NOT_IN_OWNER_CHAIN;
-    } else if (!stable_escape_store_prepared_nodes_alive(entry)) {
-        reason = STABLE_GRAPH_PASSPORT_PREPARED_GRAPH_STALE;
-    }
-    entry.passport.invalidation_reason = reason;
-    *out_passport = entry.passport;
     return true;
 }
 
