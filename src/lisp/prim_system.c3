@@ -78,6 +78,8 @@ fn Value* prim_getenv(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_time(Value*[] args, Env* env, Interp* interp) {
+    if (args.len == 1) return prim_time_parse_iso_utc(args[0], interp);
+    if (args.len != 0) return runtime_raise(interp, "type/arity", "time: expected 0 arguments or 1 ISO-8601 string");
     long t = c_time(null);
     return make_int(interp, t);
 }

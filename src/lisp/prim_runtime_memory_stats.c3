@@ -147,6 +147,36 @@ fn Value* runtime_memory_escape_shape_stats(Interp* interp) {
     return out;
 }
 
+fn Value* runtime_memory_boundary_decision_stats(Interp* interp) {
+    Value* out = runtime_memory_make_dict(interp, 48);
+    if (out == null || out.tag == ERROR) return out;
+    BoundaryDecisionStats stats = boundary_decision_stats_snapshot();
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "splice-attempted", stats.splice_attempted)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "splice-succeeded", stats.splice_succeeded)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "promotion-attempted", stats.promotion_attempted)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "copy-fallback-total", stats.copy_fallback_total)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "planned-stable-publish", stats.planned_route_by_route[(usz)BoundaryPlanRoute.BOUNDARY_PLAN_ROUTE_STABLE_PUBLISH_REUSE])) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "planned-stable-materialize", stats.planned_route_by_route[(usz)BoundaryPlanRoute.BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION])) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "planned-transplant", stats.planned_route_by_route[(usz)BoundaryPlanRoute.BOUNDARY_PLAN_ROUTE_REGION_TRANSPLANT])) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "planned-compatibility", stats.planned_route_by_route[(usz)BoundaryPlanRoute.BOUNDARY_PLAN_ROUTE_COMPATIBILITY_DESTINATION])) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "planned-mixed", stats.planned_route_by_route[(usz)BoundaryPlanRoute.BOUNDARY_PLAN_ROUTE_MIXED_DESTINATION])) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "selected-stable-publish", stats.selected_route_by_route[(usz)BoundaryPlanRoute.BOUNDARY_PLAN_ROUTE_STABLE_PUBLISH_REUSE])) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "selected-stable-materialize", stats.selected_route_by_route[(usz)BoundaryPlanRoute.BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION])) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "selected-transplant", stats.selected_route_by_route[(usz)BoundaryPlanRoute.BOUNDARY_PLAN_ROUTE_REGION_TRANSPLANT])) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "selected-compatibility", stats.selected_route_by_route[(usz)BoundaryPlanRoute.BOUNDARY_PLAN_ROUTE_COMPATIBILITY_DESTINATION])) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "selected-mixed", stats.selected_route_by_route[(usz)BoundaryPlanRoute.BOUNDARY_PLAN_ROUTE_MIXED_DESTINATION])) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "selected-fail-closed", stats.selected_route_by_route[(usz)BoundaryPlanRoute.BOUNDARY_PLAN_ROUTE_FAIL_CLOSED])) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "route-fail-destination", stats.route_failure_by_reason[(usz)BoundaryPlanReason.BOUNDARY_PLAN_REASON_DESTINATION_FAILED])) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "route-fail-transplant-rejected", stats.route_failure_by_reason[(usz)BoundaryPlanReason.BOUNDARY_PLAN_REASON_TRANSPLANT_REJECTED])) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "route-fail-promotion-aborted", stats.route_failure_by_reason[(usz)BoundaryPlanReason.BOUNDARY_PLAN_REASON_PROMOTION_ABORTED])) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "route-fail-mixed-destination", stats.route_failure_by_reason[(usz)BoundaryPlanReason.BOUNDARY_PLAN_REASON_MIXED_DESTINATION_FAILED])) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "route-fail-fallback-disallowed", stats.route_failure_by_reason[(usz)BoundaryPlanReason.BOUNDARY_PLAN_REASON_FALLBACK_DISALLOWED])) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "materialization-success", stats.stable_materialization_success)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "materialization-node-count", stats.stable_materialization_node_count_total)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "materialization-copy-bytes", stats.stable_materialization_copy_bytes_total)) return err;
+    return out;
+}
+
 <*
 @require interp != null
 *>
@@ -162,6 +192,7 @@ fn Value* prim_runtime_memory_stats(Value*[] args, Env* env, Interp* interp) {
     if (Value* err = runtime_memory_dict_set(out, interp, "fiber-temp", runtime_memory_fiber_temp_stats(interp))) return err;
     if (Value* err = runtime_memory_dict_set(out, interp, "copy-to-parent", runtime_memory_copy_stats(interp))) return err;
     if (Value* err = runtime_memory_dict_set(out, interp, "escape-shape", runtime_memory_escape_shape_stats(interp))) return err;
+    if (Value* err = runtime_memory_dict_set(out, interp, "boundary-decisions", runtime_memory_boundary_decision_stats(interp))) return err;
     return out;
 }
 
@@ -176,6 +207,7 @@ fn void runtime_memory_print_telemetry() {
     main::FiberTempPoolStats fiber_stats = main::g_fiber_temp_pool_stats;
     CopyToParentStats copy_stats = copy_to_parent_stats_snapshot();
     BoundaryEscapeShapeStats shape_stats = boundary_escape_shape_stats_snapshot();
+    BoundaryDecisionStats boundary_stats = boundary_decision_stats_snapshot();
 
     io::printn("{\"kind\":\"runtime-memory-stats\",\"status\":\"ok\",");
     io::printfn("\"scope\":{\"temp_bytes_allocated\":%d,\"escape_bytes_allocated\":%d,\"temp_chunk_bytes_allocated\":%d,\"escape_chunk_bytes_allocated\":%d,\"temp_bytes_freed\":%d,\"escape_bytes_freed\":%d,\"scope_create_count\":%d,\"scope_release_count\":%d,\"scope_destroy_count\":%d,\"scope_recycle_count\":%d},",
@@ -204,7 +236,7 @@ fn void runtime_memory_print_telemetry() {
         copy_stats.fast_reuse_hits,
         copy_stats.defensive_copies,
         copy_stats.copy_bytes);
-    io::printfn("\"escape_shape\":{\"candidate_roots\":%d,\"graph_roots\":%d,\"unsafe_roots\":%d,\"cons_roots\":%d,\"cons_spine_samples\":%d,\"cons_spine_total_len\":%d,\"cons_spine_peak_len\":%d,\"array_roots\":%d,\"hashmap_roots\":%d,\"set_roots\":%d,\"closure_roots\":%d,\"partial_roots\":%d,\"iterator_roots\":%d,\"continuation_roots\":%d,\"coroutine_roots\":%d,\"tensor_roots\":%d,\"instance_roots\":%d,\"method_table_roots\":%d,\"module_roots\":%d,\"type_info_roots\":%d,\"ffi_handle_roots\":%d}}",
+    io::printfn("\"escape_shape\":{\"candidate_roots\":%d,\"graph_roots\":%d,\"unsafe_roots\":%d,\"cons_roots\":%d,\"cons_spine_samples\":%d,\"cons_spine_total_len\":%d,\"cons_spine_peak_len\":%d,\"array_roots\":%d,\"hashmap_roots\":%d,\"set_roots\":%d,\"closure_roots\":%d,\"partial_roots\":%d,\"iterator_roots\":%d,\"continuation_roots\":%d,\"coroutine_roots\":%d,\"tensor_roots\":%d,\"instance_roots\":%d,\"method_table_roots\":%d,\"module_roots\":%d,\"type_info_roots\":%d,\"ffi_handle_roots\":%d},",
         shape_stats.candidate_roots,
         shape_stats.graph_roots,
         shape_stats.unsafe_roots,
@@ -226,4 +258,15 @@ fn void runtime_memory_print_telemetry() {
         shape_stats.module_roots,
         shape_stats.type_info_roots,
         shape_stats.ffi_handle_roots);
+    io::printfn("\"boundary_decisions\":{\"planned_stable_publish\":%d,\"planned_stable_materialize\":%d,\"planned_transplant\":%d,\"selected_stable_publish\":%d,\"selected_stable_materialize\":%d,\"selected_transplant\":%d,\"selected_fail_closed\":%d,\"route_fail_transplant_rejected\":%d,\"materialization_node_count\":%d,\"materialization_copy_bytes\":%d}}",
+        (long)boundary_stats.planned_route_by_route[(usz)BoundaryPlanRoute.BOUNDARY_PLAN_ROUTE_STABLE_PUBLISH_REUSE],
+        (long)boundary_stats.planned_route_by_route[(usz)BoundaryPlanRoute.BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION],
+        (long)boundary_stats.planned_route_by_route[(usz)BoundaryPlanRoute.BOUNDARY_PLAN_ROUTE_REGION_TRANSPLANT],
+        (long)boundary_stats.selected_route_by_route[(usz)BoundaryPlanRoute.BOUNDARY_PLAN_ROUTE_STABLE_PUBLISH_REUSE],
+        (long)boundary_stats.selected_route_by_route[(usz)BoundaryPlanRoute.BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION],
+        (long)boundary_stats.selected_route_by_route[(usz)BoundaryPlanRoute.BOUNDARY_PLAN_ROUTE_REGION_TRANSPLANT],
+        (long)boundary_stats.selected_route_by_route[(usz)BoundaryPlanRoute.BOUNDARY_PLAN_ROUTE_FAIL_CLOSED],
+        (long)boundary_stats.route_failure_by_reason[(usz)BoundaryPlanReason.BOUNDARY_PLAN_REASON_TRANSPLANT_REJECTED],
+        (long)boundary_stats.stable_materialization_node_count_total,
+        (long)boundary_stats.stable_materialization_copy_bytes_total);
 }

@@ -122,10 +122,10 @@ Handle different effect tags in the same block:
 Under the hood:
 
 ```lisp
-(define print   (lambda (x) (signal io/print x)))
-(define println (lambda (x) (signal io/println x)))
-(define display (lambda (x) (signal io/display x)))
-(define newline (lambda ()  (signal io/newline nil)))
+(define print   (λ (x) (signal io/print x)))
+(define println (λ (x) (signal io/println x)))
+(define display (λ (x) (signal io/display x)))
+(define newline (λ ()  (signal io/newline nil)))
 ```
 
 When no handler is installed, these take a **fast path** — they call the raw
@@ -168,7 +168,7 @@ without calling `resolve` — so the body aborts and the string becomes the resu
         (resolve nil)))))
 
 (with-output-to-string
-  (lambda ()
+  (λ ()
     (println 1)
     (println 2)
     (println 3)))
@@ -181,10 +181,10 @@ so the thunk keeps running. After the thunk finishes, the buffer is returned.
 ### File I/O effects
 
 ```lisp
-(await (spawn (lambda () (read-file "data.txt"))))        ;; signals io/read-file
-(await (spawn (lambda () (write-file "out.txt" "data")))) ;; signals io/write-file
-(await (spawn (lambda () (file-exists? "data.txt"))))     ;; signals io/file-exists?
-(await (spawn (lambda () (read-lines "data.txt"))))       ;; signals io/read-lines
+(await (spawn (λ () (read-file "data.txt"))))        ;; signals io/read-file
+(await (spawn (λ () (write-file "out.txt" "data")))) ;; signals io/write-file
+(await (spawn (λ () (file-exists? "data.txt"))))     ;; signals io/file-exists?
+(await (spawn (λ () (read-lines "data.txt"))))       ;; signals io/read-lines
 ```
 
 These file effects require running fiber context; non-fiber calls raise
@@ -250,10 +250,10 @@ The stdlib declares a `raise` effect and provides `try` and `assert!`:
 
 ```lisp
 (try
-  (lambda (_)
+  (λ (_)
     (assert! (> 1 2) "math is broken")
     "ok")
-  (lambda (msg) (string-append "caught: " msg)))
+  (λ (msg) (string-append "caught: " msg)))
 ;; => "caught: math is broken"
 ```
 
@@ -317,8 +317,8 @@ regular functions and compose them:
 
 ;; Use by nesting
 (catch-errors
-  (lambda () (silent-io
-    (lambda ()
+  (λ () (silent-io
+    (λ ()
       (println "suppressed")
       (signal raise "oops")))))
 ;; => "oops"
@@ -329,10 +329,10 @@ regular functions and compose them:
   (let loop (hs handlers)
     (if (null? hs)
         (thunk)
-        ((car hs) (lambda () (loop (cdr hs)))))))
+        ((car hs) (λ () (loop (cdr hs)))))))
 
 (handle/chain (list catch-errors silent-io)
-  (lambda ()
+  (λ ()
     (println "gone")
     (signal raise "fail")))
 ;; => "fail"
@@ -363,7 +363,7 @@ Migration note (composition helper names):
         (resolve nil)))))
 
 (with-state 0
-  (lambda ()
+  (λ ()
     (signal set-state 10)
     (+ (signal get-state nil) 5)))
 ;; => 15
@@ -382,7 +382,7 @@ Migration note (composition helper names):
         (resolve nil)))))
 
 (with-logger
-  (lambda ()
+  (λ ()
     (signal log "step 1")
     (signal log "step 2")
     (signal log "done")))

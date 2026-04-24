@@ -29,7 +29,10 @@ fn BoundaryCommitEscapeResult boundary_commit_escape(
         .selected_route = BOUNDARY_PLAN_ROUTE_NULL_RESULT,
         .selected_reason = BOUNDARY_PLAN_REASON_NULL_RESULT,
     };
-    if (result == null) return committed;
+    if (result == null) {
+        boundary_note_commit_decision_enabled(committed);
+        return committed;
+    }
     committed.outcome = BOUNDARY_COMMIT_PASSTHROUGH;
     committed.planned_route = BOUNDARY_PLAN_ROUTE_PASSTHROUGH;
     committed.planned_reason = BOUNDARY_PLAN_REASON_PASSTHROUGH;
@@ -67,6 +70,7 @@ fn BoundaryCommitEscapeResult boundary_commit_escape(
         committed.selected_route = BOUNDARY_PLAN_ROUTE_FAIL_CLOSED;
         committed.selected_reason = BOUNDARY_PLAN_REASON_NORMALIZED_CLOSURE_ERROR;
         boundary_txn_abort(&txn);
+        boundary_note_commit_decision_enabled(committed);
         return committed;
     }
     result = normalized_result;
@@ -90,6 +94,7 @@ fn BoundaryCommitEscapeResult boundary_commit_escape(
                 result,
                 &commit_succeeded
             );
+            boundary_note_commit_decision_enabled(committed);
             return committed;
         case BOUNDARY_RETURN_OWNED_BY_RELEASING_TEMP:
         case BOUNDARY_RETURN_OWNED_BY_RELEASING_ESCAPE:
@@ -105,6 +110,7 @@ fn BoundaryCommitEscapeResult boundary_commit_escape(
                 &commit_succeeded,
                 &classification
             );
+            boundary_note_commit_decision_enabled(committed);
             return committed;
         case BOUNDARY_RETURN_MIXED_UNCERTAIN:
             boundary_commit_escape_handle_mixed_destination(
@@ -116,6 +122,7 @@ fn BoundaryCommitEscapeResult boundary_commit_escape(
                 &txn,
                 &commit_succeeded
             );
+            boundary_note_commit_decision_enabled(committed);
             return committed;
     }
 }

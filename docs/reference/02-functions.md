@@ -23,7 +23,7 @@ Lambdas capture their lexical environment:
 
 ```lisp
 (define (make-adder n)
-  (lambda (x) (+ x n)))
+  (λ (x) (+ x n)))
 
 (define add5 (make-adder 5))
 (add5 10)       ;; => 15
@@ -64,7 +64,8 @@ Named let is the idiomatic loop construct:
 
 ### Implicit Block
 
-Lambda, define, and let bodies support multiple expressions:
+`λ`/`lambda`, shorthand function `define`, `let`, `let ^rec`, and named `let`
+bodies support multiple expressions:
 
 ```lisp
 (define (f x)
@@ -84,8 +85,8 @@ mechanisms plus pipeline sugar:
 The `_` token in a call creates a lambda at parse time:
 
 ```lisp
-(+ 1 _)                    ;; => (lambda (__p1) (+ 1 __p1))
-(f _ 2 _)                  ;; => (lambda (__p1 __p2) (f __p1 2 __p2))
+(+ 1 _)                    ;; => (λ (__p1) (+ 1 __p1))
+(f _ 2 _)                  ;; => (λ (__p1 __p2) (f __p1 2 __p2))
 (map (+ 1 _) '(1 2 3))     ;; => (2 3 4)
 (filter (> _ 0) '(-1 0 1))  ;; => (1)
 ```

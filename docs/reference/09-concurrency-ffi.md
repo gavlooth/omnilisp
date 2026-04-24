@@ -45,8 +45,8 @@ Target split:
 ### Run Fibers
 
 ```lisp
-(define a (spawn (lambda () (+ 1 2))))
-(define b (spawn (lambda () (* 3 4))))
+(define a (spawn (λ () (+ 1 2))))
+(define b (spawn (λ () (* 3 4))))
 (run-fibers)          ;; => #<void>
 (list (await a) (await b))
 ;; => (3 12)
@@ -249,14 +249,14 @@ Omni can create C-callable callbacks from lambdas using `ffi-callback`:
 
 ```lisp
 ;; List/array form
-(define cb (ffi-callback (lambda (a b) (- a b)) ['Integer 'Integer] 'Integer))
+(define cb (ffi-callback (λ (a b) (- a b)) ['Integer 'Integer] 'Integer))
 
 ;; Variadic form (same meaning)
-(define cb2 (ffi-callback (lambda (a b) (+ a b)) 'Integer 'Integer 'Integer))
+(define cb2 (ffi-callback (λ (a b) (+ a b)) 'Integer 'Integer 'Integer))
 ```
 
 `ffi-callback` takes:
-1. A callable (lambda, primitive, or partial application)
+1. A callable (λ, primitive, or partial application)
 2. Parameter type symbols (as a list/array, or as individual arguments)
 3. A return type symbol
 
@@ -380,11 +380,11 @@ Data-driven validation where schemas are plain Omni data.
     (email (maybe (re "^[^@]+@[^@]+$")))))
 
 ;; Validate
-(validate 'person {'name "Alice" 'age 30})
+(validate 'person {name "Alice" age 30})
 ;; => true
 
 ;; Explain failures
-(schema-explain 'person {'name "Alice" 'age -1})
+(schema-explain 'person {name "Alice" age -1})
 ;; => ((age "must satisfy (> 0)"))
 ```
 

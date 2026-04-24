@@ -208,7 +208,11 @@ traversal/copy hooks are implemented.
 Expose route decisions and copy debt through runtime memory stats so future
 optimization follows measured failure reasons instead of ad hoc guessing.
 
-Tracked by `MEM-BOUNDARY-COPY-DEBT-001`.
+Closed 2026-04-24 by `MEM-BOUNDARY-COPY-DEBT-001`: boundary decision stats now
+record planned routes, selected routes, fail-closed reasons, materialization
+success totals, materialized graph node totals, and estimated materialized
+payload bytes. The counters are exposed through test summaries, graph-audit
+telemetry, JSON runtime memory telemetry, and `(runtime-memory-stats)`.
 
 ### Phase 7: Commit Path Migration
 
@@ -245,8 +249,10 @@ FFI, JIT/eval boundary, or mutation semantics.
 
 ## Next Checkpoint
 
-The next concrete deliverable is `MEM-BOUNDARY-COPY-DEBT-001`: expose route
-failure and copy-debt telemetry without changing route behavior.
+The next concrete deliverable is `MEM-BOUNDARY-PLAN-MIGRATE-001`: migrate
+boundary commit paths so planner-selected routes become the source of truth for
+stable publish, transplant, destination materialization, and fail-closed
+outcomes.
 
 ## Agent Assignments
 

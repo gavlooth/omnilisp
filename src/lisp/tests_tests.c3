@@ -48,7 +48,9 @@ fn void emit_boundary_decision_summary() {
         "OMNI_TEST_SUMMARY suite=boundary_decisions splice_attempted=%d splice_succeeded=%d splice_fail_total=%d "
         "splice_fail_null_parent=%d splice_fail_null_child=%d splice_fail_same_scope=%d splice_fail_not_immediate_child=%d splice_fail_refcount=%d splice_fail_owner_thread=%d splice_fail_parent_lane=%d splice_fail_child_temp_lane=%d splice_fail_child_escape_lane=%d "
         "promotion_attempted=%d promotion_aborted_budget=%d promotion_aborted_pre_aborted=%d "
-        "copy_fallback_total=%d",
+        "copy_fallback_total=%d planned_stable_publish=%d planned_stable_materialize=%d planned_transplant=%d "
+        "selected_stable_publish=%d selected_stable_materialize=%d selected_transplant=%d selected_fail_closed=%d "
+        "route_fail_transplant_rejected=%d materialization_node_count=%d materialization_copy_bytes=%d",
         (long)stats.splice_attempted,
         (long)stats.splice_succeeded,
         (long)splice_fail_total,
@@ -64,7 +66,17 @@ fn void emit_boundary_decision_summary() {
         (long)stats.promotion_attempted,
         (long)stats.promotion_aborted_by_reason[(usz)BoundaryPromotionAbortReason.BOUNDARY_PROMOTION_ABORT_BUDGET_EXHAUSTED],
         (long)stats.promotion_aborted_by_reason[(usz)BoundaryPromotionAbortReason.BOUNDARY_PROMOTION_ABORT_PRE_ABORTED_CTX],
-        (long)stats.copy_fallback_total
+        (long)stats.copy_fallback_total,
+        (long)stats.planned_route_by_route[(usz)BoundaryPlanRoute.BOUNDARY_PLAN_ROUTE_STABLE_PUBLISH_REUSE],
+        (long)stats.planned_route_by_route[(usz)BoundaryPlanRoute.BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION],
+        (long)stats.planned_route_by_route[(usz)BoundaryPlanRoute.BOUNDARY_PLAN_ROUTE_REGION_TRANSPLANT],
+        (long)stats.selected_route_by_route[(usz)BoundaryPlanRoute.BOUNDARY_PLAN_ROUTE_STABLE_PUBLISH_REUSE],
+        (long)stats.selected_route_by_route[(usz)BoundaryPlanRoute.BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION],
+        (long)stats.selected_route_by_route[(usz)BoundaryPlanRoute.BOUNDARY_PLAN_ROUTE_REGION_TRANSPLANT],
+        (long)stats.selected_route_by_route[(usz)BoundaryPlanRoute.BOUNDARY_PLAN_ROUTE_FAIL_CLOSED],
+        (long)stats.route_failure_by_reason[(usz)BoundaryPlanReason.BOUNDARY_PLAN_REASON_TRANSPLANT_REJECTED],
+        (long)stats.stable_materialization_node_count_total,
+        (long)stats.stable_materialization_copy_bytes_total
     );
 
     // Optional verbose dump used by boundary hardening diagnostics.

@@ -68,7 +68,7 @@ constructor that accepts finite iterator input such as `Tensor`.
 | Name | Signature | Description |
 |------|-----------|-------------|
 | `id` | `(id x)` | Identity function |
-| `compose` | `(compose f g)` | `(lambda (x) (f (g x)))` |
+| `compose` | `(compose f g)` | `(λ (x) (f (g x)))` |
 | `partial` | `(partial f args...)` | Partial application |
 | `default` | `(default v fallback)` | Return v if non-nil, else fallback |
 | `parse` | `(parse format src [opts])` | Thin dispatched format parse helper (`'json`, `'toml`, `'csv`) |

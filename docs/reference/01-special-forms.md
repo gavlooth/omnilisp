@@ -6,18 +6,18 @@
 
 ## 4. Special Forms
 
-### `lambda` — Function Definition
+### `λ` / `lambda` — Function Definition
 
 ```lisp
-(lambda (x) (* x x))             ;; single param
-(lambda (x y) (+ x y))           ;; multi-param (strict arity)
-(lambda () 42)                    ;; zero-arg
-(lambda (x .. rest) rest)         ;; variadic
-(lambda ({name age}) name)        ;; dict destructuring param
+(λ (x) (* x x))             ;; single param
+(λ (x y) (+ x y))           ;; multi-param (strict arity)
+(λ () 42)                    ;; zero-arg
+(λ (x .. rest) rest)         ;; variadic
+(λ ({name age}) name)        ;; dict destructuring param
 ```
 
-Canonical function-expression spelling is `lambda`. Plain `λ` is accepted as an
-equivalent input spelling.
+Canonical function-expression spelling is `λ`. `lambda` remains accepted as the
+long accessibility alias.
 
 Multi-param lambdas require exactly the right number of arguments. Use `_`
 placeholder, `|>` pipe, or `partial` for partial application (see
@@ -27,7 +27,7 @@ Lambda bodies support implicit block — multiple expressions are evaluated in
 sequence, returning the last:
 
 ```lisp
-(lambda (x)
+(λ (x)
   (println x)
   (* x 2))
 ```
@@ -41,7 +41,7 @@ sequence, returning the last:
 (define (connect {host port}) body)         ;; dict destructuring param
 ```
 
-`(define (f x y) body)` desugars to `(define f (lambda (x y) body))`.
+`(define (f x y) body)` desugars to `(define f (λ (x y) body))`.
 
 Brackets in `define` are reserved for attributes: `[type]`, `[macro]`,
 `[reader tag]`, `[abstract]`, `[union]`, `[alias]`, `[effect]`, `[schema]`,
@@ -63,7 +63,7 @@ Brackets in `define` are reserved for attributes: `[type]`, `[macro]`,
 (let ([a b ..] '(1 2 3 4 5)) (+ a b))     ;; => 3
 
 ;; Dictionary destructuring
-(let ({name age} {'name "Alice" 'age 30}) name) ;; => "Alice"
+(let ({name age} {name "Alice" age 30}) name) ;; => "Alice"
 
 ;; Mixed
 (let ([a b] [3 4] z 5) (+ a (+ b z)))     ;; => 12
@@ -72,7 +72,7 @@ Brackets in `define` are reserved for attributes: `[type]`, `[macro]`,
 ### `let ^rec` — Recursive Local Binding
 
 ```lisp
-(let ^rec (fact (lambda (n)
+(let ^rec (fact (λ (n)
   (if (= n 0) 1 (* n (fact (- n 1))))))
   (fact 5))   ;; => 120
 ```
@@ -256,18 +256,18 @@ Destructuring works in `let`, `match`, and lambda/define parameters.
 
 ```lisp
 ;; In let — keys become local bindings
-(let ({name age} {'name "Alice" 'age 30})
-  (string-append name " is " (String age)))
+(let ({name age} {name "Alice" age 30})
+  (str "{name} is {age}"))
 ;; => "Alice is 30"
 
 ;; Missing keys become nil
-(let ({z} {'x 10}) z)   ;; => nil
+(let ({z} {x 10}) z)   ;; => nil
 
 ;; In function parameters
 (define (greet {name greeting})
-  (string-append greeting ", " name "!"))
+  (str "{greeting}, {name}!"))
 
-(greet {'name "Alice" 'greeting "Hello"})
+(greet {name "Alice" greeting "Hello"})
 ;; => "Hello, Alice!"
 ```
 

@@ -5525,6 +5525,139 @@ Re-audit notes:
 
 Signature: GPT-5 Codex
 
+## 2026-04-24 memory boundary copy-debt telemetry
+
+Objective:
+- Implement and audit `MEM-BOUNDARY-COPY-DEBT-001` after FFI bridge declaration
+  closure.
+
+Changes made:
+- Added boundary decision counters for planned route, selected route,
+  fail-closed reason, materialization success, materialized graph node count,
+  and estimated materialized payload bytes.
+- Exposed the new counters through `OMNI_TEST_SUMMARY suite=boundary_decisions`,
+  graph-audit verbose telemetry, JSON runtime memory telemetry, and
+  `(runtime-memory-stats)`.
+- Routed commit-escape return points through feature-gated telemetry notes
+  without adding work to normal non-instrumented builds.
+- Reduced recursive stable-prepared traversal stack pressure by moving large
+  temporary child-index buffers off stack while preserving original prepared-edge
+  ordering.
+- Closed `MEM-BOUNDARY-COPY-DEBT-001`; next checkpoint is
+  `MEM-BOUNDARY-PLAN-MIGRATE-001`.
+
+Commands run:
+- `c3c build --obj-out obj`
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval "(block ... nested effect payload graph ...)"`
+- `scripts/run_validation_container.sh env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `scripts/run_validation_container.sh env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=basic LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `c3c build --obj-out obj -D OMNI_BOUNDARY_INSTR_COUNTERS`
+- `c3c build --obj-out obj_instr -D OMNI_BOUNDARY_INSTR_COUNTERS -D OMNI_BOUNDARY_INSTR_TRACE -D OMNI_BOUNDARY_INSTR_BENCHMARK`
+- `scripts/run_validation_container.sh env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `c3c build --obj-out obj`
+- `scripts/run_validation_container.sh valgrind --leak-check=full --error-exitcode=99 env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+
+Key results:
+- Normal build passed.
+- Direct nested effect payload eval returned `true`.
+- Normal bounded container `memory-lifetime-smoke` passed with
+  `255 passed, 0 failed`.
+- Normal bounded container `basic` passed with `169 passed, 0 failed`.
+- Single-feature counters build passed and reported non-zero route/copy-debt
+  counters under `memory-lifetime-smoke`.
+- Multi-feature instrumentation build passed and bounded container
+  `memory-lifetime-smoke` passed with `255 passed, 0 failed`, reporting
+  `materialization_node_count=87` and `materialization_copy_bytes=10096`.
+- Normal rebuild after instrumentation validation passed.
+- Bounded container Valgrind `memory-lifetime-smoke` passed with
+  `255 passed, 0 failed`.
+- A concurrent multi-feature build that reused `obj` while a normal build was
+  active failed at link time because the two builds raced over the same object
+  directory. Re-running with `obj_instr` passed.
+
+Invalidated assumptions or failed approaches:
+- `[INVALIDATED]` Do not replace prepared graph child edges with reserved-edge
+  placeholders unless the metadata ordering contract is redesigned. That
+  approach reduced stack pressure but broke stable array/dictionary/set/closure
+  metadata tests and the nested effect payload graph check. Preserve prepared
+  edge ordering when reducing stack use.
+
+Current checkpoint:
+- Copy-debt telemetry is live behind boundary instrumentation features and
+  visible through runtime stats surfaces.
+- Build artifact `build/main` has been rebuilt as a normal non-instrumented
+  runtime after instrumentation validation.
+
+Next actions:
+- Run final whitespace/status/line gates.
+- Commit all non-artifact changes.
+- Continue with `MEM-BOUNDARY-PLAN-MIGRATE-001`.
+
+Signature: GPT-5 Codex
+
+## 2026-04-24 concise syntax surface follow-through
+
+Date/time: 2026-04-24 12:12:26 CEST
+
+Objective:
+- Implement the requested concise syntax proposals across parser, macro
+  expansion, reader dispatch, docs, and focused tests.
+
+Changes made:
+- Kept `λ` canonical in parser/compiler/macro output while preserving `lambda`
+  as an accepted input alias.
+- Replaced the interim runtime `str` primitive with a built-in macro rewrite:
+  string holes are parsed at expansion time and lowered to `string-append` plus
+  `String` calls, preserving lexical call-site bindings.
+- Added bare symbol auto-quoting for key positions in `{}` dict literals.
+- Added `#x`, `#b`, and `#o` radix integer reader literals.
+- Added `hex`, `uuid`, and one-argument `time` data helpers for `#hex`,
+  `#uuid`, and `#time` reader tags.
+- Updated `docs/LANGUAGE_SPEC.part-01.md`,
+  `docs/LANGUAGE_SPEC.part-03.md`, `docs/LANGUAGE_SPEC.part-04.md`, and
+  `memory/changelog_parts/changelog_part_37.md`.
+- Follow-up docs pass updated the README, syntax spec, surface compatibility
+  index, feature index, active reference chapters, architecture/effects docs,
+  and primitive/grammar appendices for canonical `λ`, implicit bodies, bare
+  dict keys, `str`, radix literals, and `#hex`/`#time`/`#uuid`.
+
+Commands run:
+- C3 diagnostics for touched parser, macro, primitive, and test files.
+- `c3c build`
+- Focused `./build/main --eval` smokes for `λ`, `lambda`, dict-key sugar,
+  `str` macro expansion, macroexpand canonicalization, radix literals,
+  `#hex`, `#uuid`, and `#time`.
+- `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_TEST_QUIET=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-lambda-syntax LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_TEST_QUIET=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-macro-hygiene-quasi-pattern LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_TEST_QUIET=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_TEST_QUIET=1 OMNI_LISP_TEST_SLICE=unicode LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_TEST_QUIET=1 OMNI_LISP_TEST_SLICE=compiler LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- Targeted stale-syntax scans across README, syntax/spec, architecture/effects,
+  and active reference docs.
+- `git diff --check`
+
+Key results:
+- Build passed.
+- All focused runtime smokes passed.
+- Default/basic, targeted advanced lambda, targeted macro hygiene,
+  collections, unicode, and compiler slices passed.
+- Compiler slice emitted expected bindgen negative-case diagnostics while
+  exiting successfully.
+- Docs stale-syntax scan left only intentional `lambda` alias notes, explicit
+  quoted-key examples, and FFI/type metadata examples.
+
+Unresolved issues:
+- None for this syntax slice.
+- Existing unrelated memory-boundary working-copy changes remain present and
+  were not reverted.
+
+Next actions:
+- No restart or rebuild is required beyond using the freshly linked
+  `build/main` for local runtime checks.
+
+Signature: GPT-5 Codex
+
 ## 2026-04-24 memory boundary ownership policy slice
 
 Objective:
@@ -6233,9 +6366,11 @@ Key results:
 
 Current checkpoint:
 - FFI bridge boundary declarations are explicit and opaque by default.
-- Copy-debt and route-failure telemetry is the next open proof-planner item.
+- Copy-debt and route-failure telemetry has since been implemented and closed
+  under `MEM-BOUNDARY-COPY-DEBT-001`; the next open proof-planner item is
+  `MEM-BOUNDARY-PLAN-MIGRATE-001`.
 
 Unresolved issues:
-- Copy-debt telemetry and commit-path migration remain open roadmap items.
+- Commit-path migration remains the open roadmap item.
 
 Signature: GPT-5 Codex

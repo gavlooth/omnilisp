@@ -65,16 +65,16 @@ Correct (`recoverable-op-failure`):
 
 ```lisp
 (signal raise
-  {'code 'io/not-found
-   'message "read-file: path not found"
-   'domain 'io
-   'data {'path "missing.txt"}})
+  {code 'io/not-found
+   message "read-file: path not found"
+   domain 'io
+   data {path "missing.txt"}})
 ```
 
 Correct (`absence`):
 
 ```lisp
-(find (lambda (x) (= x 999)) '(1 2 3))
+(find (λ (x) (= x 999)) '(1 2 3))
 ; => nil
 ```
 
@@ -82,10 +82,10 @@ Correct (`programmer-error`):
 
 ```lisp
 (signal raise
-  {'code 'scheduler/invalid-handle
-   'message "tcp-accept: expected listener handle"
-   'domain 'scheduler
-   'data {'api 'tcp-accept}})
+  {code 'scheduler/invalid-handle
+   message "tcp-accept: expected listener handle"
+   domain 'scheduler
+   data {api 'tcp-accept}})
 ```
 
 ### Counterexamples
@@ -101,7 +101,7 @@ Not allowed for new or migrated APIs:
 (signal raise "oops")
 
 ; Wrong: wraps internal invariant break as recoverable effect
-(signal raise {'code 'runtime/impossible-state 'message "..." 'domain 'runtime 'data nil})
+(signal raise {code 'runtime/impossible-state message "..." domain 'runtime data nil})
 ```
 
 ### API Classification Baseline (2026-03-06)

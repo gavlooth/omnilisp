@@ -1,6 +1,6 @@
 # Omni Lisp Feature Index
 
-**Last updated:** 2026-04-09
+**Last updated:** 2026-04-24
 
 This file is a feature index and coverage map.
 It is not a second language specification.
@@ -18,22 +18,26 @@ For removed/renamed syntax, use:
 
 | Capability | Canonical surface | Authority |
 |---|---|---|
-| Function definitions | `lambda`, `define` shorthand `(define (f x) ...)` | `docs/LANGUAGE_SPEC.md` section 3 |
+| Function definitions | `λ`, `define` shorthand `(define (f x) ...)`; `lambda` remains accepted | `docs/LANGUAGE_SPEC.md` section 3 |
 | Binding and scope | `let`, `let ^rec`, named `let` | `docs/LANGUAGE_SPEC.md` section 3 |
+| Body sequencing | implicit multi-expression bodies in `λ`/`lambda`, `define`, `let`, `let ^rec`, named `let`; explicit `block` elsewhere | `docs/LANGUAGE_SPEC.md` section 3 |
 | Control flow | `if`, `block`, `and`, `or`, `match` | `docs/LANGUAGE_SPEC.md` section 3 |
 | Quoting/templates | `quote`, `quasiquote`, `unquote`, `unquote-splicing` | `docs/LANGUAGE_SPEC.md` section 3 |
 | Mutation | `set!` variable/path/generic collection update | `docs/SYNTAX_SPEC.md` + `docs/LANGUAGE_SPEC.md` |
 | Truthiness | falsy: `nil`, `false`; all else truthy | `docs/LANGUAGE_SPEC.md` section 2 |
+| String interpolation | `(str "hello {name}")` | `docs/LANGUAGE_SPEC.md` section 7 |
+| Radix integer literals | `#xFF`, `#b1010`, `#o755` | `docs/LANGUAGE_SPEC.md` section 0 |
 
 ## 2. Data Model and Access
 
 | Capability | Canonical surface | Authority |
 |---|---|---|
-| List / Array / Dictionary | literals + constructors (`List`, `Array`, `Dictionary`) | `docs/LANGUAGE_SPEC.md` sections 2/7 |
+| List / Array / Dictionary | literals + constructors (`List`, `Array`, `Dictionary`); dict literals auto-quote bare symbol keys | `docs/LANGUAGE_SPEC.md` sections 2/7 |
 | Generic lookup | `(ref coll key)` | `docs/reference/03-collections.md` |
 | Path access | `expr.name` | `docs/LANGUAGE_SPEC.md` section 6 |
 | Postfix index access | `expr.[key]` | `docs/LANGUAGE_SPEC.md` section 6 |
 | Generic collection ops | `length`, `map`, `filter`, `foldl`, etc. | `docs/reference/03-collections.md` |
+| Data reader tags | `#hex`, `#time`, `#uuid` | `docs/LANGUAGE_SPEC.md` sections 0/7 |
 
 ## 3. Type System and Dispatch
 
@@ -59,7 +63,7 @@ For removed/renamed syntax, use:
 |---|---|---|
 | Failure class taxonomy | `absence`, `recoverable-op-failure`, `programmer-error`, `internal-runtime-error` | `docs/ARCHITECTURE.md` |
 | Surface behavior mapping | `nil` vs `signal raise` vs hard runtime error | `docs/ARCHITECTURE.md` + `docs/ERROR_MODEL.md` |
-| Canonical raise payload | `{ 'code 'message 'domain 'data }` | `docs/ERROR_MODEL.md` |
+| Canonical raise payload keys | `code`, `message`, `domain`, `data` in dict payloads | `docs/ERROR_MODEL.md` |
 
 ## 6. Macros and Modules
 

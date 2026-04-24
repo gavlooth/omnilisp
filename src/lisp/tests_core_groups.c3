@@ -453,7 +453,9 @@ fn void run_basic_runtime_memory_stats_tests(Interp* interp, int* pass, int* fai
         "       (>= (ref (ref s 'scope) 'scope-create-count) 1) "
         "       (>= (ref (ref s 'scope) 'temp-bytes-allocated) 0) "
         "       (>= (ref (ref s 'copy-to-parent) 'copy-to-parent-bytes) 0) "
-        "       (>= (ref (ref s 'fiber-temp) 'take-hits) 0)))",
+        "       (>= (ref (ref s 'fiber-temp) 'take-hits) 0) "
+        "       (>= (ref (ref s 'boundary-decisions) 'materialization-copy-bytes) 0) "
+        "       (>= (ref (ref s 'boundary-decisions) 'selected-fail-closed) 0)))",
         interp
     );
     if (!r.error.has_error && !is_falsy(r.value, interp)) {

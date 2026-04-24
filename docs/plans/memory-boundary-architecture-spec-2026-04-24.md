@@ -113,6 +113,11 @@ Every materialization should record copy debt:
 - estimated copied payload bytes,
 - selected route and failure reason.
 
+Status 2026-04-24: `MEM-BOUNDARY-COPY-DEBT-001` exposes route selection,
+fail-closed reason, graph-node, and estimated payload-byte counters. The
+remaining optimization work is to migrate commit paths so planner-selected
+routes drive execution rather than mirroring existing route behavior.
+
 The optimization loop is to reduce measured copy debt without weakening the
 boundary invariant.
 
@@ -208,7 +213,7 @@ Next roadmap:
 - `MEM-BOUNDARY-EPOCH-001`
 - `MEM-BOUNDARY-TRANSPLANT-001`
 - `MEM-BOUNDARY-FFI-BRIDGE-001`
-- `MEM-BOUNDARY-COPY-DEBT-001`
+- `MEM-BOUNDARY-COPY-DEBT-001` (closed 2026-04-24)
 - `MEM-BOUNDARY-PLAN-MIGRATE-001`
 
 ## Validation Path

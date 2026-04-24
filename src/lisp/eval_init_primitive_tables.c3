@@ -229,7 +229,7 @@ fn bool register_regular_primitives_collections(Interp* interp) {
         { "random-int", &prim_random_int, 1 },
         { "getenv", &prim_getenv, 1 },
         { "runtime-memory-stats", &prim_runtime_memory_stats, 0 },
-        { "time", &prim_time, 0 },
+        { "time", &prim_time, -1 },
         { "time-ms", &prim_time_ms, 0 },
         { "exit", &prim_exit, -1 },
         { "sleep", &prim_sleep, 1 },
@@ -256,6 +256,8 @@ fn bool register_regular_primitives_collections(Interp* interp) {
         { "json-get", &prim_json_get, 2 },
         { "time-point?", &prim_time_point_p, 1 },
         { "TimePoint", &prim_time_point, -1 }, // Canonical constructor.
+        { "hex", &prim_hex, 1 },
+        { "uuid", &prim_uuid, 1 },
         // TOML / CSV
         { "toml-parse", &prim_toml_parse, -1 },
         { "csv-parse", &prim_csv_parse, -1 },

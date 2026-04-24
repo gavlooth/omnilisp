@@ -115,11 +115,18 @@ fn Value* prim_macroexpand(Value*[] args, Env* env, Interp* interp) {
     if (call_expr.tag == E_LIT && call_expr.lit.value != null && call_expr.lit.value.tag == ERROR) {
         return raise_error_with_payload_names(interp, "type", "type/arg-mismatch", (String)call_expr.lit.value.str_chars[:call_expr.lit.value.str_len], null);
     }
+    if (Expr* builtin_expanded = expand_builtin_macro_call_site(call_expr, interp)) {
+        return expr_to_value(expand_macros_in_expr(builtin_expanded, interp), interp);
+    }
 
     EvalResult r;
     if (!try_expand_macro_call_expr(call_expr, interp, &r)) return form;
     if (r.error.has_error) return raise_error_with_payload_names(interp, "runtime", "runtime/evaluation-error", (String)r.error.message[:256], null);
-    if (r.value != null) return r.value;
+    if (r.value != null) {
+        Expr* expanded = macro_result_to_expr(&r, call_expr, interp);
+        if (expanded == null) return make_nil(interp);
+        return expr_to_value(expand_macros_in_expr(expanded, interp), interp);
+    }
     return make_nil(interp);
 }
 

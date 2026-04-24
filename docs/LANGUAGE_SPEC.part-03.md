@@ -445,6 +445,8 @@ all non-contracted right axes.
 |------|-------------|
 | `gensym` | Generate unique symbol |
 | `format` | Format string with values |
+| `hex` | Parse a hex string into an Array of integer bytes; reader tag form is `#hex "ff0a"` |
+| `uuid` | Validate and return a canonical UUID string; reader tag form is `#uuid "..."` |
 | `sort` | Sort list |
 | `sort-by` | Sort list by comparator |
 | `read-string` | Parse string to Lisp value |

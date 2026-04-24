@@ -156,7 +156,7 @@ Implementation note:
   forms inside `let` binding lists aligned to their binding context, keep
   higher-order collection-call lambda bodies (`map` / `foldl` / `foldr` /
   `filter` / `find` / `partition` / `sort-by` / `for-each`) aligned from the
-  lambda's own opening column, keep multiline `Coroutine (lambda ...)` bodies
+  lambda's own opening column, keep multiline `Coroutine (λ ...)` bodies
   on the current in-tree wrapper-lambda layout, keep multiline clause bodies
   and inline dictionary/array payload entries aligned from their opening delimiter
   in current `match` arms and data literals, align wrapped generic call and
@@ -182,7 +182,7 @@ Keep validation scope aligned with the change family:
 - AArch64 stack backend evidence for `STACK-AARCH64-CONT-001` should be recorded
   with the exact host/runtime checks that passed on 2026-04-08:
   - `LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite stack` -> `Stack engine: 23 passed, 0 failed`
-  - `LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval "(resume (Coroutine (lambda () (+ 1 2))))"` -> `3`
+  - `LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval "(resume (Coroutine (λ () (+ 1 2))))"` -> `3`
   - `LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval "(handle (+ 1 (signal ask 0)) (ask x (resolve 10)))"` -> `11`
   - continuation multi-shot parity closure checks:
     - `LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval "(handle (+ 1 (signal ask 0)) (ask x (with-continuation k (k 41))))"` -> `42`
@@ -281,7 +281,7 @@ Current behavior:
     opening column for current in-tree collection calls such as `map`,
     `foldl`, `foldr`, `filter`, `find`, `partition`, `sort-by`, and
     `for-each`,
-  - keep multiline `Coroutine (lambda ...)` bodies on the current in-tree
+  - keep multiline `Coroutine (λ ...)` bodies on the current in-tree
     wrapper-lambda layout instead of flattening them toward generic lambda
     indentation,
   - keep multiline clause bodies and inline dict/array payload entries aligned

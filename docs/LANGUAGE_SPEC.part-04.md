@@ -539,11 +539,14 @@ See `docs/PROJECT_TOOLING.md` for the complete reference including `omni.toml` f
 
 ```ebnf
 program     = { expr } ;
-expr        = literal | symbol | path | quoted | quasiquoted
+expr        = literal | symbol | path | quoted | quasiquoted | reader_tag
             | list | array_lit | dict_lit | indexed | accessor ;
 
-literal     = integer | float | string ;
+literal     = integer | radix_integer | float | string ;
 integer     = [ "-" ] digit { digit } ;
+radix_integer = ("#x" | "#X") [ "-" ] hex_digit { hex_digit }
+              | ("#b" | "#B") [ "-" ] bin_digit { bin_digit }
+              | ("#o" | "#O") [ "-" ] oct_digit { oct_digit } ;
 float       = [ "-" ] digit { digit } "." digit { digit } ;
 string      = '"' { char | escape } '"' ;
 symbol      = symbol_char { symbol_char } ;
@@ -551,6 +554,7 @@ path        = symbol "." symbol { "." symbol } ;
 
 quoted      = "'" datum ;
 quasiquoted = "`" datum ;
+reader_tag  = "#" symbol expr ;           (* equivalent to one-argument call *)
 list        = "(" { expr } ")" ;
 array_lit   = "[" { expr } "]" ;           (* equivalent to Array constructor call *)
 dict_lit    = "{" { dict_key expr } "}" ;  (* equivalent to Dictionary constructor call; must be even *)

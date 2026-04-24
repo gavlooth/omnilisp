@@ -4,10 +4,10 @@
 (deduce 'scan person)           ;; all rows
 (deduce 'count person)          ;; number of rows
 (deduce 'query person
-  (lambda (row) (> (ref row 'age) 28)))   ;; filtered
+  (λ (row) (> (ref row 'age) 28)))   ;; filtered
 (deduce 'match person '("Alice" _ _))     ;; pattern match
 (deduce 'match ancestor '(ancestor ?x ?y) 1) ;; selected recursive closure
-(deduce 'query ancestor (lambda (row) true) 1) ;; selected recursive closure
+(deduce 'query ancestor (λ (row) true) 1) ;; selected recursive closure
 (deduce 'scan-range person '("Alice" 0 "a@x") '("Charles" 999 "zzz")) ;; bounded scan
 ```
 

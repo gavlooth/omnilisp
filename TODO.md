@@ -25,14 +25,14 @@ split gate applies to code files only.
 - Part 15: [docs/todo_parts/todo_part_15.md](docs/todo_parts/todo_part_15.md) (951 lines)
 - Part 16: [docs/todo_parts/todo_part_16.md](docs/todo_parts/todo_part_16.md) (261 lines)
 - Part 17: [docs/todo_parts/todo_part_17.md](docs/todo_parts/todo_part_17.md) (75 lines)
-- Part 18: [docs/todo_parts/todo_part_18.md](docs/todo_parts/todo_part_18.md) (127 lines)
+- Part 18: [docs/todo_parts/todo_part_18.md](docs/todo_parts/todo_part_18.md) (136 lines)
 
 ## Live Queue
 
 - The memory boundary architecture verification blockers from
   `docs/plans/memory-boundary-architecture-spec-2026-04-24.md` are closed in
   Part 18.
-- The next memory-boundary work is `MEM-BOUNDARY-COPY-DEBT-001` in Part 18,
+- The next memory-boundary work is `MEM-BOUNDARY-PLAN-MIGRATE-001` in Part 18,
   continuing the proof-driven optimizer roadmap in
   `docs/plans/memory-boundary-proof-planner-roadmap-2026-04-24.md`.
 - No open stable-escape prepared-materialization rollout items remain in Part 16.

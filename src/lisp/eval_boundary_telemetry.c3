@@ -9,6 +9,12 @@ struct BoundaryDecisionStats {
     usz promotion_attempted;
     usz[BOUNDARY_PROMOTION_ABORT_REASON_COUNT] promotion_aborted_by_reason;
     usz copy_fallback_total;
+    usz[BOUNDARY_PLAN_ROUTE_COUNT] planned_route_by_route;
+    usz[BOUNDARY_PLAN_ROUTE_COUNT] selected_route_by_route;
+    usz[BOUNDARY_PLAN_REASON_COUNT] route_failure_by_reason;
+    usz stable_materialization_success;
+    usz stable_materialization_node_count_total;
+    usz stable_materialization_copy_bytes_total;
     usz scope_chain_scan_total;
     usz scope_chain_scan_with_hint;
     usz scope_chain_scan_fallback;
@@ -43,14 +49,17 @@ enum BoundaryInstrumentationMode : char {
 fn BoundaryInstrumentationMode boundary_instrumentation_mode() @inline {
     $if $feature(OMNI_BOUNDARY_INSTR_TRACE):
         return BOUNDARY_INSTRUMENTATION_TRACE;
+    $else
+        $if $feature(OMNI_BOUNDARY_INSTR_BENCHMARK):
+            return BOUNDARY_INSTRUMENTATION_BENCHMARK;
+        $else
+            $if $feature(OMNI_BOUNDARY_INSTR_COUNTERS):
+                return BOUNDARY_INSTRUMENTATION_COUNTERS;
+            $else
+                return BOUNDARY_INSTRUMENTATION_OFF;
+            $endif
+        $endif
     $endif
-    $if $feature(OMNI_BOUNDARY_INSTR_BENCHMARK):
-        return BOUNDARY_INSTRUMENTATION_BENCHMARK;
-    $endif
-    $if $feature(OMNI_BOUNDARY_INSTR_COUNTERS):
-        return BOUNDARY_INSTRUMENTATION_COUNTERS;
-    $endif
-    return BOUNDARY_INSTRUMENTATION_OFF;
 }
 
 fn bool boundary_telemetry_enabled() @inline {
@@ -145,6 +154,33 @@ macro boundary_telemetry_inc_graph_audit_skipped_max_roots() {
     }
 }
 
+macro boundary_telemetry_inc_planned_route(route) {
+    if (boundary_telemetry_enabled()) {
+        usz route_idx = (usz)(route);
+        if (route_idx < BOUNDARY_PLAN_ROUTE_COUNT) {
+            g_boundary_decision_stats.planned_route_by_route[route_idx]++;
+        }
+    }
+}
+
+macro boundary_telemetry_inc_selected_route(route) {
+    if (boundary_telemetry_enabled()) {
+        usz route_idx = (usz)(route);
+        if (route_idx < BOUNDARY_PLAN_ROUTE_COUNT) {
+            g_boundary_decision_stats.selected_route_by_route[route_idx]++;
+        }
+    }
+}
+
+macro boundary_telemetry_inc_route_failure(reason) {
+    if (boundary_telemetry_enabled()) {
+        usz reason_idx = (usz)(reason);
+        if (reason_idx < BOUNDARY_PLAN_REASON_COUNT) {
+            g_boundary_decision_stats.route_failure_by_reason[reason_idx]++;
+        }
+    }
+}
+
 macro boundary_trace_splice_event(allowed, reason) {
     if (boundary_trace_runtime_enabled()) {
         io::eprintfn(
@@ -214,4 +250,51 @@ fn void boundary_note_promotion_abort(BoundaryPromotionAbortReason reason) @inli
     boundary_trace_promotion_abort(reason);
     boundary_benchmark_promotion_abort(reason);
     boundary_telemetry_inc_promotion_aborted(reason);
+}
+
+fn void boundary_note_materialization_copy_debt(usz node_count, usz estimated_copy_bytes) @inline {
+    if (!boundary_telemetry_enabled()) return;
+    g_boundary_decision_stats.stable_materialization_success++;
+    g_boundary_decision_stats.stable_materialization_node_count_total += node_count;
+    g_boundary_decision_stats.stable_materialization_copy_bytes_total += estimated_copy_bytes;
+}
+
+fn void boundary_note_commit_decision(BoundaryCommitEscapeResult committed) @inline {
+    boundary_telemetry_inc_planned_route(committed.planned_route);
+    boundary_telemetry_inc_selected_route(committed.selected_route);
+    if (committed.selected_route == BOUNDARY_PLAN_ROUTE_FAIL_CLOSED) {
+        boundary_telemetry_inc_route_failure(committed.selected_reason);
+    }
+    if (committed.selected_route == BOUNDARY_PLAN_ROUTE_COMPATIBILITY_DESTINATION ||
+        committed.selected_route == BOUNDARY_PLAN_ROUTE_MIXED_DESTINATION) {
+        if (boundary_telemetry_enabled()) g_boundary_decision_stats.copy_fallback_total++;
+    }
+}
+
+macro boundary_note_commit_decision_enabled(committed) {
+    $if $feature(OMNI_BOUNDARY_INSTR_TRACE):
+        boundary_note_commit_decision(committed);
+    $else
+        $if $feature(OMNI_BOUNDARY_INSTR_BENCHMARK):
+            boundary_note_commit_decision(committed);
+        $else
+            $if $feature(OMNI_BOUNDARY_INSTR_COUNTERS):
+                boundary_note_commit_decision(committed);
+            $endif
+        $endif
+    $endif
+}
+
+macro boundary_note_materialization_copy_debt_enabled(node_count, estimated_copy_bytes) {
+    $if $feature(OMNI_BOUNDARY_INSTR_TRACE):
+        boundary_note_materialization_copy_debt(node_count, estimated_copy_bytes);
+    $else
+        $if $feature(OMNI_BOUNDARY_INSTR_BENCHMARK):
+            boundary_note_materialization_copy_debt(node_count, estimated_copy_bytes);
+        $else
+            $if $feature(OMNI_BOUNDARY_INSTR_COUNTERS):
+                boundary_note_materialization_copy_debt(node_count, estimated_copy_bytes);
+            $endif
+        $endif
+    $endif
 }

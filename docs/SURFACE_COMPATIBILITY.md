@@ -1,6 +1,6 @@
 # Omni Surface Compatibility
 
-**Updated:** 2026-04-13
+**Updated:** 2026-04-24
 
 This document is the single compatibility source for removed or renamed
 language surface syntax.
@@ -14,15 +14,16 @@ Policy:
 
 | Area | Canonical form(s) |
 |---|---|
-| Function expressions | `lambda` (plain `λ` accepted) |
-| Sequencing | `block` |
+| Function expressions | `λ` (`lambda` accepted as long alias) |
+| Sequencing | implicit multi-expression bodies in `λ`/`lambda`, `define`, `let`, `let ^rec`, named `let`; explicit `block` elsewhere |
 | Local binding | flat-pair `let`, `let ^rec`, named `let` |
 | Delimited control | `checkpoint`, `capture` |
 | Effects | `signal`, `handle`, `resolve`, `with-continuation` |
 | Access syntax | `expr.name`, `expr.[key]`, `(ref expr key)` |
 | Macro definition | `(define [macro] name (syntax-match ...))` |
 | Reader tag macro definition | `(define [reader tag] name (syntax-match ...))` |
-| Reader tag use | `#tag form` parses as `(tag form)` |
+| Reader tag use | `#tag form` parses as `(tag form)`; built-ins include `#hex`, `#time`, `#uuid` |
+| Radix integer literals | `#x...`, `#b...`, `#o...` |
 | Value dispatch constructor | `Value` |
 | Transaction command | `(deduce 'block db ['read|'write|'write-deferred])` |
 
@@ -30,7 +31,7 @@ Policy:
 
 | Removed or non-canonical form | Replacement | Notes |
 |---|---|---|
-| `fn` | `lambda` | `λ` remains accepted as equivalent input spelling |
+| `fn` | `λ` | `lambda` remains accepted as the long accessibility alias |
 | `begin`, `do` | `block` | sequencing is `block` only |
 | `reset`, `shift` | `checkpoint`, `capture` | old names removed from public surface |
 | Scheme grouped let: `(let ((x 1) (y 2)) ...)` | `(let (x 1 y 2) ...)` | flat pairs, sequential left-to-right |
@@ -58,7 +59,7 @@ surface.
 Higher-order accessor function values must be explicit:
 
 ```lisp
-(lambda (x) (ref x 'name))
+(λ (x) (ref x 'name))
 ```
 
 ## 4. Compatibility Diagnostics Expectations
@@ -72,7 +73,7 @@ When removed syntax is used, diagnostics should be explicit and migratory:
 Examples:
 - using `.name` should hard-error and point to `expr.name` / `ref`.
 - using `('name dict)` should hard-error and point to `ref` or path syntax.
-- using `fn` should hard-error and point to `lambda`.
+- using `fn` should hard-error and point to `λ` / `lambda`.
 
 ## 5. Contributor Rules
 

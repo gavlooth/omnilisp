@@ -36,7 +36,7 @@ Omni has three collection types plus sets.
 ### Dicts (Hash Map, Mutable)
 
 ```lisp
-{'name "Alice" 'age 30}    ;; dict literal (canonical constructor surface: Dictionary)
+{name "Alice" age 30}      ;; dict literal; bare symbol keys auto-quote
 (Dictionary 'name "Alice")  ;; canonical construction
 (Dictionary "name" "Alice") ;; string keys are supported
 (ref d 'name)               ;; => "Alice"
@@ -69,7 +69,7 @@ Naming policy for new code/examples:
 - keep `list` as an approved idiomatic public helper
 
 Dictionary key policy:
-- symbols are preferred for internal language-owned maps (`'name`, `'code`)
+- bare symbol keys are preferred for internal language-owned maps (`name`, `code`)
 - strings are preferred at data boundaries (JSON/HTTP/config payloads)
 - keys are value-typed (`Dictionary` supports symbol, string, int, etc. keys)
 
@@ -272,7 +272,7 @@ solver ships.
 (ref (imag-part x) [0 0]) ;; => 0.0
 
 (define y (Tensor Float64 [2 3] 0.0))
-(Tensor (map (lambda (v) (+ v 1)) (Iterator [1 2 3]))) ;; => rank-1 Float64 Tensor
+(Tensor (map (λ (v) (+ v 1)) (Iterator [1 2 3]))) ;; => rank-1 Float64 Tensor
 (realize (map + x 1.0) y) ;; low-level destination write into y
 (realize (Tensor Float64 [] 3.0) (Tensor Float64 [] 0.0))
 (realize 9 (Tensor Float64 [0] 0.0))
@@ -662,7 +662,7 @@ Omni keeps related but distinct access operations:
 Examples:
 
 ```lisp
-(define user {'name "Alice" 'age 30})
+(define user {name "Alice" age 30})
 user.name                         ;; => "Alice"
 
 (define arr [0 1 2])
@@ -684,7 +684,7 @@ Removed forms:
 
 These removed forms now hard-error. Use `expr.name`, `expr.[key]`, or `ref`.
 For higher-order code, write the lambda explicitly:
-`(lambda (x) (ref x 'name))`.
+`(λ (x) (ref x 'name))`.
 Compatibility/removal details are centralized in
 `docs/SURFACE_COMPATIBILITY.md`.
 

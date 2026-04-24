@@ -114,6 +114,9 @@ fn Expr* expand_macros_in_expr(Expr* expr, Interp* interp) {
             expand_macros_in_sequence(expr.block.exprs, expr.block.expr_count, interp);
             return expr;
         case E_CALL: {
+            if (Expr* builtin_expanded = expand_builtin_macro_call_site(expr, interp)) {
+                return expand_macros_in_expr(builtin_expanded, interp);
+            }
             if (Expr* expanded = expand_macro_call_site(expr, interp)) return expanded;
             expand_macros_call_children(expr, interp);
             return expr;

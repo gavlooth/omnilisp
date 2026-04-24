@@ -43,7 +43,7 @@ The examples below match that spec.
 (let ([a b .. rest] [10 20 30 40]) (+ a b))
 
 ;; dict destructuring
-(let ({name age} {'name "Alice" 'age 30}) name)
+(let ({name age} {name "Alice" age 30}) name)
 ```
 
 ### Functions and Arity
@@ -55,8 +55,8 @@ The examples below match that spec.
 ;; variadic parameter with ..
 (define (collect first .. rest) rest)
 
-;; lambda form
-(lambda (x y) (+ x y))
+;; canonical lambda form (`lambda` remains accepted as a long alias)
+(λ (x y) (+ x y))
 ```
 
 ### Collections and Access
@@ -68,13 +68,26 @@ The examples below match that spec.
 ;; array literal (desugars to (Array ...))
 [1 2 3]
 
-;; dict literal (desugars to (Dictionary ...))
-{'a 1 'b 2}
+;; dict literal (desugars to (Dictionary ...)); bare symbol keys auto-quote
+{a 1 b 2}
 
 ;; path and index access
 point.x
 arr.[0]
 dict.['key]
+```
+
+### Concise Literals and Strings
+
+```lisp
+#xFF                         ;; => 255
+#b1010                       ;; => 10
+#o755                        ;; => 493
+
+(str "hello {name}")          ;; interpolates through String coercion
+#hex "ff 0a 1b 00"            ;; => [255 10 27 0]
+#time "2024-01-15T10:30:00Z"  ;; => TimePoint
+#uuid "550e8400-e29b-41d4-a716-446655440000"
 ```
 
 ### Mutation

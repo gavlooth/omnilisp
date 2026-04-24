@@ -212,6 +212,58 @@ fn bool stable_escape_materialize_init_shell(Interp* interp, Value* dst, StableE
     }
 }
 
+fn usz stable_escape_materialize_estimated_node_bytes(StableEscapePreparedNode* node) {
+    if (node == null || node.source == null) return Value.sizeof;
+    usz bytes = Value.sizeof;
+    switch (node.tag) {
+        case STRING:
+        case ERROR: {
+            usz cap = node.source.str_len == usz.max ? 0 : node.source.str_len + 1;
+            bytes += cap < 32 ? 32 : cap;
+            break;
+        }
+        case ARRAY: {
+            Array* arr = node.source.array_val;
+            if (arr != null) {
+                bytes += Array.sizeof;
+                bytes += (usz)arr.capacity * Value*.sizeof;
+            }
+            break;
+        }
+        case HASHMAP:
+        case SET: {
+            HashMap* map = node.source.hashmap_val;
+            if (map != null) {
+                bytes += HashMap.sizeof;
+                bytes += (usz)map.capacity * HashEntry.sizeof;
+            }
+            break;
+        }
+        case CLOSURE: {
+            Closure* closure = node.source.closure_val;
+            if (closure != null) {
+                bytes += Closure.sizeof;
+                bytes += closure.param_count * SymbolId.sizeof;
+                if (closure.type_sig != null) bytes += MethodSignature.sizeof;
+            }
+            break;
+        }
+        default:
+            break;
+    }
+    return bytes;
+}
+
+fn usz stable_escape_materialize_estimated_copy_bytes(StableEscapePreparedGraphScratch* scratch) {
+    if (scratch == null) return 0;
+    usz total = 0;
+    for (usz i = 0; i < scratch.node_count; i++) {
+        total += stable_escape_materialize_estimated_node_bytes(&scratch.nodes[i]);
+    }
+    total += scratch.edge_count * usz.sizeof;
+    return total;
+}
+
 fn bool stable_escape_materialize_edge_indices_valid(StableEscapePreparedGraphScratch* scratch, StableEscapePreparedNode* node) @inline {
     if (scratch == null || node == null) return false;
     if (node.child_count == 0) return node.child_offset == STABLE_ESCAPE_PREPARED_INVALID_INDEX;
@@ -353,6 +405,10 @@ fn Value* stable_escape_prepare_and_materialize_value(Interp* interp, Value* roo
     for (usz i = 0; i < scratch.node_count; i++) {
         if (materialized[i] != null) materialized[i].scope_gen = target_scope.escape_generation;
     }
+    boundary_note_materialization_copy_debt_enabled(
+        scratch.node_count,
+        stable_escape_materialize_estimated_copy_bytes(&scratch)
+    );
     return result;
 }
 

@@ -35,7 +35,7 @@ Use `Lambda` to match value-level syntax:
 
 ```lisp
 ; Value level
-(lambda (x) (* x 2))
+(λ (x) (* x 2))
 
 ; Type level
 ^(Lambda Integer Integer) inc            ; Integer -> Integer
@@ -62,17 +62,17 @@ constructor or coercion surface.
 (Boolean nil)    ; => false
 (Boolean false)  ; => false
 (Nil nil)        ; => nil
-(Closure (lambda (x) x))
-(Coroutine (lambda () 1))
+(Closure (λ (x) x))
+(Coroutine (λ () 1))
 
 ; Runtime object constructor / conversion surface
 (List [1 2 3])
 (Array '(1 2 3))
-(Dictionary 'a 1 'b 2)
+(Dictionary 'a 1 'b 2) ; printed literal form: {a 1 b 2}
 (Iterator [1 2 3])
 (TimePoint 'date 2026 3 7)
 (Set 1 2 3)
-(Iterator (lambda () nil))
+(Iterator (λ () nil))
 ```
 
 Current rule:

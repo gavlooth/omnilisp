@@ -23,7 +23,7 @@
 
 ;; Sorting
 (sort '(3 1 2))              ;; => (1 2 3)
-(sort-by (lambda (a b) (> a b)) '(1 3 2))   ;; => (3 2 1)
+(sort-by (λ (a b) (> a b)) '(1 3 2))   ;; => (3 2 1)
 
 ;; Read
 (read-string "(+ 1 2)")     ;; => Lisp value (unevaluated)
@@ -33,8 +33,8 @@
 
 ;; Type predicates
 (string? "hi")    (int? 42)      (float64? 3.14)
-(number? 42)      (symbol? 'x)   (closure? (lambda (x) x))
-(list? '(1 2))    (array? [1])   (dict? {'a 1})
+(number? 42)      (symbol? 'x)   (closure? (λ (x) x))
+(list? '(1 2))    (array? [1])   (dict? {a 1})
 (pair? '(1 . 2))  (null? nil)    (boolean? true)
 (procedure? +)    (continuation? k)  (coroutine? c)
 ```
@@ -75,7 +75,13 @@ nil               ;; nil value
 ```lisp
 '(1 2 3)          ;; quoted list
 [1 2 3]           ;; array literal    -> (Array 1 2 3) (canonical constructor surface)
-{'a 1 'b 2}       ;; dict literal     -> (Dictionary 'a 1 'b 2) (canonical constructor surface)
+{a 1 b 2}         ;; dict literal     -> (Dictionary 'a 1 'b 2) (canonical constructor surface)
+#xFF              ;; hex integer      -> 255
+#b1010            ;; binary integer   -> 10
+#o755             ;; octal integer    -> 493
+#hex "ff0a"       ;; byte array       -> [255 10]
+#time "2024-01-15T10:30:00Z"
+#uuid "550e8400-e29b-41d4-a716-446655440000"
 (Set "a" "b" "c") ;; set constructor
 ```
 

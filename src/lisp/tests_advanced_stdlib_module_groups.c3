@@ -57,6 +57,9 @@ fn void run_advanced_collections_dict_literal_tests(Interp* interp, int* pass, i
     test_truthy(interp, "{} string keys", "(has? {\"name\" \"Alice\"} \"name\")", pass, fail);
     test_truthy(interp, "{} has key", "(has? {'x 10 'y 20} 'y)", pass, fail);
     test_eq(interp, "{} count", "(length {'a 1 'b 2 'c 3})", 3, pass, fail);
+    test_eq(interp, "#hex byte array length", "(length #hex \"ff 0a 1b 00\")", 4, pass, fail);
+    test_eq(interp, "#hex byte array value", "(ref #hex \"48656c6c6f\" 1)", 101, pass, fail);
+    test_str_val(interp, "#uuid validates canonical UUID", "#uuid \"550e8400-e29b-41d4-a716-446655440000\"", "550e8400-e29b-41d4-a716-446655440000", pass, fail);
     // Array literal []
     test_eq(interp, "[] empty", "(length [])", 0, pass, fail);
     test_eq(interp, "[] literal", "(ref [10 20 30] 1)", 20, pass, fail);

@@ -33,7 +33,7 @@ fn bool register_language_constants(Interp* interp) {
 }
 
 fn bool register_dispatched_primitives(Interp* interp) {
-    const DISPATCHED_PRIM_COUNT = 57;
+    const DISPATCHED_PRIM_COUNT = 56;
     PrimReg[DISPATCHED_PRIM_COUNT] dispatched_prims = {
         // Arithmetic
         { "+", &prim_add, -1 }, { "-", &prim_sub, -1 }, { "*", &prim_mul, 2 },
@@ -56,7 +56,6 @@ fn bool register_dispatched_primitives(Interp* interp) {
         { "string-downcase", &prim_string_downcase_unicode, 1 },
         { "string-casefold", &prim_string_casefold_unicode, 1 },
         { "string-titlecase", &prim_string_titlecase_unicode, 1 },
-        { "str", &prim_str_interpolate, 1 },
         // Math (extensible for user-defined numeric types)
         { "abs", &prim_abs, 1 }, { "floor", &prim_floor, 1 },
         { "ceiling", &prim_ceiling, 1 }, { "round", &prim_round, 1 },

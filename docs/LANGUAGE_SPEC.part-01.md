@@ -360,6 +360,7 @@ The reader supports a small canonical `#` dispatch surface:
 | Form | Meaning |
 |------|---------|
 | `#r"..."` | regex literal |
+| `#xFF`, `#b1010`, `#o755` | integer literals in hexadecimal, binary, and octal radix |
 | `#_ form` | skip next form |
 | `#N_ form...` | skip next `N` forms (`N` in `1..9`) |
 | `#| ... |#` | (nestable) block comment |
@@ -371,5 +372,9 @@ one-argument call. A tag can therefore be an ordinary function, or a macro
 declared with the canonical `(define [reader tag] name (syntax-match ...))`
 surface. Any other non-tag `#` sequence is rejected with a deterministic
 parser/lexer error.
+
+Built-in data tags include `#hex "ff 0a"` for byte arrays, `#time
+"2024-01-15T10:30:00Z"` for UTC time points, and `#uuid
+"550e8400-e29b-41d4-a716-446655440000"` for validated UUID strings.
 
 ---

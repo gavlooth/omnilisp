@@ -107,6 +107,7 @@ These support user extension via method tables.
 | `sort` | 1 | Sorting |
 | `sort-by` | 2 | Sorting |
 | `string-append` | variadic | String |
+| `str` | 1 | String interpolation macro for string literals with `{expr}` holes |
 | `string-contains?` | 2 | String |
 | `string-upcase` | 1 | String |
 | `string-downcase` | 1 | String |
@@ -175,6 +176,7 @@ not exported.
 
 | Name | Arity | Description |
 |------|-------|-------------|
+| `str` | 1 | Interpolate `{expr}` holes in a string literal using lexical bindings and `String` coercion; escape literal braces as `{{` and `}}` |
 | `string-join` | 2 | Join list with separator |
 | `substring` | 3 | Extract substring |
 | `string-split` | 2 | Split by delimiter |
@@ -598,6 +600,9 @@ that require importing a detachable Pika package.
 |------|-------|-------------|
 | `TimePoint` | variadic | Canonical TimePoint constructor |
 | `time-point?` | 1 | TimePoint predicate |
+| `time` | 1 | Parse a time string as a `TimePoint`; reader tag form is `#time "..."` |
+| `hex` | 1 | Parse a hex string into an Array of integer bytes; reader tag form is `#hex "ff0a"` |
+| `uuid` | 1 | Validate and return a canonical UUID string; reader tag form is `#uuid "..."` |
 | `toml-parse` | 1-2 | Parse TOML string (optional options list: `((check-utf8 false))`)
 | `csv-parse` | 1-2 | Parse CSV text into rows (`delimiter` string or option list including `strict`; strict/default enforces RFC-4180 CRLF row endings) |
 | `csv-emit` | 1-2 | Emit rows as CSV text (`delimiter`, `line-ending`, `quote-char`, `quote-style`, `nil-as`, `strict`; strict/default line ending is `\\r\\n`) |

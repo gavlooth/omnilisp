@@ -107,12 +107,17 @@ Source: `docs/plans/memory-boundary-proof-planner-roadmap-2026-04-24.md`.
   - negative-memory constraint: foreign payload finalizers/RC must not become
     ownership authority over ordinary Omni `Value` graphs.
 
-- [ ] `MEM-BOUNDARY-COPY-DEBT-001` expose copy debt and route-failure telemetry.
+- [x] `MEM-BOUNDARY-COPY-DEBT-001` expose copy debt and route-failure telemetry.
   - classification: runtime observability, targeted instrumentation.
-  - task: report why stable publish or transplant failed, which route was
-    selected, graph node count, and estimated copied payload bytes.
-  - next step: extend runtime memory stats with planner route counters and
-    materialization copy-debt counters.
+  - done 2026-04-24: exposed planned/selected route counters, fail-closed
+    reason counters, materialization node totals, and estimated materialized
+    payload bytes through test summaries, graph-audit telemetry, JSON telemetry,
+    and `(runtime-memory-stats)`.
+  - validation: `c3c build --obj-out obj`; bounded container
+    `memory-lifetime-smoke` (`255 passed, 0 failed`); bounded container
+    `basic` (`169 passed, 0 failed`); multi-feature instrumentation build
+    (`OMNI_BOUNDARY_INSTR_COUNTERS`, `TRACE`, `BENCHMARK`) plus bounded
+    `memory-lifetime-smoke` (`255 passed, 0 failed`).
   - prerequisites: route reasons from `MEM-BOUNDARY-PLANNER-001`.
   - negative-memory constraint: telemetry must not change route behavior or
     mask fail-closed outcomes.

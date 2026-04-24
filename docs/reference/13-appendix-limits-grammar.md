@@ -37,10 +37,11 @@
 ```ebnf
 program     = { expr } ;
 expr        = literal | symbol | path | quoted | quasiquoted
-            | list | array_lit | dict_lit | indexed | accessor ;
+            | list | array_lit | dict_lit | indexed | accessor | reader_tag ;
 
-literal     = integer | float | string ;
+literal     = integer | radix_integer | float | string ;
 integer     = [ "-" ] digit { digit } ;
+radix_integer = ( "#x" | "#b" | "#o" ) [ "-" ] radix_digit { radix_digit } ;
 float       = [ "-" ] digit { digit } "." digit { digit } ;
 string      = '"' { char | escape } '"' ;
 symbol      = symbol_char { symbol_char } ;
@@ -50,10 +51,12 @@ quoted      = "'" datum ;
 quasiquoted = "`" datum ;
 list        = "(" { expr } ")" ;
 array_lit   = "[" { expr } "]" ;           (* equivalent to Array constructor call *)
-dict_lit    = "{" { expr expr } "}" ;      (* equivalent to Dictionary constructor call; must be even *)
+dict_lit    = "{" { dict_key expr } "}" ;  (* equivalent to Dictionary constructor call; must be even *)
+dict_key    = symbol | expr ;              (* bare symbol keys auto-quote *)
 indexed     = expr ".[" expr "]" ;
 postfix_field = expr "." symbol ;          (* after an already parsed expression, for example row.[0].name *)
-accessor    = "." expr                     (* removed leading-dot form; must hard-error *)
+accessor    = "." expr ;                   (* removed leading-dot form; must hard-error *)
+reader_tag  = "#" symbol expr ;            (* #tag form parses as (tag form) *)
 
 datum       = literal | symbol | "(" { datum } ")" | "'" datum ;
 

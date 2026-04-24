@@ -1,6 +1,6 @@
 # Omni Lisp Syntax Specification
 
-**Updated:** 2026-04-14
+**Updated:** 2026-04-24
 
 ---
 
@@ -22,11 +22,11 @@
 | T_BACKQUOTE | `` ` `` | Quasiquote shorthand |
 | T_COMMA | `,` | Unquote shorthand |
 | T_COMMA_AT | `,@` | Unquote-splicing shorthand |
-| T_INT | `-?[0-9]+` | Fixed-width signed integer literals in `long.min..long.max` |
+| T_INT | `-?[0-9]+`, `#x-?[0-9a-fA-F]+`, `#b-?[01]+`, `#o-?[0-7]+` | Fixed-width signed integer literals in `long.min..long.max` |
 | T_FLOAT | `-?[0-9]+\.[0-9]+` | Floating-point literals |
 | T_STRING | `"..."` | String literals with escapes: `\n`, `\t`, `\\`, `\"` |
 | T_REGEX | `#r"..."` | Regex literal payload, represented as a string value |
-| T_READER_TAG | `#tag` | Reader tag prefix; `#tag form` parses as `(tag form)` |
+| T_READER_TAG | `#tag` | Reader tag prefix; `#tag form` parses as `(tag form)`. Built-ins include `#hex`, `#time`, `#uuid`; `#x`, `#b`, and `#o` are radix integers. |
 | T_SYMBOL | `[a-zA-Z0-9_\-+*/=<>!?:@#$%&\|^~]+` | Identifiers |
 | T_PATH | `segment.segment[.segment]*` | Dot-separated paths |
 | T_UNDERSCORE | `_` | Wildcard (not a symbol) |
@@ -52,7 +52,7 @@ and binds that symbol explicitly.
 |-----|--------|-------------|
 | E_LIT | `42`, `3.14`, `"str"` | Literal values |
 | E_VAR | `name` | Variable lookup |
-| E_LAMBDA | `(lambda (p) body)` | Function definition |
+| E_LAMBDA | `(λ (p) body)` | Function definition; `lambda` remains accepted as long alias |
 | E_APP | `(f arg)` | Function application |
 | E_CALL | `(f a b c)` | Multi-arg call (3+ args) |
 | E_IF | `(if t a b)` | Conditional |
@@ -85,31 +85,34 @@ and binds that symbol explicitly.
 
 ## 3. Special Forms
 
-### 3.1 `lambda` - Function Definition
+### 3.1 `λ` / `lambda` - Function Definition
+
+`λ` is the canonical lambda spelling for input and printed/generated output.
+`lambda` remains accepted as the long accessibility alias.
 
 ```lisp
 ;; Single parameter
-(lambda (x) body)
+(λ (x) body)
 
 ;; Multi-parameter (strict arity)
-(lambda (x y z) body)
+(λ (x y z) body)
 ;; requires exactly 3 arguments; use _ placeholder, |> pipe, or partial for partial application
 
 ;; Zero-argument
-(lambda () body)
+(λ () body)
 
 ;; Variadic
-(lambda (x .. rest) body)
+(λ (x .. rest) body)
 
 ;; Typed parameters (for dispatch)
-(lambda ((^Integer x) (^String y)) body)
+(λ ((^Integer x) (^String y)) body)
 
 ;; Dictionary destructuring parameter
-(lambda ({name age}) (println name age))
-;; caller passes a dict: (f {'name "Alice" 'age 30})
+(λ ({name age}) (println name age))
+;; caller passes a dict: (f {name "Alice" age 30})
 
 ;; Mixed positional + dict params
-(lambda ({host port} verbose) body)
+(λ ({host port} verbose) body)
 ```
 
 ### 3.2 `if` - Conditional
@@ -135,8 +138,8 @@ Three branches required (no two-branch form).
 (let ([a b ..] '(1 2 3 4 5)) (+ a b))
 
 ;; Dictionary destructuring
-(let ({name age} {'name "Alice" 'age 30}) name)
-(let ({x y} {'x 10 'y 20}) (+ x y))
+(let ({name age} {name "Alice" age 30}) name)
+(let ({x y} {x 10 y 20}) (+ x y))
 
 ;; Mixed: plain + destructuring bindings
 (let ([a b] [3 4] z 5) (+ a (+ b z)))
@@ -157,11 +160,11 @@ Three branches required (no two-branch form).
 
 ;; Shorthand function define
 (define (f x y) body)
-;; desugars to: (define f (lambda (x y) body))
+;; desugars to: (define f (λ (x y) body))
 
 ;; Dictionary destructuring parameter
 (define (connect {host port}) (tcp-connect host port))
-;; called as: (connect {'host "localhost" 'port 8080})
+;; called as: (connect {host "localhost" port 8080})
 
 ;; Typed function define (multiple dispatch)
 (define (f (^Integer x)) "integer")
@@ -292,12 +295,34 @@ Omni has no dedicated keyword type; `'as` and `'all` are quoted symbols in modul
 []                     ;; => empty array
 
 ;; Dictionary literal — equivalent to (Dictionary ...)
-{'a 1 'b 2}            ;; => mutable dict with keys a, b
+{a 1 b 2}              ;; => mutable dict with symbol keys a, b
 {}                     ;; => empty dict
+{'a 1 "b" 2}           ;; quoted symbol and string keys remain explicit
 
 ;; Must have even number of elements in dict literal
-;; {'a 1 'b}           ;; ERROR: odd count
+;; {a 1 b}             ;; ERROR: odd count
 ```
+
+Bare symbols in dict key position are automatically quoted. Non-symbol keys
+still work explicitly:
+
+```lisp
+{(+ 1 2) "three"}
+{42 "answer"}
+```
+
+### 3.13 String Interpolation
+
+`str` is a stdlib macro that expands string-literal holes to `string-append`
+and `String` coercions:
+
+```lisp
+(str "hello {name}, you are {age}")   ;; => string-append expansion
+(str "literal braces: {{ and }}")
+```
+
+Each `{name}` hole is parsed as an expression at macro expansion time. Use
+`{{` and `}}` for literal braces.
 
 ---
 
@@ -377,7 +402,7 @@ pair.cdr          ;; cons cell cdr access
 
 ## 7. Partial Application
 
-Lambdas have **strict arity** — `(lambda (x y) body)` requires exactly 2 arguments.
+Lambdas have **strict arity** — `(λ (x y) body)` requires exactly 2 arguments.
 
 There are two explicit partial-application mechanisms plus pipeline sugar:
 
@@ -386,8 +411,8 @@ There are two explicit partial-application mechanisms plus pipeline sugar:
 The `_` token in a call expression creates a lambda at parse time. Works with any function:
 
 ```lisp
-(+ 1 _)            ;; => (lambda (__p1) (+ 1 __p1))
-(f _ 2 _)          ;; => (lambda (__p1 __p2) (f __p1 2 __p2))
+(+ 1 _)            ;; => (λ (__p1) (+ 1 __p1))
+(f _ 2 _)          ;; => (λ (__p1 __p2) (f __p1 2 __p2))
 (map (+ 1 _) xs)   ;; adds 1 to each element
 (filter (> _ 0) xs) ;; keep positives
 ```
@@ -395,7 +420,7 @@ The `_` token in a call expression creates a lambda at parse time. Works with an
 Indexed placeholders are also supported in call-argument position:
 
 ```lisp
-(- _2 _1)           ;; => (lambda (__p1 __p2) (- __p2 __p1))
+(- _2 _1)           ;; => (λ (__p1 __p2) (- __p2 __p1))
 (+ _1 _1)           ;; argument reuse
 (+ _2 10)           ;; arity is 2 (highest index wins)
 ```
@@ -433,10 +458,11 @@ Runtime partial application — prepends initial args to a variadic lambda:
 ```ebnf
 program     = { expr } ;
 expr        = literal | symbol | path | quoted | quasiquoted
-            | list | array_lit | dict_lit | indexed | accessor ;
+            | list | array_lit | dict_lit | indexed | accessor | reader_tag ;
 
-literal     = integer | float | string ;
+literal     = integer | radix_integer | float | string ;
 integer     = [ "-" ] digit { digit } ;
+radix_integer = ( "#x" | "#b" | "#o" ) [ "-" ] radix_digit { radix_digit } ;
 float       = [ "-" ] digit { digit } "." digit { digit } ;
 string      = '"' { char | escape } '"' ;
 symbol      = symbol_char { symbol_char } ;
@@ -446,9 +472,11 @@ quoted      = "'" datum ;
 quasiquoted = "`" datum ;
 list        = "(" { expr } ")" ;
 array_lit   = "[" { expr } "]" ;           (* equivalent to Array constructor call *)
-dict_lit    = "{" { expr expr } "}" ;      (* equivalent to Dictionary constructor call; must be even *)
+dict_lit    = "{" { dict_key expr } "}" ;  (* equivalent to Dictionary constructor call; must be even *)
+dict_key    = symbol | expr ;              (* bare symbol keys auto-quote *)
 indexed     = expr ".[" expr "]" ;
-accessor    = "." expr
+accessor    = "." expr ;                   (* removed leading-dot form; must hard-error *)
+reader_tag  = "#" symbol expr ;            (* #tag form parses as (tag form) *)
 
 datum       = literal | symbol | "(" { datum } ")" | "'" datum ;
 

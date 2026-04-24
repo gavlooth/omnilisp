@@ -95,7 +95,7 @@ introducing alternate runtime effect namespaces.
       (set-state v (set! state v) (resolve nil)))))
 
 (with-state 0
-  (lambda ()
+  (λ ()
     (signal set-state 10)
     (+ (signal get-state nil) 5)))   ;; => 15
 ```
@@ -108,7 +108,7 @@ introducing alternate runtime effect namespaces.
       (log msg (set! logs (cons msg logs)) (resolve nil)))))
 
 (with-logger
-  (lambda ()
+  (λ ()
     (signal log "step 1")
     (signal log "step 2")))
 ;; => ("step 1" "step 2")
@@ -142,7 +142,7 @@ to `k`. `k` is a function — `(k value)` resumes with `value`.
 
 ```lisp
 (checkpoint (+ 1 (capture k (k 10))))
-;; k = (lambda (x) (+ 1 x))
+;; k = (λ (x) (+ 1 x))
 ;; => 11
 
 ;; Multi-shot: k can be called multiple times
@@ -190,7 +190,7 @@ This continuation resume form is separate from the coroutine primitive
 
 ```lisp
 (define counter
-  (Coroutine (lambda ()
+  (Coroutine (λ ()
     (yield 1)
     (yield 2)
     (yield 3))))
@@ -214,7 +214,7 @@ This continuation resume form is separate from the coroutine primitive
 
 ```lisp
 (define (fibonacci)
-  (Coroutine (lambda ()
+  (Coroutine (λ ()
     (let loop (a 0 b 1)
       (yield a)
       (loop b (+ a b))))))
@@ -241,7 +241,7 @@ Lazy sequences that compute values on demand.
 ```lisp
 (Iterator '(1 2 3))         ;; from list
 (Iterator [1 2 3])          ;; from array
-(Iterator {'a 1 'b 2})      ;; from dict (iterates keys)
+(Iterator {a 1 b 2})        ;; from dict (iterates keys)
 (range-from 0)                ;; infinite: 0, 1, 2, 3, ...
 (repeat 42)                   ;; infinite: 42, 42, 42, ...
 (cycle [1 2 3])               ;; infinite: 1,2,3,1,2,3,...
@@ -272,7 +272,7 @@ Lazy sequences that compute values on demand.
 (list
   (take 3
     (filter even?
-      (map (lambda (x) (* x x))
+      (map (λ (x) (* x x))
         (range-from 1)))))
 ;; => (4 16 36)
 ```
@@ -298,10 +298,10 @@ Errors in Omni flow through the `raise` effect.
 
 ```lisp
 (try
-  (lambda (_)
+  (λ (_)
     (assert! (> 1 2) "math is broken")
     "ok")
-  (lambda (msg) (string-append "caught: " msg)))
+  (λ (msg) (str "caught: {msg}")))
 ;; => "caught: math is broken"
 ```
 
@@ -313,7 +313,7 @@ Errors in Omni flow through the `raise` effect.
     (println "before")
     (signal raise "oops")
     (println "after"))     ;; never executes
-  (raise msg (string-append "error: " msg)))
+  (raise msg (str "error: {msg}")))
 ;; => "error: oops"
 ```
 

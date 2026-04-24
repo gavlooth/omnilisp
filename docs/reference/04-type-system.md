@@ -73,11 +73,11 @@ None              ;; nullary variant
 (Boolean nil)        ;; => false
 (Boolean false)      ;; => false
 (Nil nil)            ;; => nil
-(Closure (lambda (x) x))
-(Coroutine (lambda () 1))
+(Closure (λ (x) x))
+(Coroutine (λ () 1))
 (List [1 2 3])       ;; => '(1 2 3)
 (Array '(1 2 3))     ;; => [1 2 3]
-(Dictionary 'a 1 'b 2) ;; => {'a 1 'b 2}
+(Dictionary 'a 1 'b 2) ;; => {a 1 b 2}
 (Set 1 2 3)          ;; => (Set 1 2 3)
 (Iterator [1 2 3])   ;; lazy iterator over the array
 (TimePoint 'date 2026 3 7)
@@ -187,7 +187,7 @@ Numeric conversion contract:
 type-descriptor print shape is `#<type Name>` (not `#<Name>`); for example
 `(format "%s" Dictionary)` => `#<type Dictionary>` and
 `(format "%s" Number)` => `#<type Number>`. Ordinary collection values print
-structurally as `{'a 1}` or `(Set 1 2 3)`. Non-constructor primitives keep
+structurally as `{a 1}` or `(Set 1 2 3)`. Non-constructor primitives keep
 primitive rendering (`#<primitive +>`).
 Constructor aliases normalize to canonical introspection identities (for
 example `(type-of (Integer 3.9)) => Integer`, `(format "%s" Dictionary) => #<type Dictionary>`).

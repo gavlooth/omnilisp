@@ -4816,3 +4816,63 @@
   position for a final recursive call in `src/lisp/tests_compiler_codegen_groups.c3`.
 - Updated `docs/LANGUAGE_SPEC.part-02.md` to document the concise body syntax
   and keep explicit `block` as the expression-level sequencing form.
+
+## 2026-04-24 Concise Syntax Surface Follow-through
+
+- Promoted `λ` as the canonical lambda spelling in parser/compiler/macro output
+  while retaining `lambda` as the long input alias.
+- Added built-in `str` macro expansion: `(str "hello {name}")` rewrites before
+  evaluation to `string-append` plus `String` coercion of parsed hole
+  expressions, preserving lexical call-site bindings without lexer changes.
+- Added parser sugar for bare symbol keys in `{}` dictionary literals; key
+  position symbols auto-quote while non-symbol keys remain explicit.
+- Added reader radix integer literals: `#x`, `#b`, and `#o`, including negative
+  forms such as `#x-10`.
+- Added reader-tag data helpers:
+  - `#hex "ff 0a"` via `hex` returns an Array of integer bytes.
+  - `#time "2024-01-15T10:30:00Z"` via `time` returns a UTC `TimePoint`.
+  - `#uuid "550e8400-e29b-41d4-a716-446655440000"` via `uuid` validates and
+    returns the canonical UUID string.
+- Updated language spec docs and focused runtime/compiler tests for the new
+  syntax surfaces.
+
+Validation:
+- C3 diagnostics passed for touched parser, macro, primitive, and test files.
+- `c3c build` passed.
+- Focused runtime smokes passed for `λ`/`lambda`, `str` macro expansion,
+  dict-key sugar, radix literals, `#hex`, `#time`, and `#uuid`.
+- `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` passed.
+- `OMNI_TEST_QUIET=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-lambda-syntax LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` passed.
+- `OMNI_TEST_QUIET=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-macro-hygiene-quasi-pattern LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` passed.
+- `OMNI_TEST_QUIET=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` passed.
+- `OMNI_TEST_QUIET=1 OMNI_LISP_TEST_SLICE=unicode LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` passed.
+- `OMNI_TEST_QUIET=1 OMNI_LISP_TEST_SLICE=compiler LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` passed.
+- `git diff --check` passed.
+
+## 2026-04-24 memory boundary copy-debt telemetry
+
+- Implemented and closed `MEM-BOUNDARY-COPY-DEBT-001`.
+  - Boundary decision stats now record planned routes, selected routes,
+    fail-closed route reasons, materialization success totals, materialized graph
+    node totals, and estimated materialized payload bytes.
+  - Test summaries, graph-audit telemetry, JSON runtime memory telemetry, and
+    `(runtime-memory-stats)` now expose the route/copy-debt counters.
+  - Stable prepared graph traversal now keeps large temporary child-index
+    buffers off recursive stack frames while preserving original edge ordering.
+- Invalidated approach:
+  - A reserved-edge placeholder rewrite reduced stack pressure but changed
+    prepared-edge ordering/metadata semantics and failed stable array,
+    dictionary, set, closure metadata tests plus the nested effect payload graph
+    check. Preserve edge ordering when reducing stack use.
+- Validation passed:
+  - `c3c build --obj-out obj`
+  - direct nested effect payload eval returned `true`
+  - bounded container `memory-lifetime-smoke` (`255 passed, 0 failed`)
+  - bounded container `basic` (`169 passed, 0 failed`)
+  - multi-feature instrumentation build with `OMNI_BOUNDARY_INSTR_COUNTERS`,
+    `OMNI_BOUNDARY_INSTR_TRACE`, and `OMNI_BOUNDARY_INSTR_BENCHMARK`
+  - bounded container multi-feature `memory-lifetime-smoke`
+    (`255 passed, 0 failed`) with route/copy-debt counters reporting
+    `materialization_node_count=87` and `materialization_copy_bytes=10096`
+  - normal rebuild after instrumentation validation plus bounded container
+    Valgrind `memory-lifetime-smoke` (`255 passed, 0 failed`)

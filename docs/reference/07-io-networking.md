@@ -22,17 +22,17 @@ path calls the raw primitives directly (zero overhead).
 
 ```lisp
 (define rf
-  (spawn (lambda ()
+  (spawn (λ ()
     (write-file "out.txt" "hello")
     (read-file "out.txt"))))
 (await rf)                            ;; => "hello"
 
 (define ff
-  (spawn (lambda () (file-exists? "out.txt"))))
+  (spawn (λ () (file-exists? "out.txt"))))
 (await ff)                            ;; => true
 
 (define lf
-  (spawn (lambda () (read-lines "out.txt"))))
+  (spawn (λ () (read-lines "out.txt"))))
 (await lf)                            ;; => list of lines
 
 (load "module.omni")                  ;; load and evaluate file
@@ -74,7 +74,7 @@ Naming policy for public wrappers:
 
 ```lisp
 (define tf
-  (spawn (lambda ()
+  (spawn (λ ()
     (define conn (tcp-connect "example.com" 80))
     (tcp-write conn "GET / HTTP/1.0\r\nHost: example.com\r\n\r\n")
     (define response (tcp-read conn))
@@ -88,7 +88,7 @@ Naming policy for public wrappers:
 
 ```lisp
 (define sf
-  (spawn (lambda ()
+  (spawn (λ ()
     ;; listener on localhost:8080 (optional backlog third arg)
     (define listener (tcp-listen "127.0.0.1" 8080 128))
     ;; accept one client connection
@@ -149,7 +149,7 @@ The public UDP operation wrappers are `udp-socket`, `udp-bind`, `udp-send`,
 
 ```lisp
 (define pf
-  (spawn (lambda ()
+  (spawn (λ ()
     (define path "/tmp/omni_example.sock")
     (define listener (pipe-listen path))
     (define client (pipe-connect path))
@@ -175,7 +175,7 @@ for effect execution.
 ```lisp
 (define proc (process-spawn "/bin/sh" ["-c" "printf omni"] nil))
 (define out (fs-read (ref proc 'stdout) 32))
-(define status (await (spawn (lambda () (process-wait (ref proc 'handle))))))
+(define status (await (spawn (λ () (process-wait (ref proc 'handle))))))
 
 (fs-close (ref proc 'stdin))
 (fs-close (ref proc 'stdout))
@@ -194,8 +194,8 @@ for effect execution.
 ### Signals
 
 ```lisp
-(define hits {'n 0})
-(define h (signal-handle 10 (lambda (sig) (set! hits 'n (+ (ref hits 'n) 1)))))
+(define hits {n 0})
+(define h (signal-handle 10 (λ (sig) (set! hits 'n (+ (ref hits 'n) 1)))))
 
 (shell "kill -USR1 $PPID")
 (async-sleep 20)
@@ -219,7 +219,7 @@ Preferred descriptive alias: `dns-resolve`.
 
 ```lisp
 (define tf
-  (spawn (lambda ()
+  (spawn (λ ()
     (define tcp (tcp-connect "example.com" 443))
     (define tls (tls-connect tcp "example.com"))
     ;; explicit CA bundle path (optional third argument)
@@ -256,7 +256,7 @@ Server-side wrap (RSA key + PEM cert chain):
 
 ```lisp
 (define sf
-  (spawn (lambda ()
+  (spawn (λ ()
     (define listener (tcp-listen "127.0.0.1" 8443 8))
     (define tcp-client (tcp-accept listener))
     (define tls-client
@@ -273,7 +273,7 @@ private key path.
 
 ```lisp
 (define hf
-  (spawn (lambda () (http-get "https://example.com"))))
+  (spawn (λ () (http-get "https://example.com"))))
 
 (await hf)   ;; => response dict
 ```
@@ -293,7 +293,7 @@ All network operations go through effects and can be intercepted for testing.
 ```lisp
 ;; Parse JSON string to Omni values
 (json-parse "{\"name\": \"Alice\", \"age\": 30}")
-;; => dict: {'name "Alice" 'age 30}
+;; => dict: {name "Alice" age 30}
 
 (json-parse "[1, 2, 3]")
 ;; => array: [1 2 3]
@@ -304,11 +304,11 @@ All network operations go through effects and can be intercepted for testing.
 ;; => "Bob"
 
 ;; Emit Omni values as JSON
-(json-emit {'name "Alice" 'age 30})
+(json-emit {name "Alice" age 30})
 ;; => "{\"name\":\"Alice\",\"age\":30}"
 
 ;; Pretty-printed JSON
-(json-emit-pretty {'name "Alice" 'age 30})
+(json-emit-pretty {name "Alice" age 30})
 ;; => "{\n  \"name\": \"Alice\",\n  \"age\": 30\n}"
 
 ;; Emit with explicit writer flags
@@ -317,7 +317,7 @@ All network operations go through effects and can be intercepted for testing.
 
 ;; Parse with permissive options
 (json-parse "{\"a\": 1 /*comment*/ , \"b\": 2}" '(allow-comments))
-;; => {'a 1 'b 2}
+;; => {a 1 b 2}
 
 (json-parse "[1,2,3,]" '(allow-trailing-commas))
 ;; => [1 2 3]
@@ -327,7 +327,7 @@ All network operations go through effects and can be intercepted for testing.
 
 ;; Parse permissive matrix in one call
 (json-parse "{\"a\": 1 /*comment*/ , \"b\": 2}" '(allow-comments allow-trailing-commas))
-;; => {'a 1 'b 2}
+;; => {a 1 b 2}
 ```
 
 JSON types map to Omni types: object -> dict, array -> array, string -> string,

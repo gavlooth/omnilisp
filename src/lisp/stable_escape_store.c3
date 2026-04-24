@@ -171,7 +171,9 @@ fn bool stable_escape_prepare_env_binding_values(
     usz* out_count
 ) {
     if (scratch == null || out_offset == null || out_count == null) return false;
-    usz[STABLE_ESCAPE_PREPARED_MAX_EDGES] child_indices;
+    usz* child_indices = (usz*)mem::malloc(usz.sizeof * STABLE_ESCAPE_PREPARED_MAX_EDGES);
+    if (child_indices == null) return false;
+    defer mem::free(child_indices);
     usz child_count = 0;
     usz env_depth = 0;
     Env* cur = env;
@@ -281,7 +283,9 @@ fn bool stable_escape_prepare_graph_node(
             if (!stable_escape_prepared_register_seen(scratch, value, array_index)) return false;
 
             if (value.array_val.length > STABLE_ESCAPE_PREPARED_MAX_EDGES) return false;
-            usz[STABLE_ESCAPE_PREPARED_MAX_EDGES] array_child_indices;
+            usz* array_child_indices = (usz*)mem::malloc(usz.sizeof * STABLE_ESCAPE_PREPARED_MAX_EDGES);
+            if (array_child_indices == null) return false;
+            defer mem::free(array_child_indices);
             for (usz i = 0; i < value.array_val.length; i++) {
                 usz child_index = STABLE_ESCAPE_PREPARED_INVALID_INDEX;
                 if (!stable_escape_prepare_graph_node(scratch, value.array_val.items[i], &child_index, depth + 1)) {
@@ -312,7 +316,9 @@ fn bool stable_escape_prepare_graph_node(
             if (!stable_escape_prepared_register_seen(scratch, value, hashmap_index)) return false;
 
             HashMap* map = value.hashmap_val;
-            usz[STABLE_ESCAPE_PREPARED_MAX_EDGES] pair_child_indices;
+            usz* pair_child_indices = (usz*)mem::malloc(usz.sizeof * STABLE_ESCAPE_PREPARED_MAX_EDGES);
+            if (pair_child_indices == null) return false;
+            defer mem::free(pair_child_indices);
             usz pair_child_count = 0;
             for (uint i = 0; i < map.capacity; i++) {
                 HashEntry* entry = &map.entries[i];
@@ -348,7 +354,9 @@ fn bool stable_escape_prepare_graph_node(
             if (!stable_escape_prepared_register_seen(scratch, value, set_index)) return false;
 
             HashMap* set_map = value.hashmap_val;
-            usz[STABLE_ESCAPE_PREPARED_MAX_EDGES] member_child_indices;
+            usz* member_child_indices = (usz*)mem::malloc(usz.sizeof * STABLE_ESCAPE_PREPARED_MAX_EDGES);
+            if (member_child_indices == null) return false;
+            defer mem::free(member_child_indices);
             usz member_child_count = 0;
             for (uint i = 0; i < set_map.capacity; i++) {
                 HashEntry* entry = &set_map.entries[i];

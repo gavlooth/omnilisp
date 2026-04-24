@@ -11,7 +11,7 @@
 Omni is a Lisp dialect that combines classic Lisp expressiveness with modern
 language features:
 
-- **Three collection types**: list `'(1 2 3)`, array `[1 2 3]`, dict `{'a 1}`
+- **Three collection types**: list `'(1 2 3)`, array `[1 2 3]`, dict `{a 1}`
 - **Generic operations**: `(ref coll key)` works on all collections
 - **Scientific tensors**: `(Tensor [[1 2] [3 4]])`, tensor `map`,
   `contract`, and `realize`
@@ -19,7 +19,7 @@ language features:
 - **Algebraic effects**: `print`/`read-file` go through interceptable effects
 - **First-class C FFI**: grouped `[ffi module]` declarations and
   `ForeignHandle` metadata
-- **Strict-arity lambdas**: `(lambda (x y) body)` requires exactly 2 args
+- **Strict-arity lambdas**: `(λ (x y) body)` requires exactly 2 args
 - **Region-based memory**: no GC, deterministic cleanup
 - **Truthiness**: only `nil` and `false` are falsy
 
@@ -68,12 +68,12 @@ Goodbye!
 | string | `STRING` | `"hello"` | Immutable string |
 | symbol | `SYMBOL` | `'foo` | Interned identifier |
 | cons | `CONS` | `'(1 2 3)` | Pair / linked list cell |
-| closure | `CLOSURE` | `(lambda (x) x)` | Function with captured environment |
+| closure | `CLOSURE` | `(λ (x) x)` | Function with captured environment |
 | continuation | `CONTINUATION` | — | Captured via `capture` |
 | primitive | `PRIMITIVE` | `+`, `car` | Built-in function |
 | partial | `PARTIAL_PRIM` | `(partial + 3)` | Explicit partial value |
 | error | `ERROR` | `(error "oops")` | Error value |
-| Dictionary | `HASHMAP` | `{'a 1}` | Mutable hash table |
+| Dictionary | `HASHMAP` | `{a 1}` | Mutable hash table |
 | Array | `ARRAY` | `[1 2 3]` | Mutable dynamic array |
 | Coroutine | `COROUTINE` | — | User-level coroutine |
 | Tensor | `TENSOR` | `(Tensor [[1 2] [3 4]])` | Homogeneous n-dimensional numeric storage |
@@ -109,11 +109,11 @@ Normative rule:
 
 ```lisp
 (type-of (block (define x 1) (set! x 2)))   ;; => Void
-(type-of (let (d {'a 1}) (remove! d 'a)))   ;; => Void
+(type-of (let (d {a 1}) (remove! d 'a)))    ;; => Void
 (if (block (define x 1) (set! x 2)) 1 0)    ;; => 1
 
-(type-of (ref {'a 1} 'missing))              ;; => Nil
-(type-of (has? {'a 1} 'missing))             ;; => Nil
+(type-of (ref {a 1} 'missing))               ;; => Nil
+(type-of (has? {a 1} 'missing))              ;; => Nil
 ```
 
 ### Equality

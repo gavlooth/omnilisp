@@ -62,7 +62,7 @@ Each rule includes test anchors in Section 6.
   through to fast path or outer unhandled diagnostics.
 
 Note: error payload normalization to canonical
-`{'code ... 'message ... 'domain ... 'data ...}`
+`{code ... message ... domain ... data ...}`
 is tracked in `docs/ERROR_MODEL.md` and is not fully complete yet.
 
 ### EFX-6: `checkpoint` / `capture` Interaction

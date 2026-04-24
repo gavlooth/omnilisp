@@ -63,6 +63,11 @@ fn void run_arithmetic_basic_ops_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "(+ -5 3) => -2", "(+ -5 3)", -2, pass, fail);
     test_eq(interp, "(+ 100 -100) => 0", "(+ 100 -100)", 0, pass, fail);
     test_eq(interp, "(+ 1000000 2000000) => 3000000", "(+ 1000000 2000000)", 3000000, pass, fail);
+    test_eq(interp, "hex radix literal", "#xFF", 255, pass, fail);
+    test_eq(interp, "hex radix literal uppercase digits", "#xDEADBEEF", 3735928559, pass, fail);
+    test_eq(interp, "negative hex radix literal", "#x-10", -16, pass, fail);
+    test_eq(interp, "binary radix literal", "#b1010", 10, pass, fail);
+    test_eq(interp, "octal radix literal", "#o755", 493, pass, fail);
 
     // Subtraction
     test_eq(interp, "(- 5) => -5", "(- 5)", -5, pass, fail);

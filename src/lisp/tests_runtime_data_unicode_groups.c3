@@ -137,6 +137,8 @@ fn void run_data_format_tests(Interp* interp, int* pass, int* fail) {
         "(TimePoint 'date 2026 3 7)", TIME_POINT, pass, fail);
     test_truthy(interp, "time-point predicate for date",
         "(time-point? (TimePoint 'date 2026 3 7))", pass, fail);
+    test_tag(interp, "#time ISO-8601 reader tag",
+        "#time \"2024-01-15T10:30:00Z\"", TIME_POINT, pass, fail);
     test_tag(interp, "time-point constructor time",
         "(TimePoint 'time 8 15 30 123456)", TIME_POINT, pass, fail);
     test_tag(interp, "time-point constructor datetime",
