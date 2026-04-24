@@ -49,6 +49,54 @@ The historical content was split mechanically to keep individual files below the
 - Part 41: [.agents/session_report_parts/session_report_part_41.md](session_report_parts/session_report_part_41.md) (43 lines)
 - Part 42: [.agents/session_report_parts/session_report_part_42.md](session_report_parts/session_report_part_42.md) (710 lines)
 
+## 2026-04-24 19:10 CEST - Memory Telemetry Envelope Recheck
+
+- Objective attempted:
+  - Continue after the closed memory telemetry lane by running a fresh
+    counters-enabled bounded benchmark and checking whether the baseline
+    justifies opening a new optimization slice.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `docs/plans/memory-boundary-telemetry-benchmark-baseline-2026-04-24.md`
+  - `scripts/check_memory_telemetry_benchmark_envelope.sh`
+- Code or configuration changes made:
+  - No runtime code changed.
+  - Updated Serena memory so the old pending benchmark-plan memory is marked
+    invalidated and points to the closed lane state.
+- Commands run:
+  - `c3c build --obj-out obj -D OMNI_BOUNDARY_INSTR_COUNTERS`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_BOUNDARY_BENCH=1 OMNI_BOUNDARY_INSTR_COUNTERS=1 OMNI_LISP_TEST_SLICE=memory-lifetime-bench ./build/main --test-suite lisp`
+  - `scripts/check_memory_telemetry_benchmark_envelope.sh /tmp/omni_mem_telem_continue_2026_04_24.log`
+  - `rg -n "array_(init|push|ensure|reserve|grow)|hashmap_(init|put|ensure|reserve|grow)|set_(init|add|ensure|reserve|grow)|make_array|make_hashmap|make_set" src/lisp src`
+  - `rg -n "array_growth_delta|hashmap_growth_delta|set_growth_delta|array_construct_delta|hashmap_construct_delta|set_construct_delta|boundary_value_shape_counters" src/lisp src`
+- Key results:
+  - The fresh benchmark satisfied the envelope.
+  - Correctness fields remained stable: decision and shape workload checks
+    passed, `splice_fail_total=0`, and `materialization_copy_bytes=0`.
+  - The value-shape workload repeated the baseline allocator/collection
+    signals: `temp_slow_delta=209`, `escape_slow_delta=416`,
+    `array_growth_delta=128`, `hashmap_growth_delta=1024`, and
+    `set_growth_delta=512`.
+  - The collection growth signal is synthetic benchmark pressure from
+    deliberately under-sized fixtures, not evidence of a production missing
+    reserve path by itself.
+- Invalidated assumptions or failed approaches:
+  - `[INVALIDATED]` Do not treat the benchmark's nonzero collection growth
+    counters alone as proof that a new collection-reserve optimization should
+    be opened. The governing copy-debt counter remains zero, and the fixture
+    intentionally forces array/hashmap/set growth to prove observability.
+- Current best recommendation or checkpoint:
+  - Keep the TODO queue closed. Open a new memory optimization slice only if a
+    future real workload or repeated benchmark profile shows non-synthetic copy
+    debt, allocator churn, or collection growth outside the observability
+    fixtures.
+- Unresolved issues:
+  - None from this recheck.
+- Dependencies, blockers, or restart requirements:
+  - No runtime restart is required. The counters-enabled binary on disk was
+    rebuilt for this validation run only.
+- Signature: GPT-5 Codex
+
 ## 2026-04-24 14:31 CEST - Entrypoint Status Cleanup
 
 - Objective attempted:
