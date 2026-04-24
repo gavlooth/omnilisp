@@ -136,3 +136,42 @@ Source: `docs/plans/memory-boundary-proof-planner-roadmap-2026-04-24.md`.
     `MEM-BOUNDARY-COPY-DEBT-001`.
   - negative-memory constraint: do not preserve compatibility routes as implicit
     fallbacks once the planner owns route selection.
+
+## Measured Boundary Copy-Debt Follow-Up — 2026-04-24
+
+Source: `docs/plans/memory-boundary-proof-planner-roadmap-2026-04-24.md`.
+
+- [x] `MEM-BOUNDARY-TAG-DEBT-001` attribute boundary route and copy debt by `ValueTag`.
+  - classification: runtime observability, targeted instrumentation.
+  - done 2026-04-24: boundary decision telemetry now records planned/selected
+    route counts by root `ValueTag`, stable materialization success/node/copy
+    totals by root `ValueTag`, and exposes dominant materialization buckets
+    through test summaries, verbose boundary telemetry, JSON runtime memory
+    telemetry, and `(runtime-memory-stats)`.
+  - validation: `c3c build --obj-out obj`; counters-enabled build
+    (`-D OMNI_BOUNDARY_INSTR_COUNTERS`); bounded container
+    `memory-lifetime-smoke` (`255 passed, 0 failed`) with
+    `materialization_copy_bytes=10096`, `materialization_copy_bytes_cons=8568`,
+    `materialization_copy_bytes_closure=1072`, and
+    `materialization_copy_bytes_array=400`; direct runtime-stats smoke returned
+    `true`.
+  - negative-memory constraint: do not pick the next stable-materialization
+    optimization from aggregate copy bytes alone; use the root-tag counters to
+    target the dominant copied graph family first.
+
+- [ ] `MEM-BOUNDARY-CONS-COPY-001` reduce `CONS` stable-materialization copy debt.
+  - classification: runtime performance, structural optimization.
+  - task: design and implement the next zero/low-copy path for `CONS` roots
+    selected by stable materialization, using the measured tag counters as the
+    gating signal.
+  - why: counters-enabled `memory-lifetime-smoke` shows `CONS` roots dominate
+    stable-materialization copy bytes (`8568/10096`) after route attribution.
+  - concrete next step: inspect `stable_escape_prepare_and_materialize_value`
+    and `boundary_commit_escape_handle_releasing_scope` for a `CONS`-specific
+    transplant/materialization split that preserves prepared-edge ordering,
+    promotion-abort behavior, and graph-audit TEMP-edge invariants.
+  - prerequisites: `MEM-BOUNDARY-TAG-DEBT-001` counters must remain available
+    in the validation command.
+  - negative-memory constraint: do not revive strict-only TEMP `CONS`
+    materialization or hidden compatibility fallback; failed prepared/proof
+    paths must remain explicit planner-selected outcomes.

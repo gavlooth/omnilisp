@@ -55,6 +55,39 @@ fn void boundary_dump_decision_stats_verbose(char[] label = "runtime") @noinline
             (long)stats.selected_route_by_route[i]
         );
     }
+    for (usz route_idx = 0; route_idx < BOUNDARY_PLAN_ROUTE_COUNT; route_idx++) {
+        for (usz tag_idx = 0; tag_idx < BOUNDARY_VALUE_TAG_COUNT; tag_idx++) {
+            usz planned = stats.planned_route_by_tag[
+                boundary_decision_route_tag_index((BoundaryPlanRoute)route_idx, (ValueTag)tag_idx)
+            ];
+            usz selected = stats.selected_route_by_tag[
+                boundary_decision_route_tag_index((BoundaryPlanRoute)route_idx, (ValueTag)tag_idx)
+            ];
+            if (planned == 0 && selected == 0) continue;
+            io::eprintfn(
+                "[boundary][telemetry][%s] route_tag route=%s tag=%s planned=%d selected=%d",
+                (ZString)label,
+                boundary_plan_route_name((BoundaryPlanRoute)route_idx),
+                boundary_value_tag_name((ValueTag)tag_idx),
+                (long)planned,
+                (long)selected
+            );
+        }
+    }
+    for (usz tag_idx = 0; tag_idx < BOUNDARY_VALUE_TAG_COUNT; tag_idx++) {
+        usz success = stats.stable_materialization_success_by_tag[tag_idx];
+        usz nodes = stats.stable_materialization_node_count_by_tag[tag_idx];
+        usz bytes = stats.stable_materialization_copy_bytes_by_tag[tag_idx];
+        if (success == 0 && nodes == 0 && bytes == 0) continue;
+        io::eprintfn(
+            "[boundary][telemetry][%s] materialization_tag tag=%s success=%d nodes=%d copy_bytes=%d",
+            (ZString)label,
+            boundary_value_tag_name((ValueTag)tag_idx),
+            (long)success,
+            (long)nodes,
+            (long)bytes
+        );
+    }
     for (usz i = 0; i < BOUNDARY_PLAN_REASON_COUNT; i++) {
         io::eprintfn(
             "[boundary][telemetry][%s] route_failure reason=%s count=%d",

@@ -32,6 +32,14 @@ fn char[] boundary_plan_reason_name(BoundaryPlanReason reason) @inline {
     return "unknown";
 }
 
+fn char[] boundary_value_tag_name(ValueTag tag) @inline {
+    usz idx = (usz)tag;
+    if (idx < BOUNDARY_VALUE_TAG_NAMES.len) {
+        return BOUNDARY_VALUE_TAG_NAMES[idx];
+    }
+    return "unknown";
+}
+
 fn BoundaryEnvCopyResult boundary_env_copy_ok(Env* env, usz depth = 0) @inline {
     return {
         .env = env,

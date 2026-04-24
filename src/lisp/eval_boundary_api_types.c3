@@ -88,6 +88,8 @@ enum BoundaryPlanRoute : char {
 const usz BOUNDARY_PLAN_ROUTE_COUNT =
     (usz)BoundaryPlanRoute.BOUNDARY_PLAN_ROUTE_PASSTHROUGH + 1;
 
+const usz BOUNDARY_VALUE_TAG_COUNT = (usz)ValueTag.VOID + 1;
+
 enum BoundaryPlanReason : char {
     BOUNDARY_PLAN_REASON_NULL_RESULT,
     BOUNDARY_PLAN_REASON_REUSABLE_IN_TARGET_CHAIN,
@@ -158,6 +160,7 @@ struct BoundaryPlanDecision {
     BoundaryPlanRoute route;
     BoundaryPlanReason reason;
     BoundaryReturnProvenance provenance;
+    ValueTag value_tag;
     bool stable_publish_candidate;
     bool stable_materialization_candidate;
     bool transplant_candidate;
@@ -175,8 +178,10 @@ struct BoundaryCommitEscapeResult {
     bool compatibility_path_used;
     BoundaryPlanRoute planned_route;
     BoundaryPlanReason planned_reason;
+    ValueTag planned_value_tag;
     BoundaryPlanRoute selected_route;
     BoundaryPlanReason selected_reason;
+    ValueTag selected_value_tag;
 }
 
 enum BoundaryScopeTransferReason : char {
@@ -299,6 +304,39 @@ const char[][] BOUNDARY_PLAN_ROUTE_NAMES = {
     "passthrough",
 };
 
+const char[][] BOUNDARY_VALUE_TAG_NAMES = {
+    "nil",
+    "int",
+    "string",
+    "symbol",
+    "cons",
+    "closure",
+    "continuation",
+    "primitive",
+    "partial-prim",
+    "error",
+    "double",
+    "float32",
+    "big-integer",
+    "big-float",
+    "big-complex",
+    "complex128",
+    "complex64",
+    "hashmap",
+    "set",
+    "ffi-handle",
+    "array",
+    "type-info",
+    "instance",
+    "method-table",
+    "module",
+    "iterator",
+    "coroutine",
+    "time-point",
+    "tensor",
+    "void",
+};
+
 const char[][] BOUNDARY_PLAN_REASON_NAMES = {
     "null-result",
     "reusable-in-target-chain",
@@ -364,6 +402,7 @@ $assert(BOUNDARY_SCOPE_TRANSFER_REASON_NAMES.len == BOUNDARY_SCOPE_TRANSFER_REAS
 $assert(BOUNDARY_PROMOTION_ABORT_REASON_NAMES.len == BOUNDARY_PROMOTION_ABORT_REASON_COUNT);
 $assert(BOUNDARY_RETURN_PROVENANCE_NAMES.len == BOUNDARY_RETURN_PROVENANCE_COUNT);
 $assert(BOUNDARY_PLAN_ROUTE_NAMES.len == BOUNDARY_PLAN_ROUTE_COUNT);
+$assert(BOUNDARY_VALUE_TAG_NAMES.len == BOUNDARY_VALUE_TAG_COUNT);
 $assert(BOUNDARY_PLAN_REASON_NAMES.len == BOUNDARY_PLAN_REASON_COUNT);
 $assert(BOUNDARY_ENV_COPY_FAULT_NAMES.len == BOUNDARY_ENV_COPY_FAULT_COUNT);
 $assert(BOUNDARY_COPY_FAULT_NAMES.len == BOUNDARY_COPY_FAULT_COUNT);

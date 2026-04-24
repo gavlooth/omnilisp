@@ -12,12 +12,14 @@ fn BoundaryPlanDecision boundary_plan_commit_escape(
         .route = BOUNDARY_PLAN_ROUTE_NULL_RESULT,
         .reason = BOUNDARY_PLAN_REASON_NULL_RESULT,
         .provenance = classification.provenance,
+        .value_tag = VOID,
         .stable_publish_candidate = false,
         .stable_materialization_candidate = false,
         .transplant_candidate = false,
         .compatibility_candidate = false,
     };
     if (result == null) return plan;
+    plan.value_tag = result.tag;
 
     switch (classification.provenance) {
         case BOUNDARY_RETURN_REUSABLE_IN_TARGET_CHAIN:
@@ -82,8 +84,10 @@ fn void boundary_commit_apply_initial_plan(
     if (committed == null) return;
     committed.planned_route = plan.route;
     committed.planned_reason = plan.reason;
+    committed.planned_value_tag = plan.value_tag;
     committed.selected_route = plan.route;
     committed.selected_reason = plan.reason;
+    committed.selected_value_tag = plan.value_tag;
 }
 
 fn void boundary_commit_set_selected_plan(

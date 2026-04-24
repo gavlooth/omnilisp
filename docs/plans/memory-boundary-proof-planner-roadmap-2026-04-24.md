@@ -225,6 +225,36 @@ now dispatches on `BoundaryPlanDecision.route`, destination promotion receives
 the planned route, and TEMP `CONS` transplant/compatibility fallback is modeled
 as explicit planner candidate state rather than an implicit helper fallback.
 
+### Phase 8: Route and Copy-Debt Tag Attribution
+
+Attribute planner decisions and stable-materialization copy debt by root
+`ValueTag` so the next optimizer targets the copied graph family that actually
+dominates measured runs.
+
+Closed 2026-04-24 by `MEM-BOUNDARY-TAG-DEBT-001`: boundary decision telemetry
+now records planned/selected route counts by root `ValueTag` and stable
+materialization success/node/copy totals by root `ValueTag`. The counters are
+visible in test summaries, verbose boundary telemetry, JSON runtime memory
+telemetry, and `(runtime-memory-stats)`.
+
+Measured result from counters-enabled bounded `memory-lifetime-smoke`:
+
+- `materialization_copy_bytes=10096`
+- `materialization_copy_bytes_cons=8568`
+- `materialization_copy_bytes_closure=1072`
+- `materialization_copy_bytes_array=400`
+- `selected_stable_materialize_cons=3`
+- `selected_stable_materialize_closure=6`
+
+### Phase 9: CONS Copy-Debt Reduction
+
+Open as `MEM-BOUNDARY-CONS-COPY-001`: use the Phase 8 root-tag counters to
+reduce the dominant `CONS` stable-materialization copy bucket first. The
+candidate path should inspect whether `CONS` roots can be split into a stronger
+transplant proof, graph-owned destination reuse, or a narrower materialization
+strategy without changing prepared-edge ordering or hiding failed proof routes
+behind compatibility fallback.
+
 ## Validation Path
 
 Minimum validation per implementation phase:
@@ -252,9 +282,12 @@ FFI, JIT/eval boundary, or mutation semantics.
 
 ## Next Checkpoint
 
-The proof-planner implementation queue in TODO Part 18 is closed. The next
-memory-boundary optimization should use the new route/copy-debt telemetry to
-pick a measured follow-up instead of adding another unmeasured boundary path.
+The proof-planner implementation queue in TODO Part 18 is closed through
+planner-owned commit migration. The measured follow-up queue is now open on
+`MEM-BOUNDARY-CONS-COPY-001`: counters-enabled `memory-lifetime-smoke` shows
+`CONS` roots dominate stable-materialization copy bytes (`8568/10096`), so the
+next memory-boundary optimization should reduce that `CONS` bucket before
+optimizing lower-volume array/closure materialization paths.
 
 ## Agent Assignments
 

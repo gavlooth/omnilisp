@@ -50,7 +50,9 @@ fn void emit_boundary_decision_summary() {
         "promotion_attempted=%d promotion_aborted_budget=%d promotion_aborted_pre_aborted=%d "
         "copy_fallback_total=%d planned_stable_publish=%d planned_stable_materialize=%d planned_transplant=%d "
         "selected_stable_publish=%d selected_stable_materialize=%d selected_transplant=%d selected_fail_closed=%d "
-        "route_fail_transplant_rejected=%d materialization_node_count=%d materialization_copy_bytes=%d",
+        "route_fail_transplant_rejected=%d materialization_node_count=%d materialization_copy_bytes=%d "
+        "selected_stable_materialize_cons=%d selected_stable_materialize_array=%d selected_stable_materialize_hashmap=%d selected_stable_materialize_set=%d selected_stable_materialize_closure=%d selected_stable_materialize_big_integer=%d "
+        "materialization_copy_bytes_cons=%d materialization_copy_bytes_array=%d materialization_copy_bytes_hashmap=%d materialization_copy_bytes_set=%d materialization_copy_bytes_closure=%d materialization_copy_bytes_big_integer=%d",
         (long)stats.splice_attempted,
         (long)stats.splice_succeeded,
         (long)splice_fail_total,
@@ -76,7 +78,19 @@ fn void emit_boundary_decision_summary() {
         (long)stats.selected_route_by_route[(usz)BoundaryPlanRoute.BOUNDARY_PLAN_ROUTE_FAIL_CLOSED],
         (long)stats.route_failure_by_reason[(usz)BoundaryPlanReason.BOUNDARY_PLAN_REASON_TRANSPLANT_REJECTED],
         (long)stats.stable_materialization_node_count_total,
-        (long)stats.stable_materialization_copy_bytes_total
+        (long)stats.stable_materialization_copy_bytes_total,
+        (long)boundary_decision_selected_route_tag_count(stats, BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION, CONS),
+        (long)boundary_decision_selected_route_tag_count(stats, BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION, ARRAY),
+        (long)boundary_decision_selected_route_tag_count(stats, BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION, HASHMAP),
+        (long)boundary_decision_selected_route_tag_count(stats, BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION, SET),
+        (long)boundary_decision_selected_route_tag_count(stats, BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION, CLOSURE),
+        (long)boundary_decision_selected_route_tag_count(stats, BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION, BIG_INTEGER),
+        (long)boundary_decision_materialization_copy_bytes_for_tag(stats, CONS),
+        (long)boundary_decision_materialization_copy_bytes_for_tag(stats, ARRAY),
+        (long)boundary_decision_materialization_copy_bytes_for_tag(stats, HASHMAP),
+        (long)boundary_decision_materialization_copy_bytes_for_tag(stats, SET),
+        (long)boundary_decision_materialization_copy_bytes_for_tag(stats, CLOSURE),
+        (long)boundary_decision_materialization_copy_bytes_for_tag(stats, BIG_INTEGER)
     );
 
     // Optional verbose dump used by boundary hardening diagnostics.

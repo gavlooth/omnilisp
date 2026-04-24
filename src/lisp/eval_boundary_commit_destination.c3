@@ -406,6 +406,7 @@ fn Value* stable_escape_prepare_and_materialize_value(Interp* interp, Value* roo
         if (materialized[i] != null) materialized[i].scope_gen = target_scope.escape_generation;
     }
     boundary_note_materialization_copy_debt_enabled(
+        scratch.nodes[root_index].tag,
         scratch.node_count,
         stable_escape_materialize_estimated_copy_bytes(&scratch)
     );

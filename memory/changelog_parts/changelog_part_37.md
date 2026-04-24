@@ -4919,3 +4919,38 @@ Validation:
   - bounded container `memory-lifetime-smoke` (`255 passed, 0 failed`)
   - bounded container `basic` (`169 passed, 0 failed`)
   - bounded container Valgrind `memory-lifetime-smoke` (`255 passed, 0 failed`)
+
+## 2026-04-24 memory boundary route-tag copy-debt attribution
+
+- Implemented and closed `MEM-BOUNDARY-TAG-DEBT-001`.
+  - `BoundaryPlanDecision` and `BoundaryCommitEscapeResult` now carry the root
+    `ValueTag` used for planned/selected route attribution.
+  - Boundary decision stats now record planned/selected route counts by root
+    `ValueTag` and stable-materialization success/node/copy totals by root
+    `ValueTag`.
+  - Test summaries, verbose boundary telemetry, JSON runtime memory telemetry,
+    and `(runtime-memory-stats)` expose dominant stable-materialization buckets.
+- Measured result from counters-enabled bounded `memory-lifetime-smoke`:
+  - `materialization_copy_bytes=10096`
+  - `materialization_copy_bytes_cons=8568`
+  - `materialization_copy_bytes_closure=1072`
+  - `materialization_copy_bytes_array=400`
+  - `selected_stable_materialize_cons=3`
+  - `selected_stable_materialize_closure=6`
+- Current best next optimization:
+  - `MEM-BOUNDARY-CONS-COPY-001` should target `CONS` root stable
+    materialization first; `CONS` accounts for roughly 85% of the measured
+    copied bytes in the memory-lifetime smoke slice.
+- Validation passed:
+  - C3 diagnostics for touched runtime/test files
+  - `c3c build --obj-out obj`
+  - `c3c build --obj-out obj -D OMNI_BOUNDARY_INSTR_COUNTERS`
+  - bounded container counters-enabled `memory-lifetime-smoke`
+    (`255 passed, 0 failed`)
+  - bounded container normal `memory-lifetime-smoke` (`255 passed, 0 failed`)
+  - bounded container normal `basic` (`169 passed, 0 failed`)
+  - bounded container normal Valgrind `memory-lifetime-smoke`
+    (`255 passed, 0 failed`)
+  - direct `(runtime-memory-stats)` key smoke returned `true`
+  - `git diff --check`
+  - `scripts/check_status_consistency.sh`

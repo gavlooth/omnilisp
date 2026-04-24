@@ -148,7 +148,7 @@ fn Value* runtime_memory_escape_shape_stats(Interp* interp) {
 }
 
 fn Value* runtime_memory_boundary_decision_stats(Interp* interp) {
-    Value* out = runtime_memory_make_dict(interp, 48);
+    Value* out = runtime_memory_make_dict(interp, 96);
     if (out == null || out.tag == ERROR) return out;
     BoundaryDecisionStats stats = boundary_decision_stats_snapshot();
     if (Value* err = runtime_memory_dict_set_usz(out, interp, "splice-attempted", stats.splice_attempted)) return err;
@@ -174,6 +174,21 @@ fn Value* runtime_memory_boundary_decision_stats(Interp* interp) {
     if (Value* err = runtime_memory_dict_set_usz(out, interp, "materialization-success", stats.stable_materialization_success)) return err;
     if (Value* err = runtime_memory_dict_set_usz(out, interp, "materialization-node-count", stats.stable_materialization_node_count_total)) return err;
     if (Value* err = runtime_memory_dict_set_usz(out, interp, "materialization-copy-bytes", stats.stable_materialization_copy_bytes_total)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "selected-stable-materialize-cons", boundary_decision_selected_route_tag_count(stats, BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION, CONS))) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "selected-stable-materialize-array", boundary_decision_selected_route_tag_count(stats, BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION, ARRAY))) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "selected-stable-materialize-hashmap", boundary_decision_selected_route_tag_count(stats, BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION, HASHMAP))) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "selected-stable-materialize-set", boundary_decision_selected_route_tag_count(stats, BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION, SET))) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "selected-stable-materialize-closure", boundary_decision_selected_route_tag_count(stats, BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION, CLOSURE))) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "selected-stable-materialize-big-integer", boundary_decision_selected_route_tag_count(stats, BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION, BIG_INTEGER))) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "selected-compatibility-cons", boundary_decision_selected_route_tag_count(stats, BOUNDARY_PLAN_ROUTE_COMPATIBILITY_DESTINATION, CONS))) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "selected-compatibility-partial", boundary_decision_selected_route_tag_count(stats, BOUNDARY_PLAN_ROUTE_COMPATIBILITY_DESTINATION, PARTIAL_PRIM))) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "selected-compatibility-iterator", boundary_decision_selected_route_tag_count(stats, BOUNDARY_PLAN_ROUTE_COMPATIBILITY_DESTINATION, ITERATOR))) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "materialization-copy-bytes-cons", boundary_decision_materialization_copy_bytes_for_tag(stats, CONS))) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "materialization-copy-bytes-array", boundary_decision_materialization_copy_bytes_for_tag(stats, ARRAY))) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "materialization-copy-bytes-hashmap", boundary_decision_materialization_copy_bytes_for_tag(stats, HASHMAP))) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "materialization-copy-bytes-set", boundary_decision_materialization_copy_bytes_for_tag(stats, SET))) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "materialization-copy-bytes-closure", boundary_decision_materialization_copy_bytes_for_tag(stats, CLOSURE))) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "materialization-copy-bytes-big-integer", boundary_decision_materialization_copy_bytes_for_tag(stats, BIG_INTEGER))) return err;
     return out;
 }
 
@@ -258,7 +273,7 @@ fn void runtime_memory_print_telemetry() {
         shape_stats.module_roots,
         shape_stats.type_info_roots,
         shape_stats.ffi_handle_roots);
-    io::printfn("\"boundary_decisions\":{\"planned_stable_publish\":%d,\"planned_stable_materialize\":%d,\"planned_transplant\":%d,\"selected_stable_publish\":%d,\"selected_stable_materialize\":%d,\"selected_transplant\":%d,\"selected_fail_closed\":%d,\"route_fail_transplant_rejected\":%d,\"materialization_node_count\":%d,\"materialization_copy_bytes\":%d}}",
+    io::printfn("\"boundary_decisions\":{\"planned_stable_publish\":%d,\"planned_stable_materialize\":%d,\"planned_transplant\":%d,\"selected_stable_publish\":%d,\"selected_stable_materialize\":%d,\"selected_transplant\":%d,\"selected_fail_closed\":%d,\"route_fail_transplant_rejected\":%d,\"materialization_node_count\":%d,\"materialization_copy_bytes\":%d,\"selected_stable_materialize_cons\":%d,\"selected_stable_materialize_array\":%d,\"selected_stable_materialize_hashmap\":%d,\"selected_stable_materialize_set\":%d,\"selected_stable_materialize_closure\":%d,\"selected_stable_materialize_big_integer\":%d,\"materialization_copy_bytes_cons\":%d,\"materialization_copy_bytes_array\":%d,\"materialization_copy_bytes_hashmap\":%d,\"materialization_copy_bytes_set\":%d,\"materialization_copy_bytes_closure\":%d,\"materialization_copy_bytes_big_integer\":%d}}",
         (long)boundary_stats.planned_route_by_route[(usz)BoundaryPlanRoute.BOUNDARY_PLAN_ROUTE_STABLE_PUBLISH_REUSE],
         (long)boundary_stats.planned_route_by_route[(usz)BoundaryPlanRoute.BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION],
         (long)boundary_stats.planned_route_by_route[(usz)BoundaryPlanRoute.BOUNDARY_PLAN_ROUTE_REGION_TRANSPLANT],
@@ -268,5 +283,17 @@ fn void runtime_memory_print_telemetry() {
         (long)boundary_stats.selected_route_by_route[(usz)BoundaryPlanRoute.BOUNDARY_PLAN_ROUTE_FAIL_CLOSED],
         (long)boundary_stats.route_failure_by_reason[(usz)BoundaryPlanReason.BOUNDARY_PLAN_REASON_TRANSPLANT_REJECTED],
         (long)boundary_stats.stable_materialization_node_count_total,
-        (long)boundary_stats.stable_materialization_copy_bytes_total);
+        (long)boundary_stats.stable_materialization_copy_bytes_total,
+        (long)boundary_decision_selected_route_tag_count(boundary_stats, BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION, CONS),
+        (long)boundary_decision_selected_route_tag_count(boundary_stats, BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION, ARRAY),
+        (long)boundary_decision_selected_route_tag_count(boundary_stats, BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION, HASHMAP),
+        (long)boundary_decision_selected_route_tag_count(boundary_stats, BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION, SET),
+        (long)boundary_decision_selected_route_tag_count(boundary_stats, BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION, CLOSURE),
+        (long)boundary_decision_selected_route_tag_count(boundary_stats, BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION, BIG_INTEGER),
+        (long)boundary_decision_materialization_copy_bytes_for_tag(boundary_stats, CONS),
+        (long)boundary_decision_materialization_copy_bytes_for_tag(boundary_stats, ARRAY),
+        (long)boundary_decision_materialization_copy_bytes_for_tag(boundary_stats, HASHMAP),
+        (long)boundary_decision_materialization_copy_bytes_for_tag(boundary_stats, SET),
+        (long)boundary_decision_materialization_copy_bytes_for_tag(boundary_stats, CLOSURE),
+        (long)boundary_decision_materialization_copy_bytes_for_tag(boundary_stats, BIG_INTEGER));
 }

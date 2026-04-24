@@ -5525,6 +5525,60 @@ Re-audit notes:
 
 Signature: GPT-5 Codex
 
+## 2026-04-24 memory boundary route-tag copy-debt attribution
+
+Date/time: 2026-04-24 13:18 CEST
+
+Objective:
+- Continue from the closed proof-planner queue by choosing the next
+  memory-boundary slice from measured route/copy-debt telemetry.
+
+Changes made:
+- Added root `ValueTag` attribution to boundary planned/selected route
+  telemetry and stable-materialization copy-debt counters.
+- Exposed dominant tag buckets through `OMNI_TEST_SUMMARY
+  suite=boundary_decisions`, verbose boundary telemetry, JSON runtime memory
+  telemetry, and `(runtime-memory-stats)`.
+- Updated `docs/plans/memory-boundary-proof-planner-roadmap-2026-04-24.md`,
+  `docs/todo_parts/todo_part_18.md`, `TODO.md`, and
+  `memory/changelog_parts/changelog_part_37.md`.
+
+Commands run:
+- C3 diagnostics for touched runtime/test files.
+- `c3c build --obj-out obj`
+- `c3c build --obj-out obj -D OMNI_BOUNDARY_INSTR_COUNTERS`
+- `scripts/run_validation_container.sh env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `scripts/run_validation_container.sh env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=basic LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `scripts/run_validation_container.sh valgrind --leak-check=full --error-exitcode=99 env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval "(block (define s (runtime-memory-stats)) (and (>= (ref (ref s 'boundary-decisions) 'selected-stable-materialize-cons) 0) (>= (ref (ref s 'boundary-decisions) 'materialization-copy-bytes-cons) 0)))"`
+- `git diff --check`
+- `scripts/check_status_consistency.sh`
+
+Key results:
+- C3 diagnostics passed.
+- Normal build passed.
+- Counters-enabled build passed.
+- Bounded counters-enabled `memory-lifetime-smoke` passed with
+  `255 passed, 0 failed`.
+- Bounded normal `memory-lifetime-smoke` passed with `255 passed, 0 failed`.
+- Bounded normal `basic` passed with `169 passed, 0 failed`.
+- Bounded normal Valgrind `memory-lifetime-smoke` exited cleanly with
+  `255 passed, 0 failed`.
+- New attribution showed `materialization_copy_bytes=10096`, dominated by
+  `CONS` roots at `8568` bytes; closure roots accounted for `1072`, arrays
+  for `400`.
+- Direct runtime-stats key smoke returned `true`.
+- `git diff --check` and status consistency checks passed.
+
+Current best recommendation:
+- Implement `MEM-BOUNDARY-CONS-COPY-001` next. The measured copy-debt target is
+  `CONS` stable materialization, not array/closure materialization.
+
+Unresolved issues:
+- `MEM-BOUNDARY-CONS-COPY-001` remains open.
+
+Signature: GPT-5 Codex
+
 ## 2026-04-24 memory boundary planner-owned commit migration
 
 Objective:

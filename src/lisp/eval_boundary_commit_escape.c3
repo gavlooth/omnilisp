@@ -26,8 +26,10 @@ fn BoundaryCommitEscapeResult boundary_commit_escape(
         .compatibility_path_used = false,
         .planned_route = BOUNDARY_PLAN_ROUTE_NULL_RESULT,
         .planned_reason = BOUNDARY_PLAN_REASON_NULL_RESULT,
+        .planned_value_tag = VOID,
         .selected_route = BOUNDARY_PLAN_ROUTE_NULL_RESULT,
         .selected_reason = BOUNDARY_PLAN_REASON_NULL_RESULT,
+        .selected_value_tag = VOID,
     };
     if (result == null) {
         boundary_note_commit_decision_enabled(committed);
@@ -36,8 +38,10 @@ fn BoundaryCommitEscapeResult boundary_commit_escape(
     committed.outcome = BOUNDARY_COMMIT_PASSTHROUGH;
     committed.planned_route = BOUNDARY_PLAN_ROUTE_PASSTHROUGH;
     committed.planned_reason = BOUNDARY_PLAN_REASON_PASSTHROUGH;
+    committed.planned_value_tag = result.tag;
     committed.selected_route = BOUNDARY_PLAN_ROUTE_PASSTHROUGH;
     committed.selected_reason = BOUNDARY_PLAN_REASON_PASSTHROUGH;
+    committed.selected_value_tag = result.tag;
     defer boundary_debug_graph_audit_committed_escape_root(committed, target_scope, releasing_scope, interp.global_env);
 
     BoundaryTxn txn = boundary_txn_begin(interp);
@@ -67,8 +71,10 @@ fn BoundaryCommitEscapeResult boundary_commit_escape(
         committed.fault_code = BOUNDARY_COMMIT_FAULT_DESTINATION_DIRECT_PROMOTION;
         committed.planned_route = BOUNDARY_PLAN_ROUTE_FAIL_CLOSED;
         committed.planned_reason = BOUNDARY_PLAN_REASON_NORMALIZED_CLOSURE_ERROR;
+        committed.planned_value_tag = result.tag;
         committed.selected_route = BOUNDARY_PLAN_ROUTE_FAIL_CLOSED;
         committed.selected_reason = BOUNDARY_PLAN_REASON_NORMALIZED_CLOSURE_ERROR;
+        committed.selected_value_tag = result.tag;
         boundary_txn_abort(&txn);
         boundary_note_commit_decision_enabled(committed);
         return committed;

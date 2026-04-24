@@ -11,10 +11,15 @@ struct BoundaryDecisionStats {
     usz copy_fallback_total;
     usz[BOUNDARY_PLAN_ROUTE_COUNT] planned_route_by_route;
     usz[BOUNDARY_PLAN_ROUTE_COUNT] selected_route_by_route;
+    usz[BOUNDARY_PLAN_ROUTE_COUNT * BOUNDARY_VALUE_TAG_COUNT] planned_route_by_tag;
+    usz[BOUNDARY_PLAN_ROUTE_COUNT * BOUNDARY_VALUE_TAG_COUNT] selected_route_by_tag;
     usz[BOUNDARY_PLAN_REASON_COUNT] route_failure_by_reason;
     usz stable_materialization_success;
     usz stable_materialization_node_count_total;
     usz stable_materialization_copy_bytes_total;
+    usz[BOUNDARY_VALUE_TAG_COUNT] stable_materialization_success_by_tag;
+    usz[BOUNDARY_VALUE_TAG_COUNT] stable_materialization_node_count_by_tag;
+    usz[BOUNDARY_VALUE_TAG_COUNT] stable_materialization_copy_bytes_by_tag;
     usz scope_chain_scan_total;
     usz scope_chain_scan_with_hint;
     usz scope_chain_scan_fallback;
@@ -172,6 +177,75 @@ macro boundary_telemetry_inc_selected_route(route) {
     }
 }
 
+fn usz boundary_decision_route_tag_index(BoundaryPlanRoute route, ValueTag tag) @inline {
+    return (usz)route * BOUNDARY_VALUE_TAG_COUNT + (usz)tag;
+}
+
+fn usz boundary_decision_planned_route_tag_count(
+    BoundaryDecisionStats stats,
+    BoundaryPlanRoute route,
+    ValueTag tag
+) @inline {
+    usz route_idx = (usz)route;
+    usz tag_idx = (usz)tag;
+    if (route_idx >= BOUNDARY_PLAN_ROUTE_COUNT || tag_idx >= BOUNDARY_VALUE_TAG_COUNT) return 0;
+    return stats.planned_route_by_tag[boundary_decision_route_tag_index(route, tag)];
+}
+
+fn usz boundary_decision_selected_route_tag_count(
+    BoundaryDecisionStats stats,
+    BoundaryPlanRoute route,
+    ValueTag tag
+) @inline {
+    usz route_idx = (usz)route;
+    usz tag_idx = (usz)tag;
+    if (route_idx >= BOUNDARY_PLAN_ROUTE_COUNT || tag_idx >= BOUNDARY_VALUE_TAG_COUNT) return 0;
+    return stats.selected_route_by_tag[boundary_decision_route_tag_index(route, tag)];
+}
+
+fn usz boundary_decision_materialization_success_tag_count(
+    BoundaryDecisionStats stats,
+    ValueTag tag
+) @inline {
+    usz tag_idx = (usz)tag;
+    if (tag_idx >= BOUNDARY_VALUE_TAG_COUNT) return 0;
+    return stats.stable_materialization_success_by_tag[tag_idx];
+}
+
+fn usz boundary_decision_materialization_node_count_for_tag(
+    BoundaryDecisionStats stats,
+    ValueTag tag
+) @inline {
+    usz tag_idx = (usz)tag;
+    if (tag_idx >= BOUNDARY_VALUE_TAG_COUNT) return 0;
+    return stats.stable_materialization_node_count_by_tag[tag_idx];
+}
+
+fn usz boundary_decision_materialization_copy_bytes_for_tag(
+    BoundaryDecisionStats stats,
+    ValueTag tag
+) @inline {
+    usz tag_idx = (usz)tag;
+    if (tag_idx >= BOUNDARY_VALUE_TAG_COUNT) return 0;
+    return stats.stable_materialization_copy_bytes_by_tag[tag_idx];
+}
+
+fn void boundary_telemetry_inc_planned_route_tag(BoundaryPlanRoute route, ValueTag tag) @inline {
+    if (!boundary_telemetry_enabled()) return;
+    usz route_idx = (usz)route;
+    usz tag_idx = (usz)tag;
+    if (route_idx >= BOUNDARY_PLAN_ROUTE_COUNT || tag_idx >= BOUNDARY_VALUE_TAG_COUNT) return;
+    g_boundary_decision_stats.planned_route_by_tag[boundary_decision_route_tag_index(route, tag)]++;
+}
+
+fn void boundary_telemetry_inc_selected_route_tag(BoundaryPlanRoute route, ValueTag tag) @inline {
+    if (!boundary_telemetry_enabled()) return;
+    usz route_idx = (usz)route;
+    usz tag_idx = (usz)tag;
+    if (route_idx >= BOUNDARY_PLAN_ROUTE_COUNT || tag_idx >= BOUNDARY_VALUE_TAG_COUNT) return;
+    g_boundary_decision_stats.selected_route_by_tag[boundary_decision_route_tag_index(route, tag)]++;
+}
+
 macro boundary_telemetry_inc_route_failure(reason) {
     if (boundary_telemetry_enabled()) {
         usz reason_idx = (usz)(reason);
@@ -259,9 +333,25 @@ fn void boundary_note_materialization_copy_debt(usz node_count, usz estimated_co
     g_boundary_decision_stats.stable_materialization_copy_bytes_total += estimated_copy_bytes;
 }
 
+fn void boundary_note_materialization_copy_debt_by_tag(
+    ValueTag root_tag,
+    usz node_count,
+    usz estimated_copy_bytes
+) @inline {
+    if (!boundary_telemetry_enabled()) return;
+    boundary_note_materialization_copy_debt(node_count, estimated_copy_bytes);
+    usz tag_idx = (usz)root_tag;
+    if (tag_idx >= BOUNDARY_VALUE_TAG_COUNT) return;
+    g_boundary_decision_stats.stable_materialization_success_by_tag[tag_idx]++;
+    g_boundary_decision_stats.stable_materialization_node_count_by_tag[tag_idx] += node_count;
+    g_boundary_decision_stats.stable_materialization_copy_bytes_by_tag[tag_idx] += estimated_copy_bytes;
+}
+
 fn void boundary_note_commit_decision(BoundaryCommitEscapeResult committed) @inline {
     boundary_telemetry_inc_planned_route(committed.planned_route);
     boundary_telemetry_inc_selected_route(committed.selected_route);
+    boundary_telemetry_inc_planned_route_tag(committed.planned_route, committed.planned_value_tag);
+    boundary_telemetry_inc_selected_route_tag(committed.selected_route, committed.selected_value_tag);
     if (committed.selected_route == BOUNDARY_PLAN_ROUTE_FAIL_CLOSED) {
         boundary_telemetry_inc_route_failure(committed.selected_reason);
     }
@@ -285,15 +375,15 @@ macro boundary_note_commit_decision_enabled(committed) {
     $endif
 }
 
-macro boundary_note_materialization_copy_debt_enabled(node_count, estimated_copy_bytes) {
+macro boundary_note_materialization_copy_debt_enabled(root_tag, node_count, estimated_copy_bytes) {
     $if $feature(OMNI_BOUNDARY_INSTR_TRACE):
-        boundary_note_materialization_copy_debt(node_count, estimated_copy_bytes);
+        boundary_note_materialization_copy_debt_by_tag(root_tag, node_count, estimated_copy_bytes);
     $else
         $if $feature(OMNI_BOUNDARY_INSTR_BENCHMARK):
-            boundary_note_materialization_copy_debt(node_count, estimated_copy_bytes);
+            boundary_note_materialization_copy_debt_by_tag(root_tag, node_count, estimated_copy_bytes);
         $else
             $if $feature(OMNI_BOUNDARY_INSTR_COUNTERS):
-                boundary_note_materialization_copy_debt(node_count, estimated_copy_bytes);
+                boundary_note_materialization_copy_debt_by_tag(root_tag, node_count, estimated_copy_bytes);
             $endif
         $endif
     $endif
