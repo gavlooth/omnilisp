@@ -5088,6 +5088,22 @@ Validation:
   - bounded container counters-enabled `memory-lifetime-smoke`
     (`255 passed, 0 failed`)
 
+## 2026-04-24 AGENTS Valgrind guidance trace-children correction
+
+- Re-audit found the active `AGENTS.md` Valgrind example still wrapped
+  `./build/main` through `env` without `--trace-children=yes`.
+- Corrected the example to include traced-child execution and explicit leak
+  kinds so future memory/lifetime audits do not accidentally validate only the
+  wrapper process.
+- Marked the closed `MEM-BOUNDARY-VERIFY-001` untraced `env` Valgrind command
+  as superseded instead of rewriting it as if traced-child validation had run
+  in that earlier slice.
+- No runtime semantics changed.
+- Validation:
+  - active-guidance Valgrind PCRE scan
+  - `scripts/check_status_consistency.sh`
+  - `git diff --check`
+
 ## 2026-04-24 memory lifetime owned-root teardown and Valgrind closure
 
 - Implemented and closed `MEM-LIFETIME-TEARDOWN-001`.

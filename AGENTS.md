@@ -125,7 +125,9 @@ Before finishing significant code changes:
 - When ASAN is unsupported or when native memory/lifetime behavior remains
   suspect, run Valgrind if available; the local command is `valgrind`.
   Prefer a targeted invocation first, for example:
-  `valgrind --leak-check=full --error-exitcode=99 env LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+  `valgrind --trace-children=yes --leak-check=full --show-leak-kinds=definite,indirect,possible --error-exitcode=99 env LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+  Keep `--trace-children=yes` when invoking through `env`; otherwise Valgrind
+  can trace only the wrapper instead of the runtime process.
   Use the bounded Docker validation path for broad/high-memory Valgrind runs.
 - When touching memory/lifetime logic, also run full suite:
   - `LD_LIBRARY_PATH=/usr/local/lib ./build/main`

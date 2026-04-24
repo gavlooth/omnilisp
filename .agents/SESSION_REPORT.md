@@ -5886,6 +5886,47 @@ Re-audit notes:
 
 Signature: GPT-5 Codex
 
+## 2026-04-24 17:52 CEST - AGENTS Valgrind Guidance Re-Audit
+
+Objective:
+- Re-audit the memory/lifetime guidance after the traced-child Valgrind finding
+  and continue with any concrete cleanup.
+
+Changes made:
+- Updated `AGENTS.md` so the active Valgrind command wraps `env` with
+  `--trace-children=yes` and explicit leak-kind reporting.
+- Marked the closed `MEM-BOUNDARY-VERIFY-001` untraced `env` Valgrind command
+  as superseded in `docs/todo_parts/todo_part_18.md`.
+- Recorded the guidance correction in
+  `memory/changelog_parts/changelog_part_37.md`.
+
+Commands run:
+- `jj status`
+- `scripts/check_status_consistency.sh`
+- `rg --pcre2 -n "valgrind(?![^\n]*--trace-children)|--trace-children" AGENTS.md docs memory .agents TODO.md scripts -g '!docs/areas/diagrams/*.svg'`
+- `rg -n "scope_adopt|per-value RC|per-type RC|root pinning|root-pin|Value.*refcount|refcount.*Value" AGENTS.md docs memory .agents src scripts -g '!docs/areas/diagrams/*.svg'`
+- `rg --pcre2 -n "valgrind(?![^\n]*--trace-children)" AGENTS.md docs/plans/memory-boundary-architecture-spec-2026-04-24.md`
+- `rg --pcre2 -n "valgrind(?![^\n]*--trace-children)[^\n]*env" AGENTS.md docs/plans/memory-boundary-architecture-spec-2026-04-24.md memory/changelog_parts/changelog_part_37.md docs/todo_parts/todo_part_18.md`
+- `scripts/check_status_consistency.sh`
+- `git diff --check`
+
+Key results:
+- Status consistency was already green before the patch.
+- The audit found no live `src/` `scope_adopt` reintroduction and no active
+  runtime per-value/per-type RC drift.
+- The active guidance mismatch was the `AGENTS.md` Valgrind command missing
+  `--trace-children=yes`.
+- The only reusable-looking stale command in tracked TODO state was the closed
+  `MEM-BOUNDARY-VERIFY-001` validation note; it is now marked superseded rather
+  than silently treated as current traced-child evidence.
+- Historical session-report commands were left as historical records; the
+  corrected active guidance supersedes them for future validation.
+
+Unresolved issues:
+- None from this re-audit slice.
+
+Signature: GPT-5 Codex
+
 ## 2026-04-24 17:47 CEST - Memory Telemetry Plan Status Reconciliation
 
 Objective:

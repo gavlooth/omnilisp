@@ -35,8 +35,9 @@ Source: `docs/plans/memory-boundary-architecture-spec-2026-04-24.md`.
   - validation: `c3c build --obj-out obj`;
     `scripts/run_validation_container.sh env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
     (`253 passed, 0 failed`);
-    `scripts/run_validation_container.sh valgrind --leak-check=full --error-exitcode=99 env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
-    (`253 passed, 0 failed` under bounded container Valgrind); host Valgrind
+    historical bounded-container Valgrind invocation passed but wrapped the
+    runtime through `env` without traced-child execution, so it is superseded as
+    leak evidence by later `--trace-children=yes` validation; host Valgrind
     default Lisp/basic suite (`167 passed, 0 failed`).
   - negative-memory constraint: do not paper over the failures by weakening
     prepared-graph tests; preserve the invariant that committed ESCAPE roots do
