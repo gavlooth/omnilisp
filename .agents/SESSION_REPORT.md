@@ -124,6 +124,46 @@ The historical content was split mechanically to keep individual files below the
   - No rebuild or runtime restart is required; this is documentation-only.
 - Signature: GPT-5 Codex
 
+## 2026-04-24 17:25 CEST - Memory Telemetry Benchmark Plan Opened
+
+- Objective attempted:
+  - Create a concrete plan to maximize information collection before any
+    further memory optimization work.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `docs/plans/memory-boundary-telemetry-benchmark-plan-2026-04-24.md`
+  - `docs/todo_parts/todo_part_18.md`
+  - `TODO.md`
+  - `docs/plans/README.md`
+  - `.agents/PLAN.md`
+- Code or configuration changes made:
+  - Added an open memory-boundary telemetry benchmark plan with five
+    TODO-backed slices: existing signal inventory, counter expansion,
+    workload expansion, baseline capture, and regression-envelope parsing.
+  - Reopened the live TODO queue for `MEM-BENCH-OBSERVE-001` through
+    `MEM-BENCH-OBSERVE-005`.
+  - Updated the plans index and agent plan checkpoint so future work starts
+    with evidence collection instead of architecture churn.
+- Commands run:
+  - `git diff --check -- docs/plans/memory-boundary-telemetry-benchmark-plan-2026-04-24.md docs/todo_parts/todo_part_18.md TODO.md docs/plans/README.md .agents/PLAN.md .agents/SESSION_REPORT.md`
+  - `scripts/check_status_consistency.sh`
+  - `rg -n "MEM-BENCH-OBSERVE|memory-boundary-telemetry-benchmark" docs/plans/memory-boundary-telemetry-benchmark-plan-2026-04-24.md docs/todo_parts/todo_part_18.md TODO.md docs/plans/README.md .agents/PLAN.md .agents/SESSION_REPORT.md`
+- Key results:
+  - The memory migration remains treated as complete; new work is explicitly
+    telemetry/benchmark evidence gathering.
+  - Status consistency passes with TODO actionable count `5`.
+- Invalidated assumptions or failed approaches:
+  - None.
+- Current best recommendation or checkpoint:
+  - Start with `MEM-BENCH-OBSERVE-001`: inventory current boundary counters,
+    `OMNI_BENCH_SUMMARY` lines, `runtime-memory-stats` fields, and profile
+    scripts before adding new counters.
+- Unresolved issues:
+  - Runtime benchmark implementation has not started yet.
+- Dependencies, blockers, or restart requirements:
+  - No rebuild or runtime restart is required for this planning-only change.
+- Signature: GPT-5 Codex
+
 ## 2026-04-19 21:42 CEST - All Eligible Over-700 Files Split
 
 - Objective attempted:

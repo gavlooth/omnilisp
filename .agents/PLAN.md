@@ -14,38 +14,40 @@ The historical content was split mechanically to keep individual files below the
 
 ## Current Checkpoint
 
-Date: 2026-04-24 16:55 CEST
+Date: 2026-04-24 17:25 CEST
 
 - Active hypothesis:
-  - The canonical live work queue is closed. Further implementation should
-    begin by opening a new explicit TODO-backed item or by first reconciling a
-    verified stale artifact against `memory/CHANGELOG.md`.
+  - The memory model migration is complete; the next useful memory work is
+    evidence collection, not more architecture migration.
 - Current approach:
-  - `TODO.md` reports no live blocker queue and
-    `scripts/check_status_consistency.sh` passes with TODO actionable count
-    `0`.
+  - Open the memory-boundary telemetry/benchmark evidence lane in
+    `TODO.md` Part 18 as `MEM-BENCH-OBSERVE-001` through
+    `MEM-BENCH-OBSERVE-005`.
+  - Use `docs/plans/memory-boundary-telemetry-benchmark-plan-2026-04-24.md`
+    as the active plan for maximizing observability before further
+    optimization.
   - The Part 18 memory-boundary proof-planner queue is closed through
     planner-owned commit migration, tag attribution, `CONS`/closure/array/
     BigInteger copy-debt reduction, and closure residual classification.
-  - The Part 17 Vulkan/CUDA/ML audit residual queue is closed. Medium and Low
-    audit findings are remediated or resolved by explicit fail-closed
-    contracts, and the audit report has been synced to that state.
 - Validation path:
-  - Use `c3c build --obj-out obj` for the next C3 integration check.
-  - Use bounded container slices for runtime validation; the latest audit
-    residual closure passed bounded `advanced-collections-module` and `basic`.
+  - Use `c3c build --obj-out obj` for runtime instrumentation changes.
+  - Use bounded `memory-lifetime-bench` with `OMNI_BOUNDARY_BENCH=1` and
+    counters enabled for benchmark evidence.
+  - Use bounded `memory-lifetime-smoke` after runtime memory-accounting
+    changes.
   - Keep `scripts/check_status_consistency.sh` green after any planning or
     backlog change.
 - Next checkpoint:
-  - No active implementation checkpoint is open. If new work is discovered,
-    record it first in `TODO.md`/`docs/todo_parts/` with a concrete task ID,
-    validation path, and negative-memory constraint.
+  - Complete `MEM-BENCH-OBSERVE-001` by inventorying current counters,
+    benchmark summary lines, `runtime-memory-stats` fields, and parser/check
+    scripts, then decide which missing counters are low-risk.
 - Negative-memory constraints:
   - Do not reopen closed memory-boundary copy-debt work to chase the expected
     no-splice closure rollback coverage bucket.
-  - Do not satisfy Vulkan ML/NN placement through hidden CPU fallback.
-  - Do not treat historical changelog/session-report wording as a live queue
-    when `TODO.md` and status consistency report zero actionable items.
+  - Do not weaken TEMP-edge proof rejection, mutation-epoch invalidation, or
+    fail-closed planner behavior to improve benchmark numbers.
+  - Do not add strict wall-clock gates until repeated bounded-container runs
+    prove a stable timing envelope.
 - Agent assignments:
   - Integration owner: GPT-5 Codex in this session; no active subagents.
 

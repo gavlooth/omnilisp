@@ -254,3 +254,65 @@ Source: `docs/plans/memory-boundary-proof-planner-roadmap-2026-04-24.md`.
     expected no-splice coverage.
   - negative-memory constraint: do not remove or rewrite the explicit no-splice
     closure rollback test to improve copy-debt counters.
+
+## Memory Boundary Telemetry Benchmarking — 2026-04-24
+
+Source: `docs/plans/memory-boundary-telemetry-benchmark-plan-2026-04-24.md`.
+
+- [ ] `MEM-BENCH-OBSERVE-001` inventory current memory/boundary observability.
+  - classification: static tooling/docs, targeted evidence inventory.
+  - task: map current boundary counters, benchmark summary lines,
+    `runtime-memory-stats` fields, and boundary profile scripts into one
+    table of existing signals and missing signals.
+  - validation: documentation diff check plus `scripts/check_status_consistency.sh`.
+  - prerequisites: current `memory-lifetime-bench` and boundary telemetry files
+    remain discoverable.
+  - negative-memory constraint: do not treat historical destination-arena
+    proposal text as current implementation truth when it conflicts with
+    `memory/CHANGELOG.md` or `docs/areas/memory-runtime.md`.
+
+- [ ] `MEM-BENCH-OBSERVE-002` expand low-overhead counter coverage.
+  - classification: runtime telemetry, targeted instrumentation.
+  - task: add missing counters for allocator pressure, collection shape
+    pressure, payload byte sizes, and FFI/tensor wrapper crossings.
+  - validation: `c3c build --obj-out obj`, counters-enabled build with
+    `-D OMNI_BOUNDARY_INSTR_COUNTERS`, bounded `memory-lifetime-smoke`, and
+    `git diff --check`.
+  - prerequisites: `MEM-BENCH-OBSERVE-001` identifies missing fields and their
+    owning files.
+  - negative-memory constraint: keep default hot paths zero-overhead unless the
+    existing instrumentation gate is enabled.
+
+- [ ] `MEM-BENCH-OBSERVE-003` expand the `memory-lifetime-bench` workload suite.
+  - classification: runtime benchmark, targeted workload expansion.
+  - task: add representative TEMP/ESCAPE workloads for large containers,
+    closure env copies, cyclic/shared containers, mutation drift,
+    BigInteger/String/Error payloads, lazy tensor metadata, and FFI wrappers.
+  - validation: bounded `memory-lifetime-bench` with `OMNI_BOUNDARY_BENCH=1`
+    and counters enabled; each workload emits a stable `OMNI_BENCH_SUMMARY`.
+  - prerequisites: counter fields from `MEM-BENCH-OBSERVE-002` are available
+    or explicitly deferred with reason.
+  - negative-memory constraint: do not make benchmark fixtures weaken runtime
+    proof/fail-closed invariants just to produce cleaner route counts.
+
+- [ ] `MEM-BENCH-OBSERVE-004` capture the first benchmark baseline and interpret it.
+  - classification: runtime benchmark evidence, targeted baseline capture.
+  - task: run the bounded benchmark suite, archive summary output, and document
+    the top copy/allocator hotspots or explicitly record that no optimization
+    is justified.
+  - validation: bounded benchmark command recorded with log path and parsed
+    summary; `scripts/check_status_consistency.sh`.
+  - prerequisites: `MEM-BENCH-OBSERVE-003` workload suite is runnable in the
+    bounded container.
+  - negative-memory constraint: wall-clock numbers are advisory until repeated
+    runs prove stability; prioritize route/copy/allocator counters.
+
+- [ ] `MEM-BENCH-OBSERVE-005` add a regression-envelope parser for benchmark summaries.
+  - classification: tooling/validation, targeted benchmark guard.
+  - task: add a parser/check script for `OMNI_BENCH_SUMMARY` lines that gates
+    correctness and counter regressions first, with wide timing warnings only.
+  - validation: script syntax check, sample-log parse test, bounded
+    `memory-lifetime-bench`, and `git diff --check`.
+  - prerequisites: baseline from `MEM-BENCH-OBSERVE-004`.
+  - negative-memory constraint: do not introduce strict timing failure gates
+    until repeated bounded-container runs show a stable envelope.

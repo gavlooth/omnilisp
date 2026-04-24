@@ -11,9 +11,9 @@ The live backlog has been consolidated into `TODO.md` at the repo root.
 
 ## TODO-Linked Plan Status
 
-- Current live queue status: no TODO-backed implementation item is open. Open
-  new work in `TODO.md`/`docs/todo_parts/` before treating any plan below as an
-  execution queue.
+- Current live queue status: memory-boundary telemetry/benchmark evidence work
+  is open in `TODO.md` Part 18 as `MEM-BENCH-OBSERVE-001` through
+  `MEM-BENCH-OBSERVE-005`.
 
 - `slash-surface-naming-audit-plan-2026-04-23.md`: closed surface naming
   audit. Closed slices document Pika as language-core, choose a Deduce module
@@ -77,6 +77,11 @@ The live backlog has been consolidated into `TODO.md` at the repo root.
   `MEM-BOUNDARY-EPOCH-001`, `MEM-BOUNDARY-TRANSPLANT-001`,
   `MEM-BOUNDARY-FFI-BRIDGE-001`, `MEM-BOUNDARY-COPY-DEBT-001`, and
   `MEM-BOUNDARY-PLAN-MIGRATE-001` are closed.
+- `memory-boundary-telemetry-benchmark-plan-2026-04-24.md`: open plan for
+  maximizing memory-boundary observability before further optimization. It
+  tracks existing-signal inventory, low-overhead counter expansion,
+  `memory-lifetime-bench` workload expansion, first bounded baseline capture,
+  and a counter-first regression-envelope parser.
 - `vulkan-backend-decision-2026-04-16.md`: completed `TENSOR-100E` baseline note for
   portable explicit GPU execution behind the existing `Tensor` surface. Vulkan
   is runtime-optional, capability-gated, and owned through an Omni C ABI
