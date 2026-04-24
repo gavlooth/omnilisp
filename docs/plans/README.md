@@ -12,12 +12,10 @@ The live backlog has been consolidated into `TODO.md` at the repo root.
 ## TODO-Linked Plan Status
 
 - Current live queue status: memory-boundary telemetry/benchmark evidence work
-  is open in `TODO.md` Part 18 as `MEM-BENCH-OBSERVE-005`;
-  `MEM-BENCH-OBSERVE-001` closed with the signal
-  inventory, `MEM-BENCH-OBSERVE-002` closed with runtime counter coverage, and
-  `MEM-BENCH-OBSERVE-003` closed with benchmark workload coverage.
-  `MEM-BENCH-OBSERVE-004` closed with
-  `memory-boundary-telemetry-benchmark-baseline-2026-04-24.md`.
+  in `TODO.md` Part 18 is closed through `MEM-BENCH-OBSERVE-005`. The lane
+  produced the signal inventory, runtime counter coverage, benchmark workload
+  coverage, first counter baseline, and
+  `scripts/check_memory_telemetry_benchmark_envelope.sh`.
 
 - `slash-surface-naming-audit-plan-2026-04-23.md`: closed surface naming
   audit. Closed slices document Pika as language-core, choose a Deduce module

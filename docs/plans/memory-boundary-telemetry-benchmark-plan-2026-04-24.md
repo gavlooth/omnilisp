@@ -1,7 +1,7 @@
 # Memory Boundary Telemetry Benchmark Plan - 2026-04-24
 
-Status: open planning lane for TODO item `MEM-BENCH-OBSERVE-005`;
-`MEM-BENCH-OBSERVE-001` through `MEM-BENCH-OBSERVE-004` are complete.
+Status: closed; `MEM-BENCH-OBSERVE-001` through `MEM-BENCH-OBSERVE-005` are
+complete.
 
 ## Active Hypothesis
 
@@ -144,12 +144,14 @@ the benchmark is stable across repeated container runs.
   stale invalidation, selected transplant count, and materialization copy debt.
 - `MEM-BENCH-OBSERVE-004`: first bounded benchmark baseline is recorded in
   `docs/plans/memory-boundary-telemetry-benchmark-baseline-2026-04-24.md`.
+- `MEM-BENCH-OBSERVE-005`: benchmark summary regression envelope is implemented
+  in `scripts/check_memory_telemetry_benchmark_envelope.sh`.
 
 ## Next Checkpoint
 
-The next decision point is completion of `MEM-BENCH-OBSERVE-005`: add a parser
-and regression envelope for `OMNI_BENCH_SUMMARY` correctness and counter
-presence fields, with timing warnings only.
+The telemetry evidence lane is complete. Future memory optimization work should
+start from the baseline note and envelope output, not from unmeasured
+architecture churn.
 
 ## Negative-Memory Constraints
 

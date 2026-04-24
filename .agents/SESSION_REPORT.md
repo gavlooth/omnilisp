@@ -328,6 +328,40 @@ The historical content was split mechanically to keep individual files below the
     rebuilt with counters enabled for this baseline run.
 - Signature: GPT-5 Codex
 
+## 2026-04-24 15:44 CEST - Memory Benchmark Envelope
+
+- Objective attempted:
+  - Complete `MEM-BENCH-OBSERVE-005` by adding a regression-envelope parser for
+    memory-boundary telemetry benchmark summaries.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `scripts/check_memory_telemetry_benchmark_envelope.sh`
+  - memory-boundary telemetry plan, baseline note, TODO Part 18
+- Code or configuration changes made:
+  - Added the envelope script. It parses `OMNI_BENCH_SUMMARY` lines and the
+    boundary decision summary, hard-fails on missing/corrupt correctness fields
+    or missing counter deltas, and warns only for timing or materialization-copy
+    drift.
+  - Closed the `MEM-BENCH-OBSERVE-001` through `MEM-BENCH-OBSERVE-005`
+    telemetry evidence lane.
+- Commands run:
+  - `scripts/check_memory_telemetry_benchmark_envelope.sh .agents/memory-boundary-telemetry-baseline-2026-04-24.log`
+  - `c3c build --obj-out obj -D OMNI_BOUNDARY_INSTR_COUNTERS`
+  - bounded container counters-enabled `memory-lifetime-bench`
+  - `scripts/check_memory_telemetry_benchmark_envelope.sh /tmp/omni_mem_telem_envelope_fresh.log`
+- Key results:
+  - The envelope passes against both the recorded baseline and a fresh bounded
+    benchmark run.
+  - TODO actionable count should now be zero after status consistency.
+- Invalidated assumptions or failed approaches:
+  - None in this slice.
+- Unresolved issues:
+  - No open memory-boundary telemetry TODO remains.
+- Dependencies, blockers, or restart requirements:
+  - Rebuild required for future benchmark binary changes before rerunning the
+    envelope against live output.
+- Signature: GPT-5 Codex
+
 ## 2026-04-19 21:42 CEST - All Eligible Over-700 Files Split
 
 - Objective attempted:

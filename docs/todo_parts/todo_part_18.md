@@ -324,8 +324,12 @@ Source: `docs/plans/memory-boundary-telemetry-benchmark-plan-2026-04-24.md`.
   - negative-memory constraint: wall-clock numbers are advisory until repeated
     runs prove stability; prioritize route/copy/allocator counters.
 
-- [ ] `MEM-BENCH-OBSERVE-005` add a regression-envelope parser for benchmark summaries.
+- [x] `MEM-BENCH-OBSERVE-005` add a regression-envelope parser for benchmark summaries.
   - classification: tooling/validation, targeted benchmark guard.
+  - done 2026-04-24: added
+    `scripts/check_memory_telemetry_benchmark_envelope.sh`, which gates
+    required `OMNI_BENCH_SUMMARY` correctness fields and counter-presence
+    deltas while treating timing and materialization-copy drift as warnings.
   - task: add a parser/check script for `OMNI_BENCH_SUMMARY` lines that gates
     correctness and counter regressions first, with wide timing warnings only.
   - validation: script syntax check, sample-log parse test, bounded

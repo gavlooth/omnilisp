@@ -5006,6 +5006,23 @@ Validation:
   - `c3c build --obj-out obj -D OMNI_BOUNDARY_INSTR_COUNTERS`
   - bounded container counters-enabled `memory-lifetime-bench`
 
+## 2026-04-24 memory telemetry benchmark envelope
+
+- Implemented and closed `MEM-BENCH-OBSERVE-005`.
+  - Added `scripts/check_memory_telemetry_benchmark_envelope.sh`.
+  - The script parses `OMNI_BENCH_SUMMARY` and boundary decision summary lines,
+    hard-fails on missing/corrupt correctness fields or missing counter deltas,
+    and emits warnings only for timing or materialization-copy drift.
+  - The memory-boundary telemetry evidence lane is now closed through
+    `MEM-BENCH-OBSERVE-005`.
+- Validation:
+  - `scripts/check_memory_telemetry_benchmark_envelope.sh
+    .agents/memory-boundary-telemetry-baseline-2026-04-24.log`
+  - `c3c build --obj-out obj -D OMNI_BOUNDARY_INSTR_COUNTERS`
+  - bounded container counters-enabled `memory-lifetime-bench`
+  - `scripts/check_memory_telemetry_benchmark_envelope.sh
+    /tmp/omni_mem_telem_envelope_fresh.log`
+
 ## 2026-04-24 memory telemetry benchmark baseline
 
 - Implemented and closed `MEM-BENCH-OBSERVE-004`.

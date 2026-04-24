@@ -66,7 +66,7 @@ OMNI_TEST_SUMMARY suite=boundary_decisions splice_attempted=4128 splice_succeede
 
 ## Recommended Regression Envelope Inputs
 
-For `MEM-BENCH-OBSERVE-005`, parse these fields first:
+Implemented by `scripts/check_memory_telemetry_benchmark_envelope.sh`:
 
 - Correctness:
   - `splice_ok == 2048`
