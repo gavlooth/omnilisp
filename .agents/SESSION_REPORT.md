@@ -85,6 +85,45 @@ The historical content was split mechanically to keep individual files below the
   - No rebuild or runtime restart is required; this was documentation-only.
 - Signature: GPT-5 Codex
 
+## 2026-04-24 14:45 CEST - FFI Yellow Status Wording Cleanup
+
+- Objective attempted:
+  - Clarify why FFI/foreign runtime remains yellow while the TODO live queue is
+    closed.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `docs/areas/ffi-foreign-runtime.md`
+  - `docs/plans/README.md`
+  - `TODO.md`
+- Code or configuration changes made:
+  - Renamed the FFI area page's "Active plans" list to "Relevant closed plans".
+  - Added explicit wording that FFI yellow means the C ABI / `ForeignHandle`
+    path is shipped, while optional non-C adapter/backend families remain
+    future tracks rather than active TODO-backed work.
+  - Renamed the plans-index TODO heading and the root TODO title so a zero-item
+    queue no longer reads like an active execution list.
+- Commands run:
+  - `git diff --check -- docs/areas/ffi-foreign-runtime.md docs/plans/README.md TODO.md .agents/SESSION_REPORT.md`
+  - `scripts/check_status_consistency.sh`
+  - `rg -n "Active plans:|Current TODO-Linked Plans|# Active TODO Index|active implementation work|Relevant closed plans|Yellow is intentional" docs/areas/ffi-foreign-runtime.md docs/plans/README.md TODO.md .agents/SESSION_REPORT.md`
+  - `jj diff --stat`
+- Key results:
+  - The area/status docs now distinguish closed C ABI FFI work from broader
+    optional runtime-family residuals.
+  - Status consistency still passes with TODO actionable count `0`; FFI remains
+    expected-yellow by policy.
+- Invalidated assumptions or failed approaches:
+  - None.
+- Current best recommendation or checkpoint:
+  - Keep `docs/areas/ffi-foreign-runtime.md` yellow until non-C adapter/backend
+    lanes are intentionally implemented, but do not treat that yellow status as
+    an active queue without TODO-backed work.
+- Unresolved issues:
+  - None from this cleanup pass.
+- Dependencies, blockers, or restart requirements:
+  - No rebuild or runtime restart is required; this is documentation-only.
+- Signature: GPT-5 Codex
+
 ## 2026-04-19 21:42 CEST - All Eligible Over-700 Files Split
 
 - Objective attempted:

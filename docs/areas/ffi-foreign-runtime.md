@@ -6,7 +6,7 @@
 - Normative language surface: `docs/LANGUAGE_SPEC.md`
 - User reference: `docs/reference/09-concurrency-ffi.md`
 - Tooling reference: `docs/PROJECT_TOOLING.md`
-- Active plans:
+- Relevant closed plans:
   - `docs/plans/ffi-first-class-grouped-module-plan-2026-04-11.md`
   - `docs/plans/foreign-runtime-core-plan-2026-04-11.md`
 
@@ -14,6 +14,12 @@
 
 Status: `yellow`
 As of: 2026-04-24
+
+Yellow is intentional for this area: the C ABI / `ForeignHandle` runtime path
+is shipped and validated, while optional non-C runtime adapter families and
+backend buffer hooks remain future tracks. This is not a live TODO queue by
+itself; open concrete work in `TODO.md` before treating any residual track below
+as active implementation work.
 
 ## Lane Closure Snapshot
 
@@ -29,7 +35,8 @@ Already-landed core behavior:
 - Shared metadata and capability model (`'runtime`, `'parameters`, `'returns`,
   `'capabilities`, `'ownership`, `'finalizer`).
 
-Runtime-specific residuals explicitly split out of this lane:
+Runtime-specific residuals explicitly split out of this closed common-core
+lane:
 
 - Non-C runtime adapters (Python, Julia, CUDA/cuBLAS, polyglot/plugin).
 - Optional C++ tooling via C++ shim/API mode only.
@@ -193,10 +200,12 @@ Python, Julia, CUDA/cuBLAS, optional C++ tooling, polyglot/plugin machinery,
 and tensor backend buffer hooks remain separate follow-on lanes and are not
 user-facing runtime paths yet.
 
-## Next Steps (Residual Tracks)
+## Residual Tracks
+
+These are optional follow-on families, not active TODO-backed work:
 
 1. Keep C ABI grouped FFI stable while expanding runtime-lane follow-ons in
-   separate optional tracks:
+   separate tracks:
    - Python/JL adapter lane.
    - CUDA/cuBLAS lane.
    - Optional C++/CppInterOp toolchain lane (shim/API-only).

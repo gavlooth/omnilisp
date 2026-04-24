@@ -1,8 +1,8 @@
-# Active TODO Index
+# TODO Index
 
 `TODO.md` remains the canonical backlog entrypoint; read the indexed part files for the full live queue and recently closed history.
 
-The historical content was split mechanically to keep the active backlog
+The historical content was split mechanically to keep the backlog index
 readable. Content order is preserved in the part files. The hard 1000-line
 split gate applies to code files only.
 

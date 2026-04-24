@@ -9,7 +9,7 @@ The live backlog has been consolidated into `TODO.md` at the repo root.
 2. Keep `TODO.md` as the only live execution queue.
 3. Treat files in this folder as design context or one-off implementation notes, not as parallel backlog sources.
 
-## Current TODO-Linked Plans
+## TODO-Linked Plan Status
 
 - Current live queue status: no TODO-backed implementation item is open. Open
   new work in `TODO.md`/`docs/todo_parts/` before treating any plan below as an
