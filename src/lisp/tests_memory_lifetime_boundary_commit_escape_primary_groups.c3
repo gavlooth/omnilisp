@@ -155,7 +155,8 @@ fn void run_memory_lifetime_boundary_commit_escape_primary_tests(Interp* interp,
         }
     }
 
-    // Invariant: TEMP cons survivor commits through destination-aware ESCAPE build.
+    // Invariant: TEMP cons survivor commits through proof-backed transplant
+    // before destination materialization when the ownership island is movable.
     {
         main::ScopeRegion* root_scope = interp.current_scope;
         main::ScopeRegion* target_scope = main::scope_create(root_scope);
@@ -181,15 +182,15 @@ fn void run_memory_lifetime_boundary_commit_escape_primary_tests(Interp* interp,
             boundary_promotion_context_end(interp, &ctx);
             usz site_delta = copy_to_parent_site_calls(COPY_SITE_RUN_JIT_RESULT) - base_site;
 
-            bool ok = !committed.releasing_scope_spliced &&
+            bool ok = committed.releasing_scope_spliced &&
                       !committed.reused_in_target_chain &&
                       !committed.stable_publication_attempted &&
-                      committed.stable_materialization_used &&
+                      !committed.stable_materialization_used &&
                       !committed.compatibility_path_used &&
                       committed.planned_route == BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION &&
-                      committed.selected_route == BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION &&
-                      committed.selected_reason == BOUNDARY_PLAN_REASON_DESTINATION_COMMITTED_STABLE &&
-                      committed.outcome == BOUNDARY_COMMIT_DESTINATION_CONS_BUILT &&
+                      committed.selected_route == BOUNDARY_PLAN_ROUTE_REGION_TRANSPLANT &&
+                      committed.selected_reason == BOUNDARY_PLAN_REASON_TRANSPLANT_COMMITTED &&
+                      committed.outcome == BOUNDARY_COMMIT_SPLICED_RELEASING_SCOPE &&
                       site_delta == 0 &&
                       boundary_commit_cons_head_matches(committed.value, 17) &&
                       committed.value != src &&

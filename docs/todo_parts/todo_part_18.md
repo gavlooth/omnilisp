@@ -159,19 +159,39 @@ Source: `docs/plans/memory-boundary-proof-planner-roadmap-2026-04-24.md`.
     optimization from aggregate copy bytes alone; use the root-tag counters to
     target the dominant copied graph family first.
 
-- [ ] `MEM-BOUNDARY-CONS-COPY-001` reduce `CONS` stable-materialization copy debt.
+- [x] `MEM-BOUNDARY-CONS-COPY-001` reduce `CONS` stable-materialization copy debt.
   - classification: runtime performance, structural optimization.
-  - task: design and implement the next zero/low-copy path for `CONS` roots
-    selected by stable materialization, using the measured tag counters as the
-    gating signal.
-  - why: counters-enabled `memory-lifetime-smoke` shows `CONS` roots dominate
-    stable-materialization copy bytes (`8568/10096`) after route attribution.
-  - concrete next step: inspect `stable_escape_prepare_and_materialize_value`
-    and `boundary_commit_escape_handle_releasing_scope` for a `CONS`-specific
-    transplant/materialization split that preserves prepared-edge ordering,
-    promotion-abort behavior, and graph-audit TEMP-edge invariants.
+  - done 2026-04-24: TEMP `CONS` roots with an explicit transplant candidate
+    now try budget-proven promotion into the releasing ESCAPE lane followed by
+    proof-backed region transplant before stable destination materialization.
+    If the budget or proof is insufficient, the route keeps the existing
+    materialize/fail-closed behavior.
+  - validation: `c3c build --obj-out obj`; counters-enabled build
+    (`-D OMNI_BOUNDARY_INSTR_COUNTERS`); bounded container normal and
+    counters-enabled `memory-lifetime-smoke` (`255 passed, 0 failed` each);
+    bounded container `basic` (`169 passed, 0 failed`); bounded container
+    Valgrind `memory-lifetime-smoke` (`255 passed, 0 failed`). Counters moved
+    `materialization_copy_bytes_cons` from `8568` to `0` and aggregate
+    `materialization_copy_bytes` from `10096` to `1528`.
   - prerequisites: `MEM-BOUNDARY-TAG-DEBT-001` counters must remain available
     in the validation command.
   - negative-memory constraint: do not revive strict-only TEMP `CONS`
     materialization or hidden compatibility fallback; failed prepared/proof
     paths must remain explicit planner-selected outcomes.
+
+- [ ] `MEM-BOUNDARY-CLOSURE-COPY-001` reduce closure stable-materialization copy debt.
+  - classification: runtime performance, structural optimization.
+  - task: design and implement the next low-copy route for closure roots
+    selected by stable materialization, using the measured tag counters as the
+    gating signal.
+  - why: after `MEM-BOUNDARY-CONS-COPY-001`, counters-enabled
+    `memory-lifetime-smoke` shows closure roots are the dominant remaining
+    stable-materialization bucket (`1072/1528` copied bytes).
+  - concrete next step: inspect `stable_escape_materialize_init_closure`,
+    `stable_escape_materialize_finalize_closure`, closure env detach/retain
+    policy, and transplant proof closure-env gates for a closure-specific route
+    that preserves env-copy rollback and no-TEMP-edge audit invariants.
+  - prerequisites: `MEM-BOUNDARY-CONS-COPY-001` must remain closed under the
+    counters-enabled smoke command.
+  - negative-memory constraint: do not treat closure env scopes or stable
+    handles as ownership authority; scope regions remain the lifetime owner.

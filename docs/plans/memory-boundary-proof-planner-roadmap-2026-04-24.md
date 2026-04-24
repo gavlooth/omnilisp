@@ -248,12 +248,29 @@ Measured result from counters-enabled bounded `memory-lifetime-smoke`:
 
 ### Phase 9: CONS Copy-Debt Reduction
 
-Open as `MEM-BOUNDARY-CONS-COPY-001`: use the Phase 8 root-tag counters to
-reduce the dominant `CONS` stable-materialization copy bucket first. The
-candidate path should inspect whether `CONS` roots can be split into a stronger
-transplant proof, graph-owned destination reuse, or a narrower materialization
-strategy without changing prepared-edge ordering or hiding failed proof routes
-behind compatibility fallback.
+Closed 2026-04-24 by `MEM-BOUNDARY-CONS-COPY-001`: TEMP `CONS` roots with an
+explicit transplant candidate now try budget-proven promotion into the
+releasing ESCAPE lane followed by proof-backed region transplant before stable
+destination materialization. If the budget or proof is insufficient, the route
+keeps the existing materialize/fail-closed behavior.
+
+Measured result from counters-enabled bounded `memory-lifetime-smoke` after the
+change:
+
+- `materialization_copy_bytes=1528`
+- `materialization_copy_bytes_cons=0`
+- `materialization_copy_bytes_closure=1072`
+- `materialization_copy_bytes_array=400`
+- `selected_stable_materialize_cons=0`
+- `selected_transplant=5`
+
+### Phase 10: Closure Copy-Debt Reduction
+
+Open as `MEM-BOUNDARY-CLOSURE-COPY-001`: use the root-tag counters to reduce
+the new dominant closure stable-materialization bucket. The candidate path
+should inspect closure env detach/retain policy and transplant proof
+closure-env gates before changing any closure route; the invariant remains that
+closure env scopes and stable handles are not independent ownership authority.
 
 ## Validation Path
 
@@ -283,11 +300,11 @@ FFI, JIT/eval boundary, or mutation semantics.
 ## Next Checkpoint
 
 The proof-planner implementation queue in TODO Part 18 is closed through
-planner-owned commit migration. The measured follow-up queue is now open on
-`MEM-BOUNDARY-CONS-COPY-001`: counters-enabled `memory-lifetime-smoke` shows
-`CONS` roots dominate stable-materialization copy bytes (`8568/10096`), so the
-next memory-boundary optimization should reduce that `CONS` bucket before
-optimizing lower-volume array/closure materialization paths.
+planner-owned commit migration, tag attribution, and `CONS` copy-debt
+reduction. The measured follow-up queue is now open on
+`MEM-BOUNDARY-CLOSURE-COPY-001`: counters-enabled `memory-lifetime-smoke` shows
+closure roots now dominate stable-materialization copy bytes (`1072/1528`)
+after the `CONS` bucket fell to zero.
 
 ## Agent Assignments
 

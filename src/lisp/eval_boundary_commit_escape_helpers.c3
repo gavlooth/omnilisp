@@ -55,6 +55,104 @@ fn void boundary_commit_escape_fail_closed(
     boundary_txn_abort(txn);
 }
 
+fn bool boundary_commit_cons_transplant_budget_available(
+    Value* result,
+    PromotionContext* active_ctx,
+    Interp* interp,
+    usz* out_prepared_node_count
+) {
+    if (result == null || result.tag != CONS || interp == null) return false;
+    StableEscapePreparedGraphScratch scratch = {};
+    scratch.global_env = interp.global_env;
+    usz root_index = STABLE_ESCAPE_PREPARED_INVALID_INDEX;
+    if (!stable_escape_prepare_graph_node(&scratch, result, &root_index)) return false;
+    if (root_index == STABLE_ESCAPE_PREPARED_INVALID_INDEX || root_index >= scratch.node_count) return false;
+    if (out_prepared_node_count != null) *out_prepared_node_count = scratch.node_count;
+    if (active_ctx == null || active_ctx.budget == usz.max) return true;
+    if (active_ctx.aborted) return false;
+    return active_ctx.budget >= scratch.node_count;
+}
+
+fn bool boundary_commit_try_temp_cons_transplant(
+    BoundaryCommitEscapeResult* committed,
+    Value** result_io,
+    Interp* interp,
+    main::ScopeRegion* target_scope,
+    main::ScopeRegion* releasing_scope,
+    PromotionContext* active_ctx,
+    BoundaryTxn* txn,
+    bool* commit_succeeded,
+    BoundaryReturnClassification* classification_io,
+    BoundaryPlanDecision plan
+) {
+    if (committed == null || result_io == null || *result_io == null) return false;
+    if (interp == null || target_scope == null || releasing_scope == null || txn == null) return false;
+    Value* result = *result_io;
+    if (plan.route != BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION ||
+        !plan.transplant_candidate ||
+        plan.provenance != BOUNDARY_RETURN_OWNED_BY_RELEASING_TEMP ||
+        result.tag != CONS) {
+        return false;
+    }
+
+    usz prepared_node_count = 0;
+    if (!boundary_commit_cons_transplant_budget_available(result, active_ctx, interp, &prepared_node_count)) {
+        return false;
+    }
+    (void)prepared_node_count;
+
+    bool pre_aborted_ctx = active_ctx != null && active_ctx.aborted;
+    boundary_note_promotion_attempt();
+    BoundaryScopeSwap promote_scope = boundary_scope_swap_begin(interp, releasing_scope);
+    Value* promoted = boundary_promote_to_escape_ctx(result, interp, active_ctx);
+    boundary_scope_swap_end(interp, &promote_scope);
+    if (classification_io != null) {
+        *classification_io = boundary_classify_return_value(promoted, interp, target_scope, releasing_scope);
+    }
+    *result_io = promoted;
+
+    if (active_ctx != null && active_ctx.aborted) {
+        BoundaryPromotionAbortReason abort_reason = BOUNDARY_PROMOTION_ABORT_BUDGET_EXHAUSTED;
+        if (pre_aborted_ctx || active_ctx.abort_reason != PROMOTION_ABORT_BUDGET_EXHAUSTED) {
+            abort_reason = BOUNDARY_PROMOTION_ABORT_PRE_ABORTED_CTX;
+        }
+        boundary_note_promotion_abort(abort_reason);
+        boundary_commit_escape_fail_closed(
+            committed,
+            interp,
+            txn,
+            BOUNDARY_COMMIT_FAULT_PROMOTION_ABORTED
+        );
+        return true;
+    }
+
+    if (promoted == null || promoted == result || promoted.tag == ERROR) return false;
+    if (classification_io == null ||
+        classification_io.provenance != BOUNDARY_RETURN_OWNED_BY_RELEASING_ESCAPE ||
+        !boundary_should_promote(promoted, active_ctx, releasing_scope)) {
+        return false;
+    }
+
+    BoundaryTransplantProof splice_proof =
+        boundary_commit_build_splice_escape_root_proof(promoted, target_scope, releasing_scope, interp.global_env);
+    if (!splice_proof.transfer.allowed) return false;
+    BoundaryScopeTransferResult splice_result =
+        boundary_try_scope_splice_escapes_root_proof_result(target_scope, releasing_scope, promoted, &splice_proof);
+    if (!splice_result.allowed) return false;
+
+    committed.value = promoted;
+    committed.outcome = BOUNDARY_COMMIT_SPLICED_RELEASING_SCOPE;
+    committed.releasing_scope_spliced = true;
+    boundary_commit_set_selected_plan(
+        committed,
+        BOUNDARY_PLAN_ROUTE_REGION_TRANSPLANT,
+        BOUNDARY_PLAN_REASON_TRANSPLANT_COMMITTED
+    );
+    boundary_txn_commit(txn);
+    if (commit_succeeded != null) *commit_succeeded = true;
+    return true;
+}
+
 fn void boundary_commit_escape_handle_releasing_scope(
     BoundaryCommitEscapeResult* committed,
     Value** result_io,
@@ -87,6 +185,22 @@ fn void boundary_commit_escape_handle_releasing_scope(
     Value* result = *result_io;
     bool requires_escape_promotion =
         plan.provenance == BOUNDARY_RETURN_OWNED_BY_RELEASING_TEMP;
+
+    if (boundary_commit_try_temp_cons_transplant(
+            committed,
+            result_io,
+            interp,
+            target_scope,
+            releasing_scope,
+            active_ctx,
+            txn,
+            commit_succeeded,
+            classification_io,
+            plan
+        )) {
+        return;
+    }
+    result = *result_io;
 
     if (plan.route == BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION ||
         plan.route == BOUNDARY_PLAN_ROUTE_COMPATIBILITY_DESTINATION) {

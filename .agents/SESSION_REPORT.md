@@ -5525,6 +5525,62 @@ Re-audit notes:
 
 Signature: GPT-5 Codex
 
+## 2026-04-24 memory boundary CONS copy-debt reduction
+
+Date/time: 2026-04-24 13:52 CEST
+
+Objective:
+- Continue from `MEM-BOUNDARY-TAG-DEBT-001` by reducing the measured dominant
+  `CONS` stable-materialization copy bucket.
+
+Changes made:
+- Added a `CONS`-specific transplant-first path in
+  `boundary_commit_escape_handle_releasing_scope`.
+- TEMP `CONS` roots with an explicit transplant candidate now check prepared
+  graph size against the active promotion budget, promote into the releasing
+  ESCAPE lane, and commit through proof-backed region transplant before stable
+  destination materialization.
+- Updated the TEMP survivor regression to assert planned stable materialization
+  with selected region transplant.
+- Updated roadmap, TODO Part 18, `TODO.md`, changelog, and this session report.
+
+Commands run:
+- C3 diagnostics for touched runtime/test files.
+- `c3c build --obj-out obj`
+- `c3c build --obj-out obj -D OMNI_BOUNDARY_INSTR_COUNTERS`
+- `scripts/run_validation_container.sh env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `scripts/run_validation_container.sh env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=basic LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `scripts/run_validation_container.sh valgrind --leak-check=full --error-exitcode=99 env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `c3c build --obj-out obj --sanitize=address`
+- `git diff --check`
+- `scripts/check_status_consistency.sh`
+
+Key results:
+- Normal build passed.
+- Counters-enabled build passed.
+- Bounded normal `memory-lifetime-smoke` passed with `255 passed, 0 failed`.
+- Bounded counters-enabled `memory-lifetime-smoke` passed with
+  `255 passed, 0 failed`.
+- Bounded `basic` passed with `169 passed, 0 failed`.
+- Bounded Valgrind `memory-lifetime-smoke` exited cleanly with
+  `255 passed, 0 failed`.
+- Counters moved `materialization_copy_bytes_cons` from `8568` to `0` and
+  aggregate `materialization_copy_bytes` from `10096` to `1528`.
+- Remaining dominant bucket is closure materialization:
+  `materialization_copy_bytes_closure=1072`.
+- ASAN was attempted but the local `c3c` rejected sanitizer mode before
+  compiling: `Address sanitizer is only supported on Linux, FreeBSD, NetBSD,
+  Darwin and Windows.`
+- `git diff --check` and status consistency checks passed.
+
+Current best recommendation:
+- Implement `MEM-BOUNDARY-CLOSURE-COPY-001` next.
+
+Unresolved issues:
+- `MEM-BOUNDARY-CLOSURE-COPY-001` remains open.
+
+Signature: GPT-5 Codex
+
 ## 2026-04-24 memory boundary route-tag copy-debt attribution
 
 Date/time: 2026-04-24 13:18 CEST

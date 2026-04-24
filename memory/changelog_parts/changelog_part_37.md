@@ -4954,3 +4954,40 @@ Validation:
   - direct `(runtime-memory-stats)` key smoke returned `true`
   - `git diff --check`
   - `scripts/check_status_consistency.sh`
+
+## 2026-04-24 memory boundary CONS copy-debt reduction
+
+- Implemented and closed `MEM-BOUNDARY-CONS-COPY-001`.
+  - TEMP `CONS` roots whose planner route has an explicit transplant candidate
+    now try budget-proven promotion into the releasing ESCAPE lane followed by
+    proof-backed region transplant before stable destination materialization.
+  - Budget/proof failures keep the existing materialize/fail-closed behavior;
+    there is no hidden compatibility fallback.
+  - The TEMP survivor regression now asserts planner-owned
+    `STABLE_MATERIALIZE_DESTINATION` planning with selected
+    `REGION_TRANSPLANT` commit.
+- Measured result from counters-enabled bounded `memory-lifetime-smoke`:
+  - before: `materialization_copy_bytes=10096`,
+    `materialization_copy_bytes_cons=8568`
+  - after: `materialization_copy_bytes=1528`,
+    `materialization_copy_bytes_cons=0`
+  - remaining dominant bucket:
+    `materialization_copy_bytes_closure=1072`
+- Current best next optimization:
+  - `MEM-BOUNDARY-CLOSURE-COPY-001` should target closure root stable
+    materialization next; closure roots account for roughly 70% of the
+    remaining measured copied bytes.
+- Validation:
+  - C3 diagnostics for touched runtime/test files
+  - `c3c build --obj-out obj`
+  - `c3c build --obj-out obj -D OMNI_BOUNDARY_INSTR_COUNTERS`
+  - bounded container normal `memory-lifetime-smoke` (`255 passed, 0 failed`)
+  - bounded container counters-enabled `memory-lifetime-smoke`
+    (`255 passed, 0 failed`)
+  - bounded container normal `basic` (`169 passed, 0 failed`)
+  - bounded container normal Valgrind `memory-lifetime-smoke`
+    (`255 passed, 0 failed`)
+  - attempted `c3c build --obj-out obj --sanitize=address`; local `c3c`
+    rejected sanitizer mode before compiling
+  - `git diff --check`
+  - `scripts/check_status_consistency.sh`
