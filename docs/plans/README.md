@@ -11,13 +11,17 @@ The live backlog has been consolidated into `TODO.md` at the repo root.
 
 ## Current TODO-Linked Plans
 
+- Current live queue status: no TODO-backed implementation item is open. Open
+  new work in `TODO.md`/`docs/todo_parts/` before treating any plan below as an
+  execution queue.
+
 - `slash-surface-naming-audit-plan-2026-04-23.md`: closed surface naming
   audit. Closed slices document Pika as language-core, choose a Deduce module
   facade, choose the ML module split, flatten `ml/linear-batched-reduce`,
   clarify ML/NN activation naming, and move the math/stats scientific naming
   follow-up to the dedicated math/stats module plan.
-- `math-stats-scientific-module-plan-2026-04-23.md`: active plan for the
-  scientific module migration. The core `math` and `stats` module facades,
+- `math-stats-scientific-module-plan-2026-04-23.md`: current scientific module
+  migration reference. The core `math` and `stats` module facades,
   docs/tests migration, old slash special/stat callable removal, and Vulkan
   `Float32` `math.erf` / `math.erfc` extension have shipped. Granular
   `tensor-backends` scientific capability reporting has also shipped. The
@@ -53,8 +57,8 @@ The live backlog has been consolidated into `TODO.md` at the repo root.
   mutation drift, and boundary commit results expose stable-publication,
   stable-materialization, and compatibility-route use. No open stable-escape
   prepared-materialization rollout item remains.
-- `memory-boundary-architecture-spec-2026-04-24.md`: active implementation spec
-  for the current region-RC/TEMP/ESCAPE boundary contract. It records
+- `memory-boundary-architecture-spec-2026-04-24.md`: current implementation
+  spec for the region-RC/TEMP/ESCAPE boundary contract. It records
   `ScopeRegion` as ordinary Omni value ownership authority, makes stable
   materialization the preferred TEMP-to-ESCAPE boundary path, and keeps
   `FFI_HANDLE` opaque and scope-integrated rather than graph-owned by generic
@@ -64,7 +68,7 @@ The live backlog has been consolidated into `TODO.md` at the repo root.
   Valgrind. Stable indexed publication and region transplanting remain
   constrained fast paths, not a replacement for destination materialization
   when the lifetime proof is weaker than the copy proof.
-- `memory-boundary-proof-planner-roadmap-2026-04-24.md`: active roadmap for
+- `memory-boundary-proof-planner-roadmap-2026-04-24.md`: closed roadmap for
   maximizing stable indexed publication plus TEMP/ESCAPE boundary planning. It
   defines the `BoundaryPlanner` ladder, stable graph passports, transplant
   proofs, mutation epoch invalidation, FFI bridge declarations, copy-debt
@@ -103,10 +107,10 @@ The live backlog has been consolidated into `TODO.md` at the repo root.
   fixed-width complex tensor work. `TENSOR-100H-SVD-FACTORS`,
   `TENSOR-100H-CUDA-SVD-NORMS`, and `TENSOR-100H-COMPLEX-EIGEN` are closed;
   no live TODO lane remains under this plan.
-- `vulkan-math-library-roadmap-2026-04-17.md`: active plan for the next
-  Vulkan math work after the correctness-first `TENSOR-100E` baseline. It
-  keeps the residual live direction under `TENSOR-100F`
-  helper/library/dtype/layout work and records `TENSOR-100G` as the measured
+- `vulkan-math-library-roadmap-2026-04-17.md`: reference roadmap for Vulkan
+  math work after the correctness-first `TENSOR-100E` baseline. It records
+  the shipped `TENSOR-100F` helper/library/dtype/layout work and `TENSOR-100G`
+  as the measured
   parallel solver baseline. The plan keeps the public
   surface backend-neutral, records `Float64` and `Float32` as active Vulkan
   dtype families where shipped, records `Complex128`/`Complex64` CPU storage,
@@ -119,9 +123,9 @@ The live backlog has been consolidated into `TODO.md` at the repo root.
   The roadmap rejects Big* lowering
   and hidden CPU fallback, and requires a separate measured
   performance item before extending solver algorithms again.
-- `vulkan-ml-suite-roadmap-2026-04-19.md`: active roadmap for building a
-  complete backend-neutral ML suite on top of explicit Vulkan Tensor
-  placement. It adds live `ML-VK-*` TODO lanes for ML capability reporting,
+- `vulkan-ml-suite-roadmap-2026-04-19.md`: reference roadmap for building a
+  backend-neutral ML suite on top of explicit Vulkan Tensor placement. Its
+  historical `ML-VK-*` TODO lanes cover ML capability reporting,
   batched linear algebra, neural elementwise/reduction kernels, convolution
   and pooling, normalization and attention, reverse-mode autograd, optimizers,
   model/layer serialization, graph capture/fusion/memory planning, and ML
