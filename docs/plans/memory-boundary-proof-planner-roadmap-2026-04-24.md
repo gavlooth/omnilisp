@@ -308,7 +308,25 @@ change:
 - `selected_stable_materialize_array=0`
 - `selected_transplant=11`
 
-The next copy-debt target is the remaining closure residual.
+### Phase 12: Closure Residual Classification
+
+Closed 2026-04-24 by `MEM-BOUNDARY-CLOSURE-RESIDUAL-001`: the remaining
+selected stable-materialize closure root is intentional no-splice coverage in
+`boundary_commit_escape_rollback_error.c3`. That regression calls
+`boundary_commit_escape(..., false)` to disable scope-splice/transplant and
+force a copied/materialized destination commit, proving closure-env
+normalization rollback leaves aliases on the original env/env-scope.
+
+Temporary counters tracing identified the residual as:
+
+- planned route: `STABLE_MATERIALIZE_DESTINATION`
+- direct/splice path allowed: `false`
+- root ownership: releasing ESCAPE
+- releasing refcount: `1`
+- closure env scope present and not detached
+
+This residual is expected coverage rather than optimizer debt. The next
+copy-debt target is the remaining heap-backed scalar bucket.
 
 ## Validation Path
 
@@ -339,10 +357,12 @@ FFI, JIT/eval boundary, or mutation semantics.
 
 The proof-planner implementation queue in TODO Part 18 is closed through
 planner-owned commit migration, tag attribution, `CONS` copy-debt reduction,
-closure copy-debt reduction, and array copy-debt reduction. The measured
-follow-up queue is now open on `MEM-BOUNDARY-CLOSURE-RESIDUAL-001`:
-counters-enabled `memory-lifetime-smoke` shows one remaining closure
-stable-materialization root (`208/264` copied bytes).
+closure copy-debt reduction, array copy-debt reduction, and closure residual
+classification. The measured follow-up queue is now open on
+`MEM-BOUNDARY-BIGINT-COPY-001`: counters-enabled `memory-lifetime-smoke` shows
+`BIG_INTEGER` as the only remaining optimizer-addressable materialization copy
+bucket (`56/264` copied bytes). The closure bucket (`208/264`) is retained by
+explicit no-splice rollback coverage.
 
 ## Agent Assignments
 

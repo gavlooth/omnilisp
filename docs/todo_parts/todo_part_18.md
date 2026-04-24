@@ -218,19 +218,34 @@ Source: `docs/plans/memory-boundary-proof-planner-roadmap-2026-04-24.md`.
   - negative-memory constraint: do not bypass prepared-edge ordering or
     mutation-epoch validation to force an array transplant.
 
-- [ ] `MEM-BOUNDARY-CLOSURE-RESIDUAL-001` explain or eliminate the remaining closure materialization.
+- [x] `MEM-BOUNDARY-CLOSURE-RESIDUAL-001` explain or eliminate the remaining closure materialization.
   - classification: runtime performance, targeted residual investigation.
-  - task: identify the one remaining selected stable-materialize closure root
-    reported by counters-enabled `memory-lifetime-smoke` after
-    `MEM-BOUNDARY-CLOSURE-COPY-001`.
-  - why: closure copy debt is no longer dominant, but the residual should be
-    either proven necessary under scope/proof constraints or moved to a
-    proof-backed low-copy route.
-  - concrete next step: run counters with verbose boundary telemetry and, if
-    needed, add temporary local tracing around
-    `boundary_commit_try_temp_pre_materialize_transplant` to distinguish
-    non-unique releasing scope, prepared-graph rejection, proof rejection, and
-    promotion-abort cases.
+  - done 2026-04-24: the remaining selected stable-materialize closure root was
+    identified as `boundary_commit_escape_rollback_error.c3`, which
+    intentionally calls `boundary_commit_escape(..., false)` to disable
+    scope-splice/transplant and force a copied/materialized destination commit
+    so closure-env normalization rollback can be tested.
+  - validation: temporary local tracing under counters-enabled
+    `memory-lifetime-smoke` identified `planned=STABLE_MATERIALIZE_DESTINATION`,
+    `allow_direct=no`, releasing ESCAPE ownership, and `releasing_refcount=1`.
+    The traced caller is the explicit no-splice rollback regression, so the
+    residual is expected coverage rather than optimizer debt.
   - prerequisites: keep closure env detach/retain rollback tests passing.
   - negative-memory constraint: do not weaken child TEMP-edge proof rejection or
     refcount-one scope-splice requirements to remove this residual.
+
+- [ ] `MEM-BOUNDARY-BIGINT-COPY-001` reduce remaining heap-scalar stable-materialization copy debt.
+  - classification: runtime performance, targeted optimization.
+  - task: evaluate whether temporary heap-backed scalar roots such as
+    `BIG_INTEGER` can safely use the prepared-budget/proof transplant lane
+    before stable destination materialization.
+  - why: after array reduction and closure residual classification,
+    counters-enabled `memory-lifetime-smoke` reports the only remaining
+    optimizer-addressable copy bucket as `materialization_copy_bytes_big_integer=56`.
+  - concrete next step: inspect `promote_escape_big_integer`,
+    `stable_escape_materialize_clone_big_payload`, and transplant proof gates
+    for heap-backed scalar roots.
+  - prerequisites: `MEM-BOUNDARY-CLOSURE-RESIDUAL-001` remains closed as
+    expected no-splice coverage.
+  - negative-memory constraint: do not remove or rewrite the explicit no-splice
+    closure rollback test to improve copy-debt counters.

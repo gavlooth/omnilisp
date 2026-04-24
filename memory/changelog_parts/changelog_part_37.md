@@ -4992,6 +4992,29 @@ Validation:
   - final normal rebuild with `c3c build --obj-out obj`
   - `git diff --check`
   - `scripts/check_status_consistency.sh`
+
+## 2026-04-24 memory boundary closure residual classification
+
+- Implemented and closed `MEM-BOUNDARY-CLOSURE-RESIDUAL-001`.
+  - The remaining selected stable-materialize closure root is intentional
+    no-splice coverage in `boundary_commit_escape_rollback_error.c3`.
+  - That regression calls `boundary_commit_escape(..., false)` to disable
+    scope-splice/transplant and force a copied/materialized destination commit,
+    proving closure-env normalization rollback leaves aliases on the original
+    env/env-scope.
+  - Temporary counters tracing identified the residual as planned
+    `STABLE_MATERIALIZE_DESTINATION`, `allow_direct=no`, releasing ESCAPE
+    ownership, `releasing_refcount=1`, and a present closure env scope.
+- Current best next optimization:
+  - `MEM-BOUNDARY-BIGINT-COPY-001` should evaluate whether temporary
+    heap-backed scalar roots can safely use the prepared-budget/proof transplant
+    lane before stable destination materialization.
+  - The remaining closure materialization is expected coverage and should not
+    be removed to improve counters.
+- Validation:
+  - temporary counters-enabled `memory-lifetime-smoke` trace passed
+    (`255 passed, 0 failed`) and identified the no-splice rollback caller
+  - no runtime code change was retained from the trace
   - bounded container normal `basic` (`169 passed, 0 failed`)
   - bounded container normal Valgrind `memory-lifetime-smoke`
     (`255 passed, 0 failed`)

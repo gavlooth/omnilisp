@@ -5525,6 +5525,52 @@ Re-audit notes:
 
 Signature: GPT-5 Codex
 
+## 2026-04-24 memory boundary closure residual classification
+
+Date/time: 2026-04-24 14:25 CEST
+
+Objective:
+- Explain or eliminate `MEM-BOUNDARY-CLOSURE-RESIDUAL-001`, the one remaining
+  selected stable-materialize closure root after closure and array copy-debt
+  reductions.
+
+Changes made:
+- Ran temporary local counters tracing around closure destination
+  materialization, then removed the trace.
+- Closed the residual in `docs/todo_parts/todo_part_18.md` and updated the
+  roadmap, TODO index, changelog, and session report.
+- Added `MEM-BOUNDARY-BIGINT-COPY-001` as the next optimizer-addressable
+  measured bucket.
+
+Commands run:
+- `c3c build --obj-out obj -D OMNI_BOUNDARY_INSTR_COUNTERS`
+- `scripts/run_validation_container.sh env LD_LIBRARY_PATH=build:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+- `c3c build --obj-out obj`
+- `git diff --check`
+- `scripts/check_status_consistency.sh`
+
+Key results:
+- The traced residual is `boundary_commit_escape_rollback_error.c3`, which
+  explicitly calls `boundary_commit_escape(..., false)`.
+- Trace details: planned `STABLE_MATERIALIZE_DESTINATION`, no direct/splice
+  path, releasing ESCAPE ownership, `releasing_refcount=1`, env scope present.
+- Bounded counters-enabled `memory-lifetime-smoke` passed with
+  `255 passed, 0 failed`.
+- The closure residual is expected no-splice rollback coverage, not optimizer
+  debt.
+- Final normal rebuild passed, leaving `build/main` non-instrumented.
+- `git diff --check` and `scripts/check_status_consistency.sh` passed.
+
+Unresolved issues:
+- `BIG_INTEGER` is now the remaining optimizer-addressable materialization copy
+  bucket (`56/264` copied bytes).
+
+Next actions:
+- Commit non-artifact changes.
+- Continue with `MEM-BOUNDARY-BIGINT-COPY-001`.
+
+Signature: GPT-5 Codex
+
 ## 2026-04-24 memory boundary array copy-debt reduction
 
 Date/time: 2026-04-24 14:05 CEST
