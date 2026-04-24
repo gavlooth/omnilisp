@@ -215,6 +215,13 @@ fn void run_advanced_collections_generic_ops_part1(Interp* interp, int* pass, in
         io::printn("[FAIL] tensor Vulkan map chain byte length overflow guard");
         (*fail)++;
     }
+    if (omni_tensor_backend_vulkan_group_count_overflow_guard_for_tests() == OMNI_TENSOR_VULKAN_SUCCESS) {
+        emit_pass_literal("[PASS] tensor Vulkan dispatch group count overflow guard");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] tensor Vulkan dispatch group count overflow guard");
+        (*fail)++;
+    }
     if (omni_tensor_backend_vulkan_select_physical_device_preference_for_tests() == OMNI_TENSOR_VULKAN_SUCCESS) {
         emit_pass_literal("[PASS] tensor Vulkan device selection prefers richer compute candidates");
         (*pass)++;

@@ -21,9 +21,20 @@ fn BoundaryCommitEscapeResult boundary_commit_escape(
         .fault_code = BOUNDARY_COMMIT_FAULT_NONE,
         .releasing_scope_spliced = false,
         .reused_in_target_chain = false,
+        .stable_publication_attempted = false,
+        .stable_materialization_used = false,
+        .compatibility_path_used = false,
+        .planned_route = BOUNDARY_PLAN_ROUTE_NULL_RESULT,
+        .planned_reason = BOUNDARY_PLAN_REASON_NULL_RESULT,
+        .selected_route = BOUNDARY_PLAN_ROUTE_NULL_RESULT,
+        .selected_reason = BOUNDARY_PLAN_REASON_NULL_RESULT,
     };
     if (result == null) return committed;
     committed.outcome = BOUNDARY_COMMIT_PASSTHROUGH;
+    committed.planned_route = BOUNDARY_PLAN_ROUTE_PASSTHROUGH;
+    committed.planned_reason = BOUNDARY_PLAN_REASON_PASSTHROUGH;
+    committed.selected_route = BOUNDARY_PLAN_ROUTE_PASSTHROUGH;
+    committed.selected_reason = BOUNDARY_PLAN_REASON_PASSTHROUGH;
     defer boundary_debug_graph_audit_committed_escape_root(committed, target_scope, releasing_scope, interp.global_env);
 
     BoundaryTxn txn = boundary_txn_begin(interp);
@@ -32,7 +43,11 @@ fn BoundaryCommitEscapeResult boundary_commit_escape(
     bool commit_succeeded = false;
     defer {
         if (commit_succeeded) {
-            boundary_commit_normalized_closure_finalize(&normalize_stage);
+            if (normalize_stage.active && committed.value != normalize_stage.closure) {
+                boundary_commit_normalized_closure_rollback(&normalize_stage);
+            } else {
+                boundary_commit_normalized_closure_finalize(&normalize_stage);
+            }
         } else {
             boundary_commit_normalized_closure_rollback(&normalize_stage);
         }
@@ -47,6 +62,10 @@ fn BoundaryCommitEscapeResult boundary_commit_escape(
         committed.value = normalized_result;
         committed.outcome = BOUNDARY_COMMIT_FALLBACK_DISALLOWED;
         committed.fault_code = BOUNDARY_COMMIT_FAULT_DESTINATION_DIRECT_PROMOTION;
+        committed.planned_route = BOUNDARY_PLAN_ROUTE_FAIL_CLOSED;
+        committed.planned_reason = BOUNDARY_PLAN_REASON_NORMALIZED_CLOSURE_ERROR;
+        committed.selected_route = BOUNDARY_PLAN_ROUTE_FAIL_CLOSED;
+        committed.selected_reason = BOUNDARY_PLAN_REASON_NORMALIZED_CLOSURE_ERROR;
         boundary_txn_abort(&txn);
         return committed;
     }
@@ -54,12 +73,20 @@ fn BoundaryCommitEscapeResult boundary_commit_escape(
 
     BoundaryReturnClassification classification =
         boundary_classify_return_value(result, interp, target_scope, releasing_scope);
+    BoundaryPlanDecision plan = boundary_plan_commit_escape(
+        result,
+        classification,
+        allow_scope_splice,
+        releasing_scope
+    );
+    boundary_commit_apply_initial_plan(&committed, plan);
 
     switch (classification.provenance) {
         case BOUNDARY_RETURN_REUSABLE_IN_TARGET_CHAIN:
             boundary_commit_escape_commit_reused_in_target_chain(
                 &txn,
                 &committed,
+                interp,
                 result,
                 &commit_succeeded
             );

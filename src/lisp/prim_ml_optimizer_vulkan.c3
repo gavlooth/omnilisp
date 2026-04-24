@@ -217,8 +217,8 @@ fn Value* ml_adam_step_tensor_try_vulkan(
 
     double first_correction = 1.0 - ml_optimizer_c_pow(beta1, (double)next_step);
     double second_correction = 1.0 - ml_optimizer_c_pow(beta2, (double)next_step);
-    if (first_correction <= 0.0 || second_correction <= 0.0 || !conversion_double_is_finite(first_correction) || !conversion_double_is_finite(second_correction)) {
-        return ml_optimizer_invalid(interp, "ml/optimizer-step: Adam bias correction is not finite");
+    if (!ml_optimizer_adam_bias_correction_valid(first_correction, second_correction, params.dtype == TENSOR_DTYPE_FLOAT32)) {
+        return ml_optimizer_invalid(interp, "ml/optimizer-step: Adam bias correction is too small or not finite");
     }
 
     void* out_params_device = null;

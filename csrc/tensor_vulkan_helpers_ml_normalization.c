@@ -324,7 +324,9 @@ static int omni_tensor_backend_vulkan_dispatch_batch_norm_f32(
     result = omni_tensor_vulkan_allocate_storage_descriptor_set(device, buffer_descriptors, 7, &descriptors);
     if (result != OMNI_TENSOR_VULKAN_SUCCESS) goto cleanup;
 
-    uint32_t group_count = ((uint32_t)output_element_count + OMNI_TENSOR_VULKAN_ML_REDUCTION_LOCAL_SIZE - 1u) / OMNI_TENSOR_VULKAN_ML_REDUCTION_LOCAL_SIZE;
+    uint32_t group_count = 0u;
+    result = omni_tensor_vulkan_group_count_1d(output_element_count, OMNI_TENSOR_VULKAN_ML_REDUCTION_LOCAL_SIZE, &group_count);
+    if (result != OMNI_TENSOR_VULKAN_SUCCESS) goto cleanup;
     result = omni_tensor_vulkan_record_submit_single_dispatch(
         device,
         queue,
@@ -463,7 +465,9 @@ static int omni_tensor_backend_vulkan_dispatch_batch_norm_f64(
     result = omni_tensor_vulkan_allocate_storage_descriptor_set(device, buffer_descriptors, 7, &descriptors);
     if (result != OMNI_TENSOR_VULKAN_SUCCESS) goto cleanup;
 
-    uint32_t group_count = ((uint32_t)output_element_count + OMNI_TENSOR_VULKAN_ML_REDUCTION_LOCAL_SIZE - 1u) / OMNI_TENSOR_VULKAN_ML_REDUCTION_LOCAL_SIZE;
+    uint32_t group_count = 0u;
+    result = omni_tensor_vulkan_group_count_1d(output_element_count, OMNI_TENSOR_VULKAN_ML_REDUCTION_LOCAL_SIZE, &group_count);
+    if (result != OMNI_TENSOR_VULKAN_SUCCESS) goto cleanup;
     result = omni_tensor_vulkan_record_submit_single_dispatch(
         device,
         queue,

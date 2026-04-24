@@ -13,6 +13,14 @@ fn Value* ml_optimizer_shape_mismatch(Interp* interp, char[] message) @inline {
     return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", message, null);
 }
 
+fn bool ml_optimizer_adam_bias_correction_valid(double first_correction, double second_correction, bool float32_backend) @inline {
+    double min_correction = float32_backend ? ML_OPTIMIZER_FLOAT32_MIN_NORMAL : ML_OPTIMIZER_FLOAT64_MIN_NORMAL;
+    return conversion_double_is_finite(first_correction) &&
+        conversion_double_is_finite(second_correction) &&
+        first_correction >= min_correction &&
+        second_correction >= min_correction;
+}
+
 fn bool ml_optimizer_state_present(Value* value) @inline {
     return value != null && !is_nil(value);
 }
@@ -266,8 +274,8 @@ fn Value* ml_adam_step_tensor(Value* params_arg, Value* grads_arg, Value* first_
     defer mem::free(second_values);
     double first_correction = 1.0 - ml_optimizer_c_pow(beta1, (double)next_step);
     double second_correction = 1.0 - ml_optimizer_c_pow(beta2, (double)next_step);
-    if (first_correction <= 0.0 || second_correction <= 0.0 || !conversion_double_is_finite(first_correction) || !conversion_double_is_finite(second_correction)) {
-        return ml_optimizer_invalid(interp, "ml/optimizer-step: Adam bias correction is not finite");
+    if (!ml_optimizer_adam_bias_correction_valid(first_correction, second_correction, params.dtype == TENSOR_DTYPE_FLOAT32)) {
+        return ml_optimizer_invalid(interp, "ml/optimizer-step: Adam bias correction is too small or not finite");
     }
     for (usz i = 0; i < params.element_count; i++) {
         double param_value = 0.0;

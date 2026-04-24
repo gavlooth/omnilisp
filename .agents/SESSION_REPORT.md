@@ -5525,6 +5525,79 @@ Re-audit notes:
 
 Signature: GPT-5 Codex
 
+## 2026-04-24 memory boundary ownership policy slice
+
+Objective:
+- Write the current memory boundary architecture spec first, then implement the
+  first policy extraction slice without weakening FFI scope-region ownership.
+
+Changes made:
+- Added `docs/plans/memory-boundary-architecture-spec-2026-04-24.md`.
+- Added `src/lisp/value_boundary_ownership_policy.c3`.
+- Routed stable materialization candidate selection,
+  `boundary_alias_value_has_child_payload`, and graph-audit edge class mapping
+  through the shared `ValueTag` boundary policy.
+- Added a boundary commit regression proving `FFI_HANDLE` stays opaque and is
+  not a stable materialization candidate.
+- Added `valgrind` to the bounded validation image and rebuilt the default
+  `omni-validation:2026-03-10` image.
+- Updated the memory boundary architecture spec to keep stable indexed
+  publication and region transplanting as constrained fast paths, not as the
+  default replacement for materialization.
+- Added `docs/plans/memory-boundary-proof-planner-roadmap-2026-04-24.md`,
+  combining stable graph passports, planner route reasons, mutation epochs,
+  explicit transplant proofs, FFI bridge declarations, copy-debt telemetry, and
+  planner-owned commit migration.
+- Added TODO Part 18 work items for the proof-driven optimizer:
+  `MEM-BOUNDARY-PLANNER-001`, `MEM-BOUNDARY-PASSPORT-001`,
+  `MEM-BOUNDARY-EPOCH-001`, `MEM-BOUNDARY-TRANSPLANT-001`,
+  `MEM-BOUNDARY-FFI-BRIDGE-001`, `MEM-BOUNDARY-COPY-DEBT-001`, and
+  `MEM-BOUNDARY-PLAN-MIGRATE-001`.
+- Implemented and closed `MEM-BOUNDARY-PLANNER-001`: planner route/reason
+  enums, `BoundaryPlanDecision`, `boundary_plan_commit_escape(...)`,
+  planned/selected route fields on `BoundaryCommitEscapeResult`, selected route
+  marking in commit helpers, graph-audit route logging, and route-ladder
+  regression coverage.
+- Updated `TODO.md`, `docs/todo_parts/todo_part_18.md`,
+  `docs/plans/README.md`, `memory/CHANGELOG.md`, and changelog part 37.
+
+Commands run:
+- `c3c build --obj-out obj`
+- `scripts/run_validation_container.sh env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-policy LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `scripts/run_validation_container.sh env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `scripts/run_validation_container.sh env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` after `MEM-BOUNDARY-PLANNER-001`
+- `OMNI_VALIDATION_BUILD_PULL=0 scripts/build_validation_image.sh`
+- `scripts/run_validation_container.sh valgrind --version`
+- `scripts/run_validation_container.sh valgrind --leak-check=full --error-exitcode=99 env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `valgrind --leak-check=full --error-exitcode=99 env LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `scripts/check_status_consistency.sh`
+- `git diff --check`
+- `c3c build --sanitize=address --warn-deprecation=no`
+
+Key results:
+- Regular build passed.
+- `memory-lifetime-policy` passed with `2 passed, 0 failed`.
+- After the follow-up fixes, `memory-lifetime-smoke` passed with
+  `253 passed, 0 failed`.
+- The rebuilt bounded validation image reports `valgrind-3.22.0`.
+- Bounded container Valgrind `memory-lifetime-smoke` passed with
+  `253 passed, 0 failed`.
+- After `MEM-BOUNDARY-PLANNER-001`, bounded container `memory-lifetime-smoke`
+  and bounded container Valgrind `memory-lifetime-smoke` both passed with
+  `254 passed, 0 failed`.
+- Host Valgrind default Lisp/basic suite passed with `167 passed, 0 failed`.
+- Status consistency and whitespace checks passed.
+- ASAN build could not run because the local C3 toolchain reported address
+  sanitizer unsupported on this platform.
+- `MEM-BOUNDARY-VERIFY-001` is closed.
+- `MEM-BOUNDARY-PLANNER-001` and `MEM-BOUNDARY-PASSPORT-001` are closed.
+
+Next actions:
+- Implement `MEM-BOUNDARY-EPOCH-001`; keep passport liveness tied to cheap
+  mutation stamps before falling back to deep prepared-graph validation.
+
+Signature: GPT-5 Codex
+
 ## 2026-04-23 audit-repair loop continuation
 
 Objective: implement the remaining actionable Vulkan device-selection hardening, then re-audit the touched surfaces.
@@ -5683,5 +5756,352 @@ Decision:
 
 Checkpoint:
 - This is a design note only, not a live rollout or committed runtime contract.
+
+Signature: GPT-5 Codex
+
+## 2026-04-24 stable-escape rollout kickoff
+
+Objective:
+- Turn the finalized stable-escape proposal into a live rollout queue and
+  start the first implementation slice.
+
+Changes made:
+- Updated `docs/plans/stable-escape-graph-plan-2026-04-23.md` to state that
+  the implementation queue now starts from live TODO items.
+- Added `docs/todo_parts/todo_part_16.md` with
+  `STABLE-ESCAPE-SHAPE-001`, `STABLE-ESCAPE-STORE-001`, and
+  `STABLE-ESCAPE-PREP-001`, then linked them from `TODO.md`.
+- Added `BoundaryEscapeShapeStats` telemetry in `src/lisp/eval.c3`, wired it
+  into `src/lisp/eval_boundary_provenance.c3`, exposed it through
+  `src/lisp/prim_runtime_memory_stats.c3`, and added a smoke regression in
+  `src/lisp/tests_memory_lifetime_boundary_groups.c3`.
+- Updated `docs/plans/README.md` and `memory/changelog_parts/changelog_part_37.md`
+  to reflect the rollout kickoff.
+
+Commands run:
+- `c3c build --obj-out obj`
+- `scripts/run_validation_container.sh env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `scripts/check_status_consistency.sh`
+- `git diff --check`
+
+Key results:
+- `memory-lifetime-smoke` passed with `239 passed, 0 failed`.
+- `scripts/check_status_consistency.sh` passed with `TODO actionable count: 3`.
+
+Current checkpoint:
+- The first live slice is telemetry, not a stable-store rewrite. The new
+  counters are in place, the rollout TODOs are open, and the next step is the
+  stable-handle store skeleton only after the shape audit data is usable.
+
+Unresolved issues:
+- The stable-handle store itself is not implemented yet.
+- The proposal remains a design note, but it now has a concrete live queue.
+
+Signature: GPT-5 Codex
+
+## 2026-04-24 stable-escape store skeleton
+
+Objective:
+- Land the interpreter-owned stable-handle store skeleton and prove the handle
+  generation checks with a boundary smoke regression.
+
+Changes made:
+- Added `src/lisp/stable_escape_store.c3` with an interpreter-owned slot /
+  generation registry, publish / resolve / retire / reset operations, and
+  scope-generation validation.
+- Added a `StableEscapeStore*` slot to `Interp`, initialized it during
+  `interp_init_runtime_state`, reset it during interpreter teardown, and kept
+  the value store interpreter-local instead of global.
+- Added a smoke regression in
+  `src/lisp/tests_memory_lifetime_boundary_groups.c3` that publishes a
+  promoted escape value, resolves it successfully, retires it, and then
+  confirms the stale handle fails closed.
+- Closed `STABLE-ESCAPE-STORE-001` in `docs/todo_parts/todo_part_16.md`,
+  updated the live queue in `TODO.md`, and marked the plan note / index as
+  store-slice complete.
+
+Commands run:
+- `c3c build --obj-out obj`
+- `scripts/run_validation_container.sh env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+
+Key results:
+- Build completed successfully.
+- `memory-lifetime-smoke` passed with `240 passed, 0 failed`.
+
+Current checkpoint:
+- The stable-handle store skeleton is now implemented and interpreter-owned.
+- The remaining live queue item is `STABLE-ESCAPE-PREP-001`, which should
+  route one boundary path through prepared-graph publication.
+
+Signature: GPT-5 Codex
+
+## 2026-04-24 stable-escape prepared-publication hook
+
+Objective:
+- Route one boundary path through the new stable-escape publication hook and
+  prove the path is observable in regression coverage.
+
+Changes made:
+- Added `stable_escape_store_publication_hook_count` telemetry in
+  `src/lisp/stable_escape_store.c3` plus reset/snapshot helpers.
+- Updated `boundary_commit_escape_commit_reused_in_target_chain(...)` to
+  publish-and-resolve already-safe target-chain values through the
+  interpreter-owned stable store before returning them.
+- Extended `src/lisp/tests_memory_lifetime_boundary_commit_escape_primary_groups.c3`
+  so the already-safe reuse regression now checks that the publication hook
+  count increments exactly once while the returned value and copy-site behavior
+  remain unchanged.
+- Reset the new publication-hook telemetry during unified test bootstrap in
+  `src/lisp/tests_tests.c3`.
+- Updated the plan note and TODO index so `STABLE-ESCAPE-STORE-001` is closed
+  and `STABLE-ESCAPE-PREP-001` is the only live queue item left.
+
+Commands run:
+- `c3c build --obj-out obj`
+- `scripts/run_validation_container.sh env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `scripts/check_status_consistency.sh`
+- `git diff --check`
+
+Key results:
+- Build completed successfully.
+- `memory-lifetime-smoke` passed with `240 passed, 0 failed`.
+- Status consistency stayed green with `TODO actionable count: 1`.
+
+Current checkpoint:
+- The stable store is interpreter-owned and now participates in one real
+  boundary success path.
+- The only remaining live queue item is `STABLE-ESCAPE-PREP-001`, which now
+  needs a true prepared-graph publication hook rather than a publication
+  telemetry pass.
+
+Signature: GPT-5 Codex
+
+## 2026-04-24 stable-escape rollout closure
+
+Objective:
+- Close the remaining stable-escape rollout item and leave the backlog in a
+  fully exhausted state.
+
+Changes made:
+- Added a prepare-gated publication hook in
+  `src/lisp/stable_escape_store.c3` that guards the already-safe reuse path
+  with `boundary_graph_alias_unsafe_for_reuse(...)`, publishes through the
+  interpreter-owned stable store, and records both publication and
+  prepared-publication counters.
+- Updated the already-safe reuse regression in
+  `src/lisp/tests_memory_lifetime_boundary_commit_escape_primary_groups.c3`
+  to assert both counters increment exactly once while the returned value and
+  copy-site behavior remain unchanged.
+- Closed `STABLE-ESCAPE-PREP-001` in the live TODO queue and marked
+  `TODO.md`, the plan note, and the plans index as fully exhausted for the
+  stable-escape rollout.
+
+Commands run:
+- `c3c build --obj-out obj`
+- `scripts/run_validation_container.sh env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `scripts/check_status_consistency.sh`
+- `git diff --check`
+
+Key results:
+- Build completed successfully.
+- `memory-lifetime-smoke` passed with `240 passed, 0 failed`.
+- Status consistency stayed green with `TODO actionable count: 0`.
+
+Current checkpoint:
+- The stable-escape rollout queue is exhausted.
+- The next meaningful step is a fresh audit pass on the updated stable-store
+  and commit path surfaces.
+
+Signature: GPT-5 Codex
+
+## 2026-04-24 stable-escape owner-scope retention hardening
+
+Objective:
+- Audit the newly landed stable store for regressions and close any
+  ownership/lifetime gaps before treating the rollout as stable.
+
+Changes made:
+- Hardened `src/lisp/stable_escape_store.c3` so each published handle retains
+  its owning `ScopeRegion` until retire/reset, instead of leaving a raw
+  dangling scope pointer in the store.
+- Updated `stable_escape_store_reset(...)` and `stable_escape_store_retire(...)`
+  to release retained scopes deterministically after the entry is cleared.
+- Extended the boundary smoke regression in
+  `src/lisp/tests_memory_lifetime_boundary_groups.c3` to prove a published
+  handle remains live after the original scope reference is released, and only
+  fails closed after explicit retire.
+
+Commands run:
+- `c3c build --obj-out obj`
+- `scripts/run_validation_container.sh env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+
+Key results:
+- Build completed successfully.
+- `memory-lifetime-smoke` passed with `240 passed, 0 failed`.
+
+Current checkpoint:
+- The stable store now obeys scope ownership instead of storing a raw
+  owner-scope pointer.
+- No new TODO items were opened from this audit pass.
+
+Signature: GPT-5 Codex
+
+## 2026-04-24 stable-escape mutex-boundary audit fix
+
+Objective:
+- Finish the follow-up audit on the stable store and remove any remaining
+  lock/lifetime boundary mistakes in the new code.
+
+Changes made:
+- Fixed `src/lisp/stable_escape_store.c3` so
+  `stable_escape_store_reset(...)` and `stable_escape_store_retire(...)` no
+  longer call `scope_release(...)` while still holding the store mutex.
+- Kept the retained-scope release list, but moved those releases outside the
+  mutex critical section so the store no longer mixes internal registry locks
+  with external scope teardown work.
+
+Commands run:
+- `c3c build --obj-out obj`
+- `scripts/run_validation_container.sh env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+
+Key results:
+- Build completed successfully.
+- `memory-lifetime-smoke` passed with `240 passed, 0 failed`.
+
+Current checkpoint:
+- The stable store no longer releases scope ownership under the store lock.
+- No new TODO items were warranted by this audit pass.
+
+Signature: GPT-5 Codex
+
+## 2026-04-24 stable-escape prepared graph slice
+
+Objective:
+- Move the stable-escape rollout past the registry skeleton and land the first
+  real prepared graph representation inside the runtime-owned store.
+
+Changes made:
+- Extended `src/lisp/stable_escape_store.c3` with a prepared-node graph for
+  reusable `CONS` roots with scalar leaves, including stable child indices,
+  prepared-graph heap ownership, and cleanup during retire/reset.
+- Added store inspection helpers for prepared node count, root index, node
+  tags, and child indices so tests can assert the published graph shape.
+- Tightened prepared-node liveness validation during the audit pass so stored
+  node sources must remain valid in the full owner scope chain, not only
+  through the root object’s owner-scope membership check.
+- Kept `stable_escape_prepare_and_publish_value(...)` on the same caller-facing
+  contract: current boundary callers still get the original reusable root
+  back, but the prepared publication path now builds real graph metadata
+  before resolving and retiring the handle.
+- Extended `src/lisp/tests_memory_lifetime_boundary_groups.c3` with a direct
+  regression that prepares a promoted two-element list and verifies the exact
+  published node graph before retirement.
+- Updated the stable-escape proposal note, TODO part, TODO index, plans index,
+  and memory changelog so the shipped boundary is recorded as a closed slice.
+
+Commands run:
+- `c3c build --obj-out obj`
+- `scripts/run_validation_container.sh env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+
+Key results:
+- Build completed successfully.
+- `memory-lifetime-smoke` passed with `241 passed, 0 failed`.
+
+Current checkpoint:
+- The stable-escape store now owns real prepared graph metadata for the first
+  supported shape instead of only storing raw root handles.
+- The broader generalized prepared graph arena is still future work; arrays,
+  dictionaries, closures, cycles, and mutation policy were not claimed by this
+  slice.
+
+Signature: GPT-5 Codex
+## 2026-04-24 Vulkan/CUDA/ML audit Critical/High remediation
+
+Objective:
+- Remediate the Critical and High findings in
+  `AUDIT_REPORT_VULKAN_CUDA_ML_2026-04-23.md` and leave Medium/Low residuals
+  explicitly tracked.
+
+Changes made:
+- Added mutex protection for Vulkan shared-context publication and context
+  refcount updates.
+- Added checked Vulkan 1D group-count arithmetic and routed all
+  `csrc/tensor_vulkan_helpers*.c` dispatch group-count sites through it.
+- Hardened Adam bias-correction validation against subnormal denominators in
+  CPU, CUDA, and Vulkan optimizer paths.
+- Guarded CUDA complex trace kernel writes and regenerated CUDA optimizer and
+  complex-matrix PTX includes from the `.cu` sources.
+- Added a native Vulkan group-count overflow regression hook and advanced test.
+- Updated the audit report, changelog part, and TODO Part 17 with open
+  Medium/Low residuals.
+
+Commands run:
+- C3 diagnostics for touched optimizer/backend/test C3 files.
+- `git diff --check` for the working tree.
+- `/usr/local/cuda-13.0/bin/nvcc --ptx -arch=compute_75 csrc/tensor_cuda_ml_optimizer.cu -o /tmp/tensor_cuda_ml_optimizer.ptx`
+- `/usr/local/cuda-13.0/bin/nvcc --ptx -arch=compute_75 csrc/tensor_cuda_complex_matrix.cu -o /tmp/tensor_cuda_complex_matrix.ptx`
+- `c3c build`
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite all`
+- `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+
+Key results:
+- Build passed.
+- Built-in all suite passed.
+- Advanced collections/module slice passed with `2071 passed, 0 failed`, including
+  the new Vulkan group-count overflow guard.
+
+Unresolved issues:
+- Medium and Low audit findings remain open and are tracked in
+  `docs/todo_parts/todo_part_17.md`.
+
+Next actions:
+- Start with `VKCUDA-AUDIT-M6-L5` for low-risk Vulkan loader null guards or
+  `VKCUDA-AUDIT-M2` for CUDA scientific unary domain status hardening.
+
+Signature: GPT-5 Codex
+
+## 2026-04-24 memory boundary proof planner/passport implementation
+
+Objective:
+- Implement the first executable slices of the stable-index/TEMP-ESCAPE
+  boundary planner roadmap and leave the next checkpoint explicit.
+
+Changes made:
+- Added the `BoundaryPlanRoute`/`BoundaryPlanReason` decision surface and
+  `boundary_plan_commit_escape(...)` planner API.
+- Wired `boundary_commit_escape(...)` to record planned and selected routes for
+  stable publish reuse, stable materialization, compatibility destination,
+  region transplant, mixed destination, and fail-closed outcomes.
+- Extended graph-audit commit-context logging and memory-lifetime boundary tests
+  to assert planner decisions.
+- Added `StableGraphPassport` metadata to stable prepared publications, with
+  owner-scope proof stamps, prepared graph summary, policy/risk flags, and
+  invalidation reason snapshots.
+- Closed `MEM-BOUNDARY-PLANNER-001` and `MEM-BOUNDARY-PASSPORT-001` in the
+  plan/TODO/changelog artifacts.
+
+Commands run:
+- `git diff --check`
+- `scripts/check_status_consistency.sh`
+- `c3c build --obj-out obj`
+- `scripts/run_validation_container.sh env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `scripts/run_validation_container.sh valgrind --leak-check=full --error-exitcode=99 env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+
+Key results:
+- Build passed.
+- Status consistency passed.
+- Bounded container `memory-lifetime-smoke` passed with `254 passed, 0 failed`.
+- Bounded container Valgrind `memory-lifetime-smoke` passed with
+  `254 passed, 0 failed`.
+
+Current checkpoint:
+- `MEM-BOUNDARY-PLANNER-001` and `MEM-BOUNDARY-PASSPORT-001` are closed.
+- Next memory-boundary implementation checkpoint is
+  `MEM-BOUNDARY-EPOCH-001`.
+
+Unresolved issues:
+- Mutation epochs, real transplant proofs, FFI bridge metadata, copy-debt
+  telemetry, and commit-path migration remain open roadmap items.
 
 Signature: GPT-5 Codex

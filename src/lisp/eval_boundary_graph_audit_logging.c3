@@ -82,8 +82,14 @@ fn void boundary_graph_audit_log_commit_context(
     BoundaryGraphAuditResult audit
 ) @inline {
     io::eprintfn(
-        "[boundary][graph-audit] commit-context outcome=%s commit_value_tag=%d commit_scope_gen=%d target_scope_gen=%d target_escape_gen=%d reason=%s root_tag=%d violating_edge_tag=%d violating_scope_gen=%d",
+        "[boundary][graph-audit] commit-context outcome=%s planned_route=%s selected_route=%s selected_reason=%s stable_publication=%s stable_materialization=%s compatibility_path=%s commit_value_tag=%d commit_scope_gen=%d target_scope_gen=%d target_escape_gen=%d reason=%s root_tag=%d violating_edge_tag=%d violating_scope_gen=%d",
         (ZString)boundary_commit_outcome_name(committed.outcome),
+        (ZString)boundary_plan_route_name(committed.planned_route),
+        (ZString)boundary_plan_route_name(committed.selected_route),
+        (ZString)boundary_plan_reason_name(committed.selected_reason),
+        committed.stable_publication_attempted ? "yes" : "no",
+        committed.stable_materialization_used ? "yes" : "no",
+        committed.compatibility_path_used ? "yes" : "no",
         (long)committed.value.tag,
         (long)committed.value.scope_gen,
         (long)audit.target_scope_gen,

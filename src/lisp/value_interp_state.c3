@@ -189,6 +189,7 @@ struct Interp {
     char[256] raise_msg;
     usz raise_msg_len;
     Value* raise_payload;  // Optional canonical payload for pending raise dispatch
+    StableEscapeStore* stable_escape_store; // Interpreter-owned stable escape registry
 
     // JIT execution mode
     Env* jit_env;      // Current local env for JIT sub-expression evaluation
@@ -257,7 +258,7 @@ struct Interp {
 
 // ABI/interop guard: interpreter state is allocated and inspected by entry,
 // JIT, and runtime bridge code. Update bindings and this assertion together.
-$assert(Interp.sizeof == 2288);
+$assert(Interp.sizeof == 2296);
 
 fn void Interp.init(Interp* self) {
     runtime_attach_interp(self);

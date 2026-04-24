@@ -90,11 +90,22 @@ fn bool boundary_alias_push_child(
 
 fn bool boundary_graph_alias_unsafe_for_reuse(Value* v, Interp* interp, usz depth = 0) @noinline {
     if (v == null || interp == null) return false;
-    if (depth >= BOUNDARY_ALIAS_MAX_DEPTH) return true;
-    if (!boundary_alias_value_has_child_payload(v)) return false;
-    if (!main::stack_has_apply_headroom(BOUNDARY_ALIAS_STACK_MIN_HEADROOM)) return true;
+    if (depth >= BOUNDARY_ALIAS_MAX_DEPTH) {
+        boundary_escape_shape_note_root(v, true);
+        return true;
+    }
+    if (!boundary_alias_value_has_child_payload(v)) {
+        boundary_escape_shape_note_root(v, false);
+        return false;
+    }
+    if (!main::stack_has_apply_headroom(BOUNDARY_ALIAS_STACK_MIN_HEADROOM)) {
+        boundary_escape_shape_note_root(v, true);
+        return true;
+    }
 
-    return boundary_graph_alias_unsafe_for_reuse_walk(v, interp, depth);
+    bool unsafe = boundary_graph_alias_unsafe_for_reuse_walk(v, interp, depth);
+    boundary_escape_shape_note_root(v, unsafe);
+    return unsafe;
 }
 
 <*

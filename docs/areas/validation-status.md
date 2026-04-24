@@ -11,7 +11,7 @@
 ## Current Status
 
 Status: `green`
-As of: 2026-04-23
+As of: 2026-04-24
 
 The latest all-slice follow-up,
 `VALIDATION-ALL-SLICE-NESTED-LET-2026-04-11`, is closed.
@@ -55,3 +55,7 @@ used `OMNI_SKIP_TLS_INTEGRATION=1`.
 Use targeted host slices for narrow reproduction. Use the bounded Docker
 validation path for full all-slice, memory-lifetime soak, memory-stress, or any
 high-memory run.
+
+The default bounded validation image `omni-validation:2026-03-10` includes
+Valgrind as of 2026-04-24. The memory-lifetime smoke slice has passed under
+bounded container Valgrind with `253 passed, 0 failed`.

@@ -49,17 +49,27 @@ int omni_tensor_backend_vulkan_rounding_i64_available(void) {
     return omni_tensor_backend_vulkan_int64_available();
 }
 
-void omni_tensor_backend_vulkan_context_retain(OmniTensorVulkanContext* context) {
+static void omni_tensor_backend_vulkan_context_retain_locked(OmniTensorVulkanContext* context) {
     if (context == NULL) return;
     if (context->ref_count < UINT32_MAX) context->ref_count++;
 }
 
+void omni_tensor_backend_vulkan_context_retain(OmniTensorVulkanContext* context) {
+    if (context == NULL) return;
+    if (pthread_mutex_lock(&omni_tensor_vulkan_context_mutex) != 0) return;
+    omni_tensor_backend_vulkan_context_retain_locked(context);
+    pthread_mutex_unlock(&omni_tensor_vulkan_context_mutex);
+}
+
 void omni_tensor_backend_vulkan_context_release(OmniTensorVulkanContext* context) {
     if (context == NULL) return;
+    if (pthread_mutex_lock(&omni_tensor_vulkan_context_mutex) != 0) return;
     if (context->ref_count > 1) {
         context->ref_count--;
+        pthread_mutex_unlock(&omni_tensor_vulkan_context_mutex);
         return;
     }
+    pthread_mutex_unlock(&omni_tensor_vulkan_context_mutex);
     if (context->device != NULL) omni_vulkan_destroy_device(context->device, NULL);
     if (context->instance != NULL) omni_vulkan_destroy_instance(context->instance, NULL);
     free(context);
@@ -153,18 +163,35 @@ static int omni_tensor_backend_vulkan_create_context(OmniTensorVulkanContext** o
 int omni_tensor_backend_vulkan_get_shared_context(OmniTensorVulkanContext** out_context) {
     if (out_context == NULL) return OMNI_TENSOR_VULKAN_INVALID;
     *out_context = NULL;
+    if (pthread_mutex_lock(&omni_tensor_vulkan_context_mutex) != 0) return OMNI_TENSOR_VULKAN_EXECUTION_FAILED;
     if (omni_tensor_vulkan_shared_context != NULL) {
-        omni_tensor_backend_vulkan_context_retain(omni_tensor_vulkan_shared_context);
+        omni_tensor_backend_vulkan_context_retain_locked(omni_tensor_vulkan_shared_context);
         *out_context = omni_tensor_vulkan_shared_context;
+        pthread_mutex_unlock(&omni_tensor_vulkan_context_mutex);
         return OMNI_TENSOR_VULKAN_SUCCESS;
     }
+    pthread_mutex_unlock(&omni_tensor_vulkan_context_mutex);
 
     OmniTensorVulkanContext* context = NULL;
     int status = omni_tensor_backend_vulkan_create_context(&context);
     if (status != OMNI_TENSOR_VULKAN_SUCCESS) return status;
+
+    if (pthread_mutex_lock(&omni_tensor_vulkan_context_mutex) != 0) {
+        omni_tensor_backend_vulkan_context_release(context);
+        return OMNI_TENSOR_VULKAN_EXECUTION_FAILED;
+    }
+    if (omni_tensor_vulkan_shared_context != NULL) {
+        OmniTensorVulkanContext* published = omni_tensor_vulkan_shared_context;
+        omni_tensor_backend_vulkan_context_retain_locked(published);
+        *out_context = published;
+        pthread_mutex_unlock(&omni_tensor_vulkan_context_mutex);
+        omni_tensor_backend_vulkan_context_release(context);
+        return OMNI_TENSOR_VULKAN_SUCCESS;
+    }
     omni_tensor_vulkan_shared_context = context;
-    omni_tensor_backend_vulkan_context_retain(context);
+    omni_tensor_backend_vulkan_context_retain_locked(context);
     *out_context = context;
+    pthread_mutex_unlock(&omni_tensor_vulkan_context_mutex);
     return OMNI_TENSOR_VULKAN_SUCCESS;
 }
 

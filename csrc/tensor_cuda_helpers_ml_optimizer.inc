@@ -183,7 +183,8 @@ int omni_tensor_backend_cuda_ml_adam_f32(
     if (!isfinite(learning_rate) || !isfinite(beta1) || !isfinite(beta2) || !isfinite(epsilon) ||
         !isfinite(weight_decay) || !isfinite(first_correction) || !isfinite(second_correction) ||
         learning_rate < 0.0f || beta1 < 0.0f || beta1 >= 1.0f || beta2 < 0.0f || beta2 >= 1.0f ||
-        epsilon <= 0.0f || weight_decay < 0.0f || first_correction <= 0.0f || second_correction <= 0.0f) {
+        epsilon <= 0.0f || weight_decay < 0.0f ||
+        first_correction < FLT_MIN || second_correction < FLT_MIN) {
         return OMNI_TENSOR_CUDA_INVALID_ARGUMENT;
     }
     if (!omni_tensor_cuda_ml_optimizer_resolve()) return OMNI_TENSOR_CUDA_UNAVAILABLE;

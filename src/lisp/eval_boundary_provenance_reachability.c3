@@ -84,40 +84,7 @@ fn void boundary_alias_seen_fast_record(
 
 fn bool boundary_alias_value_has_child_payload(Value* value) @inline {
     if (value == null) return false;
-    switch (value.tag) {
-        case CLOSURE:
-        case PARTIAL_PRIM:
-        case ITERATOR:
-        case CONS:
-        case ARRAY:
-        case HASHMAP:
-        case SET:
-        case METHOD_TABLE:
-        case INSTANCE:
-        case MODULE:
-        case TENSOR:
-            return true;
-        case NIL:
-        case VOID:
-        case INT:
-        case DOUBLE:
-        case FLOAT32:
-        case BIG_INTEGER:
-        case BIG_FLOAT:
-        case BIG_COMPLEX:
-        case COMPLEX128:
-        case COMPLEX64:
-        case STRING:
-        case SYMBOL:
-        case CONTINUATION:
-        case PRIMITIVE:
-        case ERROR:
-        case FFI_HANDLE:
-        case TYPE_INFO:
-        case COROUTINE:
-        case TIME_POINT:
-            return false;
-    }
+    return boundary_value_tag_has_omni_owned_edges(value.tag);
 }
 
 fn bool boundary_alias_reach_value_seen(Value** seen, usz seen_len, Value* value) @inline {

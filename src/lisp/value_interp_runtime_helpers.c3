@@ -1,6 +1,7 @@
 module lisp;
 
 import std::io;
+import std::core::mem;
 import main;
 
 fn void interp_init_runtime_state(Interp* self) {
@@ -23,6 +24,10 @@ fn void interp_init_runtime_state(Interp* self) {
     self.raise_msg_len = 0;
     self.raise_msg[0] = 0;
     self.raise_payload = null;
+    self.stable_escape_store = (StableEscapeStore*)mem::malloc(StableEscapeStore.sizeof);
+    if (self.stable_escape_store != null) {
+        *self.stable_escape_store = {};
+    }
 
     main::stack_pool_init(&self.stack_ctx_pool);
     self.continuation_head = null;

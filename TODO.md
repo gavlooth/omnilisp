@@ -23,11 +23,24 @@ split gate applies to code files only.
 - Part 13: [docs/todo_parts/todo_part_13.md](docs/todo_parts/todo_part_13.md) (325 lines)
 - Part 14: [docs/todo_parts/todo_part_14.md](docs/todo_parts/todo_part_14.md) (1915 lines)
 - Part 15: [docs/todo_parts/todo_part_15.md](docs/todo_parts/todo_part_15.md) (951 lines)
+- Part 16: [docs/todo_parts/todo_part_16.md](docs/todo_parts/todo_part_16.md) (261 lines)
+- Part 17: [docs/todo_parts/todo_part_17.md](docs/todo_parts/todo_part_17.md) (75 lines)
+- Part 18: [docs/todo_parts/todo_part_18.md](docs/todo_parts/todo_part_18.md) (127 lines)
 
 ## Live Queue
 
-- none currently;
-
-Live queue closed as of 2026-04-22. See
-[Part 01](docs/todo_parts/todo_part_01.md) for the recently closed Vulkan
-general eigen deflation item.
+- The memory boundary architecture verification blockers from
+  `docs/plans/memory-boundary-architecture-spec-2026-04-24.md` are closed in
+  Part 18.
+- The next memory-boundary work is `MEM-BOUNDARY-EPOCH-001` in Part 18,
+  continuing the proof-driven optimizer roadmap in
+  `docs/plans/memory-boundary-proof-planner-roadmap-2026-04-24.md`.
+- No open stable-escape prepared-materialization rollout items remain in Part 16.
+- Recent closed stable-escape rollout history in Part 16 includes prepared
+  `CONS`/`ARRAY`/dictionary/set/closure graph metadata, cyclic container
+  back-edges, prepared-publication fallback observability, mutation-drift
+  invalidation, explicit commit-route flags, first TEMP cons stable
+  materialization, prepared root/container materialization for arrays,
+  dictionaries, sets, closures, and cloned heap-backed scalar/signature payloads.
+- Open Vulkan/CUDA/ML audit residuals from
+  `AUDIT_REPORT_VULKAN_CUDA_ML_2026-04-23.md` are tracked in Part 17.

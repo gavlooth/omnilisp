@@ -16,6 +16,22 @@ fn char[] boundary_commit_fault_name(BoundaryCommitFault fault_code) @inline {
     return "unknown";
 }
 
+fn char[] boundary_plan_route_name(BoundaryPlanRoute route) @inline {
+    usz idx = (usz)route;
+    if (idx < BOUNDARY_PLAN_ROUTE_NAMES.len) {
+        return BOUNDARY_PLAN_ROUTE_NAMES[idx];
+    }
+    return "unknown";
+}
+
+fn char[] boundary_plan_reason_name(BoundaryPlanReason reason) @inline {
+    usz idx = (usz)reason;
+    if (idx < BOUNDARY_PLAN_REASON_NAMES.len) {
+        return BOUNDARY_PLAN_REASON_NAMES[idx];
+    }
+    return "unknown";
+}
+
 fn BoundaryEnvCopyResult boundary_env_copy_ok(Env* env, usz depth = 0) @inline {
     return {
         .env = env,

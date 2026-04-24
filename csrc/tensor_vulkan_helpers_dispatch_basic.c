@@ -93,7 +93,11 @@ int omni_tensor_backend_vulkan_dispatch_two_buffer_f64(
         goto cleanup;
     }
 
-    uint32_t group_count = ((uint32_t)output_element_count + local_size - 1u) / local_size;
+    uint32_t group_count = 0u;
+    result = omni_tensor_vulkan_group_count_1d(output_element_count, local_size, &group_count);
+    if (result != OMNI_TENSOR_VULKAN_SUCCESS) {
+        goto cleanup;
+    }
     result = omni_tensor_vulkan_record_submit_single_dispatch(
         device,
         queue,
@@ -216,7 +220,11 @@ int omni_tensor_backend_vulkan_dispatch_two_buffer_f32(
         goto cleanup;
     }
 
-    uint32_t group_count = ((uint32_t)output_element_count + local_size - 1u) / local_size;
+    uint32_t group_count = 0u;
+    result = omni_tensor_vulkan_group_count_1d(output_element_count, local_size, &group_count);
+    if (result != OMNI_TENSOR_VULKAN_SUCCESS) {
+        goto cleanup;
+    }
     result = omni_tensor_vulkan_record_submit_single_dispatch(
         device,
         queue,
@@ -350,7 +358,11 @@ int omni_tensor_backend_vulkan_dispatch_three_buffer_f64(
         goto cleanup;
     }
 
-    uint32_t group_count = ((uint32_t)output_element_count + local_size - 1u) / local_size;
+    uint32_t group_count = 0u;
+    result = omni_tensor_vulkan_group_count_1d(output_element_count, local_size, &group_count);
+    if (result != OMNI_TENSOR_VULKAN_SUCCESS) {
+        goto cleanup;
+    }
     result = omni_tensor_vulkan_record_submit_single_dispatch(
         device,
         queue,
@@ -484,7 +496,11 @@ int omni_tensor_backend_vulkan_dispatch_three_buffer_f32(
         goto cleanup;
     }
 
-    uint32_t group_count = ((uint32_t)output_element_count + local_size - 1u) / local_size;
+    uint32_t group_count = 0u;
+    result = omni_tensor_vulkan_group_count_1d(output_element_count, local_size, &group_count);
+    if (result != OMNI_TENSOR_VULKAN_SUCCESS) {
+        goto cleanup;
+    }
     result = omni_tensor_vulkan_record_submit_single_dispatch(
         device,
         queue,

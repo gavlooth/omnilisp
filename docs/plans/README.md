@@ -39,8 +39,38 @@ The live backlog has been consolidated into `TODO.md` at the repo root.
 - `stable-escape-graph-plan-2026-04-23.md`: finalized proposal note for a
   stable handle / prepared-graph boundary model. It recommends publishing
   prepared escape graphs through stable handles instead of moving raw
-  pointers, keeps the document proposal-only, and does not open a TODO-backed
-  rollout.
+  pointers, and its TODO-backed rollout queue has now closed the shape-audit,
+  store-skeleton, prepared-publication, first prepared-node data-structure,
+  fallback-observability, dictionary prepared-graph, set prepared-graph,
+  closure, mutation-policy, commit-route visibility, and first `CONS`
+  materialization slices. Prepared `CONS` roots with scalar leaves, `ARRAY` roots
+  with shared child reuse, dictionary roots with key/value child-index pairs, set
+  roots with member-only child indices, cyclic container back-edges, and closure
+  roots with captured binding-value edges are represented in the stable store;
+  TEMP `CONS`, `ARRAY`, dictionary, set, closure, string/error payload,
+  time-point, and big-number returns can now materialize from prepared metadata
+  into the target build scope, prepared handles fail closed after structural
+  mutation drift, and boundary commit results expose stable-publication,
+  stable-materialization, and compatibility-route use. No open stable-escape
+  prepared-materialization rollout item remains.
+- `memory-boundary-architecture-spec-2026-04-24.md`: active implementation spec
+  for the current region-RC/TEMP/ESCAPE boundary contract. It records
+  `ScopeRegion` as ordinary Omni value ownership authority, makes stable
+  materialization the preferred TEMP-to-ESCAPE boundary path, and keeps
+  `FFI_HANDLE` opaque and scope-integrated rather than graph-owned by generic
+  language-value RC. `MEM-BOUNDARY-POLICY-001` and
+  `MEM-BOUNDARY-VERIFY-001` are closed; the bounded memory-lifetime smoke gate
+  now passes for the policy/store/rollback work, including bounded container
+  Valgrind. Stable indexed publication and region transplanting remain
+  constrained fast paths, not a replacement for destination materialization
+  when the lifetime proof is weaker than the copy proof.
+- `memory-boundary-proof-planner-roadmap-2026-04-24.md`: active roadmap for
+  maximizing stable indexed publication plus TEMP/ESCAPE boundary planning. It
+  defines the `BoundaryPlanner` ladder, stable graph passports, transplant
+  proofs, mutation epoch invalidation, FFI bridge declarations, copy-debt
+  telemetry, and commit-path migration. Open work is tracked in TODO Part 18
+  under `MEM-BOUNDARY-EPOCH-001` through `MEM-BOUNDARY-PLAN-MIGRATE-001`;
+  `MEM-BOUNDARY-PLANNER-001` and `MEM-BOUNDARY-PASSPORT-001` are closed.
 - `vulkan-backend-decision-2026-04-16.md`: completed `TENSOR-100E` baseline note for
   portable explicit GPU execution behind the existing `Tensor` surface. Vulkan
   is runtime-optional, capability-gated, and owned through an Omni C ABI

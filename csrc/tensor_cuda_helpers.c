@@ -1,4 +1,5 @@
 #include <dlfcn.h>
+#include <float.h>
 #include <limits.h>
 #include <math.h>
 #include <stddef.h>

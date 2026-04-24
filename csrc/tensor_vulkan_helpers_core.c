@@ -51,6 +51,7 @@ int omni_tensor_vulkan_int64_cached = 0;
 // Process-lifetime backend context so independently placed buffers can bind
 // together in binary Vulkan kernels.
 OmniTensorVulkanContext* omni_tensor_vulkan_shared_context = NULL;
+static pthread_mutex_t omni_tensor_vulkan_context_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static int omni_tensor_vulkan_resolve(void);
 
@@ -302,6 +303,15 @@ int omni_tensor_backend_vulkan_select_physical_device_compute_gate_for_tests(voi
 
     return omni_tensor_vulkan_queue_is_selectable(&compute_queue) &&
            !omni_tensor_vulkan_queue_is_selectable(&non_compute_queue)
+        ? OMNI_TENSOR_VULKAN_SUCCESS
+        : OMNI_TENSOR_VULKAN_INVALID;
+}
+
+int omni_tensor_backend_vulkan_group_count_overflow_guard_for_tests(void) {
+    uint32_t group_count = 0u;
+    int status = omni_tensor_vulkan_group_count_1d((size_t)UINT32_MAX, OMNI_TENSOR_VULKAN_MAP_LOCAL_SIZE, &group_count);
+    size_t expected = ((size_t)UINT32_MAX - 1u) / (size_t)OMNI_TENSOR_VULKAN_MAP_LOCAL_SIZE + 1u;
+    return status == OMNI_TENSOR_VULKAN_SUCCESS && group_count == (uint32_t)expected
         ? OMNI_TENSOR_VULKAN_SUCCESS
         : OMNI_TENSOR_VULKAN_INVALID;
 }

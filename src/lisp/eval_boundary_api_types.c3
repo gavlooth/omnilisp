@@ -74,6 +74,43 @@ enum BoundaryReturnProvenance : char {
 const usz BOUNDARY_RETURN_PROVENANCE_COUNT =
     (usz)BoundaryReturnProvenance.BOUNDARY_RETURN_MIXED_UNCERTAIN + 1;
 
+enum BoundaryPlanRoute : char {
+    BOUNDARY_PLAN_ROUTE_NULL_RESULT,
+    BOUNDARY_PLAN_ROUTE_STABLE_PUBLISH_REUSE,
+    BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION,
+    BOUNDARY_PLAN_ROUTE_REGION_TRANSPLANT,
+    BOUNDARY_PLAN_ROUTE_COMPATIBILITY_DESTINATION,
+    BOUNDARY_PLAN_ROUTE_MIXED_DESTINATION,
+    BOUNDARY_PLAN_ROUTE_FAIL_CLOSED,
+    BOUNDARY_PLAN_ROUTE_PASSTHROUGH,
+}
+
+const usz BOUNDARY_PLAN_ROUTE_COUNT =
+    (usz)BoundaryPlanRoute.BOUNDARY_PLAN_ROUTE_PASSTHROUGH + 1;
+
+enum BoundaryPlanReason : char {
+    BOUNDARY_PLAN_REASON_NULL_RESULT,
+    BOUNDARY_PLAN_REASON_REUSABLE_IN_TARGET_CHAIN,
+    BOUNDARY_PLAN_REASON_RELEASING_TEMP_STABLE_MATERIALIZATION,
+    BOUNDARY_PLAN_REASON_RELEASING_TEMP_COMPATIBILITY,
+    BOUNDARY_PLAN_REASON_RELEASING_ESCAPE_TRANSPLANT_CANDIDATE,
+    BOUNDARY_PLAN_REASON_RELEASING_ESCAPE_DESTINATION,
+    BOUNDARY_PLAN_REASON_MIXED_UNCERTAIN,
+    BOUNDARY_PLAN_REASON_NORMALIZED_CLOSURE_ERROR,
+    BOUNDARY_PLAN_REASON_DESTINATION_COMMITTED_STABLE,
+    BOUNDARY_PLAN_REASON_DESTINATION_COMMITTED_COMPATIBILITY,
+    BOUNDARY_PLAN_REASON_TRANSPLANT_COMMITTED,
+    BOUNDARY_PLAN_REASON_PROMOTION_ABORTED,
+    BOUNDARY_PLAN_REASON_DESTINATION_FAILED,
+    BOUNDARY_PLAN_REASON_TRANSPLANT_REJECTED,
+    BOUNDARY_PLAN_REASON_MIXED_DESTINATION_FAILED,
+    BOUNDARY_PLAN_REASON_FALLBACK_DISALLOWED,
+    BOUNDARY_PLAN_REASON_PASSTHROUGH,
+}
+
+const usz BOUNDARY_PLAN_REASON_COUNT =
+    (usz)BoundaryPlanReason.BOUNDARY_PLAN_REASON_PASSTHROUGH + 1;
+
 enum BoundaryEnvCopyFault : char {
     BOUNDARY_ENV_COPY_FAULT_NONE,
     BOUNDARY_ENV_COPY_FAULT_PROMOTION_CTX_ALLOC,
@@ -117,12 +154,29 @@ struct BoundaryReturnClassification {
     bool in_releasing_scope;
 }
 
+struct BoundaryPlanDecision {
+    BoundaryPlanRoute route;
+    BoundaryPlanReason reason;
+    BoundaryReturnProvenance provenance;
+    bool stable_publish_candidate;
+    bool stable_materialization_candidate;
+    bool transplant_candidate;
+    bool compatibility_candidate;
+}
+
 struct BoundaryCommitEscapeResult {
     Value* value;
     BoundaryCommitOutcome outcome;
     BoundaryCommitFault fault_code;
     bool releasing_scope_spliced;
     bool reused_in_target_chain;
+    bool stable_publication_attempted;
+    bool stable_materialization_used;
+    bool compatibility_path_used;
+    BoundaryPlanRoute planned_route;
+    BoundaryPlanReason planned_reason;
+    BoundaryPlanRoute selected_route;
+    BoundaryPlanReason selected_reason;
 }
 
 enum BoundaryScopeTransferReason : char {
@@ -209,6 +263,37 @@ const char[][] BOUNDARY_RETURN_PROVENANCE_NAMES = {
     "mixed-uncertain",
 };
 
+const char[][] BOUNDARY_PLAN_ROUTE_NAMES = {
+    "null-result",
+    "stable-publish-reuse",
+    "stable-materialize-destination",
+    "region-transplant",
+    "compatibility-destination",
+    "mixed-destination",
+    "fail-closed",
+    "passthrough",
+};
+
+const char[][] BOUNDARY_PLAN_REASON_NAMES = {
+    "null-result",
+    "reusable-in-target-chain",
+    "releasing-temp-stable-materialization",
+    "releasing-temp-compatibility",
+    "releasing-escape-transplant-candidate",
+    "releasing-escape-destination",
+    "mixed-uncertain",
+    "normalized-closure-error",
+    "destination-committed-stable",
+    "destination-committed-compatibility",
+    "transplant-committed",
+    "promotion-aborted",
+    "destination-failed",
+    "transplant-rejected",
+    "mixed-destination-failed",
+    "fallback-disallowed",
+    "passthrough",
+};
+
 const char[][] BOUNDARY_ENV_COPY_FAULT_NAMES = {
     "none",
     "promotion-ctx-alloc",
@@ -253,6 +338,8 @@ $assert(BOUNDARY_COMMIT_FALLBACK_ROUTE_NAMES.len == BOUNDARY_COMMIT_FALLBACK_ROU
 $assert(BOUNDARY_SCOPE_TRANSFER_REASON_NAMES.len == BOUNDARY_SCOPE_TRANSFER_REASON_COUNT);
 $assert(BOUNDARY_PROMOTION_ABORT_REASON_NAMES.len == BOUNDARY_PROMOTION_ABORT_REASON_COUNT);
 $assert(BOUNDARY_RETURN_PROVENANCE_NAMES.len == BOUNDARY_RETURN_PROVENANCE_COUNT);
+$assert(BOUNDARY_PLAN_ROUTE_NAMES.len == BOUNDARY_PLAN_ROUTE_COUNT);
+$assert(BOUNDARY_PLAN_REASON_NAMES.len == BOUNDARY_PLAN_REASON_COUNT);
 $assert(BOUNDARY_ENV_COPY_FAULT_NAMES.len == BOUNDARY_ENV_COPY_FAULT_COUNT);
 $assert(BOUNDARY_COPY_FAULT_NAMES.len == BOUNDARY_COPY_FAULT_COUNT);
 $assert(BOUNDARY_COPY_SITE_NAMES.len == COPY_SITE_COUNT);

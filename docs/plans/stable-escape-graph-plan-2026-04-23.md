@@ -4,8 +4,9 @@ Status: Finalized Proposal
 Owner: Codex
 Source of truth: `memory/DESTINATION_ARENA_PLAN.md`, `docs/areas/memory-runtime.md`, `docs/areas/memory-runtime-cycle.md`
 
-This is a proposal-only note for now. It is not yet a live implementation plan
-and does not have a TODO lane attached.
+This remains a proposal-level design note, but the implementation queue now
+starts from the live TODO items recorded for the shape-audit, store skeleton,
+and prepared-publication slices below.
 
 ## Thesis
 
@@ -37,8 +38,61 @@ The proposal decision is settled at the design level:
 - Transplant/copy machinery remains only as a legacy compatibility path for
   cases that cannot yet be expressed as prepared stable graphs.
 
-This note is therefore conclusive about direction, but still proposal-only:
-it does not open a live implementation queue.
+This note is therefore conclusive about direction, and the live implementation
+queue is now listed below.
+
+## Implementation Queue
+
+The first live slices are intentionally narrow:
+
+- `STABLE-ESCAPE-SHAPE-001`: measure the shapes that actually reach the escape
+  boundary and publish a baseline summary. This slice is now landed and
+  closed.
+- `STABLE-ESCAPE-STORE-001`: introduce a runtime-private stable-handle store
+  skeleton with generation checks. This slice is now landed and closed.
+- `STABLE-ESCAPE-PREP-001`: route one boundary path through a prepared-graph
+  publication hook and pin it with regression coverage. This slice is now
+  landed and closed.
+- `STABLE-ESCAPE-GRAPH-001`: replace the registry-only placeholder with the
+  first real prepared graph representation in the stable store. This slice is
+  now landed and closed for reusable `CONS` roots with scalar leaves and
+  `ARRAY` roots with stable child-index sharing.
+- `STABLE-ESCAPE-OBSERVE-001`: make prepared-publication outcomes observable so
+  unsupported prepared graphs, raw compatibility fallback, alias-unsafe skips,
+  and resolve failures cannot be mistaken for prepared success. This slice is
+  now landed and closed.
+- `STABLE-ESCAPE-DICT-001`: extend prepared graph metadata to dictionary roots
+  by recording key/value child-index pairs in hash-table slot order while
+  preserving shared value identity. This slice is now landed and closed.
+- `STABLE-ESCAPE-SET-001`: extend prepared graph metadata to set roots by
+  recording member child indices only, matching the boundary graph audit's set
+  semantics. This slice is now landed and closed.
+- `STABLE-ESCAPE-CYCLE-001`: pin cycle representation by verifying that a
+  self-referential cons graph publishes back-edges to the already-registered
+  root node. This slice is now landed and closed.
+- `STABLE-ESCAPE-CLOSURE-001`: extend prepared graph metadata to closure roots
+  by recording captured environment binding values up to, but not including,
+  the global environment. This slice is now landed and closed.
+- `STABLE-ESCAPE-MUTATION-001`: seal prepared graph structure at publication by
+  making handles fail closed when current child pointers no longer match the
+  prepared child-index snapshot. This slice is now landed and closed.
+- `STABLE-ESCAPE-COMPAT-001`: make boundary commit results explicitly report
+  whether they used the stable prepared-publication route or an older
+  compatibility promotion/splice route. This slice is now landed and closed.
+- `STABLE-ESCAPE-ARENA-001`: materialize prepared `CONS`/immediate-scalar
+  graphs into a target build scope for TEMP returns before falling back to the
+  older compatibility builder. This slice is now landed and closed.
+- `STABLE-ESCAPE-ARENA-002`: extend prepared materialization to `ARRAY`,
+  dictionary, set, untyped closure, string/error payload, and time-point roots
+  or nested nodes. This slice is now landed and closed.
+- `STABLE-ESCAPE-ARENA-003`: close the remaining prepared-materialization
+  payload exceptions by cloning big-number handles and copying typed-closure
+  signatures into the destination ESCAPE lane. This slice is now landed and
+  closed.
+
+No open stable-escape prepared-materialization rollout item remains. Future work
+should be opened as a new semantic boundary if another runtime invariant or
+capability gap appears.
 
 ## External Patterns
 
@@ -136,6 +190,54 @@ The exact shape is still open, but the enforcement properties are fixed:
 - cycles must survive preparation,
 - complex values must keep their identity through publication.
 
+## Current Landed Runtime Slice
+
+The runtime now contains more than a handle registry:
+
+- the stable store can materialize an internal prepared graph for reusable
+  `CONS` roots whose reachable children are scalar leaves,
+- the stable store can also materialize `ARRAY` roots while preserving shared
+  child identity through repeated stable child indices,
+- the stable store can materialize dictionary roots as key/value child-index
+  pairs in hash-table slot order while preserving shared key/value identity,
+- the stable store can materialize set roots as member child indices only,
+  matching set language semantics rather than leaking backing true-values,
+- cyclic container graphs are represented as back-edges to already-registered
+  prepared node indices rather than recursive expansion,
+- closure roots record captured environment binding values in local-to-parent
+  frame order while excluding the global environment,
+- prepared nodes keep stable child indices instead of only preserving the raw
+  root pointer,
+- prepared handles fail closed after structural mutation drift in prepared
+  child pointers or captured binding values,
+- the already-safe boundary reuse path runs through that prepared graph route,
+- unsupported prepared graphs fall back through the raw compatibility path with
+  explicit counters instead of silent fallback,
+- boundary commit results expose whether a commit used the stable
+  prepared-publication route, stable prepared materialization, or an older
+  compatibility promotion/splice route,
+- TEMP `CONS`, `ARRAY`, dictionary, set, closure, string/error payload,
+  time-point, and big-number return graphs can materialize from prepared graph
+  metadata into a target build scope before compatibility promotion is tried,
+- tests can inspect the prepared node graph, publication outcome counters, and
+  commit-route flags directly to prove the shape and route that were published.
+
+The current shipped contract is still intentionally narrow:
+
+```text
+reusable ESCAPE cons, array, dictionary, set, or closure root
+    -> prepare nodes for cons/array/dictionary/set/closure/scalar graph
+    -> publish root handle + prepared node table
+    -> resolve original root for current callers while structure matches snapshot
+    -> fail closed after structural mutation drift
+unsupported prepared graph
+    -> count prepare-failure fallback
+    -> raw compatibility publish/resolve route
+```
+
+This is the first real data-structure step, not the final generalized escape
+graph arena.
+
 ## Escape Preparation Flow
 
 ```text
@@ -213,19 +315,18 @@ That is why the proposal is a graph store, not a “fancier vector.”
 
 ## Next-Step Boundary
 
-The next action is a shape audit, not implementation.
+The initial shape audit, store skeleton, prepared publication hook,
+`CONS`/`ARRAY` prepared-node slice, fallback-observability slice, dictionary
+prepared-node slice, set prepared-node slice, cycle-representation slice,
+closure-env metadata slice, mutation-policy slice, compatibility-route
+visibility slice, `CONS`/immediate-scalar materialization slice, and broad
+prepared-materialization slice for arrays/dictionaries/sets/untyped closures,
+and payload-exception closure slice for typed signatures and big-number handles
+are closed. No open stable-escape prepared-materialization rollout item remains.
 
-That audit should answer:
-
-- which escaping graphs are common enough to justify a prepared stable store,
-- which of those graphs can be sealed by default without copy-on-write,
-- whether closure environments should share the same stable store or use a
-  narrow env-specific layer,
-- and how much of the current transplant machinery can be reduced to a
-  compatibility path only.
-
-If the audit does not show a clear performance and simplicity win, this note
-stays a proposal and no rollout should be opened.
+If a future slice cannot make one of those semantic boundaries observable in
+code and tests, it should stay as design work rather than opening another
+case-specific TODO.
 
 ## Omni-Specific Boundary Hypothesis
 
@@ -266,11 +367,19 @@ legacy boundary cases, not the general strategy.
 - Make stale handles fail closed.
 - Keep the store private to runtime internals.
 
+Status: landed as an interpreter-owned stable registry with
+publish/resolve/retire/reset operations and smoke coverage. The remaining live
+boundary work starts at prepared publication.
+
 ### Phase 2: Graph preparation
 
 - Add `prepare_for_escape(...)` with a memo table.
 - Preserve sharing and cycles.
 - Rewrite interior references into stable references.
+
+Status: the first boundary path now routes through a prepare-gated stable
+publication hook. Full graph rewriting remains a future expansion if the
+runtime needs it for more complex shapes.
 
 ### Phase 3: Boundary integration
 
@@ -313,16 +422,24 @@ Value* resolve_stable_ref(StableRef ref, Interp* interp) {
 
 ## Recommendation
 
-Adopt the stable-handle prepared-graph model as the preferred boundary
+Continue the stable-handle prepared-graph model as the preferred boundary
 architecture. Treat transplant-style boundary surgery as a compatibility path
-only. Keep the note proposal-only until a separate TODO-backed rollout is
-approved.
+only, and require explicit observability for every compatibility fallback so it
+cannot masquerade as prepared publication success.
 
 ## Validation
 
-This is a design note, so the only immediate gates are:
+Current closeout evidence for the observability slice:
 
-- `git diff --check`
+- C3 diagnostics passed for touched runtime/test C3 files.
+- Host shell build/test validation is currently blocked by
+  `bwrap: loopback: Failed RTM_NEWADDR` before command execution.
+
+When shell validation is restored, rerun:
+
+- `c3c build --obj-out obj`
+- `scripts/run_validation_container.sh env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
 - `scripts/check_status_consistency.sh`
+- `git diff --check`
 
 Signature: GPT-5 Codex

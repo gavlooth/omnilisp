@@ -48,7 +48,32 @@ struct CopyToParentStats {
     usz[COPY_SITE_COUNT] site_calls;
 }
 
+struct BoundaryEscapeShapeStats {
+    usz candidate_roots;
+    usz graph_roots;
+    usz unsafe_roots;
+    usz cons_roots;
+    usz cons_spine_samples;
+    usz cons_spine_total_len;
+    usz cons_spine_peak_len;
+    usz array_roots;
+    usz hashmap_roots;
+    usz set_roots;
+    usz closure_roots;
+    usz partial_roots;
+    usz iterator_roots;
+    usz continuation_roots;
+    usz coroutine_roots;
+    usz tensor_roots;
+    usz instance_roots;
+    usz method_table_roots;
+    usz module_roots;
+    usz type_info_roots;
+    usz ffi_handle_roots;
+}
+
 CopyToParentStats g_copy_to_parent_stats;
+BoundaryEscapeShapeStats g_boundary_escape_shape_stats;
 uint g_copy_to_parent_telemetry_depth = 0;
 
 fn bool promotion_stats_quiet_requested() @inline {
@@ -124,6 +149,70 @@ fn void copy_to_parent_note_cons_spine(Value* v) @inline {
     }
 }
 
+fn void boundary_escape_shape_note_root(Value* v, bool unsafe = false) @inline {
+    if (v == null) return;
+    g_boundary_escape_shape_stats.candidate_roots++;
+    if (unsafe) g_boundary_escape_shape_stats.unsafe_roots++;
+    if (boundary_alias_value_has_child_payload(v)) {
+        g_boundary_escape_shape_stats.graph_roots++;
+    }
+
+    switch (v.tag) {
+        case CONS:
+            g_boundary_escape_shape_stats.cons_roots++;
+            g_boundary_escape_shape_stats.cons_spine_samples++;
+            usz len = copy_to_parent_cons_spine_len(v);
+            g_boundary_escape_shape_stats.cons_spine_total_len += len;
+            if (len > g_boundary_escape_shape_stats.cons_spine_peak_len) {
+                g_boundary_escape_shape_stats.cons_spine_peak_len = len;
+            }
+        case ARRAY:
+            g_boundary_escape_shape_stats.array_roots++;
+        case HASHMAP:
+            g_boundary_escape_shape_stats.hashmap_roots++;
+        case SET:
+            g_boundary_escape_shape_stats.set_roots++;
+        case CLOSURE:
+            g_boundary_escape_shape_stats.closure_roots++;
+        case PARTIAL_PRIM:
+            g_boundary_escape_shape_stats.partial_roots++;
+        case ITERATOR:
+            g_boundary_escape_shape_stats.iterator_roots++;
+        case CONTINUATION:
+            g_boundary_escape_shape_stats.continuation_roots++;
+        case COROUTINE:
+            g_boundary_escape_shape_stats.coroutine_roots++;
+        case TENSOR:
+            g_boundary_escape_shape_stats.tensor_roots++;
+        case INSTANCE:
+            g_boundary_escape_shape_stats.instance_roots++;
+        case METHOD_TABLE:
+            g_boundary_escape_shape_stats.method_table_roots++;
+        case MODULE:
+            g_boundary_escape_shape_stats.module_roots++;
+        case TYPE_INFO:
+            g_boundary_escape_shape_stats.type_info_roots++;
+        case FFI_HANDLE:
+            g_boundary_escape_shape_stats.ffi_handle_roots++;
+        case NIL:
+        case VOID:
+        case INT:
+        case DOUBLE:
+        case FLOAT32:
+        case SYMBOL:
+        case STRING:
+        case BIG_INTEGER:
+        case BIG_FLOAT:
+        case BIG_COMPLEX:
+        case COMPLEX128:
+        case COMPLEX64:
+        case PRIMITIVE:
+        case ERROR:
+        case TIME_POINT:
+            break;
+    }
+}
+
 fn usz copy_to_parent_current_scope_alloc_bytes(Interp* interp) @inline {
     if (interp == null || interp.current_scope == null) return 0;
     return interp.current_scope.alloc_bytes;
@@ -176,10 +265,35 @@ fn void print_memory_promotion_stats() {
         g_copy_to_parent_stats.cons_spine_copy_samples,
         g_copy_to_parent_stats.cons_spine_copy_total_len,
         g_copy_to_parent_stats.cons_spine_copy_peak_len);
+    io::printn("=== boundary escape shape Stats ===");
+    io::printfn("boundary escape candidate roots: %d", g_boundary_escape_shape_stats.candidate_roots);
+    io::printfn("boundary escape graph roots: %d", g_boundary_escape_shape_stats.graph_roots);
+    io::printfn("boundary escape unsafe roots: %d", g_boundary_escape_shape_stats.unsafe_roots);
+    io::printfn("boundary escape by tag: cons=%d array=%d hashmap=%d set=%d closure=%d partial=%d iterator=%d continuation=%d coroutine=%d tensor=%d instance=%d method_table=%d module=%d type_info=%d ffi_handle=%d",
+        g_boundary_escape_shape_stats.cons_roots,
+        g_boundary_escape_shape_stats.array_roots,
+        g_boundary_escape_shape_stats.hashmap_roots,
+        g_boundary_escape_shape_stats.set_roots,
+        g_boundary_escape_shape_stats.closure_roots,
+        g_boundary_escape_shape_stats.partial_roots,
+        g_boundary_escape_shape_stats.iterator_roots,
+        g_boundary_escape_shape_stats.continuation_roots,
+        g_boundary_escape_shape_stats.coroutine_roots,
+        g_boundary_escape_shape_stats.tensor_roots,
+        g_boundary_escape_shape_stats.instance_roots,
+        g_boundary_escape_shape_stats.method_table_roots,
+        g_boundary_escape_shape_stats.module_roots,
+        g_boundary_escape_shape_stats.type_info_roots,
+        g_boundary_escape_shape_stats.ffi_handle_roots);
+    io::printfn("boundary escape cons-spine: samples=%d total_len=%d peak_len=%d",
+        g_boundary_escape_shape_stats.cons_spine_samples,
+        g_boundary_escape_shape_stats.cons_spine_total_len,
+        g_boundary_escape_shape_stats.cons_spine_peak_len);
 }
 
 fn void reset_memory_promotion_stats() {
     g_copy_to_parent_stats = {};
+    reset_boundary_escape_shape_stats();
 }
 
 fn usz copy_to_parent_total_calls() @inline {
@@ -193,6 +307,14 @@ fn usz copy_to_parent_site_calls(uint site) @inline {
 
 fn CopyToParentStats copy_to_parent_stats_snapshot() @inline {
     return g_copy_to_parent_stats;
+}
+
+fn BoundaryEscapeShapeStats boundary_escape_shape_stats_snapshot() @inline {
+    return g_boundary_escape_shape_stats;
+}
+
+fn void reset_boundary_escape_shape_stats() {
+    g_boundary_escape_shape_stats = {};
 }
 
 // =============================================================================

@@ -79,6 +79,7 @@ fn void emit_boundary_traversal_summary() {
     if (!traversal_summary_enabled()) return;
 
     CopyToParentStats copy_stats = copy_to_parent_stats_snapshot();
+    BoundaryEscapeShapeStats shape_stats = boundary_escape_shape_stats_snapshot();
     BoundaryDecisionStats boundary_stats = boundary_decision_stats_snapshot();
     usz cons_avg_len = copy_stats.cons_spine_copy_samples > 0
         ? copy_stats.cons_spine_copy_total_len / copy_stats.cons_spine_copy_samples
@@ -105,6 +106,22 @@ fn void emit_boundary_traversal_summary() {
         (long)copy_stats.cons_spine_copy_samples,
         (long)cons_avg_len,
         (long)copy_stats.cons_spine_copy_peak_len
+    );
+    io::printfn(
+        "OMNI_TEST_SUMMARY suite=boundary_escape_shape candidate_roots=%d graph_roots=%d unsafe_roots=%d cons_roots=%d array_roots=%d hashmap_roots=%d set_roots=%d closure_roots=%d partial_roots=%d iterator_roots=%d tensor_roots=%d cons_spine_samples=%d cons_spine_peak_len=%d",
+        (long)shape_stats.candidate_roots,
+        (long)shape_stats.graph_roots,
+        (long)shape_stats.unsafe_roots,
+        (long)shape_stats.cons_roots,
+        (long)shape_stats.array_roots,
+        (long)shape_stats.hashmap_roots,
+        (long)shape_stats.set_roots,
+        (long)shape_stats.closure_roots,
+        (long)shape_stats.partial_roots,
+        (long)shape_stats.iterator_roots,
+        (long)shape_stats.tensor_roots,
+        (long)shape_stats.cons_spine_samples,
+        (long)shape_stats.cons_spine_peak_len
     );
 }
 
@@ -379,6 +396,11 @@ fn bool run_lisp_tests(int* out_pass, int* out_fail) {
     bool run_teardown_regression = test_c_getenv("OMNI_LISP_TEARDOWN_REGRESSION") != null;
     boundary_reset_decision_stats();
     reset_memory_promotion_stats();
+    reset_boundary_escape_shape_stats();
+    stable_escape_store_reset(interp);
+    stable_escape_store_reset_publication_hook_count();
+    stable_escape_store_reset_prepared_publication_hook_count();
+    stable_escape_store_reset_publication_outcome_counts();
     jit_fallback_audit_reset();
 
     bool run_basic = lisp_slice_any(active_slice) || lisp_slice_matches(active_slice, "basic");

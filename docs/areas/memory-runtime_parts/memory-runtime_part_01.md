@@ -5,7 +5,7 @@ Source: `docs/areas/memory-runtime.md`
 # Memory and Runtime
 
 Status: `green` (boundary hardening, nested fail-closed wrapper promotion, bounded runtime/JIT gates, signal-handle rollback cleanup, lazy Tensor cleanup, structured-error payload cleanup, checked-hashmap rollback cleanup, and transactional destination materialization are all currently validated)
-As of: 2026-04-23
+As of: 2026-04-24
 
 ## Canonical Sources
 
@@ -27,6 +27,14 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
 - `scope_adopt` is not present in current `src/` runtime callsites.
 - Scoped finalize unification is live via `boundary_finalize_scoped_result(...)`, and eval/JIT finalize flows share that helper.
 - Boundary state restore uses `BoundarySession` (`boundary_session_begin/end`) in audited helpers and regression probes.
+- The stable-escape graph work is implemented through interpreter-owned stable
+  store metadata, prepared publication, destination materialization, and
+  bounded memory-lifetime smoke coverage.
+- The active next architecture roadmap is
+  `docs/plans/memory-boundary-proof-planner-roadmap-2026-04-24.md`: centralize
+  route choice in a proof-driven `BoundaryPlanner`, then expand stable graph
+  passports, mutation epochs, transplant proofs, FFI bridge declarations, and
+  copy-debt telemetry.
 - Runtime intern and unhandled-effect payload guard cleanup is current as of
   2026-04-12:
   - `register_language_constants(...)` rejects failed `nil` symbol interning
@@ -464,6 +472,13 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
   - allocator lanes (`allocator-validation`, `allocator-bench`) are separate from boundary/lifetime lanes and should be chosen only when allocator behavior or benchmarks changed.
   - syntax/compiler-only changes should stay on their own non-memory lanes and do not implicitly require memory-ownership coverage.
   - do not route syntax/compiler-only work through a memory lane by default; pick the lane that matches the touched semantics.
+- Latest memory-boundary migration evidence:
+  - the default bounded validation image includes Valgrind;
+  - bounded container Valgrind `memory-lifetime-smoke` passed
+    (`253 passed, 0 failed`);
+  - stable indexed publication and region transplanting are constrained
+    boundary fast paths, while destination materialization remains the default
+    when lifetime proof is weaker than graph-copy proof.
 - Parser/AST benchmark instrumentation is available under `OMNI_AST_ARENA_BENCH=1`, with dedicated parser and compiler smoke summaries (`ast_parser_smoke`, `ast_compiler_smoke`) for AST allocator shape validation.
 - Boundary graph traversal/copy-fallback routing is no longer a production return-path mechanism for eval/JIT finalize flows:
   - boundary commit paths now return explicit hard outcomes for disallowed fallback classes,

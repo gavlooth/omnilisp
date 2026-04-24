@@ -1,6 +1,8 @@
 #include <math.h>
 #include <stddef.h>
 
+#define OMNI_CUDA_ML_ADAM_MIN_CORRECTION 1.17549435e-38f
+
 extern "C" __global__ void omni_cuda_ml_sgd_f32(
     const float* params,
     const float* grads,
@@ -57,6 +59,14 @@ extern "C" __global__ void omni_cuda_ml_adam_f32(
     float old_second = has_moments != 0u ? second[idx] : 0.0f;
     float next_first = beta1 * old_first + (1.0f - beta1) * moment_grad;
     float next_second = beta2 * old_second + (1.0f - beta2) * moment_grad * moment_grad;
+    if (!isfinite(first_correction) || !isfinite(second_correction) ||
+        first_correction < OMNI_CUDA_ML_ADAM_MIN_CORRECTION ||
+        second_correction < OMNI_CUDA_ML_ADAM_MIN_CORRECTION) {
+        out_params[idx] = param_value;
+        out_first[idx] = next_first;
+        out_second[idx] = next_second;
+        return;
+    }
     float first_hat = next_first / first_correction;
     float second_hat = next_second / second_correction;
     float decay_update = decoupled_weight_decay != 0u ? learning_rate * weight_decay * param_value : 0.0f;

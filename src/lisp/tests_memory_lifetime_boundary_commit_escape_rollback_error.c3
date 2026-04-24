@@ -4,8 +4,8 @@ import std::io;
 import main;
 
 fn void run_memory_lifetime_boundary_commit_escape_rollback_error_tests(Interp* interp, int* pass, int* fail) {
-    // Invariant: failed boundary commits must roll back staged closure-env
-    // normalization so aliased closures retain their original env/env_scope.
+    // Invariant: copied/materialized destination commits must roll back staged
+    // source closure-env normalization so aliases retain original env/env_scope.
     {
         main::ScopeRegion* root_scope = interp.current_scope;
         main::ScopeRegion* target_scope = main::scope_create(root_scope);
@@ -13,7 +13,7 @@ fn void run_memory_lifetime_boundary_commit_escape_rollback_error_tests(Interp* 
         if (target_scope == null || releasing_scope == null) {
             if (releasing_scope != null) main::scope_release(releasing_scope);
             if (target_scope != null) main::scope_release(target_scope);
-            io::printn("[FAIL] lifetime: boundary_commit_escape aliased closure rollback on failed commit");
+            io::printn("[FAIL] lifetime: boundary_commit_escape aliased closure rollback on copied commit");
             (*fail)++;
         } else {
             interp.current_scope = releasing_scope;
@@ -65,20 +65,21 @@ fn void run_memory_lifetime_boundary_commit_escape_rollback_error_tests(Interp* 
             bool commit_ok = setup_ok &&
                              !committed.releasing_scope_spliced &&
                              !committed.reused_in_target_chain &&
-                             committed.outcome == BOUNDARY_COMMIT_FALLBACK_DISALLOWED &&
-                             committed.fault_code == BOUNDARY_COMMIT_FAULT_FALLBACK_DISALLOWED &&
+                             committed.outcome == BOUNDARY_COMMIT_DESTINATION_DIRECT_PROMOTED &&
+                             committed.fault_code == BOUNDARY_COMMIT_FAULT_NONE &&
                              committed.value != null &&
-                             committed.value.tag == ERROR;
+                             committed.value != alias_closure &&
+                             committed.value.tag == CLOSURE;
 
             interp.current_scope = root_scope;
             main::scope_release(releasing_scope);
             main::scope_release(target_scope);
 
             if (commit_ok && unchanged_ok) {
-                emit_pass_literal("[PASS] lifetime: boundary_commit_escape aliased closure rollback on failed commit");
+                emit_pass_literal("[PASS] lifetime: boundary_commit_escape aliased closure rollback on copied commit");
                 (*pass)++;
             } else {
-                io::printfn("[FAIL] lifetime: boundary_commit_escape aliased closure rollback on failed commit (setup_ok=%s outcome=%d fault=%s unchanged=%s env_same=%s env_scope_same=%s rc_before=%d rc_after=%d)",
+                io::printfn("[FAIL] lifetime: boundary_commit_escape aliased closure rollback on copied commit (setup_ok=%s outcome=%d fault=%s unchanged=%s env_same=%s env_scope_same=%s rc_before=%d rc_after=%d)",
                     setup_ok ? "yes" : "no",
                     (int)committed.outcome,
                     (ZString)boundary_commit_fault_name(committed.fault_code),

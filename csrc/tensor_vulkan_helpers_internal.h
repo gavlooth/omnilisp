@@ -5,6 +5,7 @@
 #include <float.h>
 #include <fcntl.h>
 #include <math.h>
+#include <pthread.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -89,6 +90,19 @@
 #define OMNI_TENSOR_VULKAN_GENERAL_EIGEN_LOCAL_SIZE 1u
 #define OMNI_TENSOR_VULKAN_ROUND_I64_LOCAL_SIZE 64u
 #define OMNI_TENSOR_VULKAN_MAX_STORAGE_DESCRIPTORS 8u
+
+static int omni_tensor_vulkan_group_count_1d(size_t element_count, uint32_t local_size, uint32_t* out_group_count) {
+    if (out_group_count == NULL || local_size == 0u) return OMNI_TENSOR_VULKAN_INVALID;
+    *out_group_count = 0u;
+    if (element_count == 0u) {
+        *out_group_count = 1u;
+        return OMNI_TENSOR_VULKAN_SUCCESS;
+    }
+    size_t group_count = (element_count - 1u) / (size_t)local_size + 1u;
+    if (group_count > (size_t)UINT32_MAX) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
+    *out_group_count = (uint32_t)group_count;
+    return OMNI_TENSOR_VULKAN_SUCCESS;
+}
 
 typedef uint32_t OmniVulkanFlags;
 typedef uint32_t OmniVulkanBool32;

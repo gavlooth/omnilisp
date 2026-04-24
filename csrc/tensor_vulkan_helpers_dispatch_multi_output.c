@@ -450,7 +450,9 @@ static int omni_tensor_backend_vulkan_dispatch_two_inputs_two_outputs_f64(
     omni_vulkan_cmd_bind_pipeline(command_buffer, OMNI_VULKAN_PIPELINE_BIND_POINT_COMPUTE, first_pipeline);
     omni_vulkan_cmd_bind_descriptor_sets(command_buffer, OMNI_VULKAN_PIPELINE_BIND_POINT_COMPUTE, pipeline_layout, 0, 1, &descriptor_set, 0, NULL);
     omni_vulkan_cmd_push_constants(command_buffer, pipeline_layout, OMNI_VULKAN_SHADER_STAGE_COMPUTE_BIT, 0, (uint32_t)push_size, push_data);
-    uint32_t first_group_count = ((uint32_t)first_work_item_count + local_size - 1u) / local_size;
+    uint32_t first_group_count = 0u;
+    result = omni_tensor_vulkan_group_count_1d(first_work_item_count, local_size, &first_group_count);
+    if (result != OMNI_TENSOR_VULKAN_SUCCESS) goto cleanup;
     omni_vulkan_cmd_dispatch(command_buffer, first_group_count, 1, 1);
 
     OmniVulkanBufferMemoryBarrier barriers[2] = {
@@ -493,7 +495,9 @@ static int omni_tensor_backend_vulkan_dispatch_two_inputs_two_outputs_f64(
     omni_vulkan_cmd_bind_pipeline(command_buffer, OMNI_VULKAN_PIPELINE_BIND_POINT_COMPUTE, second_pipeline);
     omni_vulkan_cmd_bind_descriptor_sets(command_buffer, OMNI_VULKAN_PIPELINE_BIND_POINT_COMPUTE, pipeline_layout, 0, 1, &descriptor_set, 0, NULL);
     omni_vulkan_cmd_push_constants(command_buffer, pipeline_layout, OMNI_VULKAN_SHADER_STAGE_COMPUTE_BIT, 0, (uint32_t)push_size, push_data);
-    uint32_t second_group_count = ((uint32_t)second_work_item_count + local_size - 1u) / local_size;
+    uint32_t second_group_count = 0u;
+    result = omni_tensor_vulkan_group_count_1d(second_work_item_count, local_size, &second_group_count);
+    if (result != OMNI_TENSOR_VULKAN_SUCCESS) goto cleanup;
     omni_vulkan_cmd_dispatch(command_buffer, second_group_count, 1, 1);
     if (omni_vulkan_end_command_buffer(command_buffer) != OMNI_VULKAN_SUCCESS) {
         result = OMNI_TENSOR_VULKAN_EXECUTION_FAILED;

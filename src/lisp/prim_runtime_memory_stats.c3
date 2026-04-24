@@ -113,6 +113,40 @@ fn Value* runtime_memory_copy_stats(Interp* interp) {
     return out;
 }
 
+fn Value* runtime_memory_escape_shape_stats(Interp* interp) {
+    Value* out = runtime_memory_make_dict(interp, 32);
+    if (out == null || out.tag == ERROR) return out;
+    BoundaryEscapeShapeStats stats = boundary_escape_shape_stats_snapshot();
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "candidate-roots", stats.candidate_roots)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "graph-roots", stats.graph_roots)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "unsafe-roots", stats.unsafe_roots)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "cons-roots", stats.cons_roots)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "cons-spine-samples", stats.cons_spine_samples)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "cons-spine-total-len", stats.cons_spine_total_len)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "cons-spine-peak-len", stats.cons_spine_peak_len)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "array-roots", stats.array_roots)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "hashmap-roots", stats.hashmap_roots)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "set-roots", stats.set_roots)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "closure-roots", stats.closure_roots)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "partial-roots", stats.partial_roots)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "iterator-roots", stats.iterator_roots)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "continuation-roots", stats.continuation_roots)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "coroutine-roots", stats.coroutine_roots)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "tensor-roots", stats.tensor_roots)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "instance-roots", stats.instance_roots)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "method-table-roots", stats.method_table_roots)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "module-roots", stats.module_roots)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "type-info-roots", stats.type_info_roots)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "ffi-handle-roots", stats.ffi_handle_roots)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "stable-publication-hooks", stable_escape_store_publication_hook_count_snapshot())) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "stable-prepared-publication-hooks", stable_escape_store_prepared_publication_hook_count_snapshot())) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "stable-raw-publication-hooks", stable_escape_store_raw_publication_hook_count_snapshot())) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "stable-prepare-failure-fallbacks", stable_escape_store_prepare_failure_fallback_count_snapshot())) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "stable-alias-unsafe-skips", stable_escape_store_alias_unsafe_skip_count_snapshot())) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "stable-resolve-failures", stable_escape_store_resolve_failure_count_snapshot())) return err;
+    return out;
+}
+
 <*
 @require interp != null
 *>
@@ -127,6 +161,7 @@ fn Value* prim_runtime_memory_stats(Value*[] args, Env* env, Interp* interp) {
     if (Value* err = runtime_memory_dict_set(out, interp, "scope-transfer", runtime_memory_transfer_stats(interp))) return err;
     if (Value* err = runtime_memory_dict_set(out, interp, "fiber-temp", runtime_memory_fiber_temp_stats(interp))) return err;
     if (Value* err = runtime_memory_dict_set(out, interp, "copy-to-parent", runtime_memory_copy_stats(interp))) return err;
+    if (Value* err = runtime_memory_dict_set(out, interp, "escape-shape", runtime_memory_escape_shape_stats(interp))) return err;
     return out;
 }
 
@@ -140,6 +175,7 @@ fn void runtime_memory_print_telemetry() {
     main::ScopeTransferStats transfer_stats = main::g_scope_transfer_stats;
     main::FiberTempPoolStats fiber_stats = main::g_fiber_temp_pool_stats;
     CopyToParentStats copy_stats = copy_to_parent_stats_snapshot();
+    BoundaryEscapeShapeStats shape_stats = boundary_escape_shape_stats_snapshot();
 
     io::printn("{\"kind\":\"runtime-memory-stats\",\"status\":\"ok\",");
     io::printfn("\"scope\":{\"temp_bytes_allocated\":%d,\"escape_bytes_allocated\":%d,\"temp_chunk_bytes_allocated\":%d,\"escape_chunk_bytes_allocated\":%d,\"temp_bytes_freed\":%d,\"escape_bytes_freed\":%d,\"scope_create_count\":%d,\"scope_release_count\":%d,\"scope_destroy_count\":%d,\"scope_recycle_count\":%d},",
@@ -163,9 +199,31 @@ fn void runtime_memory_print_telemetry() {
         fiber_stats.return_count,
         fiber_stats.drop_frees,
         main::g_fiber_temp_chunk_pool_count);
-    io::printfn("\"copy_to_parent\":{\"total_calls\":%d,\"fast_reuse_hits\":%d,\"defensive_copies\":%d,\"copy_to_parent_bytes\":%d}}",
+    io::printfn("\"copy_to_parent\":{\"total_calls\":%d,\"fast_reuse_hits\":%d,\"defensive_copies\":%d,\"copy_to_parent_bytes\":%d},",
         copy_stats.total_calls,
         copy_stats.fast_reuse_hits,
         copy_stats.defensive_copies,
         copy_stats.copy_bytes);
+    io::printfn("\"escape_shape\":{\"candidate_roots\":%d,\"graph_roots\":%d,\"unsafe_roots\":%d,\"cons_roots\":%d,\"cons_spine_samples\":%d,\"cons_spine_total_len\":%d,\"cons_spine_peak_len\":%d,\"array_roots\":%d,\"hashmap_roots\":%d,\"set_roots\":%d,\"closure_roots\":%d,\"partial_roots\":%d,\"iterator_roots\":%d,\"continuation_roots\":%d,\"coroutine_roots\":%d,\"tensor_roots\":%d,\"instance_roots\":%d,\"method_table_roots\":%d,\"module_roots\":%d,\"type_info_roots\":%d,\"ffi_handle_roots\":%d}}",
+        shape_stats.candidate_roots,
+        shape_stats.graph_roots,
+        shape_stats.unsafe_roots,
+        shape_stats.cons_roots,
+        shape_stats.cons_spine_samples,
+        shape_stats.cons_spine_total_len,
+        shape_stats.cons_spine_peak_len,
+        shape_stats.array_roots,
+        shape_stats.hashmap_roots,
+        shape_stats.set_roots,
+        shape_stats.closure_roots,
+        shape_stats.partial_roots,
+        shape_stats.iterator_roots,
+        shape_stats.continuation_roots,
+        shape_stats.coroutine_roots,
+        shape_stats.tensor_roots,
+        shape_stats.instance_roots,
+        shape_stats.method_table_roots,
+        shape_stats.module_roots,
+        shape_stats.type_info_roots,
+        shape_stats.ffi_handle_roots);
 }

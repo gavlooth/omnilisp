@@ -1,7 +1,7 @@
 # Type System and Dispatch
 
 Status: `green` (core parity matrix/explainability/type-gap/backend-matrix closure is complete, and the bounded `run_e2e.sh` lane is fully clean again)
-As of: 2026-04-23
+As of: 2026-04-24
 
 ## Canonical Sources
 

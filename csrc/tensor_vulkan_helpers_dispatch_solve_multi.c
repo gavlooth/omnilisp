@@ -337,13 +337,17 @@ int omni_tensor_backend_vulkan_dispatch_solve_multi_typed(
     omni_vulkan_cmd_bind_descriptor_sets(command_buffer, OMNI_VULKAN_PIPELINE_BIND_POINT_COMPUTE, pipeline_layout, 0, 1, &descriptor_set, 0, NULL);
     omni_vulkan_cmd_bind_pipeline(command_buffer, OMNI_VULKAN_PIPELINE_BIND_POINT_COMPUTE, init_pipeline);
     omni_vulkan_cmd_push_constants(command_buffer, pipeline_layout, OMNI_VULKAN_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
-    uint32_t init_group_count = ((uint32_t)init_work_item_count + local_size - 1u) / local_size;
+    uint32_t init_group_count = 0u;
+    result = omni_tensor_vulkan_group_count_1d(init_work_item_count, local_size, &init_group_count);
+    if (result != OMNI_TENSOR_VULKAN_SUCCESS) goto cleanup;
     omni_vulkan_cmd_dispatch(command_buffer, init_group_count, 1, 1);
     omni_tensor_vulkan_cmd_barrier_four_outputs(command_buffer, output, output_byte_len, status_output, status_byte_len, pivot_scratch, pivot_scratch_byte_len, factor_scratch, factor_scratch_byte_len);
 
     for (uint32_t pivot = 0; pivot < (uint32_t)n; pivot++) {
         uint32_t pivot_candidate_count = (uint32_t)n - pivot;
-        uint32_t pivot_group_count = (pivot_candidate_count + local_size - 1u) / local_size;
+        uint32_t pivot_group_count = 0u;
+        result = omni_tensor_vulkan_group_count_1d((size_t)pivot_candidate_count, local_size, &pivot_group_count);
+        if (result != OMNI_TENSOR_VULKAN_SUCCESS) goto cleanup;
         push.pivot = pivot;
         push.work_count = pivot_candidate_count;
         push.scratch_src = 0;
@@ -362,7 +366,9 @@ int omni_tensor_backend_vulkan_dispatch_solve_multi_typed(
             if (pivot_reduce_counter != NULL) (*pivot_reduce_counter)++;
         }
         while (current_count > 1u) {
-            uint32_t reduced_count = (current_count + local_size - 1u) / local_size;
+            uint32_t reduced_count = 0u;
+            result = omni_tensor_vulkan_group_count_1d((size_t)current_count, local_size, &reduced_count);
+            if (result != OMNI_TENSOR_VULKAN_SUCCESS) goto cleanup;
             push.work_count = current_count;
             push.scratch_src = src_offset;
             push.scratch_dst = dst_offset;
@@ -390,7 +396,9 @@ int omni_tensor_backend_vulkan_dispatch_solve_multi_typed(
         push.work_count = (uint32_t)n + (uint32_t)rhs_cols;
         omni_vulkan_cmd_bind_pipeline(command_buffer, OMNI_VULKAN_PIPELINE_BIND_POINT_COMPUTE, row_swap_pipeline);
         omni_vulkan_cmd_push_constants(command_buffer, pipeline_layout, OMNI_VULKAN_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
-        uint32_t swap_group_count = (push.work_count + local_size - 1u) / local_size;
+        uint32_t swap_group_count = 0u;
+        result = omni_tensor_vulkan_group_count_1d((size_t)push.work_count, local_size, &swap_group_count);
+        if (result != OMNI_TENSOR_VULKAN_SUCCESS) goto cleanup;
         omni_vulkan_cmd_dispatch(command_buffer, swap_group_count, 1, 1);
         omni_tensor_vulkan_cmd_barrier_four_outputs(command_buffer, output, output_byte_len, status_output, status_byte_len, pivot_scratch, pivot_scratch_byte_len, factor_scratch, factor_scratch_byte_len);
 
@@ -401,7 +409,9 @@ int omni_tensor_backend_vulkan_dispatch_solve_multi_typed(
         push.work_count = trailing;
         omni_vulkan_cmd_bind_pipeline(command_buffer, OMNI_VULKAN_PIPELINE_BIND_POINT_COMPUTE, factor_pipeline);
         omni_vulkan_cmd_push_constants(command_buffer, pipeline_layout, OMNI_VULKAN_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
-        uint32_t factor_group_count = (trailing + local_size - 1u) / local_size;
+        uint32_t factor_group_count = 0u;
+        result = omni_tensor_vulkan_group_count_1d((size_t)trailing, local_size, &factor_group_count);
+        if (result != OMNI_TENSOR_VULKAN_SUCCESS) goto cleanup;
         omni_vulkan_cmd_dispatch(command_buffer, factor_group_count, 1, 1);
         omni_tensor_vulkan_cmd_barrier_four_outputs(command_buffer, output, output_byte_len, status_output, status_byte_len, pivot_scratch, pivot_scratch_byte_len, factor_scratch, factor_scratch_byte_len);
 
@@ -415,7 +425,9 @@ int omni_tensor_backend_vulkan_dispatch_solve_multi_typed(
         push.work_count = (uint32_t)eliminate_work;
         omni_vulkan_cmd_bind_pipeline(command_buffer, OMNI_VULKAN_PIPELINE_BIND_POINT_COMPUTE, eliminate_pipeline);
         omni_vulkan_cmd_push_constants(command_buffer, pipeline_layout, OMNI_VULKAN_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
-        uint32_t eliminate_group_count = ((uint32_t)eliminate_work + local_size - 1u) / local_size;
+        uint32_t eliminate_group_count = 0u;
+        result = omni_tensor_vulkan_group_count_1d(eliminate_work, local_size, &eliminate_group_count);
+        if (result != OMNI_TENSOR_VULKAN_SUCCESS) goto cleanup;
         omni_vulkan_cmd_dispatch(command_buffer, eliminate_group_count, 1, 1);
         omni_tensor_vulkan_cmd_barrier_four_outputs(command_buffer, output, output_byte_len, status_output, status_byte_len, pivot_scratch, pivot_scratch_byte_len, factor_scratch, factor_scratch_byte_len);
     }
@@ -425,7 +437,9 @@ int omni_tensor_backend_vulkan_dispatch_solve_multi_typed(
         push.work_count = (uint32_t)rhs_cols;
         omni_vulkan_cmd_bind_pipeline(command_buffer, OMNI_VULKAN_PIPELINE_BIND_POINT_COMPUTE, backsolve_pipeline);
         omni_vulkan_cmd_push_constants(command_buffer, pipeline_layout, OMNI_VULKAN_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
-        uint32_t backsolve_group_count = ((uint32_t)rhs_cols + local_size - 1u) / local_size;
+        uint32_t backsolve_group_count = 0u;
+        result = omni_tensor_vulkan_group_count_1d(rhs_cols, local_size, &backsolve_group_count);
+        if (result != OMNI_TENSOR_VULKAN_SUCCESS) goto cleanup;
         omni_vulkan_cmd_dispatch(command_buffer, backsolve_group_count, 1, 1);
         omni_tensor_vulkan_cmd_barrier_four_outputs(command_buffer, output, output_byte_len, status_output, status_byte_len, pivot_scratch, pivot_scratch_byte_len, factor_scratch, factor_scratch_byte_len);
     }

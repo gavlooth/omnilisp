@@ -6,6 +6,32 @@
 
 ---
 
+## Remediation Update — 2026-04-24
+
+Closed:
+- C1-C6 are fixed. Shared Vulkan context publication/refcount updates are now
+  mutex-protected, and Vulkan 1D dispatch group counts use a checked helper
+  across the backend helper surface instead of wrapping `uint32_t` addition.
+- H1-H3 are fixed. Adam bias corrections reject subnormal denominators at the
+  Lisp and native CUDA/Vulkan boundaries, CUDA optimizer PTX was regenerated,
+  and CUDA complex trace kernels now guard `out[0]` writes to one thread with
+  regenerated embedded PTX.
+
+Validation:
+- `git diff --check` passed for the working tree.
+- C3 diagnostics passed for touched optimizer/test C3 files.
+- `/usr/local/cuda-13.0/bin/nvcc --ptx -arch=compute_75` regenerated the CUDA
+  optimizer and complex-matrix PTX includes.
+- `c3c build` passed.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite all` passed.
+- `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` passed with `2071 passed, 0 failed`.
+
+Still open:
+- Medium and Low findings remain open and are now tracked in
+  `docs/todo_parts/todo_part_17.md`.
+
+---
+
 ## Critical
 
 | # | File:Line | Description |
@@ -76,4 +102,4 @@
 
 ---
 
-*Report compiled from live source analysis. No fixes applied.*
+*Report compiled from live source analysis. Critical and High findings were remediated on 2026-04-24; Medium and Low findings remain open.*

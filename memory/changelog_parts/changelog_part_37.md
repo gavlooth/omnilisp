@@ -4331,3 +4331,428 @@
 - Scored discrete GPUs ahead of integrated, virtual, and CPU devices so selector preference now reflects device class, not just “first compute-capable queue.”
 - Added a host-side regression in `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part1.c3` and exposed the helper through `src/lisp/tensor_vulkan_backend.c3`.
 - Verification passed: `c3c build --obj-out obj`, `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp` (`2070 passed, 0 failed`), `scripts/check_status_consistency.sh`, and `git diff --check`.
+
+## 2026-04-24 Stable Escape Graph Shape Audit Kickoff
+
+- Started the stable-escape-graph rollout with shape-audit telemetry instead of a
+  speculative stable-store rewrite.
+- Added `BoundaryEscapeShapeStats` tracking in `src/lisp/eval.c3` and wired
+  `boundary_graph_alias_unsafe_for_reuse(...)` to record candidate-root shape
+  counts, graph-root counts, unsafe-root counts, and cons-spine lengths.
+- Exposed the new snapshot through runtime memory stats and boundary traversal
+  summary output, and reset the counters alongside the existing promotion
+  telemetry.
+- Added a smoke regression in
+  `src/lisp/tests_memory_lifetime_boundary_groups.c3` that exercises cons,
+  array, and scalar promotions and asserts the new shape counters move.
+- Opened the live TODO queue with `STABLE-ESCAPE-SHAPE-001`,
+  `STABLE-ESCAPE-STORE-001`, and `STABLE-ESCAPE-PREP-001` in
+  `docs/todo_parts/todo_part_16.md` and linked them from `TODO.md` and the
+  proposal note.
+- Validation passed: `c3c build --obj-out obj`,
+  `OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+  (`239 passed, 0 failed`), `scripts/check_status_consistency.sh`, and
+  `git diff --check`.
+
+## 2026-04-24 Stable Escape Store Skeleton
+
+- Added `src/lisp/stable_escape_store.c3` as an interpreter-owned stable-handle
+  registry with slot/generation handles, publish / resolve / retire / reset
+  operations, and scope-generation validation.
+- Added `StableEscapeStore*` to `Interp`, initialized it in
+  `interp_init_runtime_state`, and reset/free it during interpreter teardown so
+  stable handles remain interpreter-local instead of global.
+- Added a smoke regression in
+  `src/lisp/tests_memory_lifetime_boundary_groups.c3` that publishes an escape
+  value, resolves it, explicitly retires it, and confirms the stale handle
+  fails closed after retirement.
+- Closed `STABLE-ESCAPE-STORE-001` in the live TODO queue and updated the
+  proposal note / index so the remaining implementation focus is prepared
+  publication.
+- Validation passed: `c3c build --obj-out obj`,
+  `OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+  (`240 passed, 0 failed`), `scripts/check_status_consistency.sh`, and
+  `git diff --check`.
+
+## 2026-04-24 Stable Escape Prepared-Publication Hook
+
+- Updated `boundary_commit_escape_commit_reused_in_target_chain(...)` so the
+  already-safe reuse path publishes and resolves the result through the
+  interpreter-owned stable store before returning it.
+- Added publication-hook telemetry in `src/lisp/stable_escape_store.c3` and
+  reset it during unified test bootstrap.
+- Extended the already-safe reuse regression in
+  `src/lisp/tests_memory_lifetime_boundary_commit_escape_primary_groups.c3`
+  so it asserts the publication hook increments exactly once while the return
+  value remains unchanged and the copy-site count stays flat.
+- The stable-escape TODO queue now has only `STABLE-ESCAPE-PREP-001` open.
+- Validation passed: `c3c build --obj-out obj`,
+  `OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+  (`240 passed, 0 failed`), `scripts/check_status_consistency.sh`, and
+  `git diff --check`.
+
+## 2026-04-24 Stable Escape Rollout Closure
+
+- Added a prepare-gated publication hook for the already-safe reuse path in
+  `src/lisp/eval_boundary_commit_escape_helpers.c3` / `src/lisp/stable_escape_store.c3`,
+  so the boundary path now publishes through the interpreter-owned stable
+  store after passing the alias/shape gate.
+- Extended the already-safe reuse regression in
+  `src/lisp/tests_memory_lifetime_boundary_commit_escape_primary_groups.c3`
+  to assert both the publication and prepared-publication hook counters
+  increment exactly once while the returned value and copy-site count stay
+  unchanged.
+- Closed the stable-escape rollout queue completely: `STABLE-ESCAPE-SHAPE-001`,
+  `STABLE-ESCAPE-STORE-001`, and `STABLE-ESCAPE-PREP-001` are all done, and
+  `TODO.md` now reports no live items.
+- Validation passed: `c3c build --obj-out obj`,
+  `OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+  (`240 passed, 0 failed`), `scripts/check_status_consistency.sh`, and
+  `git diff --check`.
+
+## 2026-04-24 Stable Escape Owner-Scope Retention Hardening
+
+- Hardened `src/lisp/stable_escape_store.c3` so published handles retain the
+  owning `ScopeRegion` until retire/reset, eliminating the dangling owner-scope
+  pointer hazard in the store entry.
+- Updated `stable_escape_store_reset(...)` and `stable_escape_store_retire(...)`
+  to release retained scopes after clearing the entry, preserving deterministic
+  cleanup without leaking refcounts.
+- Extended the boundary smoke regression in
+  `src/lisp/tests_memory_lifetime_boundary_groups.c3` so a published handle
+  remains valid after the original scope reference is released, then fails
+  closed after explicit retire.
+- Validation passed: `c3c build --obj-out obj`,
+  `OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+  (`240 passed, 0 failed`), `scripts/check_status_consistency.sh`, and
+  `git diff --check`.
+
+## 2026-04-24 Stable Escape Mutex-Boundary Audit Fix
+
+- Fixed `src/lisp/stable_escape_store.c3` so store reset/retire no longer call
+  `scope_release(...)` while holding the store mutex.
+- The retained owner scopes are still released deterministically, but now only
+  after the store entry table is unlocked and stable, which keeps the store’s
+  internal lock boundary separate from scope teardown work.
+- Validation passed: `c3c build --obj-out obj`,
+  `OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+  (`240 passed, 0 failed`), `scripts/check_status_consistency.sh`, and
+  `git diff --check`.
+
+## 2026-04-24 Stable Escape Prepared Graph Data Structure Slice
+
+- Replaced the registry-only placeholder in `src/lisp/stable_escape_store.c3`
+  with the first real prepared graph representation: reusable `CONS` roots
+  with scalar leaves now publish a prepared node table with stable child
+  indices in addition to the root handle metadata.
+- Added narrow inspection helpers for prepared node count, root index, node
+  tags, and child indices so the runtime contract is testable without
+  inventing a second public value representation.
+- Tightened prepared-node liveness validation after the implementation audit so
+  stored node sources must remain valid in the full owner scope chain, not only
+  through the root object’s owner scope membership check.
+- Kept the current caller contract stable: the boundary path still resolves the
+  original reusable root after publication, but the store now owns real graph
+  metadata instead of only round-tripping a raw pointer.
+- Added a regression in
+  `src/lisp/tests_memory_lifetime_boundary_groups.c3` that publishes a
+  promoted `CONS` list through the prepared path, asserts the exact prepared
+  node shape (`CONS -> INT / CONS -> INT / NIL`), and then retires the handle
+  cleanly.
+- Validation passed: `c3c build --obj-out obj`,
+  `scripts/run_validation_container.sh env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+  (`241 passed, 0 failed`), `scripts/check_status_consistency.sh`, and
+  `git diff --check`.
+
+## 2026-04-24 Stable Escape Publication Outcome Observability
+
+- Made prepared-publication route selection explicit in
+  `src/lisp/stable_escape_store.c3`:
+  - prepared publication success keeps its existing counter,
+  - raw compatibility publication now has a separate counter,
+  - prepare-failure fallback is counted before the raw route,
+  - alias-unsafe skips and resolve failures are counted separately.
+- Exposed the stable publication outcome counters through the existing
+  `runtime-memory-stats` escape-shape dictionary so diagnostics can distinguish
+  prepared success from compatibility fallback.
+- Reset the new counters during unified test bootstrap in `src/lisp/tests_tests.c3`.
+- Added a boundary regression in
+  `src/lisp/tests_memory_lifetime_boundary_groups.c3` proving unsupported
+  prepared graphs increment fallback/raw counters without incrementing prepared
+  success.
+- Reconciled stable-escape plan/TODO wording with current runtime truth:
+  prepared `ARRAY` roots with shared child reuse are landed, while dictionaries,
+  closures, cycles, and mutation policy remain future semantic boundaries.
+- Validation: C3 diagnostics passed for touched runtime/test C3 files. Host shell
+  build/test commands could not run in this environment because every shell
+  command currently fails before execution with
+  `bwrap: loopback: Failed RTM_NEWADDR`.
+
+## 2026-04-24 Stable Escape Dictionary Prepared Graph Slice
+
+- Extended `src/lisp/stable_escape_store.c3` so prepared graph publication now
+  supports `HASHMAP` roots.
+  - Dictionary entries publish as key/value child-index pairs in hash-table slot
+    order.
+  - The existing prepared-graph memo table preserves shared key/value identity.
+  - Prepared-node liveness validation now checks dictionary backing storage and
+    child count against `HashMap.count * 2`.
+- Added a regression in `src/lisp/tests_memory_lifetime_boundary_groups.c3` that
+  publishes a dictionary with two symbol keys sharing the same cons value and
+  verifies the prepared graph reuses the value node.
+- Updated the unsupported fallback regression at this checkpoint to use `SET`,
+  leaving set graphs as the compatibility-fallback probe before the set slice
+  landed.
+- Reconciled stable-escape plan/TODO wording at this checkpoint: prepared
+  `CONS`, `ARRAY`, and dictionary roots were landed; closures, cycles, sets,
+  and mutation policy remained future semantic boundaries.
+- Validation: C3 diagnostics passed for touched runtime/test C3 files. Host shell
+  build/test commands remain blocked by `bwrap: loopback: Failed RTM_NEWADDR`.
+
+## 2026-04-24 Stable Escape Set Prepared Graph Slice
+
+- Extended `src/lisp/stable_escape_store.c3` so prepared graph publication now
+  supports `SET` roots.
+  - Set entries publish member child indices only, matching the boundary graph
+    audit's set semantics and avoiding backing true-values as graph edges.
+  - Prepared-node liveness validation now checks set backing storage and child
+    count against `HashMap.count`.
+- Added a regression in `src/lisp/tests_memory_lifetime_boundary_groups.c3` that
+  publishes a set with a cons member and symbol member, verifies member-only
+  child edges, checks the cons child shape, and retires the handle.
+- Retargeted unsupported prepared-graph fallback observability to `CLOSURE`, so
+  the fallback counter test remains meaningful after dictionaries and sets are
+  both prepared.
+- Reconciled stable-escape plan/TODO wording: prepared `CONS`, `ARRAY`,
+  dictionary, and set roots are landed; closures, cycles, and mutation policy
+  remain future semantic boundaries.
+- Validation: C3 diagnostics passed for touched runtime/test C3 files. Host shell
+  build/test commands remain blocked by `bwrap: loopback: Failed RTM_NEWADDR`.
+
+## 2026-04-24 Stable Escape Cycle Prepared Graph Slice
+
+- Added a regression in `src/lisp/tests_memory_lifetime_boundary_groups.c3` for
+  a self-referential `CONS` graph.
+  - The prepared graph has exactly one node.
+  - Both child slots point back to the root node index.
+  - The invalid child ordinal guard and handle retirement path are checked.
+- This pins the existing placeholder-node behavior in
+  `src/lisp/stable_escape_store.c3`: container nodes are registered before
+  walking children, so cycles resolve through memoized back-edges instead of
+  recursive expansion.
+- Reconciled stable-escape plan/TODO wording: prepared `CONS`, `ARRAY`,
+  dictionary, set, and cyclic container roots are landed; closures and mutation
+  policy remain future semantic boundaries.
+- Validation: C3 diagnostics passed for touched runtime/test C3 files. Host shell
+  build/test commands remain blocked by `bwrap: loopback: Failed RTM_NEWADDR`.
+
+## 2026-04-24 Stable Escape Closure Prepared Graph Slice
+
+- Extended `src/lisp/stable_escape_store.c3` so prepared graph publication now
+  supports `CLOSURE` roots.
+  - The prepared graph scratch records `global_env` so closure preparation walks
+    captured environment frames only up to, but not including, the global frame.
+  - Closure prepared nodes publish child edges for captured binding values in
+    local-to-parent frame order.
+  - Prepared-node liveness validation recomputes captured binding-value counts
+    against the stored `global_env` boundary.
+- Added a regression in `src/lisp/tests_memory_lifetime_boundary_groups.c3` that
+  publishes a closure capturing a cons and symbol value, verifies the closure
+  root's captured-value child edges, checks the captured cons child shape, and
+  retires the handle.
+- Retargeted unsupported prepared-graph fallback observability to `ITERATOR`, so
+  the fallback counter test remains meaningful after closures are prepared.
+- Reconciled stable-escape plan/TODO wording: prepared `CONS`, `ARRAY`,
+  dictionary, set, cyclic container, and closure roots are landed; mutation
+  policy remains the remaining semantic boundary.
+- Validation: C3 diagnostics passed for touched runtime/test C3 files. Host shell
+  build/test commands remain blocked by `bwrap: loopback: Failed RTM_NEWADDR`.
+
+## 2026-04-24 Stable Escape Nested Edge Ordering Audit Fix
+
+- Audited prepared graph child-edge layout after the closure slice and found that
+  `ARRAY`, `HASHMAP`, `SET`, and closure env preparation captured the parent
+  `child_offset` before recursively preparing child graphs.
+- Fixed `src/lisp/stable_escape_store.c3` so those cases first collect child
+  node indices, then append the parent's edges after recursive child preparation
+  completes. Parent edge ranges are now contiguous and cannot point at nested
+  child edges emitted by a child graph.
+- This preserves the existing `CONS` behavior, which already prepared both
+  children before appending the parent edges.
+- Validation: C3 diagnostics passed for touched runtime/test C3 files. Host shell
+  build/test commands remain blocked by `bwrap: loopback: Failed RTM_NEWADDR`.
+
+## 2026-04-24 Stable Escape Mutation Policy Slice
+
+- Implemented fail-closed structural mutation policy in
+  `src/lisp/stable_escape_store.c3`.
+  - Prepared-node liveness now checks that each node's current tag still matches
+    the published tag.
+  - `CONS`, `ARRAY`, `HASHMAP`, `SET`, and `CLOSURE` nodes now verify current
+    child pointers/captured binding values against the prepared child-index
+    snapshot.
+  - If the graph has structurally drifted, handle liveness fails and resolve
+    returns `null`; explicit retire remains available for cleanup.
+- Added regressions in `src/lisp/tests_memory_lifetime_boundary_groups.c3` for
+  prepared cons child mutation and prepared closure captured-binding mutation.
+- Reconciled stable-escape plan/TODO wording: the prepared data model now covers
+  `CONS`, `ARRAY`, dictionary, set, cyclic containers, closures, and structural
+  mutation drift. The next plan-level question is reducing older transplant
+  machinery to compatibility-only status.
+- Validation: C3 diagnostics passed for touched runtime/test C3 files. Host shell
+  build/test commands remain blocked by `bwrap: loopback: Failed RTM_NEWADDR`.
+
+## 2026-04-24 Stable Escape Compatibility Route Visibility Slice
+
+- Added route flags to `BoundaryCommitEscapeResult` in
+  `src/lisp/eval_boundary_api_types.c3`.
+  - `stable_publication_attempted` marks the already-safe boundary path that
+    attempted stable prepared publication.
+  - `compatibility_path_used` marks older destination promotion, releasing-scope
+    splice, and mixed-destination promotion paths.
+- Updated `src/lisp/eval_boundary_commit_escape.c3`,
+  `src/lisp/eval_boundary_commit_escape_helpers.c3`, and
+  `src/lisp/eval_boundary_graph_audit_logging.c3` so commit results and graph
+  audit context no longer require callers to infer stable-vs-compatibility
+  routing from outcome names.
+- Extended `src/lisp/tests_memory_lifetime_boundary_commit_escape_primary_groups.c3`
+  to prove TEMP cons commits use compatibility routing while already-safe
+  reusable commits use stable prepared publication.
+- Updated stable-escape plan/TODO wording. The next semantic boundary is
+  materializing prepared graph data outside the source scope so TEMP return
+  values can stop depending on compatibility promotion/copy.
+- Validation: C3 diagnostics and parse-document passed for touched runtime/test
+  C3 files. Host shell build/test commands remain blocked by
+  `bwrap: loopback: Failed RTM_NEWADDR`.
+
+## 2026-04-24 Stable Escape Prepared Materialization Slice
+
+- Added prepared-materialization routing in
+  `src/lisp/eval_boundary_commit_destination.c3`: TEMP `CONS`, `ARRAY`,
+  dictionary, set, closure, string/error payload, time-point, and big-number
+  roots or nested nodes now prepare graph metadata, allocate copies in a target
+  build scope, wire prepared child indices, and commit the build scope before
+  the releasing scope can die.
+- Kept `src/lisp/stable_escape_store.c3` as the prepared-graph authority and
+  moved destination materialization out of that near-1000-line file into the
+  smaller destination-commit module because this sandbox could not create the
+  intended new `src/lisp/stable_escape_materialize.c3` file.
+- Preserved fallback for unsupported prepared graph shapes and preserved
+  promotion-budget/memo accounting through the active `PromotionContext`; failed
+  materialization attempts restore destination-builder memo state before older
+  compatibility promotion can run.
+- Extended boundary commit result visibility with `stable_materialization_used`
+  and updated `src/lisp/eval_boundary_commit_escape_helpers.c3`,
+  `src/lisp/eval_boundary_graph_audit_logging.c3`, and
+  `src/lisp/tests_memory_lifetime_boundary_commit_escape_primary_groups.c3` so
+  regressions distinguish stable publication, stable materialization, and
+  compatibility routing. The regression suite now includes a TEMP array root
+  with copied string, BigFloat, and BigComplex payloads; a root BigInteger clone;
+  and a typed closure whose signature is copied into the destination ESCAPE lane.
+- Updated the stable-escape plan/TODO queue. `STABLE-ESCAPE-ARENA-001`,
+  `STABLE-ESCAPE-ARENA-002`, and `STABLE-ESCAPE-ARENA-003` are closed; no open
+  stable-escape prepared-materialization rollout item remains.
+- Validation: C3 diagnostics and parse-document passed for the touched runtime
+  and regression C3 files. Host shell build/status/check commands remain blocked
+  by `bwrap: loopback: Failed RTM_NEWADDR`.
+
+## 2026-04-24 Memory Boundary Ownership Policy Slice
+
+- Added `docs/plans/memory-boundary-architecture-spec-2026-04-24.md` as the
+  current implementation spec for region-RC, TEMP/ESCAPE, stable
+  materialization, and FFI/foreign-handle boundary policy.
+- Added `src/lisp/value_boundary_ownership_policy.c3` with a runtime-private
+  `ValueTag` policy helper that classifies immediate values, heap-cloned
+  payloads, graph containers, closure graphs, shared wrappers, opaque foreign
+  handles, interpreter-stable values, and unsupported boundary values.
+- Routed stable materialization eligibility,
+  `boundary_alias_value_has_child_payload`, and graph-audit edge-class mapping
+  through the shared policy helper. `FFI_HANDLE` is explicitly opaque foreign
+  state: it is not traversed as an Omni graph and is not a stable
+  materialization candidate without a future bridge-specific policy.
+- Added a boundary commit regression proving the policy keeps FFI opaque while
+  preserving array materialization, big payload clone policy, and closure env
+  audit classification.
+- Validation passed for the policy slice: `c3c build --obj-out obj`,
+  C3 diagnostics for touched runtime/test files, bounded container
+  `memory-lifetime-policy` slice (`2 passed, 0 failed`),
+  `scripts/check_status_consistency.sh`, and `git diff --check`.
+- Follow-up verification closed `MEM-BOUNDARY-VERIFY-001`: stable-store
+  publishability now accepts roots in the retained owner scope chain rather than
+  requiring the root itself to live in the current scope's ESCAPE lane, and
+  copied/materialized destination closure commits now roll back staged source
+  closure-env normalization instead of finalizing source mutations when the
+  committed value is a distinct destination copy.
+- Validation for the follow-up passed: `c3c build --obj-out obj`; bounded
+  container `memory-lifetime-smoke` (`253 passed, 0 failed`); rebuilt default
+  validation image with `valgrind`; bounded container Valgrind
+  `memory-lifetime-smoke` (`253 passed, 0 failed`); host Valgrind default
+  Lisp/basic suite (`167 passed, 0 failed`); `scripts/check_status_consistency.sh`;
+  and `git diff --check`.
+- The memory boundary architecture spec now records stable indexed publication
+  and region transplanting as constrained fast paths. They are valid only when
+  owner-scope-chain or whole-region lifetime proofs preserve the invariant that
+  committed ESCAPE roots do not retain reachable Omni-owned edges into
+  non-surviving TEMP storage.
+- Added `docs/plans/memory-boundary-proof-planner-roadmap-2026-04-24.md` as the
+  next architecture roadmap. It combines stable graph passports, planner route
+  reasons, mutation epochs, explicit transplant proofs, FFI bridge declarations,
+  copy-debt telemetry, and planner-owned commit-path migration.
+- Open roadmap work is tracked in `docs/todo_parts/todo_part_18.md` as
+  `MEM-BOUNDARY-PLANNER-001`, `MEM-BOUNDARY-PASSPORT-001`,
+  `MEM-BOUNDARY-EPOCH-001`, `MEM-BOUNDARY-TRANSPLANT-001`,
+  `MEM-BOUNDARY-FFI-BRIDGE-001`, `MEM-BOUNDARY-COPY-DEBT-001`, and
+  `MEM-BOUNDARY-PLAN-MIGRATE-001`.
+- Implemented and closed `MEM-BOUNDARY-PLANNER-001`.
+  - Added planner route/reason enums, `BoundaryPlanDecision`, and
+    `boundary_plan_commit_escape(...)`.
+  - `BoundaryCommitEscapeResult` now records planned and selected routes.
+  - Boundary commit helpers mark selected stable publish, stable materialization,
+    compatibility destination, region transplant, mixed destination, and
+    fail-closed outcomes explicitly.
+  - Graph-audit commit-context logs include planned/selected route and selected
+    reason names.
+  - Regression coverage now proves the route ladder baseline and selected routes
+    for stable materialization, stable publish/reuse, and compatibility
+    destination commits.
+  - Validation passed: `c3c build --obj-out obj`; bounded container
+    `memory-lifetime-smoke` (`254 passed, 0 failed`); bounded container
+    Valgrind `memory-lifetime-smoke` (`254 passed, 0 failed`).
+- Implemented and closed `MEM-BOUNDARY-PASSPORT-001`.
+  - Stable prepared publications now store `StableGraphPassport` summaries with
+    owner-scope generation stamps, owner escape generation, prepared node/edge
+    counts, root index, policy flags, risk flags, and invalidation reason.
+  - Added `stable_escape_store_passport_snapshot(...)` for planner-side proof
+    inspection without transferring ownership of ordinary Omni values.
+  - Regression coverage asserts valid passport summaries and stale prepared
+    graph invalidation after cons child mutation.
+  - Validation passed: `c3c build --obj-out obj`; bounded container
+    `memory-lifetime-smoke` (`254 passed, 0 failed`); bounded container
+    Valgrind `memory-lifetime-smoke` (`254 passed, 0 failed`).
+
+## 2026-04-24 Vulkan/CUDA/ML audit Critical/High remediation
+
+- Closed the Critical and High findings from
+  `AUDIT_REPORT_VULKAN_CUDA_ML_2026-04-23.md`.
+- Vulkan shared context publication and refcount updates are now guarded by a
+  process-local mutex instead of unsynchronized double-checked publication.
+- Added `omni_tensor_vulkan_group_count_1d(...)` and routed all
+  `csrc/tensor_vulkan_helpers*.c` 1D dispatch group-count calculations through
+  checked size_t arithmetic; added
+  `omni_tensor_backend_vulkan_group_count_overflow_guard_for_tests()`.
+- Adam bias corrections now reject subnormal denominators in the CPU, CUDA, and
+  Vulkan optimizer paths; native CUDA/Vulkan Adam helpers also fail closed below
+  `FLT_MIN`/`DBL_MIN`.
+- CUDA complex trace kernels now guard `out[0]` writes to one thread, and CUDA
+  optimizer/complex-matrix PTX includes were regenerated from the `.cu` sources
+  with CUDA 13 nvcc.
+- Medium and Low audit residuals were recorded in
+  `docs/todo_parts/todo_part_17.md`.
+- Validation passed:
+  - C3 diagnostics for touched optimizer/backend/test C3 files.
+  - `git diff --check` for the working tree.
+  - `/usr/local/cuda-13.0/bin/nvcc --ptx -arch=compute_75 csrc/tensor_cuda_ml_optimizer.cu -o /tmp/tensor_cuda_ml_optimizer.ptx`
+  - `/usr/local/cuda-13.0/bin/nvcc --ptx -arch=compute_75 csrc/tensor_cuda_complex_matrix.cu -o /tmp/tensor_cuda_complex_matrix.ptx`
+  - `c3c build`
+  - `LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite all`
+  - `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` (`2071 passed, 0 failed`)

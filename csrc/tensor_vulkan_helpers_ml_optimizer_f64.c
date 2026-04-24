@@ -147,7 +147,9 @@ static int omni_tensor_vulkan_sgd_dispatch_two_outputs_f64(
     result = omni_tensor_vulkan_allocate_storage_descriptor_set(device, buffer_descriptors, descriptor_count, &descriptors);
     if (result != OMNI_TENSOR_VULKAN_SUCCESS) goto cleanup_f64;
 
-    uint32_t group_count = ((uint32_t)element_count + OMNI_TENSOR_VULKAN_ML_SGD_LOCAL_SIZE - 1u) / OMNI_TENSOR_VULKAN_ML_SGD_LOCAL_SIZE;
+    uint32_t group_count = 0u;
+    result = omni_tensor_vulkan_group_count_1d(element_count, OMNI_TENSOR_VULKAN_ML_SGD_LOCAL_SIZE, &group_count);
+    if (result != OMNI_TENSOR_VULKAN_SUCCESS) goto cleanup_f64;
     result = omni_tensor_vulkan_record_submit_single_dispatch(
         device,
         queue,
@@ -313,7 +315,9 @@ static int omni_tensor_vulkan_adam_dispatch_three_outputs_f64(
     result = omni_tensor_vulkan_allocate_storage_descriptor_set(device, buffer_descriptors, descriptor_count, &descriptors);
     if (result != OMNI_TENSOR_VULKAN_SUCCESS) goto cleanup_adam_f64;
 
-    uint32_t group_count = ((uint32_t)element_count + OMNI_TENSOR_VULKAN_ML_ADAM_LOCAL_SIZE - 1u) / OMNI_TENSOR_VULKAN_ML_ADAM_LOCAL_SIZE;
+    uint32_t group_count = 0u;
+    result = omni_tensor_vulkan_group_count_1d(element_count, OMNI_TENSOR_VULKAN_ML_ADAM_LOCAL_SIZE, &group_count);
+    if (result != OMNI_TENSOR_VULKAN_SUCCESS) goto cleanup_adam_f64;
     result = omni_tensor_vulkan_record_submit_single_dispatch(
         device,
         queue,
@@ -466,7 +470,9 @@ static int omni_tensor_vulkan_rmsprop_dispatch_f64(
     result = omni_tensor_vulkan_allocate_storage_descriptor_set(device, buffer_descriptors, 7u, &descriptors);
     if (result != OMNI_TENSOR_VULKAN_SUCCESS) goto cleanup_rmsprop_f64;
 
-    uint32_t group_count = ((uint32_t)element_count + OMNI_TENSOR_VULKAN_ML_RMSPROP_LOCAL_SIZE - 1u) / OMNI_TENSOR_VULKAN_ML_RMSPROP_LOCAL_SIZE;
+    uint32_t group_count = 0u;
+    result = omni_tensor_vulkan_group_count_1d(element_count, OMNI_TENSOR_VULKAN_ML_RMSPROP_LOCAL_SIZE, &group_count);
+    if (result != OMNI_TENSOR_VULKAN_SUCCESS) goto cleanup_rmsprop_f64;
     result = omni_tensor_vulkan_record_submit_single_dispatch(
         device,
         queue,
@@ -591,7 +597,8 @@ int omni_tensor_backend_vulkan_ml_adam_f64(
     if (!isfinite(learning_rate) || !isfinite(beta1) || !isfinite(beta2) || !isfinite(epsilon) ||
         !isfinite(weight_decay) || !isfinite(first_correction) || !isfinite(second_correction) ||
         learning_rate < 0.0 || beta1 < 0.0 || beta1 >= 1.0 || beta2 < 0.0 || beta2 >= 1.0 ||
-        epsilon <= 0.0 || weight_decay < 0.0 || first_correction <= 0.0 || second_correction <= 0.0) {
+        epsilon <= 0.0 || weight_decay < 0.0 ||
+        first_correction < DBL_MIN || second_correction < DBL_MIN) {
         return OMNI_TENSOR_VULKAN_INVALID_ARGUMENT;
     }
     if (element_count > UINT32_MAX || element_count > SIZE_MAX / sizeof(double)) return OMNI_TENSOR_VULKAN_UNSUPPORTED;

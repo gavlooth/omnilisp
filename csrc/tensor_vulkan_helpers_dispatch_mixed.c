@@ -315,7 +315,9 @@ int omni_tensor_backend_vulkan_map_view_tensor_scalar_chain_f32(
         result = OMNI_TENSOR_VULKAN_EXECUTION_FAILED;
         goto cleanup;
     }
-    uint32_t groups = (uint32_t)((element_count + OMNI_TENSOR_VULKAN_MAP_LOCAL_SIZE - 1u) / OMNI_TENSOR_VULKAN_MAP_LOCAL_SIZE);
+    uint32_t groups = 0u;
+    result = omni_tensor_vulkan_group_count_1d(element_count, OMNI_TENSOR_VULKAN_MAP_LOCAL_SIZE, &groups);
+    if (result != OMNI_TENSOR_VULKAN_SUCCESS) goto cleanup;
     omni_vulkan_cmd_bind_pipeline(command_buffer, OMNI_VULKAN_PIPELINE_BIND_POINT_COMPUTE, pipeline);
     for (size_t i = 0; i < dispatch_count; i++) {
         uint32_t mode = i == 0 ? 2u : modes[i - 1u];

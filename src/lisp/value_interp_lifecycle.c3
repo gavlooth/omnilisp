@@ -413,6 +413,9 @@ fn void Interp.destroy(Interp* self) {
         self.tco_scope_defer_slot = 0;
         self.tco_scope_defer_active = false;
         self.active_promotion_ctx = null;
+        if (self.stable_escape_store != null) {
+            stable_escape_store_reset(self);
+        }
         main::scope_release(self.root_scope);
         self.root_scope = null;
         self.current_scope = null;
@@ -452,6 +455,10 @@ fn void Interp.destroy(Interp* self) {
         self.console_capture_len = 0;
         self.console_capture_cap = 0;
         self.console_capture_active = false;
+    }
+    if (self.stable_escape_store != null) {
+        mem::free(self.stable_escape_store);
+        self.stable_escape_store = null;
     }
     self.input_state = null;
     self.sigint_requested = 0;

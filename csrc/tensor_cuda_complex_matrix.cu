@@ -117,6 +117,10 @@ extern "C" __global__ void omni_cuda_trace_complex128(
     unsigned long long n,
     OmniCudaComplex128* out
 ) {
+    if (blockIdx.x != 0 || blockIdx.y != 0 || blockIdx.z != 0 ||
+        threadIdx.x != 0 || threadIdx.y != 0 || threadIdx.z != 0) {
+        return;
+    }
     OmniCudaComplex128 sum;
     sum.real = 0.0;
     sum.imag = 0.0;
@@ -133,6 +137,10 @@ extern "C" __global__ void omni_cuda_trace_complex64(
     unsigned long long n,
     OmniCudaComplex64* out
 ) {
+    if (blockIdx.x != 0 || blockIdx.y != 0 || blockIdx.z != 0 ||
+        threadIdx.x != 0 || threadIdx.y != 0 || threadIdx.z != 0) {
+        return;
+    }
     OmniCudaComplex64 sum;
     sum.real = 0.0f;
     sum.imag = 0.0f;
