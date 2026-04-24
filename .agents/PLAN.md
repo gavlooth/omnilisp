@@ -14,48 +14,40 @@ The historical content was split mechanically to keep individual files below the
 
 ## Current Checkpoint
 
-Date: 2026-04-23 07:05 CEST
+Date: 2026-04-24 16:55 CEST
 
 - Active hypothesis:
-  - ML visualization should ship as ordinary declarative data over the existing
-    FTXUI/UI contracts, not via gnuplot/ImageMagick integration.
+  - The canonical live work queue is closed. Further implementation should
+    begin by opening a new explicit TODO-backed item or by first reconciling a
+    verified stale artifact against `memory/CHANGELOG.md`.
 - Current approach:
-  - `ml/plot`, `ml/loss-curve`, `ml/scatter`, `ml/bar-chart`, `ml/histogram`,
-    `ml/roc-curve`, and `ml/pr-curve` are implemented as graph-compatible
-    dictionaries with `props.series`, FTXUI backend metadata, typed
-    `props.plot-kind` data, optional non-interactive zoom metadata, and
-    fail-closed validation for malformed data or unsupported backends.
-  - Typed ML graph nodes now lower through a native FTXUI canvas plot shim for
-    multi-series overlays, scatter markers, bars, histogram bars, ROC/PR
-    curves, and heatmaps. Untyped `ui.graph` keeps the original graph callback
-    path.
-  - `ml/heatmap` is implemented as ordinary finite matrix metadata/data and
-    lowers to a colored FTXUI canvas, not an image display primitive.
-  - `ml/tensor-summary` and `ml/confusion-matrix` are implemented as ordinary
-    dictionaries with fail-closed validation and no hidden device-to-CPU
-    fallback.
-  - `ml/export-image` is implemented as a dependency-free PPM writer for
-    CPU Float64/Float32 grayscale/RGB tensors.
+  - `TODO.md` reports no live blocker queue and
+    `scripts/check_status_consistency.sh` passes with TODO actionable count
+    `0`.
+  - The Part 18 memory-boundary proof-planner queue is closed through
+    planner-owned commit migration, tag attribution, `CONS`/closure/array/
+    BigInteger copy-debt reduction, and closure residual classification.
+  - The Part 17 Vulkan/CUDA/ML audit residual queue is closed. Medium and Low
+    audit findings are remediated or resolved by explicit fail-closed
+    contracts, and the audit report has been synced to that state.
 - Validation path:
-  - Build with `c3c build --obj-out obj`.
-  - Run compiler slice for AOT primitive lookup coverage.
-  - Run focused `advanced-collections-module` for runtime primitive behavior.
+  - Use `c3c build --obj-out obj` for the next C3 integration check.
+  - Use bounded container slices for runtime validation; the latest audit
+    residual closure passed bounded `advanced-collections-module` and `basic`.
+  - Keep `scripts/check_status_consistency.sh` green after any planning or
+    backlog change.
 - Next checkpoint:
-  - Run final repository consistency checks for the typed plot-family slice.
+  - No active implementation checkpoint is open. If new work is discovered,
+    record it first in `TODO.md`/`docs/todo_parts/` with a concrete task ID,
+    validation path, and negative-memory constraint.
 - Negative-memory constraints:
-  - Do not add gnuplot as a plotting backend.
-  - Do not use image export as the primary terminal plotting path.
-  - Do not use ImageMagick, gnuplot, or shell-out tooling for the shipped PPM
-    export path.
-  - Do not hide unsupported non-CPU tensor visualization through implicit CPU
-    fallback.
-- Current continuation:
-  - `ML-VIZ-006` is implemented as native FTXUI canvas rendering for the typed
-    plot-family expansion.
-  - The ML visualization plan queue is closed; TODO actionable count should be
-    zero after consistency checks.
+  - Do not reopen closed memory-boundary copy-debt work to chase the expected
+    no-splice closure rollback coverage bucket.
+  - Do not satisfy Vulkan ML/NN placement through hidden CPU fallback.
+  - Do not treat historical changelog/session-report wording as a live queue
+    when `TODO.md` and status consistency report zero actionable items.
 - Agent assignments:
-  - Integration owner: GPT-5 Codex in this session; no sub-agents were used.
+  - Integration owner: GPT-5 Codex in this session; no active subagents.
 
 ## Previous Closure Checkpoint
 
