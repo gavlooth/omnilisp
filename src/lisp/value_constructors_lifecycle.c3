@@ -17,7 +17,7 @@ fn void scope_dtor_value(void* ptr) {
             }
             v.string_heap_owned = false;
         case CLOSURE:
-            // Handled by scope_dtor_closure now
+            scope_dtor_closure(ptr);
             break;
         case PRIMITIVE:
             if (v.prim_val != null) {

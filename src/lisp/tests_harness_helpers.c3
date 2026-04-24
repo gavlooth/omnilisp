@@ -1,7 +1,20 @@
 module lisp;
 
 import std::io;
+import std::core::mem;
 import main;
+
+fn void memory_lifetime_test_free_opaque_payload(void* ptr) {
+    if (ptr != null) mem::free(ptr);
+}
+
+fn int* memory_lifetime_test_opaque_payload(main::ScopeRegion* owner_scope) {
+    if (owner_scope == null) return null;
+    int* payload = (int*)mem::malloc(int.sizeof);
+    if (payload == null) return null;
+    main::scope_register_dtor(owner_scope, (void*)payload, &memory_lifetime_test_free_opaque_payload);
+    return payload;
+}
 
 fn void setup(Interp* interp, char[] code) {
     EvalResult result = run(code, interp);

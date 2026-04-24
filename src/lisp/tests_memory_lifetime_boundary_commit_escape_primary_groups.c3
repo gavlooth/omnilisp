@@ -435,6 +435,9 @@ fn void run_memory_lifetime_boundary_commit_escape_primary_tests(Interp* interp,
                 src.closure_val.type_sig = sig;
             }
 
+            Closure* src_closure_before_commit = setup_ok ? src.closure_val : null;
+            TypeId* src_param_types_before_commit = sig != null ? sig.param_types : null;
+
             PromotionContext ctx = {};
             boundary_promotion_context_begin(interp, &ctx, PROMOTION_CTX_BUDGET_RETURN);
             BoundaryCommitEscapeResult committed = {};
@@ -449,7 +452,7 @@ fn void run_memory_lifetime_boundary_commit_escape_primary_tests(Interp* interp,
                           dst_sig != sig &&
                           dst_sig.param_count == 1 &&
                           dst_sig.param_types != null &&
-                          dst_sig.param_types != sig.param_types &&
+                          dst_sig.param_types != src_param_types_before_commit &&
                           dst_sig.param_types[0] == interp.tid_Integer &&
                           dst_sig.has_val_literal != null &&
                           !dst_sig.has_val_literal[0];
@@ -462,7 +465,7 @@ fn void run_memory_lifetime_boundary_commit_escape_primary_tests(Interp* interp,
                       committed.selected_route == BOUNDARY_PLAN_ROUTE_REGION_TRANSPLANT &&
                       committed.value != src &&
                       dst_closure != null &&
-                      dst_closure != src.closure_val &&
+                      dst_closure != src_closure_before_commit &&
                       sig_ok &&
                       committed.value.scope_gen == target_scope.escape_generation &&
                       main::is_in_scope((void*)committed.value, target_scope);

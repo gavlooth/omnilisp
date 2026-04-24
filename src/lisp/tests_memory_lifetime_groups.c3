@@ -208,7 +208,7 @@ fn void run_memory_lifetime_escape_primitive_guard_tests(Interp* interp, int* pa
             prim.name[1] = 0;
             prim.arity = 1;
             prim.tag = 452;
-            int* opaque_payload = (int*)mem::malloc(int.sizeof);
+            int* opaque_payload = (int*)memory_lifetime_test_opaque_payload(interp.current_scope);
             if (opaque_payload == null) {
                 mem::free(prim);
                 interp.current_scope = saved;
@@ -292,7 +292,7 @@ fn void run_memory_lifetime_escape_partial_transactional_cleanup_test(Interp* in
 
         Value* opaque = interp.alloc_value();
         Primitive* opaque_prim = (Primitive*)mem::malloc(Primitive.sizeof);
-        int* opaque_payload = (int*)mem::malloc(int.sizeof);
+        int* opaque_payload = (int*)memory_lifetime_test_opaque_payload(interp.current_scope);
         bool opaque_ok = opaque != null && opaque_prim != null && opaque_payload != null;
         if (opaque_ok) {
             *opaque_prim = {};
@@ -375,7 +375,7 @@ fn void run_memory_lifetime_escape_cons_transactional_cleanup_test(Interp* inter
 
         Value* opaque = interp.alloc_value();
         Primitive* opaque_prim = (Primitive*)mem::malloc(Primitive.sizeof);
-        int* opaque_payload = (int*)mem::malloc(int.sizeof);
+        int* opaque_payload = (int*)memory_lifetime_test_opaque_payload(interp.current_scope);
         bool opaque_ok = opaque != null && opaque_prim != null && opaque_payload != null;
         if (opaque_ok) {
             *opaque_prim = {};

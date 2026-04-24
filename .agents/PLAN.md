@@ -2240,3 +2240,26 @@ Date: 2026-04-21 - Adds non-executing schedule metadata to captured Tensor graph
   acceptable unless it has been converted into a named, tested fail-closed
   helper. Do not leave any of the audited files in a partially cleaned state.
 - Agent assignments: direct integration owner was this session.
+
+## 2026-04-24 17:36 CEST - Memory Lifetime Owned-Root Teardown Closure
+
+- Active hypothesis: the remaining traced-child Valgrind leak was retained
+  descendant scope ownership at interpreter teardown, amplified by generic
+  closure dtors not releasing env scopes when closures were registered through
+  `scope_dtor_value`.
+- Current approach: keep scope/region ownership as the only language-value
+  lifetime authority. Track active child scopes, run root dtors first, sweep
+  retained descendants before recycling root memory, and keep splice legal only
+  for direct, refcount-one, childless scopes.
+- Validation path: normal build, bounded memory-lifetime smoke, traced-child
+  Valgrind smoke, counters-enabled benchmark envelope, whitespace/status gates,
+  then final normal rebuild.
+- Latest checkpoint: `MEM-LIFETIME-TEARDOWN-001` is implemented and validated.
+  Valgrind reports zero definite/indirect/possible leaks and zero Memcheck
+  errors for bounded `memory-lifetime-smoke`.
+- Negative-memory constraints: do not treat Valgrind through `env` as valid
+  without `--trace-children=yes`; do not restore the speculative
+  `boundary_release_descendant_owner_scopes` family because it can decrement
+  ancestors while descendants still reference them.
+- Agent assignments: main Codex session is integration owner; one read-only
+  explorer audited the diff and its accepted findings were integrated.

@@ -64,6 +64,9 @@ struct ScopeRegion {
 
     // Hierarchy
     ScopeRegion* parent;        // Lexical parent scope (retained via RC)
+    ScopeRegion* first_child;   // Active child list for owned-root teardown
+    ScopeRegion* next_sibling;  // Intrusive sibling link while parented
+    ScopeRegion* prev_sibling;  // Intrusive sibling link while parented
 
     // Bump allocator
     char*        bump;          // Current allocation pointer
@@ -92,7 +95,7 @@ struct ScopeRegion {
 
 // ABI/interop guard: scope regions are retained and inspected across runtime
 // boundary helpers. Update bindings and this assertion together on layout change.
-$assert(ScopeRegion.sizeof == 144);
+$assert(ScopeRegion.sizeof == 168);
 
 // =============================================================================
 // Constants

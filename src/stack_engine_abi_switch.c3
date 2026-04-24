@@ -39,6 +39,8 @@ extern fn void stack_asan_start_switch(void** fake_stack_save, void* stack_botto
 extern fn void stack_asan_finish_switch(void* fake_stack_save) @extern("stack_asan_finish_switch");
 extern fn void stack_raw_copy(void* dst, void* src, usz size) @extern("stack_raw_copy");
 extern fn int stack_asan_enabled() @extern("stack_asan_enabled");
+extern fn uint omni_valgrind_stack_register(void* start, void* end) @extern("omni_valgrind_stack_register");
+extern fn void omni_valgrind_stack_deregister(uint id) @extern("omni_valgrind_stack_deregister");
 extern fn void* stack_current_sp() @extern("stack_current_sp");
 extern fn usz stack_current_thread_available_bytes() @extern("stack_current_thread_available_bytes");
 extern fn usz stack_current_thread_available_bytes_from_sp(void* sp) @extern("stack_current_thread_available_bytes_from_sp");

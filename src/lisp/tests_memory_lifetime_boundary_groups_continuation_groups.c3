@@ -25,7 +25,7 @@ fn void run_memory_lifetime_continuation_boundary_partial_cleanup_test(Interp* i
         Value* cont_wrapper = interp.alloc_value();
         Value* opaque = interp.alloc_value();
         Primitive* opaque_prim = (Primitive*)mem::malloc(Primitive.sizeof);
-        int* opaque_payload = (int*)mem::malloc(int.sizeof);
+        int* opaque_payload = (int*)memory_lifetime_test_opaque_payload(interp.current_scope);
         Value* src_array = interp.alloc_value();
         Array* src_array_payload = (Array*)mem::malloc(Array.sizeof);
         Value* copied_value = null;

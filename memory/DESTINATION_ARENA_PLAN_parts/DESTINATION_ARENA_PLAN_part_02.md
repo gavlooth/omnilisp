@@ -60,7 +60,10 @@ When the interpreter or JIT executes a function:
 * When the runtime detects it is building the final return value (e.g., evaluating the tail-position expression, or building an accumulator in a loop), it dynamically switches to allocating via the `escape_bump`.
 
 **3. The $O(1)$ `scope_splice_escapes` Operation**
-When a function finishes and its scope's `refcount == 1` (no closures captured it), we no longer call `scope_adopt` (which merges everything) nor `copy_to_parent` (which copies everything). We introduce `scope_splice_escapes(parent, child)`:
+When a function finishes and its scope's `refcount == 1` (no closures captured it)
+and it has no live child scopes, we no longer call `scope_adopt` (which merges
+everything) nor `copy_to_parent` (which copies everything). We introduce
+`scope_splice_escapes(parent, child)`:
 
 ```c
 // Concept implementation
@@ -79,7 +82,10 @@ fn void scope_splice_escapes(ScopeRegion* parent, ScopeRegion* child) {
 ### Why This is the Ultimate Synthesis
 1. **$O(1)$ Zero-Copy Returns:** The return value is transferred to the parent in a single linked-list pointer swap. No graph traversal. No cache thrashing.
 2. **Zero Memory Leaks:** The 64KB chunks filled with temporary garbage are instantly destroyed. The parent scope remains completely dense and clean.
-3. **Respects Reference Counting:** If `RC > 1` (a closure captured the child scope), the runtime simply does *nothing*. Both the `temp` and `escape` chunks survive as a floating island for the closure, exactly as Region-RC demands.
+3. **Respects Reference Counting:** If `RC > 1` (a closure captured the child
+   scope) or `child.first_child != null` (a nested scope still retains the
+   child), the runtime rejects the splice. Both the `temp` and `escape` chunks
+   survive under Region-RC until the owning scope teardown path releases them.
 4. **Boundary Safe:** Because the escaping object is physically isolated in its own OS-level chunks, there are no "dangling pointers" pointing into vaporized memory—the memory it relies on is exactly the memory that was spliced into the parent.
 
 ### Implementation Blueprint

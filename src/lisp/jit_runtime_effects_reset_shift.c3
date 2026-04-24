@@ -17,7 +17,8 @@ struct ResetValueState {
 
 fn void reset_value_entry(void* arg) {
     ResetValueState* state = (ResetValueState*)arg;
-    main::g_current_stack_ctx.result = jit_apply_value(state.body, make_nil(state.interp), state.interp);
+    Value* result = jit_apply_value(state.body, make_nil(state.interp), state.interp);
+    main::g_current_stack_ctx.result = result;
 }
 
 fn Value* jit_reset_value(Interp* interp, Value* body) {

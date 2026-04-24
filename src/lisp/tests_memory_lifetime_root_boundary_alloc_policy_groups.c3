@@ -203,7 +203,7 @@ fn void run_memory_lifetime_root_boundary_primitive_clone_test(Interp* interp, i
         prim.name[1] = 0;
         prim.arity = 1;
         prim.tag = 321;
-        int* opaque_payload = (int*)mem::malloc(int.sizeof);
+        int* opaque_payload = (int*)memory_lifetime_test_opaque_payload(interp.current_scope);
         if (opaque_payload == null) {
             mem::free(prim);
             interp.current_scope = saved;
@@ -291,10 +291,9 @@ fn void run_memory_lifetime_root_boundary_shared_wrapper_partial_cleanup_test(In
         opaque.tag = PRIMITIVE;
         main::scope_register_dtor(child, (void*)opaque, &scope_dtor_value);
         Primitive* opaque_prim = (Primitive*)mem::malloc(Primitive.sizeof);
-        int* opaque_payload = (int*)mem::malloc(int.sizeof);
+        int* opaque_payload = (int*)memory_lifetime_test_opaque_payload(interp.current_scope);
         if (opaque_prim == null || opaque_payload == null) {
             if (opaque_prim != null) mem::free(opaque_prim);
-            if (opaque_payload != null) mem::free(opaque_payload);
             interp.current_scope = saved;
             main::scope_release(child);
             io::printn("[FAIL] lifetime: root-boundary shared-wrapper partial cleanup (setup opaque)");

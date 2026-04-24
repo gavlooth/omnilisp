@@ -5886,6 +5886,59 @@ Re-audit notes:
 
 Signature: GPT-5 Codex
 
+## 2026-04-24 17:36 CEST - Memory Lifetime Owned-Root Teardown Closure
+
+Objective:
+- Continue the memory model migration by closing the traced-child Valgrind
+  `memory-lifetime-smoke` leak without adding per-value RC or weakening
+  TEMP/ESCAPE boundary proof.
+
+Changes made:
+- Added `ScopeRegion` active child tracking and owned-root descendant sweep.
+- Kept `scope_splice_escapes` childless/refcount-one only and added proof/raw
+  guards against recycling a scope with live descendants.
+- Made generic closure value dtors release closure env scopes.
+- Drained stack deferred scope cleanup before root teardown with non-reentrant
+  stack-pool behavior.
+- Registered alternate stacks with Valgrind client requests.
+- Moved memory-lifetime opaque payload tests to a shared scope-owned fixture.
+- Removed speculative descendant-owner release cleanup after audit.
+
+Commands run:
+- `c3c build --obj-out obj`
+- `scripts/run_validation_container.sh env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `scripts/run_validation_container.sh valgrind -s --trace-children=yes --leak-check=full --show-leak-kinds=definite,indirect,possible --error-exitcode=99 --log-file=/workspace/build/valgrind_memory_lifetime_smoke_child_tracking_final_2026_04_24.log env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `c3c build --obj-out obj -D OMNI_BOUNDARY_INSTR_COUNTERS`
+- `scripts/run_validation_container.sh env OMNI_BOUNDARY_BENCH=1 OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-bench LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `scripts/check_memory_telemetry_benchmark_envelope.sh /tmp/omni_memory_bench_final_2026_04_24.out`
+- `git diff --check`
+
+Key results:
+- Normal build passed.
+- Bounded `memory-lifetime-smoke` passed with `255 passed, 0 failed`.
+- Traced-child Valgrind `memory-lifetime-smoke` passed with `255 passed, 0 failed`,
+  zero definite/indirect/possible leaks, and `ERROR SUMMARY: 0 errors from 0 contexts`.
+- Benchmark envelope passed for `/tmp/omni_memory_bench_final_2026_04_24.out`.
+- `git diff --check` passed.
+
+Invalidated assumptions or failed approaches:
+- `[INVALIDATED]` Valgrind through `env` without `--trace-children=yes` is not
+  authoritative for the runtime process.
+- `[FAILED]` Speculative descendant-owner release from eval/JIT paths was not
+  the validated leak fix and was removed after audit because it could release
+  ancestors still referenced by descendants.
+
+Current checkpoint:
+- Memory-lifetime migration is materially cleaner: retained descendant regions
+  are reclaimed at owned-root teardown, and splice remains a proof-backed
+  transplant path rather than a generic ownership escape hatch.
+
+Unresolved issues:
+- The existing graph-audit diagnostic lines in `memory-lifetime-smoke` still
+  print for their debug-audit regression cases while the suite passes.
+
+Signature: GPT-5 Codex
+
 ## 2026-04-24 Vulkan/CUDA/ML audit residual closure
 
 Date/time: 2026-04-24 16:35 CEST

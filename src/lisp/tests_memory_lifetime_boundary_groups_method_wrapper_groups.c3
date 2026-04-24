@@ -181,10 +181,9 @@ fn void run_memory_lifetime_shared_wrapper_partial_cleanup_test(Interp* interp, 
         opaque.tag = PRIMITIVE;
         main::scope_register_dtor(foreign, (void*)opaque, &scope_dtor_value);
         Primitive* opaque_prim = (Primitive*)mem::malloc(Primitive.sizeof);
-        int* opaque_payload = (int*)mem::malloc(int.sizeof);
+        int* opaque_payload = (int*)memory_lifetime_test_opaque_payload(interp.current_scope);
         if (opaque_prim == null || opaque_payload == null) {
             if (opaque_prim != null) mem::free(opaque_prim);
-            if (opaque_payload != null) mem::free(opaque_payload);
             interp.current_scope = saved;
             main::scope_release(foreign);
             main::scope_release(target);

@@ -67,6 +67,9 @@ fn ScopeRegion* scope_create(ScopeRegion* parent = null) {
     // Initialize scope
     scope.refcount = 1;
     scope.parent = parent;
+    scope.first_child = null;
+    scope.next_sibling = null;
+    scope.prev_sibling = null;
     scope.bump = scope_chunk_data(chunk);
     scope.limit = scope.bump + chunk.capacity;
     scope.escape_bump = null;
@@ -84,12 +87,37 @@ fn ScopeRegion* scope_create(ScopeRegion* parent = null) {
     // Retain parent
     if (parent != null) {
         scope_retain(parent);
+        scope.next_sibling = parent.first_child;
+        if (parent.first_child != null) {
+            parent.first_child.prev_sibling = scope;
+        }
+        parent.first_child = scope;
     }
 
     scope_assert_escape_tail_consistency(scope);
 
     g_scope_memory_telemetry_stats.scope_create_count++;
     return scope;
+}
+
+fn void scope_detach_from_parent(ScopeRegion* scope, bool release_parent = true) {
+    if (scope == null || scope.parent == null) return;
+    ScopeRegion* parent = scope.parent;
+    scope_guard_owner(parent, "scope_detach_from_parent(parent)");
+    if (scope.prev_sibling != null) {
+        scope.prev_sibling.next_sibling = scope.next_sibling;
+    } else if (parent.first_child == scope) {
+        parent.first_child = scope.next_sibling;
+    }
+    if (scope.next_sibling != null) {
+        scope.next_sibling.prev_sibling = scope.prev_sibling;
+    }
+    scope.parent = null;
+    scope.next_sibling = null;
+    scope.prev_sibling = null;
+    if (release_parent) {
+        scope_release(parent);
+    }
 }
 
 /**
@@ -110,6 +138,11 @@ fn void scope_release(ScopeRegion* scope) @inline {
     if (scope == null) return;
     g_scope_memory_telemetry_stats.scope_release_count++;
     scope_guard_owner(scope, "scope_release");
+    if (scope.refcount == uint.max) {
+        // Parent teardown is already running dtors. Child-scope parent releases
+        // during that pass must not recurse into the half-destroyed parent.
+        return;
+    }
     scope_invariant_refcount_live(scope);
     if (--scope.refcount == 0) {
         scope_destroy(scope);

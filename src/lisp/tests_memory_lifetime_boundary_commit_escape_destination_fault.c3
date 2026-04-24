@@ -23,11 +23,10 @@ fn void run_memory_lifetime_boundary_commit_escape_destination_fault_tests(Inter
             opaque.tag = PRIMITIVE;
             main::scope_register_dtor(foreign_scope, (void*)opaque, &scope_dtor_value);
             Primitive* opaque_prim = (Primitive*)mem::malloc(Primitive.sizeof);
-            int* opaque_payload = (int*)mem::malloc(int.sizeof);
+            int* opaque_payload = (int*)memory_lifetime_test_opaque_payload(interp.current_scope);
             bool setup_ok = opaque_prim != null && opaque_payload != null;
             if (!setup_ok) {
                 if (opaque_prim != null) mem::free(opaque_prim);
-                if (opaque_payload != null) mem::free(opaque_payload);
             } else {
                 *opaque_prim = {};
                 *opaque_payload = 1401;

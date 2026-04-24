@@ -26,15 +26,20 @@ fn void scope_destroy(ScopeRegion* scope) {
     scope_guard_owner(scope, "scope_destroy");
     scope_assert_escape_tail_consistency(scope);
     scope_telemetry_note_scope_unused_at_destroy(scope);
+    scope.refcount = uint.max;
     // 1. Run destructors (reverse order — LIFO) for both lanes
     scope_run_dtors(scope);
     scope_run_escape_dtors(scope);
 
-    // 2. Release parent scope (may cascade)
-    if (scope.parent != null) {
-        scope_release(scope.parent);
-        scope.parent = null;
+    // Owned-root teardown can still have retained descendants after dtors have
+    // released every root-owned wrapper. Reclaim those before parent memory goes
+    // away; normal scope destruction should already have an empty child list.
+    if (scope.first_child != null) {
+        scope_destroy_owned_descendants(scope);
     }
+
+    // 2. Release parent scope (may cascade)
+    scope_detach_from_parent(scope);
 
     // 3. Free all TEMP chunks
     ScopeChunk* c = scope.chunks;
@@ -69,6 +74,10 @@ fn void scope_destroy(ScopeRegion* scope) {
     // 5. Recycle ScopeRegion struct (increment generation, add to freelist)
     scope.generation++;
     scope.escape_generation++;
+    scope.refcount = 0;
+    scope.first_child = null;
+    scope.next_sibling = null;
+    scope.prev_sibling = null;
     if (!scope_freelist_recycle_enabled()) {
         mem::free(scope);
         return;
@@ -84,4 +93,28 @@ fn void scope_destroy(ScopeRegion* scope) {
         scope_global_unlock();
         mem::free(scope);
     }
+}
+
+fn void scope_destroy_owned_descendants(ScopeRegion* scope) {
+    if (scope == null) return;
+    scope_guard_owner(scope, "scope_destroy_owned_descendants");
+    uint saved_refcount = scope.refcount;
+    scope.refcount = uint.max;
+    while (scope.first_child != null) {
+        ScopeRegion* child = scope.first_child;
+        scope_destroy_owned_descendants(child);
+        child.refcount = 0;
+        scope_destroy(child);
+    }
+    scope.refcount = saved_refcount;
+}
+
+<*
+ @require scope != null
+*>
+fn void scope_destroy_owned_root(ScopeRegion* scope) {
+    scope_guard_owner(scope, "scope_destroy_owned_root");
+    if (scope.refcount == uint.max) return;
+    scope.refcount = 0;
+    scope_destroy(scope);
 }

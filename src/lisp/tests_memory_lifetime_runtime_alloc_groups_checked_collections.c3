@@ -164,8 +164,8 @@ fn void run_memory_lifetime_runtime_alloc_groups_checked_collections_tests(Inter
             opaque_key = interp.alloc_value();
             opaque_value_prim = (Primitive*)mem::malloc(Primitive.sizeof);
             opaque_key_prim = (Primitive*)mem::malloc(Primitive.sizeof);
-            opaque_value_payload = (int*)mem::malloc(int.sizeof);
-            opaque_key_payload = (int*)mem::malloc(int.sizeof);
+            opaque_value_payload = (int*)memory_lifetime_test_opaque_payload(interp.current_scope);
+            opaque_key_payload = (int*)memory_lifetime_test_opaque_payload(interp.current_scope);
             if (opaque_value != null) {
                 opaque_value.tag = PRIMITIVE;
                 main::scope_register_dtor(foreign, (void*)opaque_value, &scope_dtor_value);
@@ -259,7 +259,7 @@ fn void run_memory_lifetime_runtime_alloc_groups_checked_collections_tests(Inter
             interp.current_scope = foreign;
             opaque_value = interp.alloc_value();
             opaque_prim = (Primitive*)mem::malloc(Primitive.sizeof);
-            opaque_payload = (int*)mem::malloc(int.sizeof);
+            opaque_payload = (int*)memory_lifetime_test_opaque_payload(interp.current_scope);
             if (opaque_value != null) {
                 opaque_value.tag = PRIMITIVE;
                 main::scope_register_dtor(foreign, (void*)opaque_value, &scope_dtor_value);

@@ -215,6 +215,9 @@ Next roadmap:
 - `MEM-BOUNDARY-FFI-BRIDGE-001`
 - `MEM-BOUNDARY-COPY-DEBT-001` (closed 2026-04-24)
 - `MEM-BOUNDARY-PLAN-MIGRATE-001` (closed 2026-04-24)
+- `MEM-LIFETIME-TEARDOWN-001` (closed 2026-04-24): active child tracking and
+  owned-root teardown sweep close retained descendant regions at interpreter
+  destruction without adding per-value RC.
 
 ## Validation Path
 
@@ -224,6 +227,8 @@ Minimum validation for this slice:
 - targeted memory lifetime tests for boundary commit/stable escape
 - bounded container Valgrind for memory-lifetime smoke when the validation image
   includes `valgrind`
+- use `--trace-children=yes` when the Valgrind command wraps the runtime in
+  `env`, otherwise the report may cover only `/usr/bin/env`
 - `scripts/check_status_consistency.sh`
 - `git diff --check`
 

@@ -32,7 +32,7 @@ fn void run_memory_lifetime_partial_boundary_copy_transactional_cleanup_test(Int
 
         Value* opaque = interp.alloc_value();
         Primitive* opaque_prim = (Primitive*)mem::malloc(Primitive.sizeof);
-        int* opaque_payload = (int*)mem::malloc(int.sizeof);
+        int* opaque_payload = (int*)memory_lifetime_test_opaque_payload(interp.current_scope);
         bool opaque_ok = opaque != null && opaque_prim != null && opaque_payload != null;
         if (opaque_ok) {
             *opaque_prim = {};
@@ -119,7 +119,7 @@ fn void run_memory_lifetime_cons_boundary_copy_transactional_cleanup_test(Interp
 
         Value* opaque = interp.alloc_value();
         Primitive* opaque_prim = (Primitive*)mem::malloc(Primitive.sizeof);
-        int* opaque_payload = (int*)mem::malloc(int.sizeof);
+        int* opaque_payload = (int*)memory_lifetime_test_opaque_payload(interp.current_scope);
         bool opaque_ok = opaque != null && opaque_prim != null && opaque_payload != null;
         if (opaque_ok) {
             *opaque_prim = {};
@@ -219,7 +219,7 @@ fn void run_memory_lifetime_nested_partial_iterator_boundary_cleanup_test(Interp
 
         Value* opaque = interp.alloc_value();
         Primitive* opaque_prim = (Primitive*)mem::malloc(Primitive.sizeof);
-        int* opaque_payload = (int*)mem::malloc(int.sizeof);
+        int* opaque_payload = (int*)memory_lifetime_test_opaque_payload(interp.current_scope);
         bool opaque_ok = opaque != null && opaque_prim != null && opaque_payload != null;
         if (opaque_ok) {
             *opaque_prim = {};
@@ -345,7 +345,7 @@ fn void run_memory_lifetime_nested_partial_iterator_boundary_cleanup_test(Interp
 
         Value* opaque = interp.alloc_value();
         Primitive* opaque_prim = (Primitive*)mem::malloc(Primitive.sizeof);
-        int* opaque_payload = (int*)mem::malloc(int.sizeof);
+        int* opaque_payload = (int*)memory_lifetime_test_opaque_payload(interp.current_scope);
         bool opaque_ok = opaque != null && opaque_prim != null && opaque_payload != null;
         if (opaque_ok) {
             *opaque_prim = {};

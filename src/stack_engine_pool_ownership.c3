@@ -68,6 +68,23 @@ fn void stack_pool_init(StackPool* pool) {
     }
 }
 
+fn void stack_pool_run_deferred_destroy_all(StackPool* pool) {
+    stack_require_pool_owner(pool, "stack_pool_run_deferred_destroy_all");
+    if (pool == null || pool.shutting_down) return;
+    pool.shutting_down = true;
+    StackCtx* c = pool.all_list;
+    while (c != null) {
+        stack_require_ctx_owner(c, "stack_pool_run_deferred_destroy_all_ctx");
+        if (c == g_current_stack_ctx || c.status == CTX_RUNNING) {
+            unreachable("stack_pool_run_deferred_destroy_all: attempted to release running context");
+        }
+        stack_ctx_run_deferred_destroy(c);
+        stack_ctx_clear_defer_storage(c);
+        c = c.all_next;
+    }
+    pool.shutting_down = false;
+}
+
 fn void stack_pool_shutdown(StackPool* pool) {
     stack_require_pool_owner(pool, "stack_pool_shutdown");
     if (pool.shutting_down) return;

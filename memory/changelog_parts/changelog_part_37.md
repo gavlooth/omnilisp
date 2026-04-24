@@ -5087,6 +5087,50 @@ Validation:
   - bounded container normal `memory-lifetime-smoke` (`255 passed, 0 failed`)
   - bounded container counters-enabled `memory-lifetime-smoke`
     (`255 passed, 0 failed`)
+
+## 2026-04-24 memory lifetime owned-root teardown and Valgrind closure
+
+- Implemented and closed `MEM-LIFETIME-TEARDOWN-001`.
+  - `ScopeRegion` now maintains an intrusive active-child list alongside the
+    existing parent retain relationship.
+  - `scope_destroy_owned_root` runs root dtors first, then sweeps retained child
+    descendants before root memory is recycled. This keeps region ownership
+    deterministic without adding per-value RC.
+  - `scope_splice_escapes` remains a direct child, refcount-one transplant path
+    and now explicitly requires no live descendants before recycling the child
+    scope. Boundary proof treats `child.first_child != null` as a transplant
+    rejection through the existing child-refcount gate.
+  - Generic `Value` destruction now calls the closure destructor for `CLOSURE`
+    values, so stable/materialized closure roots registered through
+    `scope_dtor_value` release their retained env scopes.
+  - Interpreter teardown drains deferred stack-scope cleanup before root teardown
+    under shutdown-style non-reentrant stack-pool behavior.
+  - Valgrind client stack registration was added for alternate stack regions and
+    uses the installed Valgrind header contract: lowest usable stack address
+    first, highest address second.
+  - Memory-lifetime tests now use a shared scope-owned opaque-payload fixture
+    instead of manual frees that could race scope-owned failure paths.
+- Audit fixes after the first clean leak run:
+  - Removed the speculative descendant-owner release helper from eval/JIT paths;
+    it was not the validated leak fix and could decrement ancestor scopes while
+    descendants still referenced them.
+  - Fixed a boundary commit regression that read source closure/signature
+    pointers after a successful splice had recycled the releasing scope.
+- Validation:
+  - `c3c build --obj-out obj`
+  - bounded container `memory-lifetime-smoke` (`255 passed, 0 failed`)
+  - bounded container traced-child Valgrind
+    `memory-lifetime-smoke` (`255 passed, 0 failed`), with
+    `definitely lost=0`, `indirectly lost=0`, `possibly lost=0`, and
+    `ERROR SUMMARY: 0 errors from 0 contexts`
+  - `c3c build --obj-out obj -D OMNI_BOUNDARY_INSTR_COUNTERS`
+  - bounded container `memory-lifetime-bench` with `OMNI_BOUNDARY_BENCH=1`
+  - `scripts/check_memory_telemetry_benchmark_envelope.sh`
+  - `git diff --check`
+- Operational note:
+  - When Valgrind is invoked through `env`, use `--trace-children=yes`; without
+    it, Memcheck traces the wrapper process rather than `./build/main` and can
+    report a false green ownership signal.
   - bounded container normal `basic` (`169 passed, 0 failed`)
   - bounded container normal Valgrind `memory-lifetime-smoke`
     (`255 passed, 0 failed`)

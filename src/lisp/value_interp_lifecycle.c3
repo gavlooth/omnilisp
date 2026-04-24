@@ -404,6 +404,11 @@ fn void Interp.destroy(Interp* self) {
     runtime_cache_clear();
     ast_arena_destroy(&self.ast_arena);
 
+    // Stack continuations/coroutines can retain scope guards through deferred
+    // cleanup entries. Release those guards before root teardown so retained
+    // child scopes still participate in normal region destruction.
+    main::stack_pool_run_deferred_destroy_all(&self.stack_ctx_pool);
+
     // Release root scope last among value-owned structures so registered dtors run.
     // This is the primary deterministic cleanup point for scope-managed values/envs.
     if (self.root_scope != null) {
@@ -416,7 +421,7 @@ fn void Interp.destroy(Interp* self) {
         if (self.stable_escape_store != null) {
             stable_escape_store_reset(self);
         }
-        main::scope_release(self.root_scope);
+        main::scope_destroy_owned_root(self.root_scope);
         self.root_scope = null;
         self.current_scope = null;
     }

@@ -63,7 +63,10 @@ fn BoundaryTransplantProof boundary_build_transplant_proof(main::ScopeRegion* pa
     bool child_non_null = child != null;
     bool same_scope = parent_non_null && child_non_null && parent == child;
     bool immediate_child = parent_non_null && child_non_null && child.parent == parent;
-    bool child_refcount_one = child_non_null && child.refcount == 1;
+    // A recyclable child must not retain descendants. Descendant scopes retain
+    // their parent, but keep the list check explicit so corrupted metadata cannot
+    // orphan children during raw region transplant.
+    bool child_refcount_one = child_non_null && child.refcount == 1 && child.first_child == null;
     bool owner_thread_match = parent_non_null &&
         child_non_null &&
         parent.owner_thread_token != null &&

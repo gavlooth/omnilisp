@@ -337,3 +337,23 @@ Source: `docs/plans/memory-boundary-telemetry-benchmark-plan-2026-04-24.md`.
   - prerequisites: baseline from `MEM-BENCH-OBSERVE-004`.
   - negative-memory constraint: do not introduce strict timing failure gates
     until repeated bounded-container runs show a stable envelope.
+
+Source: `docs/plans/memory-boundary-architecture-spec-2026-04-24.md`.
+
+- [x] `MEM-LIFETIME-TEARDOWN-001` close retained child-region teardown under traced Valgrind.
+  - classification: runtime behavior, targeted ownership hardening.
+  - done 2026-04-24: added active child tracking to `ScopeRegion`, owned-root
+    descendant sweep during interpreter teardown, closure env-scope release
+    through generic `scope_dtor_value`, Valgrind alternate-stack registration,
+    and shared scope-owned opaque-payload fixtures.
+  - task: make retained descendant regions deterministic at interpreter
+    teardown without introducing per-value RC or root pinning.
+  - validation: `c3c build --obj-out obj`; bounded `memory-lifetime-smoke`;
+    traced-child Valgrind `memory-lifetime-smoke`; counters-enabled
+    `memory-lifetime-bench` plus
+    `scripts/check_memory_telemetry_benchmark_envelope.sh`; `git diff --check`.
+  - prerequisites: validation container image includes `valgrind`.
+  - negative-memory constraint: do not trust a Valgrind run wrapped in `env`
+    unless it uses `--trace-children=yes`; do not restore speculative
+    descendant-owner release helpers that decrement ancestor scopes while
+    descendants still reference them.

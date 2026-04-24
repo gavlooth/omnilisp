@@ -9,6 +9,7 @@ struct StackRegion {
     usz   total_size;  // Total mmap'd size (guard + usable)
     usz   usable_size; // Usable stack size (total - guard page)
     void* stack_top;   // Top of usable stack (highest address, initial RSP)
+    uint  valgrind_stack_id; // Nonzero when registered with Valgrind client requests
 }
 
 // Higher-order stdlib and lazy Tensor materialization inside handle/reset stack
@@ -71,6 +72,7 @@ fn StackRegion stack_region_alloc(usz stack_size) {
         r.total_size = 0;
         r.usable_size = 0;
         r.stack_top = null;
+        r.valgrind_stack_id = 0;
         return r;
     }
 
@@ -84,6 +86,7 @@ fn StackRegion stack_region_alloc(usz stack_size) {
     r.total_size = total;
     r.usable_size = stack_size;
     r.stack_top = (void*)((usz)mem + total);
+    r.valgrind_stack_id = omni_valgrind_stack_register((void*)((usz)mem + GUARD_SIZE), r.stack_top);
     return r;
 }
 
@@ -92,6 +95,10 @@ fn StackRegion stack_region_alloc(usz stack_size) {
  */
 fn void stack_region_free(StackRegion* r) {
     if (r.base != null) {
+        if (r.valgrind_stack_id != 0) {
+            omni_valgrind_stack_deregister(r.valgrind_stack_id);
+            r.valgrind_stack_id = 0;
+        }
         munmap(r.base, r.total_size);
         r.base = null;
     }

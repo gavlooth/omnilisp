@@ -18,6 +18,16 @@
 #include <string.h>
 #include <stdio.h>
 
+#if defined(__has_include)
+#  if __has_include(<valgrind/valgrind.h>)
+#    include <valgrind/valgrind.h>
+#    define OMNI_WITH_VALGRIND_CLIENT_REQUESTS 1
+#  endif
+#endif
+#if !defined(OMNI_WITH_VALGRIND_CLIENT_REQUESTS)
+#  define OMNI_WITH_VALGRIND_CLIENT_REQUESTS 0
+#endif
+
 /* ============================================================
  * AddressSanitizer integration (fiber stack switching)
  * ============================================================ */
@@ -56,6 +66,24 @@ int stack_asan_enabled(void) {
     if (__sanitizer_start_switch_fiber != NULL) return 1;
     if (__sanitizer_finish_switch_fiber != NULL) return 1;
     return 0;
+}
+
+unsigned omni_valgrind_stack_register(void* start, void* end) {
+#if OMNI_WITH_VALGRIND_CLIENT_REQUESTS
+    return VALGRIND_STACK_REGISTER(start, end);
+#else
+    (void)start;
+    (void)end;
+    return 0;
+#endif
+}
+
+void omni_valgrind_stack_deregister(unsigned id) {
+#if OMNI_WITH_VALGRIND_CLIENT_REQUESTS
+    if (id != 0) VALGRIND_STACK_DEREGISTER(id);
+#else
+    (void)id;
+#endif
 }
 
 void* stack_current_sp(void) {

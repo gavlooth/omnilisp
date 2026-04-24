@@ -11,6 +11,7 @@ fn void scope_splice_escapes(ScopeRegion* parent, ScopeRegion* child) {
     scope_invariant_distinct_scopes(parent, child);
     scope_assert_escape_tail_consistency(parent);
     scope_assert_escape_tail_consistency(child);
+    assert(child.first_child == null, "scope_splice_escapes: child has live descendants");
 
     g_scope_transfer_stats.splice_calls++;
     g_scope_transfer_stats.splice_escape_chunk_bytes += scope_chunk_bytes(child.escape_chunks);
@@ -74,15 +75,15 @@ fn void scope_splice_escapes(ScopeRegion* parent, ScopeRegion* child) {
     scope_assert_escape_tail_consistency(child);
 
     // Detach and release child scope ownership.
-    if (child.parent != null) {
-        scope_release(child.parent);
-        child.parent = null;
-    }
+    scope_detach_from_parent(child);
 
     // Recycle child struct.
     child.refcount = 0;
     child.generation++;
     child.escape_generation++;
+    child.first_child = null;
+    child.next_sibling = null;
+    child.prev_sibling = null;
     if (!scope_freelist_recycle_enabled()) {
         mem::free(child);
         return;
