@@ -16,9 +16,16 @@ static void omni_tensor_vulkan_probe(void) {
     if (stderr_silenced) omni_tensor_vulkan_silence_stderr_end(saved_stderr);
     if (selected) {
         (void)queue_family_index;
+        omni_vulkan_get_physical_device_features_fn get_features = NULL;
+        omni_vulkan_get_physical_device_memory_properties_fn get_memory_properties = NULL;
+        if (!omni_tensor_vulkan_physical_device_query_functions_load(&get_features, &get_memory_properties)) {
+            omni_vulkan_destroy_instance(instance, NULL);
+            return;
+        }
+        (void)get_memory_properties;
         omni_tensor_vulkan_available_cached = 1;
         OmniVulkanPhysicalDeviceFeatures features = {0};
-        omni_vulkan_get_physical_device_features(physical_device, &features);
+        get_features(physical_device, &features);
         if (features.shaderFloat64 != 0) omni_tensor_vulkan_float64_cached = 1;
         if (features.shaderInt64 != 0) omni_tensor_vulkan_int64_cached = 1;
     }
@@ -112,9 +119,16 @@ static int omni_tensor_backend_vulkan_create_context(OmniTensorVulkanContext** o
         omni_tensor_backend_vulkan_context_release(context);
         return OMNI_TENSOR_VULKAN_UNAVAILABLE;
     }
+    omni_vulkan_get_physical_device_features_fn get_features = NULL;
+    omni_vulkan_get_physical_device_memory_properties_fn get_memory_properties = NULL;
+    if (!omni_tensor_vulkan_physical_device_query_functions_load(&get_features, &get_memory_properties)) {
+        omni_tensor_backend_vulkan_context_release(context);
+        return OMNI_TENSOR_VULKAN_UNAVAILABLE;
+    }
+    (void)get_memory_properties;
 
     OmniVulkanPhysicalDeviceFeatures available_features = {0};
-    omni_vulkan_get_physical_device_features(context->physical_device, &available_features);
+    get_features(context->physical_device, &available_features);
     OmniVulkanPhysicalDeviceFeatures enabled_features = {0};
     const OmniVulkanPhysicalDeviceFeatures* enabled_feature_ptr = NULL;
     if (available_features.shaderFloat64 != 0) {

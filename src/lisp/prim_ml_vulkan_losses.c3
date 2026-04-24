@@ -91,7 +91,7 @@ fn Value* ml_cross_entropy_eval_vulkan(
         return tensor_runtime_raise(interp, "ml/cross-entropy: Vulkan tensor metadata is missing");
     }
     if (logits.dtype != TENSOR_DTYPE_FLOAT32) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/cross-entropy: Vulkan currently supports Float32 tensors", null);
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/cross-entropy: Vulkan currently supports Float32 tensors; Float64 is unsupported by the capability contract", null);
     }
     if (!tensor_has_valid_device_storage(logits, TENSOR_DEVICE_VULKAN) ||
         !tensor_has_valid_device_storage(targets, TENSOR_DEVICE_VULKAN)) {

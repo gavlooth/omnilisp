@@ -24,11 +24,12 @@ split gate applies to code files only.
 - Part 14: [docs/todo_parts/todo_part_14.md](docs/todo_parts/todo_part_14.md) (1915 lines)
 - Part 15: [docs/todo_parts/todo_part_15.md](docs/todo_parts/todo_part_15.md) (951 lines)
 - Part 16: [docs/todo_parts/todo_part_16.md](docs/todo_parts/todo_part_16.md) (261 lines)
-- Part 17: [docs/todo_parts/todo_part_17.md](docs/todo_parts/todo_part_17.md) (75 lines)
+- Part 17: [docs/todo_parts/todo_part_17.md](docs/todo_parts/todo_part_17.md) (107 lines)
 - Part 18: [docs/todo_parts/todo_part_18.md](docs/todo_parts/todo_part_18.md) (256 lines)
 
 ## Live Queue
 
+- None currently;
 - The memory boundary architecture verification blockers from
   `docs/plans/memory-boundary-architecture-spec-2026-04-24.md` are closed in
   Part 18.
@@ -47,5 +48,5 @@ split gate applies to code files only.
   invalidation, explicit commit-route flags, first TEMP cons stable
   materialization, prepared root/container materialization for arrays,
   dictionaries, sets, closures, and cloned heap-backed scalar/signature payloads.
-- Open Vulkan/CUDA/ML audit residuals from
-  `AUDIT_REPORT_VULKAN_CUDA_ML_2026-04-23.md` are tracked in Part 17.
+- Vulkan/CUDA/ML audit residuals from
+  `AUDIT_REPORT_VULKAN_CUDA_ML_2026-04-23.md` are closed in Part 17.

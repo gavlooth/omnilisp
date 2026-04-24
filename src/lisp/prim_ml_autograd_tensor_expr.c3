@@ -2,6 +2,9 @@ module lisp;
 
 import std::core::mem;
 
+const double ML_GRAD_FLOAT32_MIN_NORMAL = 1.1754943508222875e-38;
+const double ML_GRAD_FLOAT64_MIN_NORMAL = 2.2250738585072014e-308;
+
 fn Value* ml_grad_expr_buffer(Interp* interp, usz count, double** out, char[] message) {
     if (out == null) return tensor_runtime_raise(interp, message);
     *out = null;
@@ -545,21 +548,64 @@ fn bool ml_grad_map_binary_op(Value* func, uint* out_op) {
     return true;
 }
 
-fn bool ml_grad_map_unary_derivative(Value* func, double x, double* out_derivative) {
-    if (out_derivative == null) return false;
-    if (primitive_name_equals(func, "+")) {
-        *out_derivative = 1.0;
-        return true;
-    }
-    if (primitive_name_equals(func, "-")) {
-        *out_derivative = -1.0;
-        return true;
-    }
-    if (primitive_name_equals(func, "sqrt") && x > 0.0) {
-        *out_derivative = 0.5 / tensor_c_sqrt(x);
-        return true;
+fn bool ml_grad_callable_name_equals(Value* func, char[] expected) @inline {
+    if (primitive_name_equals(func, expected)) return true;
+    if (func != null && func.tag == METHOD_TABLE && func.method_table_val != null) {
+        return tensor_primitive_payload_name_equals(method_table_fallback_prim(func.method_table_val), expected);
     }
     return false;
+}
+
+fn Value* ml_grad_map_unary_derivative(Value* func, double x, double* out_derivative, bool* out_supported, Interp* interp) {
+    if (out_derivative == null || out_supported == null) return tensor_runtime_raise(interp, "ml/grad: Tensor map derivative state is missing");
+    *out_supported = false;
+    if (ml_grad_callable_name_equals(func, "+")) {
+        *out_derivative = 1.0;
+        *out_supported = true;
+        return null;
+    }
+    if (ml_grad_callable_name_equals(func, "-")) {
+        *out_derivative = -1.0;
+        *out_supported = true;
+        return null;
+    }
+    if (ml_grad_callable_name_equals(func, "sqrt")) {
+        if (!conversion_double_is_finite(x) || !(x > 0.0)) {
+            return raise_error_with_payload_names(interp, "tensor", "tensor/invalid-argument", "ml/grad: sqrt map backward requires positive finite input; signed zero is undefined", null);
+        }
+        double derivative = 0.5 / tensor_c_sqrt(x);
+        if (!conversion_double_is_finite(derivative)) {
+            return raise_error_with_payload_names(interp, "tensor", "tensor/numeric-overflow", "ml/grad: sqrt map backward derivative is not finite", null);
+        }
+        *out_derivative = derivative;
+        *out_supported = true;
+        return null;
+    }
+    return null;
+}
+
+fn double ml_grad_min_normal_for_dtype(TensorDType dtype) @inline {
+    return dtype == TENSOR_DTYPE_FLOAT32 ? ML_GRAD_FLOAT32_MIN_NORMAL : ML_GRAD_FLOAT64_MIN_NORMAL;
+}
+
+fn Value* ml_grad_division_denominator_value(double b, Interp* interp) {
+    if (!conversion_double_is_finite(b) || b == 0.0) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/invalid-argument", "ml/grad: division map backward encountered zero or non-finite denominator", null);
+    }
+    return null;
+}
+
+fn Value* ml_grad_division_denominator_square(TensorDType dtype, double b, double* out_square, Interp* interp) {
+    if (out_square == null) return tensor_runtime_raise(interp, "ml/grad: division map backward state is missing");
+    Value* err = ml_grad_division_denominator_value(b, interp);
+    if (err != null) return err;
+    double square = b * b;
+    double min_normal = ml_grad_min_normal_for_dtype(dtype);
+    if (!conversion_double_is_finite(square) || !(square >= min_normal)) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/invalid-argument", "ml/grad: division map backward denominator square is subnormal or not finite", null);
+    }
+    *out_square = square;
+    return null;
 }
 
 fn Value* ml_grad_expr_accumulate_to_wrt(Value* node, Value* wrt, double* upstream, double* out_grad, Interp* interp) {
@@ -636,8 +682,13 @@ fn Value* ml_grad_expr_backprop_map(Value* node, Value* wrt, double* upstream, d
             }
             double x = 0.0;
             double derivative = 0.0;
-            if (!ml_reduction_read(left, left_offset, &x) ||
-                !ml_grad_map_unary_derivative(expr.map_func, x, &derivative)) {
+            bool derivative_supported = false;
+            if (!ml_reduction_read(left, left_offset, &x)) {
+                return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "ml/grad: Tensor map gradient shape mismatch", null);
+            }
+            err = ml_grad_map_unary_derivative(expr.map_func, x, &derivative, &derivative_supported, interp);
+            if (err != null) return err;
+            if (!derivative_supported) {
                 return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/grad: unsupported Tensor map backward rule", null);
             }
             if (left_upstream != null) left_upstream[left_offset] += u * derivative;
@@ -674,9 +725,25 @@ fn Value* ml_grad_expr_backprop_map(Value* node, Value* wrt, double* upstream, d
                 if (right_upstream != null) right_upstream[right_offset] += u * a;
                 break;
             case 3:
-                if (b == 0.0) return raise_error_with_payload_names(interp, "tensor", "tensor/invalid-argument", "ml/grad: division map backward encountered zero denominator", null);
-                if (left_upstream != null) left_upstream[left_offset] += u / b;
-                if (right_upstream != null) right_upstream[right_offset] -= u * a / (b * b);
+                err = ml_grad_division_denominator_value(b, interp);
+                if (err != null) return err;
+                if (left_upstream != null) {
+                    double left_grad = u / b;
+                    if (!conversion_double_is_finite(left_grad)) {
+                        return raise_error_with_payload_names(interp, "tensor", "tensor/numeric-overflow", "ml/grad: division map backward left gradient is not finite", null);
+                    }
+                    left_upstream[left_offset] += left_grad;
+                }
+                if (right_upstream != null) {
+                    double denominator_square = 0.0;
+                    err = ml_grad_division_denominator_square(output.dtype, b, &denominator_square, interp);
+                    if (err != null) return err;
+                    double right_grad = u * a / denominator_square;
+                    if (!conversion_double_is_finite(right_grad)) {
+                        return raise_error_with_payload_names(interp, "tensor", "tensor/numeric-overflow", "ml/grad: division map backward right gradient is not finite", null);
+                    }
+                    right_upstream[right_offset] -= right_grad;
+                }
                 break;
             case 4:
                 if (left_upstream != null && a <= b) left_upstream[left_offset] += u;

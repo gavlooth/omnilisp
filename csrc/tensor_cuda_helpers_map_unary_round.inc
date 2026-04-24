@@ -329,7 +329,9 @@ static int omni_tensor_backend_cuda_round_i64_launch(
     }
     if (status_host != 0u) {
         omni_tensor_backend_cuda_free(out_device);
-        return OMNI_TENSOR_CUDA_DOMAIN_ERROR;
+        if (status_host == 1u) return OMNI_TENSOR_CUDA_DOMAIN_ERROR;
+        if (status_host == 2u) return OMNI_TENSOR_CUDA_INVALID_ARGUMENT;
+        return OMNI_TENSOR_CUDA_EXECUTION_FAILED;
     }
 
     int copy_status = omni_tensor_backend_cuda_copy_to_host(out_device, out_byte_len, host_out);

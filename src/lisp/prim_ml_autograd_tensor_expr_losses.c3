@@ -81,6 +81,9 @@ fn Value* ml_grad_tensor_softmax_ce_try_vulkan(Value* logits_arg, Value* targets
         wrt.device != TENSOR_DEVICE_VULKAN) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/grad: Vulkan backward operands must remain Vulkan-placed", null);
     }
+    if (logits.dtype != TENSOR_DTYPE_FLOAT32 || wrt.dtype != TENSOR_DTYPE_FLOAT32) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/grad: Vulkan softmax-cross-entropy backward currently supports dense row-major Float32 tensors", null);
+    }
 
     Value* targets_value = null;
     TensorVal* targets = null;
@@ -93,11 +96,9 @@ fn Value* ml_grad_tensor_softmax_ce_try_vulkan(Value* logits_arg, Value* targets
     if (targets == null || targets.kind != TENSOR_PAYLOAD_CONCRETE || targets.device != TENSOR_DEVICE_VULKAN) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/grad: Vulkan backward target must be a concrete Vulkan Tensor", null);
     }
-    if ((logits.dtype != TENSOR_DTYPE_FLOAT32 && logits.dtype != TENSOR_DTYPE_DOUBLE) ||
-        (targets.dtype != TENSOR_DTYPE_FLOAT32 && targets.dtype != TENSOR_DTYPE_DOUBLE) ||
-        (wrt.dtype != TENSOR_DTYPE_FLOAT32 && wrt.dtype != TENSOR_DTYPE_DOUBLE) ||
+    if (targets.dtype != TENSOR_DTYPE_FLOAT32 ||
         logits.dtype != targets.dtype || targets.dtype != wrt.dtype) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/grad: Vulkan softmax-cross-entropy backward currently supports dense row-major Float32 and Float64 tensors", null);
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/grad: Vulkan softmax-cross-entropy backward currently supports dense row-major Float32 tensors", null);
     }
     if (!tensor_dense_row_major(logits) || !tensor_dense_row_major(targets) || !tensor_dense_row_major(wrt)) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/grad: Vulkan softmax-cross-entropy backward currently supports dense row-major tensors", null);
@@ -267,6 +268,13 @@ fn Value* ml_grad_tensor_softmax_cross_entropy(Value* spec, Interp* interp) {
     if (err != null) return err;
     defer mem::free(maxes);
     defer mem::free(exp_sums);
+    for (usz i = 0; i < slice_count; i++) {
+        if (!conversion_double_is_finite(maxes[i]) ||
+            !conversion_double_is_finite(exp_sums[i]) ||
+            !(exp_sums[i] > 0.0)) {
+            return raise_error_with_payload_names(interp, "tensor", "tensor/invalid-argument", "ml/grad: softmax-cross-entropy backward encountered invalid softmax denominator", null);
+        }
+    }
 
     double* softmax_values = null;
     err = ml_grad_expr_buffer(interp, logits.element_count, &softmax_values, "ml/grad: failed to allocate softmax output");

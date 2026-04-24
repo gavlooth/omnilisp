@@ -243,6 +243,13 @@ fn void run_advanced_collections_generic_ops_part1(Interp* interp, int* pass, in
         io::printn("[FAIL] tensor Vulkan device selection rejects non-compute queue families");
         (*fail)++;
     }
+    if (omni_tensor_backend_vulkan_physical_device_query_null_guard_for_tests() == OMNI_TENSOR_VULKAN_SUCCESS) {
+        emit_pass_literal("[PASS] tensor Vulkan physical-device query null guards fail closed");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] tensor Vulkan physical-device query null guards fail closed");
+        (*fail)++;
+    }
     test_truthy(interp, "tensor-backends cublas Float32 capability entry",
         "(let (cublas-backend (ref (tensor-backends) 2)) (and (= (ref cublas-backend 'name) 'cublas) (or (= (ref cublas-backend 'float64) true) (= (ref cublas-backend 'float64) false)) (or (= (ref cublas-backend 'float32) true) (= (ref cublas-backend 'float32) false)) (= (ref cublas-backend 'matrix-hermitian-eigen-complex128) false) (= (ref cublas-backend 'matrix-hermitian-eigen-complex64) false) (= (ref cublas-backend 'matrix-eigenpairs-complex128) false) (= (ref cublas-backend 'matrix-eigenpairs-complex64) false)))", pass, fail);
     test_truthy(interp, "tensor-backends vulkan capability entry",
@@ -534,6 +541,42 @@ fn void run_advanced_collections_generic_ops_part1(Interp* interp, int* pass, in
     test_truthy(interp, "direct stats.normal-quantile cuda Float32 preserves placement and dtype",
         "(let (cuda-backend (ref (tensor-backends) 1)) (if (ref cuda-backend 'scientific-map-float32) (let (out (stats.normal-quantile (to-device (Tensor Float32 [2] [0.5 0.975]) 'cuda))) (let (cpu (to-device out 'cpu)) (and (= (device out) 'cuda) (= (String (dtype out)) \"Float32\") (< (abs (ref cpu [0])) 0.0001) (< (abs (- (ref cpu [1]) 1.959964)) 0.0002)))) true))", pass, fail);
     {
+        char[] name = "map cuda log rejects invalid real domain without CPU fallback";
+        EvalResult guard = run("(ref (ref (tensor-backends) 1) 'scientific-map-float64)", interp);
+        bool enabled = !guard.error.has_error && !is_nil(guard.value) && !(is_symbol(guard.value) && guard.value.sym_val == interp.sym_false);
+        if (enabled) {
+            test_truthy(interp, name,
+                "(= (handle (map log (to-device (Tensor Float64 [1] [-1.0]) 'cuda)) (raise msg (ref msg 'code))) 'tensor/domain-error)", pass, fail);
+        } else {
+            emit_pass(name);
+            (*pass)++;
+        }
+    }
+    {
+        char[] name = "map cuda asin and acos reject invalid real domains without CPU fallback";
+        EvalResult guard = run("(ref (ref (tensor-backends) 1) 'scientific-map-float64)", interp);
+        bool enabled = !guard.error.has_error && !is_nil(guard.value) && !(is_symbol(guard.value) && guard.value.sym_val == interp.sym_false);
+        if (enabled) {
+            test_truthy(interp, name,
+                "(and (= (handle (map asin (to-device (Tensor Float64 [1] [2.0]) 'cuda)) (raise msg (ref msg 'code))) 'tensor/domain-error) (= (handle (map acos (to-device (Tensor Float64 [1] [-2.0]) 'cuda)) (raise msg (ref msg 'code))) 'tensor/domain-error))", pass, fail);
+        } else {
+            emit_pass(name);
+            (*pass)++;
+        }
+    }
+    {
+        char[] name = "map cuda scientific real-domain status priority prefers invalid argument";
+        EvalResult guard = run("(ref (ref (tensor-backends) 1) 'scientific-map-float64)", interp);
+        bool enabled = !guard.error.has_error && !is_nil(guard.value) && !(is_symbol(guard.value) && guard.value.sym_val == interp.sym_false);
+        if (enabled) {
+            test_truthy(interp, name,
+                "(= (handle (map asin (to-device (Tensor Float64 [2] [2.0 (ref (json-parse \"[NaN]\" '(allow-nan-inf)) 0)]) 'cuda)) (raise msg (ref msg 'code))) 'tensor/invalid-argument)", pass, fail);
+        } else {
+            emit_pass(name);
+            (*pass)++;
+        }
+    }
+    {
         char[] name = "direct cuda floor returns BigInteger tensor";
         EvalResult guard = run("(ref (ref (tensor-backends) 1) 'rounding-big-integer)", interp);
         bool enabled = !guard.error.has_error && !is_nil(guard.value) && !(is_symbol(guard.value) && guard.value.sym_val == interp.sym_false);
@@ -588,6 +631,18 @@ fn void run_advanced_collections_generic_ops_part1(Interp* interp, int* pass, in
         if (enabled) {
             test_truthy(interp, name,
                 "(let (f64 (Array (to-device (floor (to-device (Tensor Float64 [2] [2.9 -2.1]) 'cuda)) 'cpu)) f32 (List (to-device (round (to-device (Tensor Float32 [2] [2.5 -2.5]) 'cuda)) 'cpu))) (and (= (String (ref f64 0)) \"2\") (and (= (String (ref f64 1)) \"-3\") (and (= (String (ref f32 0)) \"3\") (= (String (ref f32 1)) \"-3\")))))", pass, fail);
+        } else {
+            emit_pass(name);
+            (*pass)++;
+        }
+    }
+    {
+        char[] name = "direct cuda rounding mixed non-finite and range errors fails closed";
+        EvalResult guard = run("(ref (ref (tensor-backends) 1) 'rounding-big-integer)", interp);
+        bool enabled = !guard.error.has_error && !is_nil(guard.value) && !(is_symbol(guard.value) && guard.value.sym_val == interp.sym_false);
+        if (enabled) {
+            test_truthy(interp, name,
+                "(= (handle (floor (to-device (Tensor Float64 [2] [1.0e20 (ref (json-parse \"[NaN]\" '(allow-nan-inf)) 0)]) 'cuda)) (raise msg (ref msg 'code))) 'tensor/invalid-argument)", pass, fail);
         } else {
             emit_pass(name);
             (*pass)++;

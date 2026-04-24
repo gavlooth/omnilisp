@@ -5525,6 +5525,59 @@ Re-audit notes:
 
 Signature: GPT-5 Codex
 
+## 2026-04-24 Vulkan/CUDA/ML audit residual closure
+
+Date/time: 2026-04-24 16:35 CEST
+
+Objective:
+- Deploy parallel workers and close as many remaining Part 17
+  Vulkan/CUDA/ML audit residuals as possible.
+
+Changes made:
+- Closed `VKCUDA-AUDIT-M1` through `M6-L5` and `L1` through `L4`.
+- Added fail-closed train-mode NN batch-normalization placement checks for
+  non-CPU input/affine/running-state tensors.
+- Made generic linear `ml/grad` reject Vulkan operands explicitly while keeping
+  tensor-expression Vulkan backward paths separate.
+- Kept Vulkan cross-entropy and softmax-cross-entropy backward Float32-only
+  with explicit Float64 unsupported diagnostics.
+- Hardened CPU tensor-expression softmax-cross-entropy, division, and sqrt
+  backward edge cases.
+- Made the NN normal initializer Box-Muller lower-bound policy explicit.
+- Added Vulkan dynamic-loader null guards for physical-device feature and
+  memory-property query functions.
+- Added CUDA scientific unary domain checks, CUDA rounding priority status
+  writes, regenerated PTX, and host-side rounding status priority mapping.
+
+Commands run:
+- C3 diagnostics for touched C3 runtime/test files.
+- `/usr/local/cuda-13.0/bin/nvcc --ptx -arch=compute_75 csrc/tensor_cuda_scientific_unary.cu -o /tmp/omni_tensor_cuda_scientific_unary.ptx`
+- `/usr/local/cuda-13.0/bin/nvcc --ptx -arch=compute_75 csrc/tensor_cuda_rounding_i64.cu -o /tmp/omni_tensor_cuda_rounding_i64.ptx`
+- Static PTX check for `atom.global.max.u32`.
+- `c3c build --obj-out obj`
+- `scripts/run_validation_container.sh env LD_LIBRARY_PATH=build:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp`
+- `scripts/run_validation_container.sh env LD_LIBRARY_PATH=build:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=basic ./build/main --test-suite lisp`
+- `git diff --check`
+- `scripts/check_status_consistency.sh`
+
+Key results:
+- Build passed.
+- Bounded `advanced-collections-module` passed with `2067 passed, 0 failed`.
+- Bounded `basic` passed with `169 passed, 0 failed`.
+- `git diff --check` passed.
+- `scripts/check_status_consistency.sh` passed with TODO actionable count `0`.
+- Generated CUDA scientific and rounding PTX contains priority
+  `atom.global.max.u32` status writes.
+
+Unresolved issues:
+- No open Vulkan/CUDA/ML audit residual remains in Part 17.
+- Full heavy/global validation was not run in this slice.
+
+Next actions:
+- Run final whitespace/status consistency gates and commit non-artifact changes.
+
+Signature: GPT-5 Codex
+
 ## 2026-04-24 memory boundary BigInteger copy-debt reduction
 
 Date/time: 2026-04-24 14:45 CEST

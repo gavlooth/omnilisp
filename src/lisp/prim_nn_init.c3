@@ -4,6 +4,7 @@ const double NN_INIT_PI = 3.14159265358979323846;
 const uint NN_INIT_LCG_MULTIPLIER = 1664525;
 const uint NN_INIT_LCG_INCREMENT = 1013904223;
 const double NN_INIT_UINT32_SCALE = 4294967296.0;
+const double NN_INIT_BOX_MULLER_MIN_U1 = 0.000000000116415321826934814453125;
 
 struct NnInitContext {
     TensorDType dtype;
@@ -37,6 +38,7 @@ fn double nn_rng_uniform(NnInitContext* ctx, double low, double high) @inline {
 
 fn double nn_rng_normal(NnInitContext* ctx, double mean, double stddev) {
     double u1 = nn_rng_uniform01(ctx);
+    if (u1 < NN_INIT_BOX_MULLER_MIN_U1) u1 = NN_INIT_BOX_MULLER_MIN_U1;
     double u2 = nn_rng_uniform01(ctx);
     double radius = c_sqrt(-2.0 * c_log(u1));
     double theta = 2.0 * NN_INIT_PI * u2;

@@ -34,6 +34,16 @@ fn Value* ml_grad_resolve_cpu(Value* value, TensorVal** out_tensor, Value** out_
     );
 }
 
+fn Value* ml_grad_reject_generic_vulkan_operands(Value* a, Value* b, Value* c, Value* d, Interp* interp) {
+    if (ml_grad_touches_vulkan(a) ||
+        ml_grad_touches_vulkan(b) ||
+        ml_grad_touches_vulkan(c) ||
+        ml_grad_touches_vulkan(d)) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/grad: generic linear Vulkan backward is unsupported; use implemented tensor-expression Vulkan backward kinds", null);
+    }
+    return null;
+}
+
 fn Value* ml_grad_make_tensor(Interp* interp, TensorDType dtype, usz[] shape, char[] message) {
     Value* out = make_tensor_uninitialized_checked(interp, dtype, shape, message);
     if (out == null || out.tag == ERROR) return out;
@@ -378,6 +388,7 @@ fn Value* ml_grad_linear_mse(Value* spec, Interp* interp, bool with_activation) 
     Value* bias_arg = nn_dict_get(spec, interp, "bias");
     bool has_bias = bias_arg != null && !is_nil(bias_arg);
     if (has_bias && !is_tensor(bias_arg)) return ml_grad_invalid(interp, "ml/grad: bias must be a Tensor when present");
+    if (Value* device_err = ml_grad_reject_generic_vulkan_operands(input_arg, weights_arg, targets_arg, has_bias ? bias_arg : null, interp)) return device_err;
     SymbolId activation = INVALID_SYMBOL_ID;
     if (with_activation) {
         Value* activation_arg = nn_dict_get(spec, interp, "activation");
@@ -595,6 +606,7 @@ fn Value* ml_grad_linear_softmax_cross_entropy(Value* spec, Interp* interp) {
     Value* bias_arg = nn_dict_get(spec, interp, "bias");
     bool has_bias = bias_arg != null && !is_nil(bias_arg);
     if (has_bias && !is_tensor(bias_arg)) return ml_grad_invalid(interp, "ml/grad: bias must be a Tensor when present");
+    if (Value* device_err = ml_grad_reject_generic_vulkan_operands(input_arg, weights_arg, targets_arg, has_bias ? bias_arg : null, interp)) return device_err;
 
     TensorVal* input = null;
     TensorVal* weights = null;

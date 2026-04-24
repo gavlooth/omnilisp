@@ -5016,6 +5016,51 @@ Validation:
     (`255 passed, 0 failed`) and identified the no-splice rollback caller
   - no runtime code change was retained from the trace
 
+## 2026-04-24 Vulkan/CUDA/ML audit residual closure
+
+- Closed all open `VKCUDA-AUDIT-*` residuals from
+  `AUDIT_REPORT_VULKAN_CUDA_ML_2026-04-23.md`.
+- Runtime/backend behavior changes:
+  - train-mode `nn/forward` batch normalization now fails closed when input,
+    affine params, or running state are non-CPU, avoiding hidden CPU state
+    updates for Vulkan-touched model state.
+  - generic linear `ml/grad` paths now reject Vulkan operands explicitly; the
+    implemented tensor-expression Vulkan backward paths remain the supported
+    Vulkan route.
+  - Vulkan `ml/cross-entropy` and Vulkan softmax-cross-entropy backward keep an
+    explicit Float32-only contract and fail closed for Float64.
+  - CPU tensor softmax-cross-entropy backward rejects zero/non-finite softmax
+    denominators before forming gradients.
+  - CPU tensor-expression division backward validates denominator squaring
+    before right-side division; subnormal or non-finite `b * b` fails closed.
+  - CPU tensor-expression sqrt backward treats signed zero, including `-0.0`,
+    as undefined and raises `tensor/invalid-argument`.
+  - `nn_rng_normal` now records the Box-Muller lower-bound policy explicitly
+    through `NN_INIT_BOX_MULLER_MIN_U1`, preserving midpoint-sampled behavior
+    while preventing accidental `log(0)`.
+  - Vulkan physical-device selection, probe/context feature reads, and
+    host-visible memory-type lookup fail closed if feature or memory-property
+    query function pointers are unavailable.
+  - CUDA scientific unary kernels check `log`, `log10`, `asin`, and `acos`
+    domains explicitly and use priority status writes.
+  - CUDA rounding kernels use priority status writes, generated PTX contains
+    `atom.global.max.u32`, and the host launcher maps priority status `2` to
+    `OMNI_TENSOR_CUDA_INVALID_ARGUMENT`.
+- Validation:
+  - C3 diagnostics for touched C3 runtime/test files
+  - `/usr/local/cuda-13.0/bin/nvcc --ptx -arch=compute_75
+    csrc/tensor_cuda_scientific_unary.cu -o
+    /tmp/omni_tensor_cuda_scientific_unary.ptx`
+  - `/usr/local/cuda-13.0/bin/nvcc --ptx -arch=compute_75
+    csrc/tensor_cuda_rounding_i64.cu -o
+    /tmp/omni_tensor_cuda_rounding_i64.ptx`
+  - static PTX check for `atom.global.max.u32`
+  - `c3c build --obj-out obj`
+  - bounded `advanced-collections-module` (`2067 passed, 0 failed`)
+  - bounded `basic` (`169 passed, 0 failed`)
+  - `git diff --check`
+  - `scripts/check_status_consistency.sh` -> TODO actionable count `0`
+
 ## 2026-04-24 memory boundary BigInteger copy-debt reduction
 
 - Implemented and closed `MEM-BOUNDARY-BIGINT-COPY-001`.

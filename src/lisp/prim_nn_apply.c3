@@ -443,6 +443,17 @@ fn Value* nn_batch_norm_resolve_cpu(Value* value, Interp* interp, TensorVal** ou
     return null;
 }
 
+fn Value* nn_batch_norm_reject_train_non_cpu_placement(Value* input, Value* scale, Value* bias, Value* running_mean, Value* running_variance, Interp* interp) {
+    if (tensor_expr_has_non_cpu_device(input) ||
+        tensor_expr_has_non_cpu_device(scale) ||
+        tensor_expr_has_non_cpu_device(bias) ||
+        tensor_expr_has_non_cpu_device(running_mean) ||
+        tensor_expr_has_non_cpu_device(running_variance)) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "nn/forward: train-mode batch-normalization requires CPU input, affine params, and running state; Vulkan running-state updates are unsupported", null);
+    }
+    return null;
+}
+
 fn Value* nn_batch_norm_make_stat_tensor(Interp* interp, TensorDType dtype, double* values, usz channels, char[] oom_message) {
     usz[1] shape = { channels };
     Value* tensor = make_tensor_uninitialized_checked(interp, dtype, shape[0:1], oom_message);
@@ -604,6 +615,7 @@ fn Value* nn_forward_batch_normalization(Value* spec, Value* params, Value* stat
     if (running_mean == null || running_mean.tag == ERROR) return running_mean;
     Value* running_variance = nn_apply_required_tensor_state(state, interp, "running-variance", "state.running-variance");
     if (running_variance == null || running_variance.tag == ERROR) return running_variance;
+    if (Value* placement_err = nn_batch_norm_reject_train_non_cpu_placement(input, scale, bias, running_mean, running_variance, interp)) return placement_err;
 
     TensorVal* input_tensor = null;
     Value* concrete_input = null;

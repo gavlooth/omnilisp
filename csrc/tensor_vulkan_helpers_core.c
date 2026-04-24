@@ -54,6 +54,29 @@ OmniTensorVulkanContext* omni_tensor_vulkan_shared_context = NULL;
 static pthread_mutex_t omni_tensor_vulkan_context_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static int omni_tensor_vulkan_resolve(void);
+int omni_tensor_vulkan_find_host_visible_memory_type(
+    OmniVulkanPhysicalDevice physical_device,
+    uint32_t memory_type_bits,
+    uint32_t* out_memory_type_index
+);
+
+static int omni_tensor_vulkan_physical_device_query_functions_load(
+    omni_vulkan_get_physical_device_features_fn* out_features,
+    omni_vulkan_get_physical_device_memory_properties_fn* out_memory_properties
+) {
+    if (out_features == NULL || out_memory_properties == NULL) return 0;
+    *out_features = omni_vulkan_get_physical_device_features;
+    *out_memory_properties = omni_vulkan_get_physical_device_memory_properties;
+    return *out_features != NULL && *out_memory_properties != NULL;
+}
+
+static int omni_tensor_vulkan_memory_property_query_function_load(
+    omni_vulkan_get_physical_device_memory_properties_fn* out_memory_properties
+) {
+    if (out_memory_properties == NULL) return 0;
+    *out_memory_properties = omni_vulkan_get_physical_device_memory_properties;
+    return *out_memory_properties != NULL;
+}
 
 int omni_tensor_vulkan_silence_stderr_begin(int* saved_stderr) {
     if (saved_stderr == NULL) return 0;
@@ -188,6 +211,9 @@ int omni_tensor_vulkan_select_physical_device(
     if (instance == NULL || out_physical_device == NULL || out_queue_family_index == NULL) return 0;
     *out_physical_device = NULL;
     *out_queue_family_index = 0;
+    omni_vulkan_get_physical_device_features_fn get_features = NULL;
+    omni_vulkan_get_physical_device_memory_properties_fn get_memory_properties = NULL;
+    if (!omni_tensor_vulkan_physical_device_query_functions_load(&get_features, &get_memory_properties)) return 0;
 
     uint32_t device_count = 0;
     if (omni_vulkan_enumerate_physical_devices(instance, &device_count, NULL) != OMNI_VULKAN_SUCCESS || device_count == 0) return 0;
@@ -218,8 +244,8 @@ int omni_tensor_vulkan_select_physical_device(
             if (omni_vulkan_get_physical_device_properties != NULL) {
                 omni_vulkan_get_physical_device_properties(devices[i], &properties);
             }
-            omni_vulkan_get_physical_device_features(devices[i], &features);
-            omni_vulkan_get_physical_device_memory_properties(devices[i], &memory_props);
+            get_features(devices[i], &features);
+            get_memory_properties(devices[i], &memory_props);
             uint32_t score = omni_tensor_vulkan_device_score(&properties, &features, &memory_props, &queues[q]);
             if (!found || score > best_score) {
                 *out_physical_device = devices[i];
@@ -316,6 +342,62 @@ int omni_tensor_backend_vulkan_group_count_overflow_guard_for_tests(void) {
         : OMNI_TENSOR_VULKAN_INVALID;
 }
 
+static void omni_tensor_vulkan_noop_get_physical_device_features(
+    OmniVulkanPhysicalDevice physical_device,
+    OmniVulkanPhysicalDeviceFeatures* features
+) {
+    (void)physical_device;
+    if (features != NULL) memset(features, 0, sizeof(*features));
+}
+
+static void omni_tensor_vulkan_noop_get_physical_device_memory_properties(
+    OmniVulkanPhysicalDevice physical_device,
+    OmniVulkanPhysicalDeviceMemoryProperties* memory_properties
+) {
+    (void)physical_device;
+    if (memory_properties != NULL) memset(memory_properties, 0, sizeof(*memory_properties));
+}
+
+int omni_tensor_backend_vulkan_physical_device_query_null_guard_for_tests(void) {
+    omni_vulkan_get_physical_device_features_fn saved_features = omni_vulkan_get_physical_device_features;
+    omni_vulkan_get_physical_device_memory_properties_fn saved_memory_properties = omni_vulkan_get_physical_device_memory_properties;
+
+    OmniVulkanPhysicalDevice selected_device = (OmniVulkanPhysicalDevice)(uintptr_t)1u;
+    uint32_t selected_queue = 77u;
+    uint32_t memory_type_index = 77u;
+    OmniVulkanInstance fake_instance = (OmniVulkanInstance)(uintptr_t)1u;
+    OmniVulkanPhysicalDevice fake_device = (OmniVulkanPhysicalDevice)(uintptr_t)2u;
+    int ok = 1;
+
+    omni_vulkan_get_physical_device_features = NULL;
+    omni_vulkan_get_physical_device_memory_properties = omni_tensor_vulkan_noop_get_physical_device_memory_properties;
+    if (omni_tensor_vulkan_select_physical_device(fake_instance, &selected_device, &selected_queue) != 0 ||
+        selected_device != NULL ||
+        selected_queue != 0u) {
+        ok = 0;
+    }
+
+    selected_device = (OmniVulkanPhysicalDevice)(uintptr_t)1u;
+    selected_queue = 77u;
+    omni_vulkan_get_physical_device_features = omni_tensor_vulkan_noop_get_physical_device_features;
+    omni_vulkan_get_physical_device_memory_properties = NULL;
+    if (omni_tensor_vulkan_select_physical_device(fake_instance, &selected_device, &selected_queue) != 0 ||
+        selected_device != NULL ||
+        selected_queue != 0u) {
+        ok = 0;
+    }
+
+    memory_type_index = 77u;
+    if (omni_tensor_vulkan_find_host_visible_memory_type(fake_device, 1u, &memory_type_index) != 0 ||
+        memory_type_index != 0u) {
+        ok = 0;
+    }
+
+    omni_vulkan_get_physical_device_features = saved_features;
+    omni_vulkan_get_physical_device_memory_properties = saved_memory_properties;
+    return ok ? OMNI_TENSOR_VULKAN_SUCCESS : OMNI_TENSOR_VULKAN_INVALID;
+}
+
 int omni_tensor_vulkan_find_host_visible_memory_type(
     OmniVulkanPhysicalDevice physical_device,
     uint32_t memory_type_bits,
@@ -323,10 +405,12 @@ int omni_tensor_vulkan_find_host_visible_memory_type(
 ) {
     if (physical_device == NULL || out_memory_type_index == NULL) return 0;
     *out_memory_type_index = 0;
+    omni_vulkan_get_physical_device_memory_properties_fn get_memory_properties = NULL;
+    if (!omni_tensor_vulkan_memory_property_query_function_load(&get_memory_properties)) return 0;
 
     OmniVulkanPhysicalDeviceMemoryProperties props;
     memset(&props, 0, sizeof(props));
-    omni_vulkan_get_physical_device_memory_properties(physical_device, &props);
+    get_memory_properties(physical_device, &props);
 
     for (uint32_t i = 0; i < props.memoryTypeCount && i < 32; i++) {
         uint32_t bit = 1u << i;
