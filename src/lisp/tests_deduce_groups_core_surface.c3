@@ -113,6 +113,114 @@ fn void run_deduce_open_named_test(Interp* interp, int* pass, int* fail) {
             (*fail)++;
         }
     }
+
+    {
+        EvalResult r = run("(deduce 'open 'memory)", interp);
+        bool ok = !r.error.has_error &&
+            r.value != null &&
+            r.value.tag == FFI_HANDLE &&
+            r.value.ffi_val != null &&
+            r.value.ffi_val.lib_handle != null;
+        if (!ok) {
+            io::printn("[FAIL] deduce open-named surfaces materialized metadata read failures (setup)");
+            (*fail)++;
+            return;
+        }
+
+        DeduceDb* db = (DeduceDb*)r.value.ffi_val.lib_handle;
+        Value* db_handle = make_ffi_handle_ex(interp, (void*)db, "deduce-db", null, false, false);
+        if (db_handle == null || db_handle.tag == ERROR) {
+            io::printn("[FAIL] deduce open-named surfaces materialized metadata read failures (handle)");
+            (*fail)++;
+            return;
+        }
+        SymbolId rel_name = interp.symbols.intern("deduce_meta_fail_closed");
+        Value* rel_name_v = make_symbol(interp, rel_name);
+        Value* db_name_v = make_string(interp, "deduce_meta_fail_closed");
+        Value* col_name_v = make_symbol(interp, interp.symbols.intern("name"));
+
+        bool saved_force = g_deduce_force_materialized_meta_read_fail;
+        g_deduce_force_materialized_meta_read_fail = true;
+
+        Value*[4] open_args = { db_handle, rel_name_v, db_name_v, col_name_v };
+        Value* open_err = prim_deduce_open_named(open_args[0:4], null, interp);
+        Value*[3] define_args = { db_handle, rel_name_v, col_name_v };
+        Value* define_err = prim_define_relation(define_args[0:3], null, interp);
+
+        g_deduce_force_materialized_meta_read_fail = saved_force;
+
+        bool open_ok = compiler_error_value_contains(open_err, "forced materialized relation metadata read failure");
+        bool define_ok = compiler_error_value_contains(define_err, "forced materialized relation metadata read failure");
+        if (open_ok && define_ok) {
+            emit_pass_literal("[PASS] deduce open-named and define-relation fail closed on materialized metadata read failures");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] deduce open-named and define-relation fail closed on materialized metadata read failures");
+            (*fail)++;
+        }
+    }
+
+    {
+        EvalResult r = run("(deduce 'open 'memory)", interp);
+        bool ok = !r.error.has_error &&
+            r.value != null &&
+            r.value.tag == FFI_HANDLE &&
+            r.value.ffi_val != null &&
+            r.value.ffi_val.lib_handle != null;
+        if (!ok) {
+            io::printn("[FAIL] deduce open-named rejects invalid persisted stale reason (setup)");
+            (*fail)++;
+            return;
+        }
+
+        DeduceDb* db = (DeduceDb*)r.value.ffi_val.lib_handle;
+        SymbolId rel_name = interp.symbols.intern("deduce_meta_invalid_stale_reason");
+        bool saved_invalid_reason = g_deduce_force_materialized_meta_invalid_stale_reason;
+        g_deduce_force_materialized_meta_invalid_stale_reason = true;
+        Value* persist_err = deduce_relation_meta_persist_state(
+            db,
+            rel_name,
+            true,
+            interp.symbols.intern("manual"),
+            0,
+            0,
+            0,
+            DEDUCE_MATERIALIZED_STALE_NONE,
+            false,
+            interp
+        );
+        g_deduce_force_materialized_meta_invalid_stale_reason = saved_invalid_reason;
+        if (persist_err != null && persist_err.tag == ERROR) {
+            io::printn("[FAIL] deduce open-named rejects invalid persisted stale reason (persist)");
+            (*fail)++;
+            return;
+        }
+
+        Value* db_handle = make_ffi_handle_ex(interp, (void*)db, "deduce-db", null, false, false);
+        if (db_handle == null || db_handle.tag == ERROR) {
+            io::printn("[FAIL] deduce open-named rejects invalid persisted stale reason (handle)");
+            (*fail)++;
+            return;
+        }
+        Value* rel_name_v = make_symbol(interp, rel_name);
+        Value* db_name_v = make_string(interp, "deduce_meta_invalid_stale_reason");
+        Value* col_name_v = make_symbol(interp, interp.symbols.intern("name"));
+
+        Value*[4] open_args = { db_handle, rel_name_v, db_name_v, col_name_v };
+        Value* open_err = prim_deduce_open_named(open_args[0:4], null, interp);
+        Value*[3] define_args = { db_handle, rel_name_v, col_name_v };
+        Value* define_err = prim_define_relation(define_args[0:3], null, interp);
+
+        bool open_ok = compiler_error_value_contains(open_err, "persisted relation metadata contains invalid stale reason");
+        bool define_ok = compiler_error_value_contains(define_err, "persisted relation metadata contains invalid stale reason");
+        if (open_ok && define_ok) {
+            emit_pass_literal("[PASS] deduce open-named and define-relation reject invalid persisted stale reasons");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] deduce open-named and define-relation reject invalid persisted stale reasons");
+            (*fail)++;
+        }
+    }
 }
 
 fn void run_deduce_relation_open_commit_failure_test(Interp* interp, int* pass, int* fail) {

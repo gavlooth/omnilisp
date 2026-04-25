@@ -39,7 +39,7 @@ fn Value* prim_define_relation(Value*[] args, Env* env, Interp* interp) {
             deduce_relation_free(rel);
             return col_err;
         }
-        (void)deduce_relation_meta_apply_persisted_state(
+        Value* meta_err = deduce_relation_meta_apply_persisted_state(
             db,
             rel_name,
             &rel.materialized_view,
@@ -50,6 +50,10 @@ fn Value* prim_define_relation(Value*[] args, Env* env, Interp* interp) {
             &rel.materialized_last_stale_reason,
             interp
         );
+        if (meta_err != null) {
+            deduce_relation_free(rel);
+            return meta_err;
+        }
     } else {
         Value* col_err = deduce_relation_collect_columns(rel, cols, interp);
         if (col_err != null) {

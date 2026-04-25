@@ -593,6 +593,59 @@ fn void run_pika_tests(Interp* interp, int* pass, int* fail) {
     }
     {
         pika::regex_cache_reset();
+        pika::g_regex_force_cache_alloc_fail_nth = 1;
+        bool usable = false;
+        pika::RegexMatch compiled = pika::regex_search_compiled("cache-init-fail", "cache-init-fail", &usable);
+        bool ok = usable &&
+            compiled.matched &&
+            pika::g_regex_cache_len == 0 &&
+            pika::g_regex_cache_cap == 0;
+        if (ok) {
+            emit_pass_literal("[PASS] regex cache init allocation failure falls back uncached");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] regex cache init allocation failure falls back uncached");
+            (*fail)++;
+        }
+    }
+    {
+        pika::regex_cache_reset();
+        bool ok = true;
+        for (int i = 0; i < 32; i++) {
+            char[32] pattern_buf;
+            if (try char[] pattern = io::bprintf(&pattern_buf, "cache-fill-%02d", i)) {
+                bool usable = false;
+                pika::RegexMatch compiled = pika::regex_search_compiled(pattern, pattern, &usable);
+                ok = usable && compiled.matched;
+            } else {
+                ok = false;
+            }
+            if (!ok) break;
+        }
+        if (ok) {
+            pika::g_regex_force_cache_alloc_fail_nth = 1;
+            char[32] pattern_buf;
+            if (try char[] pattern = io::bprintf(&pattern_buf, "cache-grow-fail")) {
+                bool usable = false;
+                pika::RegexMatch compiled = pika::regex_search_compiled(pattern, pattern, &usable);
+                ok = usable &&
+                    compiled.matched &&
+                    pika::g_regex_cache_len == 32 &&
+                    pika::g_regex_cache_cap == 32;
+            } else {
+                ok = false;
+            }
+        }
+        if (ok) {
+            emit_pass_literal("[PASS] regex cache grow allocation failure falls back uncached");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] regex cache grow allocation failure falls back uncached");
+            (*fail)++;
+        }
+    }
+    {
+        pika::regex_cache_reset();
         pika::regex_cache_lock();
         pika::CompiledRegex* retained = pika::regex_get_compiled_cached("a+");
         bool retained_ok = retained != null && retained.active_refs == 1 && retained.cached;

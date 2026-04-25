@@ -9,6 +9,17 @@ fn void scheduler_free_handle_cb(void* handle) {
     if (handle != null) mem::free(handle);
 }
 
+fn void scheduler_close_pending_io_for_all_fibers() {
+    for (usz i = 0; i < g_scheduler.fiber_count; i++) {
+        scheduler_close_pending_tcp_read(i);
+        scheduler_close_pending_offload(i);
+        scheduler_close_pending_sleep(i);
+        scheduler_close_pending_dns(i);
+        scheduler_close_pending_tcp_connect(i);
+        scheduler_close_pending_tcp_accept(i);
+    }
+}
+
 fn void scheduler_restore_blocked_fiber_ready(usz fiber_id) {
     if (fiber_id >= g_scheduler.fiber_count) return;
     FiberEntry* f = &g_scheduler.fibers[fiber_id];

@@ -4,6 +4,8 @@ fn Value* json_raise(Interp* interp, char[] code, char[] message) @inline {
     return raise_error_with_payload_names(interp, "parser", code, message, null);
 }
 
+bool g_json_force_invalid_string_metadata = false;
+
 // ============================================================
 // json-parse: JSON string → Omni value
 // ============================================================
@@ -31,7 +33,9 @@ fn Value* json_val_to_omni(YyjsonVal* val, Interp* interp) {
     if (omni_yyjson_is_str(val) != 0) {
         char* s = omni_yyjson_get_str(val);
         usz len = omni_yyjson_get_len(val);
-        if (s == null) return make_string(interp, "");
+        if (g_json_force_invalid_string_metadata || s == null) {
+            return json_raise(interp, "parser/invalid-state", "json-parse: invalid string metadata");
+        }
         return make_string(interp, s[:len]);
     }
     if (omni_yyjson_is_arr(val) != 0) {

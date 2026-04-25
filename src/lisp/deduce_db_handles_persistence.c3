@@ -23,7 +23,7 @@ fn Value* deduce_db_ensure_restored_rule_predicate_schema(
     ulong materialized_last_refresh_mutation_epoch = 0;
     ulong materialized_last_stale_mutation_epoch = 0;
     DeduceMaterializedStaleReason materialized_last_stale_reason = DEDUCE_MATERIALIZED_STALE_NONE;
-    (void)deduce_relation_meta_apply_persisted_state(
+    Value* meta_err = deduce_relation_meta_apply_persisted_state(
         db,
         predicate,
         &materialized_view,
@@ -34,6 +34,7 @@ fn Value* deduce_db_ensure_restored_rule_predicate_schema(
         &materialized_last_stale_reason,
         interp
     );
+    if (meta_err != null) return meta_err;
 
     DeduceSchemaRegisterStatus status = deduce_db_register_inferred_relation_schema(
         db,

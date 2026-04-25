@@ -130,6 +130,15 @@ fn int run_aot_backend_compile(char* temp_c3_path, char* output_binary) {
     int helper_status = run_spawned_command(AOT_HELPER_COMMAND[..], false);
     if (helper_status != 0) return helper_status;
 
+    char[BUILD_PATH_BUFFER_CAP] output_temp_buf;
+    char[] output_temp_path = "";
+    if (!entry_build_atomic_temp_path(((ZString)output_binary).str_view(), output_temp_buf[..], &output_temp_path)) {
+        io::eprintfn("Error: failed to stage AOT output binary '%s'", (ZString)output_binary);
+        return 2;
+    }
+    bool output_published = false;
+    defer if (!output_published) entry_cleanup_staged_text(output_temp_path);
+
     List { String } sources;
     sources.tinit(128);
 
@@ -150,7 +159,7 @@ fn int run_aot_backend_compile(char* temp_c3_path, char* output_binary) {
     command.push(resolve_aot_link_library_path());
     command.push_all(AOT_LINK_FLAGS[..]);
     command.push("-o");
-    command.push(((ZString)output_binary).str_view());
+    command.push((String)output_temp_path);
 
     String[] command_line = command.to_tarray();
     if (command_line.len == 0) {
@@ -158,5 +167,14 @@ fn int run_aot_backend_compile(char* temp_c3_path, char* output_binary) {
         return 2;
     }
 
-    return run_spawned_command(command_line, false);
+    int compile_status = run_spawned_command(command_line, false);
+    if (compile_status != 0) return compile_status;
+
+    EntryFileWriteKind publish_kind = ENTRY_FILE_WRITE_GENERIC_FAILURE;
+    if (!entry_commit_staged_text(output_temp_path, ((ZString)output_binary).str_view(), &publish_kind)) {
+        print_file_write_error_text("AOT output binary", ((ZString)output_binary).str_view(), publish_kind);
+        return 2;
+    }
+    output_published = true;
+    return 0;
 }

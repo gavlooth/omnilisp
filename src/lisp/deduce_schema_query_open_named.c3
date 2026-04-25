@@ -52,7 +52,7 @@ fn Value* prim_deduce_open_named(Value*[] args, Env* env, Interp* interp) {
         deduce_relation_free(rel);
         return col_err;
     }
-    (void)deduce_relation_meta_apply_persisted_state(
+    Value* meta_err = deduce_relation_meta_apply_persisted_state(
         db,
         rel_name_v.sym_val,
         &rel.materialized_view,
@@ -63,6 +63,10 @@ fn Value* prim_deduce_open_named(Value*[] args, Env* env, Interp* interp) {
         &rel.materialized_last_stale_reason,
         interp
     );
+    if (meta_err != null) {
+        deduce_relation_free(rel);
+        return meta_err;
+    }
 
     DeduceRelationOpenStatus open_status = deduce_relation_open_dbi_with_name(rel, db_name);
     if (open_status != REL_OPEN_OK) {
@@ -109,7 +113,7 @@ fn Value* prim_deduce_open_named(Value*[] args, Env* env, Interp* interp) {
         return deduce_raise(interp, "deduce/open-named-out-of-memory", "deduce-open-named: out of memory");
     }
     if (rel.materialized_view) {
-        Value* meta_err = deduce_relation_meta_persist_state(
+        Value* meta_persist_err = deduce_relation_meta_persist_state(
             db,
             rel_name_v.sym_val,
             rel.materialized_view,
@@ -121,10 +125,10 @@ fn Value* prim_deduce_open_named(Value*[] args, Env* env, Interp* interp) {
             false,
             interp
         );
-        if (meta_err != null) {
+        if (meta_persist_err != null) {
             deduce_db_rollback_relation_schemas_to(db, schema_start);
             deduce_relation_free(rel);
-            return meta_err;
+            return meta_persist_err;
         }
     }
 

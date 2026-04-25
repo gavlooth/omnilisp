@@ -50,7 +50,9 @@ fn Value* make_big_float_from_owned_handle(Interp* interp, void* handle, char[] 
     }
     v.tag = BIG_FLOAT;
     v.big_float_val = handle;
-    main::scope_register_dtor(interp.current_scope, (void*)v, &scope_dtor_value);
+    if (!scope_register_value_dtor_or_cleanup(interp.current_scope, v)) {
+        return big_float_raise(interp, "big-float/out-of-memory", "BigFloat: failed to register value destructor");
+    }
     return v;
 }
 
@@ -101,7 +103,10 @@ fn Value* copy_big_float_to_parent(Value* v, Interp* interp, BoundaryCopyFault* 
     }
     result.tag = BIG_FLOAT;
     result.big_float_val = cloned;
-    main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
+    if (!scope_register_value_dtor_or_cleanup(interp.current_scope, result)) {
+        if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
+        return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to register BigFloat copy destructor");
+    }
     return result;
 }
 
@@ -121,7 +126,9 @@ fn Value* promote_escape_big_float(Value* v, Interp* interp, PromotionContext* c
     }
     result.tag = BIG_FLOAT;
     result.big_float_val = cloned;
-    main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value);
+    if (!scope_register_escape_value_dtor_or_cleanup(interp.current_scope, result)) {
+        return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to register BigFloat escape destructor");
+    }
     return result;
 }
 

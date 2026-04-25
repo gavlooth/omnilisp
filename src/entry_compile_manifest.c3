@@ -525,6 +525,11 @@ fn bool write_compile_ffi_manifest(
     json.append_string("\n  ]\n");
     json.append_string("}\n");
     bool write_ok = compile_manifest_write_atomic_text(manifest_path, json.str_view());
-    if (!write_ok) *write_kind_out = classify_file_write_errno();
+    if (!write_ok) {
+        char[] cleanup_manifest_path = "";
+        (void)compile_manifest_remove_stale(&manifest_path_builder, &cleanup_manifest_path, write_kind_out);
+        if (cleanup_manifest_path.len > 0) mem::free(cleanup_manifest_path.ptr);
+        if (*write_kind_out == ENTRY_FILE_WRITE_GENERIC_FAILURE) *write_kind_out = classify_file_write_errno();
+    }
     return write_ok;
 }

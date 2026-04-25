@@ -103,6 +103,20 @@ fn void scope_dtor_value(void* ptr) {
     }
 }
 
+fn bool scope_register_value_dtor_or_cleanup(main::ScopeRegion* scope, Value* value) {
+    if (scope == null || value == null) return false;
+    if (main::scope_register_dtor(scope, (void*)value, &scope_dtor_value)) return true;
+    scope_dtor_value((void*)value);
+    return false;
+}
+
+fn bool scope_register_escape_value_dtor_or_cleanup(main::ScopeRegion* scope, Value* value) {
+    if (scope == null || value == null) return false;
+    if (main::scope_register_dtor_escape(scope, (void*)value, &scope_dtor_value)) return true;
+    scope_dtor_value((void*)value);
+    return false;
+}
+
 // Scope destructor for Env objects — frees malloc'd bindings and hash table.
 fn void scope_dtor_closure(void* ptr) {
     Value* v = (Value*)ptr;

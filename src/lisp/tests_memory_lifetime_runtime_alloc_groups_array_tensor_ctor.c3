@@ -522,6 +522,26 @@ fn void run_memory_lifetime_runtime_alloc_groups_array_tensor_ctor_tests(Interp*
     }
 
     {
+        usz[1] tensor_shape = { 2 };
+        bool saved_dtor_oom = main::g_scope_force_dtor_alloc_oom;
+        main::g_scope_force_dtor_alloc_oom = true;
+        Value* tensor_fail = make_tensor_double_uninitialized_checked(interp, tensor_shape[0:1], "Tensor: out of memory");
+        main::g_scope_force_dtor_alloc_oom = saved_dtor_oom;
+
+        bool ok = runtime_alloc_error_matches(tensor_fail, "Tensor: out of memory") ||
+            runtime_alloc_error_matches(tensor_fail, "runtime/out-of-memory");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: tensor destructor registration OOM fails closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: tensor destructor registration OOM fails closed (result=%s)",
+                runtime_alloc_error_text(tensor_fail));
+            (*fail)++;
+        }
+    }
+
+    {
         EvalResult expr_eval = run("(map + (Tensor Float64 [2] [1 2]) 3)", interp);
         EvalResult index_eval = run("[1]", interp);
         bool setup_ok = !expr_eval.error.has_error &&

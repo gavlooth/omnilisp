@@ -500,3 +500,77 @@
   - Rebuild native helpers after FTXUI C++ changes and rebuild `build/main`
     after C3 changes before relying on runtime tests.
 - Signature: GPT-5 Codex
+
+## 2026-04-25 11:28 CEST - Audit 219-230 Remediation And Reaudit Follow-Up
+
+- Objective attempted:
+  - Continue addressing verified `AUDIT.md` issues with parallel mini-agent
+    implementation, integrate fixes, validate touched surfaces, and prepare a
+    non-artifact commit/push.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `AUDIT.md`
+  - Runtime heap-backed value destructor registration, compile/build artifact
+    rollback, scheduler shutdown, Pika regex cache, Deduce materialized
+    metadata, JSON/TOML native metadata bridges.
+- Code or configuration changes made:
+  - Closed `AUDIT-219` through `AUDIT-230`.
+  - Added shared `Value` destructor-registration helpers that clean up shaped
+    heap payloads on destructor-table OOM.
+  - BigInteger/BigFloat/BigComplex/tensor constructors, copy paths, and escape
+    promotion paths now fail closed on destructor-registration failure.
+  - Compile sidecar writes now remove stale final manifests on write failure;
+    compile sidecar rollback reports unlink failure; AOT build publishes
+    backend binaries from staged temp outputs.
+  - Scheduler shutdown now drains pending I/O, offload-admission freelist/mutex
+    state, thread-task registry, and OS-thread registry before final reset.
+  - Regex cache init/grow now publishes only successful allocations and falls
+    back uncached on cache bookkeeping allocation failure.
+  - Deduce materialized metadata restore now propagates read failures and
+    rejects unknown persisted stale-reason bytes.
+  - JSON/TOML native metadata corruption now returns structured
+    `parser/invalid-state` errors instead of empty/nil values.
+  - Added `AUDIT-231` for the still-red broad Deduce materialized restart
+    fixtures that rely on unsupported `block`/`define` visibility.
+- Commands run:
+  - `scripts/build_omni_chelpers.sh`
+  - `LIBRARY_PATH=/home/christos/.local/lib c3c --threads 1 build --obj-out obj`
+  - bounded container `memory-lifetime-smoke`:
+    `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build --obj-out obj && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+  - `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=compiler OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=scheduler OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=pika OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=data-format OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=deduce OMNI_DEDUCE_GROUP_FILTER=basics OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=deduce OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - direct reproduction: `(block (define db (deduce 'open "...")) db)`
+  - `git diff --check`
+- Key results:
+  - Native helper rebuild passed.
+  - C3 build passed and linked `build/main` when run with local library path.
+  - Memory-lifetime smoke passed with `pass=269 fail=0`.
+  - Compiler slice passed with `pass=340 fail=0`.
+  - Scheduler slice passed with `pass=143 fail=0`.
+  - Pika slice passed with `pass=128 fail=0`.
+  - Data-format slice passed with `pass=92 fail=0`.
+  - Deduce basics group passed with `pass=11 fail=0`.
+  - Full Deduce slice remains red with `pass=411 fail=6`; failures are the
+    materialized restart fixtures recorded as `AUDIT-231`.
+  - `git diff --check` passed.
+- Invalidated assumptions or failed approaches:
+  - `[INVALIDATED]` Do not treat the broad Deduce slice as a clean gate for this
+    patch until `AUDIT-231` is resolved. The current failure reproduces with
+    block-local `define` visibility, independent of the metadata-read
+    fail-closed tests.
+- Current best recommendation or checkpoint:
+  - Commit and push the closed `AUDIT-219` through `AUDIT-230` remediation with
+    `AUDIT-231` left open as the next work item.
+- Unresolved issues:
+  - `AUDIT-231` remains open: decide whether `define` should bind within
+    `block`, or rewrite the materialized restart fixtures to use a supported
+    local binding form.
+- Dependencies, blockers, or restart requirements:
+  - Rebuild `build/main` after C3 changes before relying on runtime tests.
+  - Host full `c3c build` without `LIBRARY_PATH=/home/christos/.local/lib`
+    can fail to find local `liblightning`/`libreplxx`.
+- Signature: GPT-5 Codex

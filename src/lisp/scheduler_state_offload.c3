@@ -73,14 +73,17 @@ fn bool scheduler_shutdown() {
     if (!g_scheduler_initialized) return true;
 
     scheduler_clear_reliable_wakeup_queue();
+    scheduler_close_pending_io_for_all_fibers();
+    scheduler_cancel_all_thread_tasks();
+    scheduler_cancel_all_os_threads();
 
     bool loop_closed = true;
     if (g_scheduler.uv_loop_ready && g_scheduler.uv_loop != null) {
         if (g_scheduler.async_handle != null) {
             uv_close(g_scheduler.async_handle, &scheduler_free_handle_cb);
             g_scheduler.async_handle = null;
-            (void)uv_run(g_scheduler.uv_loop, UV_RUN_DEFAULT);
         }
+        (void)uv_run(g_scheduler.uv_loop, UV_RUN_DEFAULT);
         int close_rc = uv_loop_close(g_scheduler.uv_loop);
         if (close_rc == 0) {
             mem::free(g_scheduler.uv_loop);
@@ -92,6 +95,10 @@ fn bool scheduler_shutdown() {
     }
 
     if (!loop_closed) return false;
+
+    scheduler_drain_thread_tasks();
+    scheduler_drain_os_threads();
+    scheduler_shutdown_offload_admission();
 
     if (g_scheduler.reliable_wakeups.initialized) {
         (void)g_scheduler.reliable_wakeups.mu.destroy();

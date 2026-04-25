@@ -26,6 +26,10 @@ extern fn int omni_toml_datum_array_size(OmniTomlDatum* datum) @extern("omni_tom
 extern fn OmniTomlDatum* omni_toml_datum_array_elem(OmniTomlDatum* datum, int index) @extern("omni_toml_datum_array_elem");
 extern fn int omni_toml_datum_timestamp_parts(OmniTomlDatum* datum, int* year, int* month, int* day, int* hour, int* minute, int* second, int* usec, int* tz) @extern("omni_toml_datum_timestamp_parts");
 
+bool g_toml_force_invalid_string_metadata = false;
+bool g_toml_force_invalid_table_key_metadata = false;
+bool g_toml_force_invalid_timestamp_metadata = false;
+
 const int TOML_UNKNOWN = 0;
 const int TOML_STRING = 1;
 const int TOML_INT64 = 2;
@@ -37,6 +41,10 @@ const int TOML_DATETIME = 7;
 const int TOML_DATETIMETZ = 8;
 const int TOML_ARRAY = 9;
 const int TOML_TABLE = 10;
+
+fn Value* toml_raise(Interp* interp, char[] code, char[] message) @inline {
+    return raise_error_with_payload_names(interp, "parser", code, message, null);
+}
 
 fn char[] toml_timestamp_to_string(OmniTomlDatum* datum, int typ, char[] out_buf) {
     int year;
@@ -137,7 +145,9 @@ fn Value* toml_datum_to_omni(OmniTomlDatum* datum, Interp* interp) {
         case TOML_STRING: {
             char* s = omni_toml_datum_str_ptr(datum);
             int len = omni_toml_datum_str_len(datum);
-            if (s == null || len < 0) return make_string(interp, "");
+            if (g_toml_force_invalid_string_metadata || s == null || len < 0) {
+                return toml_raise(interp, "parser/invalid-state", "toml-parse: invalid string metadata");
+            }
             return make_string(interp, s[:(usz)len]);
         }
         case TOML_INT64:
@@ -174,9 +184,8 @@ fn Value* toml_datum_to_omni(OmniTomlDatum* datum, Interp* interp) {
             for (usz i = 0; i < count; i++) {
                 char* key = omni_toml_datum_table_key(datum, (int)i);
                 int key_len = omni_toml_datum_table_key_len(datum, (int)i);
-                if (key == null || key_len < 0) {
-                    key = "";
-                    key_len = 0;
+                if (g_toml_force_invalid_table_key_metadata || key == null || key_len < 0) {
+                    return toml_raise(interp, "parser/invalid-state", "toml-parse: invalid table key metadata");
                 }
                 Value* key_v = make_string(interp, key[:(usz)key_len]);
                 Value* v = toml_datum_to_omni(omni_toml_datum_table_value(datum, (int)i), interp);
@@ -194,8 +203,9 @@ fn Value* toml_datum_to_omni(OmniTomlDatum* datum, Interp* interp) {
         case TOML_TIME:
         case TOML_DATETIME:
         case TOML_DATETIMETZ: {
-            if (!omni_toml_datum_timestamp_parts(datum, &year, &month, &day, &hour, &minute, &second, &usec, &tz)) {
-                return make_nil(interp);
+            if (g_toml_force_invalid_timestamp_metadata ||
+                !omni_toml_datum_timestamp_parts(datum, &year, &month, &day, &hour, &minute, &second, &usec, &tz)) {
+                return toml_raise(interp, "parser/invalid-state", "toml-parse: invalid timestamp metadata");
             }
 
             TimePointKind kind = TIME_POINT_DATETIME;

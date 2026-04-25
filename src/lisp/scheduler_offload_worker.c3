@@ -185,6 +185,28 @@ fn void scheduler_init_offload_admission() {
     admission.initialized = true;
 }
 
+fn void scheduler_shutdown_offload_admission() {
+    OffloadAdmission* admission = &g_scheduler.offload_admission;
+    if (!admission.initialized) return;
+
+    admission.mu.lock();
+    QueuedOffloadWork* queued = (QueuedOffloadWork*)admission.queued_free_head;
+    admission.queued_free_head = null;
+    admission.in_flight = 0;
+    admission.queued_free_count = 0;
+    admission.mu.unlock();
+
+    while (queued != null) {
+        QueuedOffloadWork* next = queued.next_free;
+        scheduler_offload_reset_queued_work(queued);
+        mem::free(queued);
+        queued = next;
+    }
+
+    (void)admission.mu.destroy();
+    admission.initialized = false;
+}
+
 fn bool scheduler_enqueue_offload(OffloadWork work) {
     OffloadAdmission* admission = &g_scheduler.offload_admission;
     if (!admission.initialized || !g_scheduler.uv_loop_ready || g_scheduler.uv_loop == null) return false;

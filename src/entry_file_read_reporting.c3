@@ -3,6 +3,7 @@ module main;
 import std::io;
 import libc;
 
+extern fn int c_getpid() @extern("getpid");
 extern fn int entry_file_uv_rename(char* src, char* dst) @extern("omni_uv_fs_rename");
 extern fn int entry_file_uv_unlink(char* path) @extern("omni_uv_fs_unlink");
 

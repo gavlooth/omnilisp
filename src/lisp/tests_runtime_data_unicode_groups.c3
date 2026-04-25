@@ -42,6 +42,14 @@ fn void run_json_tests(Interp* interp, int* pass, int* fail) {
         "(json-parse \"42\")", 42, pass, fail);
     test_str_val(interp, "json-parse string",
         "(json-parse \"\\\"hello\\\"\")", "hello", pass, fail);
+    {
+        bool saved_force = g_json_force_invalid_string_metadata;
+        g_json_force_invalid_string_metadata = true;
+        test_truthy_interp(interp, "json-parse invalid string metadata fails closed",
+            "(= (handle (json-parse \"\\\"hello\\\"\") (raise msg (ref msg 'code))) 'parser/invalid-state)",
+            pass, fail);
+        g_json_force_invalid_string_metadata = saved_force;
+    }
     test_tag(interp, "json-parse null",
         "(json-parse \"null\")", NIL, pass, fail);
 
@@ -216,6 +224,30 @@ fn void run_data_format_tests(Interp* interp, int* pass, int* fail) {
         "(ref (toml-parse \"dt = 1979-05-27T07:32:00Z\") \"dt\")", TIME_POINT, pass, fail);
     test_tag(interp, "toml-parse datetime with offset",
         "(ref (toml-parse \"dtz = 1979-05-27T07:32:00-07:00\\n\") \"dtz\")", TIME_POINT, pass, fail);
+    {
+        bool saved_force = g_toml_force_invalid_string_metadata;
+        g_toml_force_invalid_string_metadata = true;
+        test_truthy_interp(interp, "toml-parse invalid string metadata fails closed",
+            "(= (handle (toml-parse \"title = \\\"Toml\\\"\\n\") (raise msg (ref msg 'code))) 'parser/invalid-state)",
+            pass, fail);
+        g_toml_force_invalid_string_metadata = saved_force;
+    }
+    {
+        bool saved_force = g_toml_force_invalid_table_key_metadata;
+        g_toml_force_invalid_table_key_metadata = true;
+        test_truthy_interp(interp, "toml-parse invalid table key metadata fails closed",
+            "(= (handle (toml-parse \"title = \\\"Toml\\\"\\n\") (raise msg (ref msg 'code))) 'parser/invalid-state)",
+            pass, fail);
+        g_toml_force_invalid_table_key_metadata = saved_force;
+    }
+    {
+        bool saved_force = g_toml_force_invalid_timestamp_metadata;
+        g_toml_force_invalid_timestamp_metadata = true;
+        test_truthy_interp(interp, "toml-parse invalid timestamp metadata fails closed",
+            "(= (handle (toml-parse \"d = 1979-05-27\\n\") (raise msg (ref msg 'code))) 'parser/invalid-state)",
+            pass, fail);
+        g_toml_force_invalid_timestamp_metadata = saved_force;
+    }
     test_truthy(interp, "toml-parse date equality",
         "(let (d1 (ref (toml-parse \"d = 1979-05-27\\n\") \"d\") d2 (ref (toml-parse \"d = 1979-05-27\\n\") \"d\")) (= d1 d2))",
         pass, fail);

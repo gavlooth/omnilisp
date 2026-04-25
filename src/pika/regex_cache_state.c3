@@ -22,6 +22,7 @@ usz g_regex_cache_evictions = 0;
 usz g_regex_fallback_uses = 0;
 usz g_regex_compiled_unusable_compile = 0;
 usz g_regex_compiled_unusable_cache = 0;
+int g_regex_force_cache_alloc_fail_nth = 0;
 tlocal char[256] g_regex_last_compile_error;
 tlocal bool g_regex_last_compile_error_set = false;
 thread::Mutex g_regex_cache_mu;
@@ -89,24 +90,38 @@ fn bool regex_take_last_compile_error(char[]* out) {
     return true;
 }
 
-fn void regex_cache_ensure_init() {
-    if (g_regex_cache_cap > 0) return;
-    g_regex_cache_cap = REGEX_CACHE_INIT_CAP;
-    g_regex_cache = mem::new_array(RegexCacheEntry, (usz)g_regex_cache_cap);
+fn bool regex_cache_should_force_alloc_fail() @inline {
+    if (g_regex_force_cache_alloc_fail_nth <= 0) return false;
+    g_regex_force_cache_alloc_fail_nth--;
+    return g_regex_force_cache_alloc_fail_nth == 0;
 }
 
-fn void regex_cache_grow() {
-    if (g_regex_cache_cap >= REGEX_CACHE_MAX_ENTRIES) return;
+fn bool regex_cache_ensure_init() {
+    if (g_regex_cache_cap > 0) return g_regex_cache.ptr != null;
+    if (regex_cache_should_force_alloc_fail()) return false;
+    RegexCacheEntry[] next = mem::new_array(RegexCacheEntry, (usz)REGEX_CACHE_INIT_CAP);
+    if (next.ptr == null) return false;
+    g_regex_cache = next;
+    g_regex_cache_cap = REGEX_CACHE_INIT_CAP;
+    return true;
+}
+
+fn bool regex_cache_grow() {
+    if (g_regex_cache_cap > 0 && g_regex_cache.ptr == null) return false;
+    if (g_regex_cache_cap >= REGEX_CACHE_MAX_ENTRIES) return true;
     int new_cap = g_regex_cache_cap * 2;
     if (new_cap > REGEX_CACHE_MAX_ENTRIES) new_cap = REGEX_CACHE_MAX_ENTRIES;
-    if (new_cap <= g_regex_cache_cap) return;
+    if (new_cap <= g_regex_cache_cap) return true;
+    if (regex_cache_should_force_alloc_fail()) return false;
     RegexCacheEntry[] next = mem::new_array(RegexCacheEntry, (usz)new_cap);
+    if (next.ptr == null) return false;
     for (int i = 0; i < g_regex_cache_len; i++) {
         next[i] = g_regex_cache[i];
     }
     if (g_regex_cache_cap > 0) mem::free(g_regex_cache.ptr);
     g_regex_cache = next;
     g_regex_cache_cap = new_cap;
+    return true;
 }
 
 fn void regex_cache_reset() {
@@ -114,10 +129,10 @@ fn void regex_cache_reset() {
     defer regex_cache_unlock();
 
     for (int i = 0; i < g_regex_cache_len; i++) {
-        if (g_regex_cache[i].pattern.len > 0) mem::free(g_regex_cache[i].pattern.ptr);
+        if (g_regex_cache[i].pattern.len > 0 && g_regex_cache[i].pattern.ptr != null) mem::free(g_regex_cache[i].pattern.ptr);
         regex_cache_detach_locked(g_regex_cache[i].rx);
     }
-    if (g_regex_cache_cap > 0) mem::free(g_regex_cache.ptr);
+    if (g_regex_cache_cap > 0 && g_regex_cache.ptr != null) mem::free(g_regex_cache.ptr);
 
     RegexCacheEntry[] empty;
     g_regex_cache = empty;
@@ -130,6 +145,7 @@ fn void regex_cache_reset() {
     g_regex_fallback_uses = 0;
     g_regex_compiled_unusable_compile = 0;
     g_regex_compiled_unusable_cache = 0;
+    g_regex_force_cache_alloc_fail_nth = 0;
     regex_clear_last_compile_error();
 }
 
@@ -147,6 +163,7 @@ fn void regex_cache_touch(int idx) {
 }
 
 fn int regex_cache_find(char[] pattern) {
+    if (g_regex_cache_len > 0 && g_regex_cache.ptr == null) return -1;
     for (int i = 0; i < g_regex_cache_len; i++) {
         if (regex_cache_pattern_eq(g_regex_cache[i].pattern, pattern)) {
             g_regex_cache_hits++;
@@ -159,6 +176,7 @@ fn int regex_cache_find(char[] pattern) {
 }
 
 fn int regex_cache_find_lru_index() {
+    if (g_regex_cache_len > 0 && g_regex_cache.ptr == null) return -1;
     if (g_regex_cache_len <= 0) return -1;
     int lru_idx = 0;
     usz oldest = g_regex_cache[0].last_used;
@@ -176,7 +194,15 @@ fn char[] regex_cache_copy_pattern(char[] pattern) {
         char[] empty;
         return empty;
     }
+    if (regex_cache_should_force_alloc_fail()) {
+        char[] empty;
+        return empty;
+    }
     char[] stored = mem::new_array(char, pattern.len);
+    if (stored.ptr == null) {
+        char[] empty;
+        return empty;
+    }
     for (usz i = 0; i < pattern.len; i++) {
         stored[i] = pattern[i];
     }

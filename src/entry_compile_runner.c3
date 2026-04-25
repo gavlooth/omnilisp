@@ -4,10 +4,33 @@ import std::io;
 import lisp;
 
 bool g_compile_runner_force_output_commit_fail = false;
+bool g_compile_runner_force_sidecar_cleanup_fail = false;
 
-fn void cleanup_compile_sidecar_on_output_commit_failure(char[] manifest_path) {
-    if (manifest_path.len == 0) return;
-    (void)io::file::delete((String)manifest_path);
+fn bool cleanup_compile_sidecar_on_output_commit_failure(char[] manifest_path, EntryFileWriteKind* kind_out = null) {
+    if (manifest_path.len == 0) return true;
+    if (g_compile_runner_force_sidecar_cleanup_fail) {
+        if (kind_out != null) *kind_out = ENTRY_FILE_WRITE_GENERIC_FAILURE;
+        return false;
+    }
+    char[4096] manifest_path_buf;
+    char[] manifest_path_cstr = "";
+    if (!entry_copy_path_cstr(manifest_path, manifest_path_buf[..], &manifest_path_cstr)) {
+        if (kind_out != null) *kind_out = ENTRY_FILE_WRITE_PATH_FAILURE;
+        return false;
+    }
+    if (entry_file_uv_unlink((ZString)manifest_path_cstr.ptr) == 0) return true;
+
+    EntryFileReadKind read_kind = ENTRY_FILE_READ_GENERIC_FAILURE;
+    if (!classify_file_read_path(manifest_path, &read_kind) && read_kind == ENTRY_FILE_READ_NOT_FOUND) {
+        return true;
+    }
+
+    if (kind_out != null) {
+        *kind_out = compile_manifest_unlink_failure_kind(manifest_path);
+        if (*kind_out == ENTRY_FILE_WRITE_GENERIC_FAILURE) *kind_out = classify_file_write_errno();
+        return false;
+    }
+    return false;
 }
 
 fn int run_compile_mode(char* input_file, char* output_file) {
@@ -87,7 +110,10 @@ fn int run_compile_mode(char* input_file, char* output_file) {
         }
 
         if (g_compile_runner_force_output_commit_fail || !entry_commit_staged_text(output_temp_path, output_path, &write_kind)) {
-            cleanup_compile_sidecar_on_output_commit_failure(manifest_path);
+            EntryFileWriteKind manifest_cleanup_kind = ENTRY_FILE_WRITE_GENERIC_FAILURE;
+            if (!cleanup_compile_sidecar_on_output_commit_failure(manifest_path, &manifest_cleanup_kind)) {
+                print_compile_write_error(manifest_path, manifest_cleanup_kind);
+            }
             print_compile_write_error(output_path, write_kind);
             destroy_plain_interp(interp);
             thread_registry_shutdown();

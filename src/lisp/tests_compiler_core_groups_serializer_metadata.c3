@@ -218,14 +218,14 @@ fn void run_compiler_group_foreign_handle_metadata_dict_tests(Interp* interp, us
                 );
                 main::g_compile_manifest_force_fail_before_rename = false;
 
-                bool final_manifest_untouched = false;
-                if (try generated = io::file::load_temp((String)final_manifest_path)) {
-                    final_manifest_untouched = compiler_str_eq(generated, "old manifest");
+                bool final_manifest_removed = false;
+                if (catch err = io::file::load_temp((String)final_manifest_path)) {
+                    final_manifest_removed = true;
                 }
                 compiler_test_finish_bool(
-                    !wrote_manifest && final_manifest_untouched,
-                    "Compiler: grouped ffi manifest write preserves existing final file on pre-rename failure",
-                    "[FAIL] Compiler: grouped ffi manifest write preserves existing final file on pre-rename failure",
+                    !wrote_manifest && final_manifest_removed,
+                    "Compiler: grouped ffi manifest write removes stale final file on pre-rename failure",
+                    "[FAIL] Compiler: grouped ffi manifest write removes stale final file on pre-rename failure",
                     pass,
                     fail
                 );
@@ -251,7 +251,8 @@ fn void run_compiler_group_foreign_handle_metadata_dict_tests(Interp* interp, us
             char[] manifest_path = manifest_rendered;
             defer (void)io::file::delete((String)manifest_path);
             bool setup = compiler_write_text_file(manifest_path, "stale manifest");
-            main::cleanup_compile_sidecar_on_output_commit_failure(manifest_path);
+            main::EntryFileWriteKind manifest_cleanup_kind = ENTRY_FILE_WRITE_GENERIC_FAILURE;
+            bool cleanup_ok = main::cleanup_compile_sidecar_on_output_commit_failure(manifest_path, &manifest_cleanup_kind);
 
             bool manifest_missing = false;
             if (try ignored = io::file::load_temp((String)manifest_path)) {
@@ -261,7 +262,7 @@ fn void run_compiler_group_foreign_handle_metadata_dict_tests(Interp* interp, us
                 manifest_missing = true;
             }
             compiler_test_finish_bool(
-                setup && manifest_missing,
+                setup && cleanup_ok && manifest_missing,
                 "Compiler: compile output commit failure removes sidecar manifest",
                 "[FAIL] Compiler: compile output commit failure removes sidecar manifest",
                 pass,
@@ -270,6 +271,80 @@ fn void run_compiler_group_foreign_handle_metadata_dict_tests(Interp* interp, us
         } else {
             fail++;
             io::printn("[FAIL] Compiler: compose output commit failure manifest path");
+        }
+    }
+    {
+        char[512] manifest_path_buf;
+        int manifest_pid = compiler_test_getpid();
+        usz manifest_seq = g_compiler_bindgen_temp_seq++;
+        if (try manifest_rendered = io::bprintf(
+            &manifest_path_buf,
+            "/tmp/omni_compile_output_commit_cleanup_fail-%d-%d.c3.ffi-manifest.json",
+            manifest_pid,
+            (int)manifest_seq
+        )) {
+            char[] manifest_path = manifest_rendered;
+            bool setup = compiler_write_text_file(manifest_path, "stale manifest");
+            main::EntryFileWriteKind manifest_cleanup_kind = ENTRY_FILE_WRITE_GENERIC_FAILURE;
+            main::g_compile_runner_force_sidecar_cleanup_fail = true;
+            bool cleanup_ok = main::cleanup_compile_sidecar_on_output_commit_failure(manifest_path, &manifest_cleanup_kind);
+            main::g_compile_runner_force_sidecar_cleanup_fail = false;
+            defer (void)io::file::delete((String)manifest_path);
+            compiler_test_finish_bool(
+                setup && !cleanup_ok && manifest_cleanup_kind != ENTRY_FILE_WRITE_OK,
+                "Compiler: compile output commit failure reports sidecar cleanup failure",
+                "[FAIL] Compiler: compile output commit failure reports sidecar cleanup failure",
+                pass,
+                fail
+            );
+        } else {
+            fail++;
+            io::printn("[FAIL] Compiler: compose output commit cleanup failure manifest path");
+        }
+    }
+    {
+        char[512] output_path_buf;
+        char[512] temp_path_buf;
+        int output_pid = compiler_test_getpid();
+        usz output_seq = g_compiler_bindgen_temp_seq++;
+        if (try output_rendered = io::bprintf(
+            &output_path_buf,
+            "/tmp/omni_build_publish-%d-%d.bin",
+            output_pid,
+            (int)output_seq
+        )) {
+            char[] output_path = output_rendered;
+            char[] temp_path = "";
+            if (main::entry_build_atomic_temp_path(output_path, temp_path_buf[..], &temp_path)) {
+                bool staged_ok = compiler_write_text_file(temp_path, "new binary");
+                main::EntryFileWriteKind publish_kind = ENTRY_FILE_WRITE_GENERIC_FAILURE;
+                bool publish_ok = false;
+                bool published = false;
+                defer {
+                    if (temp_path.len > 0) {
+                        (void)io::file::delete((String)temp_path);
+                    }
+                    (void)io::file::delete((String)output_path);
+                }
+
+                publish_ok = main::entry_commit_staged_text(temp_path, output_path, &publish_kind);
+                if (try generated = io::file::load_temp((String)output_path)) {
+                    published = compiler_str_eq(generated, "new binary");
+                }
+                compiler_test_finish_bool(
+                    staged_ok && publish_ok && published && publish_kind == ENTRY_FILE_WRITE_OK,
+                    "Compiler: build output publishes staged binary on backend success",
+                    "[FAIL] Compiler: build output publishes staged binary on backend success",
+                    pass,
+                    fail
+                );
+            } else {
+                fail++;
+                io::printn("[FAIL] Compiler: compose staged build output path");
+            }
+        } else {
+            fail++;
+            io::printn("[FAIL] Compiler: compose build output path");
         }
     }
 }

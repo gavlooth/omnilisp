@@ -85,6 +85,34 @@ fn void run_memory_lifetime_runtime_alloc_groups_core_tests(Interp* interp, int*
     }
 
     {
+        bool saved_dtor_oom = main::g_scope_force_dtor_alloc_oom;
+        main::g_scope_force_dtor_alloc_oom = true;
+        Value* big_integer_fail = make_big_integer_from_i64(interp, 42);
+        Value* big_float_fail = make_big_float_from_i64(interp, 42);
+        Value* big_complex_fail = make_big_complex_from_i64(interp, 42);
+        main::g_scope_force_dtor_alloc_oom = saved_dtor_oom;
+
+        bool ok =
+            (runtime_alloc_error_matches(big_integer_fail, "BigInteger: failed to register value destructor") ||
+             runtime_alloc_error_matches(big_integer_fail, "runtime/out-of-memory")) &&
+            (runtime_alloc_error_matches(big_float_fail, "BigFloat: failed to register value destructor") ||
+             runtime_alloc_error_matches(big_float_fail, "runtime/out-of-memory")) &&
+            (runtime_alloc_error_matches(big_complex_fail, "BigComplex: failed to register value destructor") ||
+             runtime_alloc_error_matches(big_complex_fail, "runtime/out-of-memory"));
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: heap numeric destructor registration OOM fails closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: heap numeric destructor registration OOM fails closed (int=%s float=%s complex=%s)",
+                runtime_alloc_error_text(big_integer_fail),
+                runtime_alloc_error_text(big_float_fail),
+                runtime_alloc_error_text(big_complex_fail));
+            (*fail)++;
+        }
+    }
+
+    {
         main::ScopeRegion* saved_scope = interp.current_scope;
         main::ScopeRegion* oom_scope = main::scope_create(saved_scope);
         bool setup_ok = oom_scope != null;

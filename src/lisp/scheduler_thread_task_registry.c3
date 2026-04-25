@@ -137,3 +137,20 @@ fn bool scheduler_thread_task_exists(usz task_id, uint generation = 0) {
     g_scheduler.thread_task_mu.unlock();
     return exists;
 }
+
+fn void scheduler_cancel_all_thread_tasks() {
+    if (!g_scheduler.thread_task_mu_ready) return;
+    for (usz i = 0; i < MAX_THREAD_TASKS; i++) {
+        if (!g_scheduler.thread_tasks[i].active) continue;
+        bool already_done = false;
+        (void)scheduler_cancel_thread_task(i, &already_done, g_scheduler.thread_tasks[i].generation);
+    }
+}
+
+fn void scheduler_drain_thread_tasks() {
+    if (!g_scheduler.thread_task_mu_ready) return;
+    for (usz i = 0; i < MAX_THREAD_TASKS; i++) {
+        if (!g_scheduler.thread_tasks[i].active) continue;
+        scheduler_drop_thread_task(i, g_scheduler.thread_tasks[i].generation);
+    }
+}

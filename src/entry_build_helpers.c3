@@ -1,6 +1,5 @@
 module main;
 
-extern fn int c_getpid() @extern("getpid");
 extern fn isz c_readlink(char* path, char* buf, usz size) @extern("readlink");
 extern fn int c_access(char* path, int mode) @extern("access");
 

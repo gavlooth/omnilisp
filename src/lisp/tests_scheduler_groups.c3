@@ -5,6 +5,10 @@ import std::io;
 import std::core::mem;
 import main;
 
+fn void scheduler_shutdown_test_thread_entry(void* arg) {
+    (void)arg;
+}
+
 fn void run_scheduler_shutdown_reclaims_runtime_state_test(Interp* interp, int* pass, int* fail) {
     (void)interp;
     scheduler_init();
@@ -15,19 +19,90 @@ fn void run_scheduler_shutdown_reclaims_runtime_state_test(Interp* interp, int* 
     bool shared_registered = live_shared != null &&
         live_shared.slot < SHARED_REGISTRY_CAPACITY &&
         g_scheduler.shared_registry.entries[live_shared.slot].active;
+    QueuedOffloadWork* queued = scheduler_offload_take_queued_work();
+    if (queued != null) scheduler_offload_recycle_queued_work(queued);
+    bool offload_admission_seeded = g_scheduler.offload_admission.initialized &&
+        g_scheduler.offload_admission.queued_free_head != null &&
+        g_scheduler.offload_admission.queued_free_count > 0;
+
+    g_scheduler.fiber_count = 1;
+    g_scheduler.pending_sleeps[0] = {};
+    void* sleep_timer_handle = null;
+    bool pending_sleep_seeded = false;
+    usz sleep_timer_size = uv_handle_size(UV_HANDLE_TIMER);
+    if (g_scheduler.uv_loop_ready && g_scheduler.uv_loop != null && sleep_timer_size > 0) {
+        sleep_timer_handle = mem::malloc(sleep_timer_size);
+        if (sleep_timer_handle != null &&
+            uv_timer_init(g_scheduler.uv_loop, sleep_timer_handle) == 0 &&
+            uv_timer_start(sleep_timer_handle, &scheduler_uv_sleep_timer_cb, 60000, 0) == 0) {
+            g_scheduler.pending_sleeps[0].active = true;
+            g_scheduler.pending_sleeps[0].completed = false;
+            g_scheduler.pending_sleeps[0].timer_handle = sleep_timer_handle;
+            pending_sleep_seeded = true;
+        } else if (sleep_timer_handle != null) {
+            uv_close(sleep_timer_handle, &scheduler_free_handle_cb);
+            (void)uv_run(g_scheduler.uv_loop, UV_RUN_DEFAULT);
+            sleep_timer_handle = null;
+        }
+    }
+
+    usz task_id = scheduler_alloc_thread_task();
+    uint task_generation = 0;
+    bool thread_task_seeded = false;
+    if (task_id != NO_TASK &&
+        scheduler_get_thread_task_generation(task_id, &task_generation) &&
+        task_generation != 0) {
+        OffloadCompletion* task_completion = scheduler_make_task_cancel_completion();
+        if (task_completion != null) {
+            g_scheduler.thread_tasks[task_id].completion = task_completion;
+            g_scheduler.thread_tasks[task_id].state = THREAD_TASK_DONE;
+            thread_task_seeded = true;
+        }
+    }
+
+    usz thread_id = scheduler_alloc_os_thread();
+    uint thread_generation = 0;
+    bool os_thread_seeded = false;
+    if (thread_id != NO_OS_THREAD &&
+        scheduler_get_os_thread_generation(thread_id, &thread_generation) &&
+        thread_generation != 0) {
+        OffloadCompletion* thread_completion = scheduler_make_os_thread_cancel_completion();
+        void* thread_handle = omni_uv_thread_new();
+        if (thread_completion != null && thread_handle != null &&
+            omni_uv_thread_start(thread_handle, &scheduler_shutdown_test_thread_entry, null) == 0) {
+            g_scheduler.os_threads[thread_id].completion = thread_completion;
+            g_scheduler.os_threads[thread_id].thread_created = true;
+            g_scheduler.os_threads[thread_id].thread_handle = thread_handle;
+            g_scheduler.os_threads[thread_id].state = OS_THREAD_PENDING;
+            os_thread_seeded = true;
+        } else {
+            if (thread_completion != null) scheduler_free_offload_completion(thread_completion);
+            if (thread_handle != null) omni_uv_thread_free(thread_handle);
+        }
+    }
+
     bool shutdown_ok = scheduler_shutdown();
     bool cleared = !g_scheduler_initialized && !g_scheduler.thread_task_mu_ready &&
         !g_scheduler.thread_task_cv_ready && !g_scheduler.reliable_wakeups.initialized &&
         !g_scheduler.shared_registry.initialized &&
+        !g_scheduler.offload_admission.initialized &&
         g_scheduler.uv_loop == null && g_scheduler.async_handle == null;
     if (live_shared != null) mem::free(live_shared);
     scheduler_init();
     bool reinitialized = g_scheduler_initialized;
-    if (initialized && shared_registered && shutdown_ok && cleared && reinitialized) {
-        emit_pass_literal("[PASS] scheduler shutdown reclaims runtime state and can reinitialize");
+    if (initialized &&
+        shared_registered &&
+        offload_admission_seeded &&
+        pending_sleep_seeded &&
+        thread_task_seeded &&
+        os_thread_seeded &&
+        shutdown_ok &&
+        cleared &&
+        reinitialized) {
+        emit_pass_literal("[PASS] scheduler shutdown reclaims pending runtime state and can reinitialize");
         (*pass)++;
     } else {
-        io::printn("[FAIL] scheduler shutdown reclaims runtime state and can reinitialize");
+        io::printn("[FAIL] scheduler shutdown reclaims pending runtime state and can reinitialize");
         (*fail)++;
     }
 }

@@ -7294,6 +7294,226 @@ Auditor: GPT-5 Codex
 - Validation: `OMNI_LISP_TEST_SLICE=scheduler` passed with `143 passed, 0
   failed`.
 
+### AUDIT-219: Heap-backed numeric and tensor constructors ignored destructor-registration OOM
+
+- Severity: High
+- Status: Closed
+- Classification: memory lifetime, destructor registration, allocation rollback
+- Evidence:
+  - `make_big_integer_from_owned_handle`, `make_big_float_from_owned_handle`,
+    `make_big_complex_from_owned_handle`, tensor constructors, and their
+    copy/escape promotion paths shaped heap-backed `Value` payloads and ignored
+    the boolean result from `scope_register_dtor` or
+    `scope_register_dtor_escape`.
+- Impact: under destructor-table allocation pressure, constructors could return
+  live heap-backed values that would never run their payload destructor, or
+  boundary copies could leak cloned payloads.
+- Resolution: heap-backed `Value` destructor registration now goes through
+  shared helpers that free the shaped payload on registration failure; numeric
+  and tensor constructors/copy/promotion paths return structured OOM failures.
+- Validation: bounded `memory-lifetime-smoke` passed with `269 passed, 0
+  failed`; `c3c --threads 1 build --obj-out obj` passed.
+
+### AUDIT-220: Compile FFI sidecar survives manifest-write failure before publish
+
+- Severity: High
+- Status: Closed
+- Classification: compile pipeline, stale artifact rollback
+- Evidence:
+  - `write_compile_ffi_manifest` records the final sidecar path before the JSON
+    body is written, while `run_compile_mode` returns on manifest-write failure
+    without deleting a pre-existing final sidecar.
+- Impact: a failed compile can leave an older `.ffi-manifest.json` beside the
+  failed output, making downstream tooling consume stale trusted-looking
+  metadata.
+- Resolution: manifest write failure now removes stale final sidecars before
+  returning failure, preserving the staged output contract.
+- Validation: compiler slice passed with `340 passed, 0 failed`; `c3c
+  --threads 1 build --obj-out obj` passed.
+
+### AUDIT-221: Compile sidecar rollback ignores unlink failure
+
+- Severity: Medium
+- Status: Closed
+- Classification: compile pipeline, stale artifact rollback
+- Evidence:
+  - `cleanup_compile_sidecar_on_output_commit_failure` ignores the result of
+    deleting the sidecar, and `run_compile_mode` does not surface cleanup
+    failure after final output commit failure.
+- Impact: if the sidecar cannot be unlinked, a compile failure can still leave
+  stale metadata at the trusted final path.
+- Resolution: compile sidecar cleanup now uses the libuv unlink path, returns a
+  visible cleanup status, and reports rollback failures instead of silently
+  ignoring them.
+- Validation: compiler slice passed with `340 passed, 0 failed`; `c3c
+  --threads 1 build --obj-out obj` passed.
+
+### AUDIT-222: Build backend writes the final binary directly
+
+- Severity: Medium
+- Status: Closed
+- Classification: build pipeline, stale artifact rollback
+- Evidence:
+  - `run_aot_backend_compile` invokes `c3c -o` with the final output path, and
+    `run_build` returns on backend failure without cleaning or rolling back that
+    destination.
+- Impact: after a failed `--build`, an old or partial binary can remain at the
+  target path and look like the current build result.
+- Resolution: AOT backend build now compiles to a staged temporary output and
+  publishes to the final binary path only after successful backend completion.
+- Validation: compiler slice passed with `340 passed, 0 failed`; `c3c
+  --threads 1 build --obj-out obj` passed.
+
+### AUDIT-223: Scheduler offload-admission teardown leaves freelist and mutex state live
+
+- Severity: Medium
+- Status: Closed
+- Classification: scheduler lifecycle, shutdown cleanup
+- Evidence:
+  - `scheduler_offload_recycle_queued_work` maintains
+    `offload_admission.queued_free_head`, and `scheduler_init_offload_admission`
+    initializes `offload_admission.mu`, but `scheduler_shutdown` does not drain
+    or destroy that substate.
+- Impact: repeated scheduler init/shutdown cycles can leak queued work nodes and
+  leave stale synchronization state.
+- Resolution: scheduler shutdown now drains the offload-admission freelist,
+  clears counters, destroys the admission mutex, and resets initialization
+  state.
+- Validation: scheduler slice passed with `143 passed, 0 failed`; `c3c
+  --threads 1 build --obj-out obj` passed.
+
+### AUDIT-224: Scheduler shutdown skips pending-I/O handle drain
+
+- Severity: Medium
+- Status: Closed
+- Classification: scheduler lifecycle, libuv handle teardown
+- Evidence:
+  - pending TCP read/offload/sleep/DNS/connect/accept close sweeps exist in the
+    run-loop/fiber paths, but `scheduler_shutdown` tries `uv_loop_close` without
+    first invoking a shared pending-handle drain.
+- Impact: live libuv handles can make shutdown fail early before global
+  scheduler state is fully cleared.
+- Resolution: pending scheduler I/O close logic is shared and invoked during
+  shutdown before `uv_loop_close`.
+- Validation: scheduler slice passed with `143 passed, 0 failed`; `c3c
+  --threads 1 build --obj-out obj` passed.
+
+### AUDIT-225: Scheduler shutdown does not drain thread-task and OS-thread registries
+
+- Severity: Medium
+- Status: Closed
+- Classification: scheduler lifecycle, thread registry teardown
+- Evidence:
+  - scheduler thread-task and OS-thread registries own completions and thread
+    handles, but shutdown does not walk them before destroying coordination
+    primitives and zeroing `g_scheduler`.
+- Impact: abandoned or concurrently completing work can strand completion
+  payloads or joinable thread handles during teardown.
+- Resolution: scheduler shutdown now cancels and drains active thread-task and
+  OS-thread entries before destroying coordination primitives.
+- Validation: scheduler slice passed with `143 passed, 0 failed`; `c3c
+  --threads 1 build --obj-out obj` passed.
+
+### AUDIT-226: Regex cache allocation failure can publish unusable cache state
+
+- Severity: High
+- Status: Closed
+- Classification: parser/cache allocation failure, fail-closed behavior
+- Evidence:
+  - regex cache initialization updates capacity before allocation success is
+    known, and the insert path can write into the cache after a failed grow.
+- Impact: memory pressure during cache init/grow can leave initialized-looking
+  null cache state or crash during regex compilation.
+- Resolution: regex cache init/grow now allocates into temporaries, publishes
+  state only after success, and falls back to uncached compiled regexes when
+  cache bookkeeping allocation fails.
+- Validation: Pika slice passed with `128 passed, 0 failed`; `c3c --threads 1
+  build --obj-out obj` passed.
+
+### AUDIT-227: Deduce persisted metadata read failures are discarded
+
+- Severity: High
+- Status: Closed
+- Classification: Deduce persistence, materialized metadata integrity
+- Evidence:
+  - relation metadata restore helpers and live relation-open paths discard the
+    boolean result from `deduce_relation_meta_apply_persisted_state`.
+- Impact: failed metadata reads can leave default state in place while a
+  relation still opens or registers, hiding persistence corruption and stale
+  materialized-view status.
+- Resolution: persisted metadata restore now returns structured errors, and
+  live `open-named`/`define-relation` callers fail closed and free the relation
+  when metadata restore fails.
+- Validation: Deduce `basics` group passed with `11 passed, 0 failed`; `c3c
+  --threads 1 build --obj-out obj` passed.
+
+### AUDIT-228: Corrupt Deduce stale-reason bytes reopen as clean
+
+- Severity: Medium
+- Status: Closed
+- Classification: Deduce persistence, metadata corruption handling
+- Evidence:
+  - persisted materialized metadata maps unknown `stale_reason` bytes to
+    `DEDUCE_MATERIALIZED_STALE_NONE`.
+- Impact: corrupt metadata can reopen as clean instead of being flagged as
+  suspect or rejected.
+- Resolution: unknown persisted stale-reason values now produce a structured
+  metadata invalid-state error instead of reopening as clean.
+- Validation: Deduce `basics` group passed with `11 passed, 0 failed`; `c3c
+  --threads 1 build --obj-out obj` passed.
+
+### AUDIT-229: TOML bridge coerces invalid native metadata to empty values
+
+- Severity: Medium
+- Status: Closed
+- Classification: TOML parsing, native bridge invalid-state handling
+- Evidence:
+  - null or negative-length TOML strings and table keys become empty strings,
+    and timestamp-part extraction failure becomes `nil`.
+- Impact: malformed native TOML datum state can collapse distinct keys or hide
+  parser corruption as valid empty/nil values.
+- Resolution: TOML native bridge string, table-key, and timestamp metadata
+  failures now return `parser/invalid-state`.
+- Validation: data-format slice passed with `92 passed, 0 failed`; `c3c
+  --threads 1 build --obj-out obj` passed.
+
+### AUDIT-230: JSON null string storage becomes a valid empty Omni string
+
+- Severity: Medium
+- Status: Closed
+- Classification: JSON parsing, native bridge invalid-state handling
+- Evidence:
+  - `json_val_to_omni` converts a null JSON string pointer to `make_string("")`.
+- Impact: invalid parser state becomes indistinguishable from a real empty JSON
+  string.
+- Resolution: JSON null string storage now returns `parser/invalid-state`
+  instead of a valid empty string.
+- Validation: data-format slice passed with `92 passed, 0 failed`; `c3c
+  --threads 1 build --obj-out obj` passed.
+
+### AUDIT-231: Deduce materialized restart fixtures rely on block-local `define` visibility
+
+- Severity: Medium
+- Status: Open
+- Classification: Deduce validation, language/script binding contract
+- Evidence:
+  - The broad Deduce slice currently fails six materialized restart cases with
+    reader-side errors such as `unbound variable 'db-refresh'` or
+    `unbound variable 'analyze'`.
+  - Direct reproduction shows `(block (define db (deduce 'open "...")) db)`
+    fails with `unbound variable 'db'`, so the restart fixtures are relying on
+    a block-local `define` binding contract that is not currently available in
+    script execution.
+- Impact: `OMNI_LISP_TEST_SLICE=deduce` is not a reliable broad validation
+  gate until the block/define contract is fixed or the fixtures are rewritten to
+  use the supported binding form.
+- Next step: decide whether `define` should bind within `block`; either
+  implement that language contract and rerun the broad Deduce slice, or rewrite
+  the restart scripts to use `let`/supported local binding.
+- Validation: focused Deduce `basics` group for AUDIT-227/AUDIT-228 passed with
+  `11 passed, 0 failed`; full Deduce slice remains red with `411 passed, 6
+  failed`.
+
 ## Closed Or Invalidated Findings
 
 - Invalidated external candidate: `AUDIT_2.md` reports missing `break`

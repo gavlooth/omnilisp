@@ -59,13 +59,8 @@ fn bool scheduler_advance_round(
 }
 
 fn void scheduler_abort_all_work() {
+    scheduler_close_pending_io_for_all_fibers();
     for (usz i = 0; i < g_scheduler.fiber_count; i++) {
-        scheduler_close_pending_tcp_read(i);
-        scheduler_close_pending_offload(i);
-        scheduler_close_pending_sleep(i);
-        scheduler_close_pending_dns(i);
-        scheduler_close_pending_tcp_connect(i);
-        scheduler_close_pending_tcp_accept(i);
         g_scheduler.fibers[i] = {};
     }
 
@@ -144,14 +139,7 @@ fn void scheduler_reset_if_idle() {
         (void)uv_run(g_scheduler.uv_loop, UV_RUN_NOWAIT);
     }
 
-    for (usz i = 0; i < g_scheduler.fiber_count; i++) {
-        scheduler_close_pending_tcp_read(i);
-        scheduler_close_pending_offload(i);
-        scheduler_close_pending_sleep(i);
-        scheduler_close_pending_dns(i);
-        scheduler_close_pending_tcp_connect(i);
-        scheduler_close_pending_tcp_accept(i);
-    }
+    scheduler_close_pending_io_for_all_fibers();
 
     g_scheduler.fiber_count = 0;
     g_scheduler.current_fiber_id = NO_FIBER;

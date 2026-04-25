@@ -224,3 +224,20 @@ fn bool scheduler_os_thread_exists(usz thread_id, uint generation = 0) {
     g_scheduler.thread_task_mu.unlock();
     return exists;
 }
+
+fn void scheduler_cancel_all_os_threads() {
+    if (!g_scheduler.thread_task_mu_ready) return;
+    for (usz i = 0; i < MAX_OS_THREADS; i++) {
+        if (!g_scheduler.os_threads[i].active) continue;
+        bool already_done = false;
+        (void)scheduler_cancel_os_thread(i, &already_done, g_scheduler.os_threads[i].generation);
+    }
+}
+
+fn void scheduler_drain_os_threads() {
+    if (!g_scheduler.thread_task_mu_ready) return;
+    for (usz i = 0; i < MAX_OS_THREADS; i++) {
+        if (!g_scheduler.os_threads[i].active) continue;
+        scheduler_drop_os_thread(i, g_scheduler.os_threads[i].generation);
+    }
+}

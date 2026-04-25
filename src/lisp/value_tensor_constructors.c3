@@ -14,7 +14,9 @@ fn Value* make_tensor_double_uninitialized_checked(Interp* interp, usz[] shape, 
     }
     v.tag = TENSOR;
     v.tensor_val = tensor;
-    main::scope_register_dtor(interp.current_scope, (void*)v, &scope_dtor_value);
+    if (!scope_register_value_dtor_or_cleanup(interp.current_scope, v)) {
+        return tensor_runtime_raise(interp, oom_message);
+    }
     boundary_value_shape_note_tensor_construct(tensor.byte_len);
     return v;
 }
@@ -31,7 +33,9 @@ fn Value* make_tensor_uninitialized_checked(Interp* interp, TensorDType dtype, u
     }
     v.tag = TENSOR;
     v.tensor_val = tensor;
-    main::scope_register_dtor(interp.current_scope, (void*)v, &scope_dtor_value);
+    if (!scope_register_value_dtor_or_cleanup(interp.current_scope, v)) {
+        return tensor_runtime_raise(interp, oom_message);
+    }
     boundary_value_shape_note_tensor_construct(tensor.byte_len);
     return v;
 }
@@ -63,7 +67,10 @@ fn Value* copy_tensor_to_parent(Value* v, Interp* interp, BoundaryCopyFault* fau
     }
     result.tag = TENSOR;
     result.tensor_val = dst;
-    main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
+    if (!scope_register_value_dtor_or_cleanup(interp.current_scope, result)) {
+        if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
+        return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to register tensor copy destructor");
+    }
     return result;
 }
 
@@ -88,7 +95,9 @@ fn Value* promote_escape_tensor_shared_wrapper(Value* v, Interp* interp, Promoti
     }
     result.tag = TENSOR;
     result.tensor_val = dst;
-    main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value);
+    if (!scope_register_escape_value_dtor_or_cleanup(interp.current_scope, result)) {
+        return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to register tensor escape destructor");
+    }
     return result;
 }
 
@@ -124,6 +133,6 @@ fn Value* root_store_clone_tensor_to_scope(
     }
     result.tag = TENSOR;
     result.tensor_val = dst;
-    main::scope_register_dtor_escape(target_scope, (void*)result, &scope_dtor_value);
+    if (!scope_register_escape_value_dtor_or_cleanup(target_scope, result)) return null;
     return result;
 }

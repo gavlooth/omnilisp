@@ -81,7 +81,7 @@ fn void regex_free(CompiledRegex* rx) {
 }
 
 fn CompiledRegex* regex_get_compiled_cached(char[] pattern) {
-    regex_cache_ensure_init();
+    bool cache_ready = regex_cache_ensure_init();
 
     int existing = regex_cache_find(pattern);
     if (existing >= 0) return regex_cache_retain_locked(g_regex_cache[existing].rx);
@@ -107,34 +107,49 @@ fn CompiledRegex* regex_get_compiled_cached(char[] pattern) {
         return null;
     }
 
-    if (g_regex_cache_len < REGEX_CACHE_MAX_ENTRIES) {
-        if (g_regex_cache_len >= g_regex_cache_cap) regex_cache_grow();
-        if (g_regex_cache_len < g_regex_cache_cap) {
-            g_regex_cache[g_regex_cache_len].pattern = regex_cache_copy_pattern(pattern);
-            g_regex_cache[g_regex_cache_len].rx = rx;
-            rx.cached = true;
-            regex_cache_touch(g_regex_cache_len);
-            g_regex_cache_len++;
-            return regex_cache_retain_locked(rx);
+    if (cache_ready && g_regex_cache_len < REGEX_CACHE_MAX_ENTRIES) {
+        if (g_regex_cache_len >= g_regex_cache_cap) {
+            cache_ready = regex_cache_grow();
+        }
+        if (cache_ready && g_regex_cache_len < g_regex_cache_cap) {
+            char[] stored = regex_cache_copy_pattern(pattern);
+            if (pattern.len > 0 && stored.len == 0) {
+                cache_ready = false;
+            } else {
+                g_regex_cache[g_regex_cache_len].pattern = stored;
+                g_regex_cache[g_regex_cache_len].rx = rx;
+                rx.cached = true;
+                regex_cache_touch(g_regex_cache_len);
+                g_regex_cache_len++;
+                return regex_cache_retain_locked(rx);
+            }
         }
     }
 
-    int evict_idx = regex_cache_find_lru_index();
-    if (evict_idx >= 0) {
-        if (g_regex_cache[evict_idx].pattern.len > 0) mem::free(g_regex_cache[evict_idx].pattern.ptr);
-        regex_cache_detach_locked(g_regex_cache[evict_idx].rx);
-        g_regex_cache[evict_idx].pattern = regex_cache_copy_pattern(pattern);
-        g_regex_cache[evict_idx].rx = rx;
-        rx.cached = true;
-        regex_cache_touch(evict_idx);
-        g_regex_cache_evictions++;
-        return regex_cache_retain_locked(rx);
+    if (cache_ready) {
+        int evict_idx = regex_cache_find_lru_index();
+        if (evict_idx >= 0) {
+            char[] stored = regex_cache_copy_pattern(pattern);
+            if (pattern.len > 0 && stored.len == 0) {
+                cache_ready = false;
+            } else {
+                if (g_regex_cache[evict_idx].pattern.len > 0 && g_regex_cache[evict_idx].pattern.ptr != null) {
+                    mem::free(g_regex_cache[evict_idx].pattern.ptr);
+                }
+                regex_cache_detach_locked(g_regex_cache[evict_idx].rx);
+                g_regex_cache[evict_idx].pattern = stored;
+                g_regex_cache[evict_idx].rx = rx;
+                rx.cached = true;
+                regex_cache_touch(evict_idx);
+                g_regex_cache_evictions++;
+                return regex_cache_retain_locked(rx);
+            }
+        }
     }
 
-    // Conservative fallback: if cache bookkeeping is inconsistent, do not cache this entry.
+    // Conservative fallback: if cache allocation or bookkeeping fails, do not cache this entry.
     g_regex_compiled_unusable_cache++;
-    regex_free(rx);
-    return null;
+    return regex_cache_retain_locked(rx);
 }
 
 fn void pika_release_parser_state(ParserState* st) {

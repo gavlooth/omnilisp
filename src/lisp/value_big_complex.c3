@@ -38,7 +38,9 @@ fn Value* make_big_complex_from_owned_handle(Interp* interp, void* handle, char[
     }
     v.tag = BIG_COMPLEX;
     v.big_complex_val = handle;
-    main::scope_register_dtor(interp.current_scope, (void*)v, &scope_dtor_value);
+    if (!scope_register_value_dtor_or_cleanup(interp.current_scope, v)) {
+        return big_complex_raise(interp, "big-complex/out-of-memory", "BigComplex: failed to register value destructor");
+    }
     return v;
 }
 
@@ -89,7 +91,10 @@ fn Value* copy_big_complex_to_parent(Value* v, Interp* interp, BoundaryCopyFault
     }
     result.tag = BIG_COMPLEX;
     result.big_complex_val = cloned;
-    main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
+    if (!scope_register_value_dtor_or_cleanup(interp.current_scope, result)) {
+        if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
+        return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to register BigComplex copy destructor");
+    }
     return result;
 }
 
@@ -109,7 +114,9 @@ fn Value* promote_escape_big_complex(Value* v, Interp* interp, PromotionContext*
     }
     result.tag = BIG_COMPLEX;
     result.big_complex_val = cloned;
-    main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value);
+    if (!scope_register_escape_value_dtor_or_cleanup(interp.current_scope, result)) {
+        return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to register BigComplex escape destructor");
+    }
     return result;
 }
 
