@@ -257,6 +257,7 @@ fn Value* deduce_db_restore_persisted_rule_signatures(DeduceDb* db, Interp* inte
         Value* schema_err = deduce_db_ensure_restored_rule_signature_schemas(
             db,
             &db.rule_signatures[db.rule_signature_count - 1],
+            txn,
             interp
         );
         if (schema_err != null) return schema_err;

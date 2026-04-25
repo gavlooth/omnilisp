@@ -188,6 +188,8 @@ fn void run_advanced_ffi_system_tests(Interp* interp, int* pass, int* fail) {
         &run_advanced_ffi_system_surface_tests, interp, pass, fail);
     run_advanced_ffi_system_group("advanced-ffi-system-foreign-handle-metadata-dict",
         &run_advanced_ffi_system_foreign_handle_metadata_dict_tests, interp, pass, fail);
+    run_advanced_ffi_system_group("advanced-ffi-system-tensor-buffer",
+        &run_advanced_ffi_system_tensor_buffer_tests, interp, pass, fail);
     run_advanced_ffi_system_selected_exact_group("advanced-ffi-system-long-symbol",
         &run_advanced_ffi_system_long_symbol_tests, interp, pass, fail);
 }

@@ -84,7 +84,7 @@ fn bool scope_register_dtor_escape(ScopeRegion* scope, void* ptr, ScopeDestructo
     scope_assert_escape_tail_consistency(scope);
     ScopeDtor* d = g_scope_force_escape_dtor_alloc_oom
         ? null
-        : (ScopeDtor*)scope.alloc_escape(ScopeDtor.sizeof);
+        : (ScopeDtor*)scope.alloc_escape_attributed(ScopeDtor.sizeof, SCOPE_ESCAPE_ALLOC_DTOR);
     if (d == null) return false;
     d.ptr = ptr;
     d.func = func;

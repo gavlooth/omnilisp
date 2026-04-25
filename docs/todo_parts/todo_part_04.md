@@ -427,6 +427,6 @@ Source: `TODO.md`
       - host targeted `compiler` slice: `pass=276 fail=0`
   - closure note: broader optional FFI lanes stay split in the plan instead of
     keeping this grouped/bindgen umbrella open.
-  - follow-up lanes: opaque handle families, structs, callback handles, FFI
-    error effects, optional CppInterOp-backed C++ shim generation, and a
-    separate MetaFFI-inspired polyglot runtime/plugin lane.
+  - follow-up lanes: opaque handle families, structs, callback handles, and FFI
+    error effects. CppInterop is retained only as bindgen API-mode tooling, and
+    the MetaFFI-inspired polyglot runtime/plugin lane is not planned.

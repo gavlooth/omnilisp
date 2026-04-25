@@ -16,6 +16,15 @@ fn void emit_call_1(void* s, JitLocals* locals, void* fn_ptr) {
     emit_restore_interp_reg(s, locals);
 }
 
+/// Emit fn(reg0) -> R0
+fn void emit_call_1r(void* s, JitLocals* locals, void* fn_ptr, int reg0) {
+    _jit_prepare(s);
+    _jit_pushargr(s, reg0, CODE_PUSHARGR_L);
+    _jit_finishi(s, fn_ptr);
+    _jit_retval_l(s, JIT_R0);
+    emit_restore_interp_reg(s, locals);
+}
+
 /// Emit fn(reg0, reg1) -> R0
 fn void emit_call_2(void* s, JitLocals* locals, void* fn_ptr, int reg0, int reg1) {
     _jit_prepare(s);

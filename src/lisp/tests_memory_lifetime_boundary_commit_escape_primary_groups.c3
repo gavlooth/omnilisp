@@ -34,10 +34,18 @@ fn void run_memory_lifetime_boundary_commit_escape_primary_tests(Interp* interp,
         trace_value.tag = FFI_HANDLE;
         trace_value.ffi_val = &trace_handle;
 
+        FfiHandle keepalive_handle = {};
+        keepalive_handle.boundary_mode = FFI_BRIDGE_BOUNDARY_KEEPALIVE;
+        Value keepalive_value = {};
+        keepalive_value.tag = FFI_HANDLE;
+        keepalive_value.ffi_val = &keepalive_handle;
+
         FfiBridgeBoundaryDeclaration opaque_declaration =
             ffi_bridge_boundary_declaration_for_value(&opaque_value);
         FfiBridgeBoundaryDeclaration trace_declaration =
             ffi_bridge_boundary_declaration_for_value(&trace_value);
+        FfiBridgeBoundaryDeclaration keepalive_declaration =
+            ffi_bridge_boundary_declaration_for_value(&keepalive_value);
 
         bool ok = boundary_value_ownership_policy(FFI_HANDLE) == BOUNDARY_VALUE_OPAQUE_FOREIGN &&
                   boundary_value_tag_is_opaque_foreign(FFI_HANDLE) &&
@@ -52,6 +60,11 @@ fn void run_memory_lifetime_boundary_commit_escape_primary_tests(Interp* interp,
                   trace_declaration.trace_hook &&
                   ffi_bridge_boundary_value_requires_native_traversal(&trace_value) &&
                   !ffi_bridge_boundary_value_is_transplant_safe(&trace_value) &&
+                  keepalive_declaration.keepalive &&
+                  !ffi_bridge_boundary_value_is_opaque(&keepalive_value) &&
+                  !ffi_bridge_boundary_value_requires_native_traversal(&keepalive_value) &&
+                  ffi_bridge_boundary_value_can_share_across_boundary(&keepalive_value) &&
+                  ffi_bridge_boundary_value_is_transplant_safe(&keepalive_value) &&
                   boundary_value_tag_is_stable_materialization_candidate(ARRAY) &&
                   boundary_value_tag_requires_materialized_payload_clone(BIG_FLOAT) &&
                   boundary_graph_audit_edge_class(CLOSURE) == BOUNDARY_GRAPH_EDGE_ENV;
@@ -94,6 +107,84 @@ fn void run_memory_lifetime_boundary_commit_escape_primary_tests(Interp* interp,
             (*pass)++;
         } else {
             io::printn("[FAIL] lifetime: boundary FFI bridge trace hook fails closed");
+            (*fail)++;
+        }
+    }
+
+    {
+        FfiHandle trace_handle = {};
+        trace_handle.boundary_mode = FFI_BRIDGE_BOUNDARY_TRACE_HOOK;
+        trace_handle.refcount = 1;
+        Value trace_value = {};
+        trace_value.tag = FFI_HANDLE;
+        trace_value.ffi_val = &trace_handle;
+
+        long* keepalive_payload = (long*)mem::malloc(long.sizeof);
+        if (keepalive_payload != null) *keepalive_payload = 11;
+        Value* keepalive_value = keepalive_payload != null
+            ? make_ffi_handle_ex(
+                interp,
+                (void*)keepalive_payload,
+                "test-keepalive",
+                null,
+                true,
+                false,
+                null,
+                null,
+                FFI_BRIDGE_BOUNDARY_KEEPALIVE)
+            : null;
+
+        Value* copied_keepalive = keepalive_value != null
+            ? copy_ffi_handle_to_parent(keepalive_value, interp)
+            : null;
+        Value* copied_trace = copy_ffi_handle_to_parent(&trace_value, interp);
+        bool ok = copied_keepalive != null &&
+                  copied_keepalive == keepalive_value &&
+                  copied_keepalive.tag == FFI_HANDLE &&
+                  copied_keepalive.ffi_val == keepalive_value.ffi_val &&
+                  keepalive_value.ffi_val.refcount == 1 &&
+                  copied_trace == null &&
+                  trace_handle.refcount == 1;
+
+        if (keepalive_value == null && keepalive_payload != null) mem::free(keepalive_payload);
+
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: boundary FFI keepalive copy shares declared handle");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] lifetime: boundary FFI keepalive copy shares declared handle");
+            (*fail)++;
+        }
+    }
+
+    {
+        long* payload = (long*)mem::malloc(long.sizeof);
+        if (payload != null) *payload = 17;
+        Value* atomic_handle = payload != null
+            ? make_ffi_handle_ex(
+                interp,
+                (void*)payload,
+                "atomic-ref",
+                null,
+                true,
+                false,
+                null,
+                null,
+                FFI_BRIDGE_BOUNDARY_KEEPALIVE)
+            : null;
+        bool ok = atomic_handle != null &&
+                  atomic_handle.tag == FFI_HANDLE &&
+                  atomic_handle.ffi_val != null &&
+                  atomic_handle.ffi_val.boundary_mode == FFI_BRIDGE_BOUNDARY_KEEPALIVE &&
+                  ffi_bridge_boundary_value_can_share_across_boundary(atomic_handle) &&
+                  !ffi_bridge_boundary_value_requires_native_traversal(atomic_handle);
+
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: boundary FFI atomic-ref declares keepalive bridge");
+            (*pass)++;
+        } else {
+            if (payload != null && atomic_handle == null) mem::free(payload);
+            io::printn("[FAIL] lifetime: boundary FFI atomic-ref declares keepalive bridge");
             (*fail)++;
         }
     }
@@ -597,6 +688,9 @@ fn void run_memory_lifetime_boundary_commit_escape_primary_tests(Interp* interp,
             bool ok = !committed.releasing_scope_spliced &&
                       !committed.reused_in_target_chain &&
                       committed.outcome == BOUNDARY_COMMIT_DESTINATION_PARTIAL_BUILT &&
+                      committed.planned_route == BOUNDARY_PLAN_ROUTE_COMPATIBILITY_DESTINATION &&
+                      committed.selected_route == BOUNDARY_PLAN_ROUTE_COMPATIBILITY_DESTINATION &&
+                      committed.selected_reason == BOUNDARY_PLAN_REASON_DESTINATION_COMMITTED_COMPATIBILITY &&
                       committed.value != src &&
                       committed.value != null &&
                       committed.value.tag == PARTIAL_PRIM &&
@@ -667,6 +761,9 @@ fn void run_memory_lifetime_boundary_commit_escape_primary_tests(Interp* interp,
             bool ok = !committed.releasing_scope_spliced &&
                       !committed.reused_in_target_chain &&
                       committed.outcome == BOUNDARY_COMMIT_DESTINATION_ITERATOR_BUILT &&
+                      committed.planned_route == BOUNDARY_PLAN_ROUTE_COMPATIBILITY_DESTINATION &&
+                      committed.selected_route == BOUNDARY_PLAN_ROUTE_COMPATIBILITY_DESTINATION &&
+                      committed.selected_reason == BOUNDARY_PLAN_REASON_DESTINATION_COMMITTED_COMPATIBILITY &&
                       committed.value != src &&
                       committed.value != null &&
                       committed.value.tag == ITERATOR &&

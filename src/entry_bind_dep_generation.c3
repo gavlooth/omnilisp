@@ -76,6 +76,8 @@ fn bool process_bind_dependency(char[] proj_dir, usz proj_dir_len, lisp::Libclan
     char* dep_name = &dep.name;
     char* dep_lib = &dep.library;
     lisp::BindgenRawSyntax raw_syntax;
+    lisp::BindgenMode mode;
+    lisp::BindgenGenerator generator;
     if (dep.name_invalid || dep_name[0] == 0) {
         io::printfn(
             "  Error: invalid bind dependency name '%s' (expected a unique non-empty output-safe section name shorter than 64 bytes)",
@@ -97,6 +99,48 @@ fn bool process_bind_dependency(char[] proj_dir, usz proj_dir_len, lisp::Libclan
             "  Error: unsupported bind raw-syntax for '%s': %s (expected legacy or grouped)",
             (ZString)dep_name,
             (ZString)&dep.raw_syntax
+        );
+        return false;
+    }
+
+    if (dep.mode_invalid) {
+        io::printfn(
+            "  Error: invalid bind mode for '%s' (expected \"abi\" or \"api\")",
+            (ZString)dep_name
+        );
+        return false;
+    }
+
+    if (!lisp::bindgen_mode_from_dep(dep, &mode)) {
+        io::printfn(
+            "  Error: unsupported bind mode for '%s': %s (expected abi or api)",
+            (ZString)dep_name,
+            (ZString)&dep.mode
+        );
+        return false;
+    }
+
+    if (dep.generator_invalid) {
+        io::printfn(
+            "  Error: invalid bind generator for '%s' (expected \"clang\" or \"cppinterop\")",
+            (ZString)dep_name
+        );
+        return false;
+    }
+
+    if (!lisp::bindgen_generator_from_dep(dep, &generator)) {
+        io::printfn(
+            "  Error: unsupported bind generator for '%s': %s (expected clang or cppinterop)",
+            (ZString)dep_name,
+            (ZString)&dep.generator
+        );
+        return false;
+    }
+
+    if (lisp::bindgen_generator_requires_api(generator) && !lisp::bindgen_mode_is_api(mode)) {
+        io::printfn(
+            "  Error: bind generator cppinterop for '%s' requires mode \"api\"",
+            (ZString)dep_name
         );
         return false;
     }
@@ -378,12 +422,13 @@ fn bool process_bind_dependency(char[] proj_dir, usz proj_dir_len, lisp::Libclan
 
     bool pair_ok = lisp::generate_ffi_module_pair_with_options(dep_name[:dep_name_len], dep_lib[:dep_lib_len],
         funcs, func_count, raw_out_path[:raw_olen], facade_out_path[:facade_olen],
-        raw_syntax, &dep.strip_prefixes, dep.strip_prefix_count);
+        raw_syntax, &dep.strip_prefixes, dep.strip_prefix_count, mode, generator);
     bool manifest_ok = false;
     if (pair_ok) {
         manifest_ok = lisp::generate_ffi_bindgen_manifest(dep_name[:dep_name_len], dep_lib[:dep_lib_len],
             raw_out_path[:raw_olen], facade_out_path[:facade_olen], manifest_out_path[:manifest_olen],
-            raw_syntax, &dep.exclude_functions, dep.exclude_function_count, &dep.strip_prefixes, dep.strip_prefix_count);
+            raw_syntax, &dep.exclude_functions, dep.exclude_function_count,
+            &dep.strip_prefixes, dep.strip_prefix_count, mode, generator);
         if (!manifest_ok) {
             if (!raw_existed) lisp::bindgen_delete_output_file_if_exists(raw_out_path[:raw_olen]);
             if (!facade_existed) lisp::bindgen_delete_output_file_if_exists(facade_out_path[:facade_olen]);

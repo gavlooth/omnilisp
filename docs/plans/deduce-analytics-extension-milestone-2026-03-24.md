@@ -1,6 +1,6 @@
 # Deduce Analytics Extension Milestone (2026-03-24)
 
-Status: `active`
+Status: `closed`
 
 ## Purpose
 
@@ -144,6 +144,6 @@ This milestone is intentionally small and concrete:
 - This milestone is the explicit follow-up to:
   - `TODO.md`
     (analytics extension item)
-- `TODO.md` follow-up items around cleanup/statistics robustness
+- `TODO.md` follow-up items around cleanup/statistics robustness are closed.
 - Validation command for this lane should remain the bounded deduce slice until the
   first implementation slice changes semantics.

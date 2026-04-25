@@ -3,7 +3,8 @@
 Source: `TODO.md`
 
 - [x] `LANG-FOREIGN-RUNTIME-CORE-107` define a minimal common foreign runtime core
-  for C, Python, Julia, CUDA/cuBLAS, and optional C++/polyglot adapters
+  for C ABI handles plus retained CppInterop API-mode tooling and CPU/CUDA
+  tensor-buffer marshalling
   while keeping safety and ownership model boundaries clear
   - design note: `docs/plans/foreign-runtime-core-plan-2026-04-11.md`
     locks a narrow contract for:
@@ -41,24 +42,24 @@ Source: `TODO.md`
       `ForeignRuntimeAdapter` operation boundary.
     - C ABI callable reflection and bound-function calls are registered through
       the C ABI adapter, while generic handle describe/release remains
-      available for current runtime kinds until dedicated Python, Julia,
-      CUDA/cuBLAS, optional C++ tooling, and polyglot adapters exist.
+      available for current runtime kinds. Python/Julia and polyglot adapters
+      are not planned.
   - shipped slice: `FOREIGN-CORE-002E` explicit load/resolve adapter hooks:
     - C ABI lazy `dlopen` and `dlsym` now route through explicit `load_bound`
       and `resolve_bound` adapter slots before the C ABI `call_bound` reaches
       libffi.
-    - The adapter shape also reserves a `tensor_buffer` slot behind
-      `FOREIGN_CAP_TENSOR_BUFFER`; no C ABI Tensor buffer marshalling is
-      registered until the BLAS/cuBLAS backend has a concrete ownership and
-      layout contract.
+    - The adapter shape also registers a `tensor_buffer` slot behind
+      `FOREIGN_CAP_TENSOR_BUFFER` for native CPU and CUDA tensor buffers.
+      cuBLAS execution stays under the Tensor backend rather than becoming a
+      foreign-runtime adapter.
   - shipped slice: `FOREIGN-CORE-002F` capability-gated import/member hooks:
     - `FOREIGN_CAP_IMPORT` and `FOREIGN_CAP_MEMBER` guard the new internal
       adapter behavior.
     - `import_module` and `resolve_member` were added as adapter slots, with
       `foreign_runtime_import_module` and `foreign_runtime_resolve_member`
       handling the internal dispatch.
-    - No new public user primitive was added, and Python/Julia/CUDA behavior is
-      still not wired yet.
+    - No new public user primitive was added. Python/Julia runtime adapter
+      behavior is not planned.
   - shipped slice: `FOREIGN-CORE-002G` C ABI string-return cleanup:
     - `^String` FFI returns now copy non-null C `char*` returns into Omni
       `String` values and keep null returns as `nil`.
@@ -188,13 +189,21 @@ Source: `TODO.md`
     - `c3c build --warn-deprecation=no`
     - host targeted `advanced-ffi-system` group: `pass=75 fail=0`
     - bounded container `memory-lifetime-smoke` slice: `pass=225 fail=0`
+  - shipped slice: `FOREIGN-CORE-002S` retained optional interop closure:
+    - bindgen `mode` and `generator` now reach raw/facade/manifest output.
+    - `generator = "cppinterop"` requires `mode = "api"` and remains tooling
+      metadata, not a runtime dependency.
+    - native FFI buffer returns and CPU/CUDA Tensor buffer exports produce
+      borrowed `ForeignHandle` descriptors with fail-closed unsupported-device
+      behavior.
   - closure note:
-    - the common-core lane is closed; non-C runtime adapters remain split under
-      `FOREIGN-CORE-004`, and TLS offload/in-flight lifecycle coverage remains
-      a separate runtime validation follow-up.
-  - follow-up risk: avoid overloading the core with polyglot host/guest API
-    semantics before C ABI path, `ForeignHandle`, and reflection payload contract
-    are stable.
+    - the common-core lane is closed; Python/Julia and polyglot/plugin adapter
+      lanes are explicitly not planned, CppInterop is API-mode bindgen tooling,
+      and CUDA/cuBLAS stays under Tensor with FFI tensor-buffer marshalling.
+    - TLS offload/in-flight lifecycle coverage remains a separate closed
+      runtime validation checkpoint.
+  - follow-up risk: avoid reintroducing polyglot host/guest API semantics or
+    Python/Julia runtime adapters into the C ABI `ForeignHandle` contract.
 
 - [x] `LANG-TENSOR-BACKEND-BOUNDARY-092` define the optional Tensor
   library/backend boundary

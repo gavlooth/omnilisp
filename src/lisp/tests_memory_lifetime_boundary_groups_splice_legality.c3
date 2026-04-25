@@ -41,6 +41,17 @@ fn void run_memory_lifetime_splice_legality_explicit_reasons_test(Interp* interp
         main::scope_retain(child);
         BoundaryTransplantProof retained_proof = boundary_build_transplant_proof(parent, child);
         BoundaryScopeTransferResult retained_result = boundary_try_scope_splice_escapes_result(parent, child);
+        main::scope_release(child);
+
+        main::ScopeRegion* grandchild = main::scope_create(child);
+        BoundaryTransplantProof descendant_proof = boundary_build_transplant_proof(parent, child);
+        BoundaryScopeTransferResult descendant_result = boundary_try_scope_splice_escapes_result(parent, child);
+        bool descendant_ok = !descendant_proof.transfer.allowed &&
+                             descendant_proof.transfer.reason == BOUNDARY_SCOPE_TRANSFER_CHILD_REFCOUNT_NOT_ONE &&
+                             !descendant_result.allowed &&
+                             descendant_result.reason == BOUNDARY_SCOPE_TRANSFER_CHILD_REFCOUNT_NOT_ONE &&
+                             grandchild != null &&
+                             child.first_child == grandchild;
 
         bool ready_proof_ok = ready_proof.transfer.allowed &&
                               ready_proof.transfer.reason == BOUNDARY_SCOPE_TRANSFER_OK &&
@@ -88,25 +99,25 @@ fn void run_memory_lifetime_splice_legality_explicit_reasons_test(Interp* interp
                         !main::is_in_scope(escaped, sibling) &&
                         !main::is_in_scope(escaped, foreign);
 
-        main::scope_release(child); // Drop extra retain before normal teardown.
+        main::scope_release(grandchild);
         main::scope_release(sibling);
-        main::scope_release(child);
         main::scope_release(foreign);
         main::scope_release(parent);
 
-        bool ok = ready_proof_ok && proof_reasons_ok && sibling_ok && foreign_ok && owner_ok && retained_ok && state_ok;
+        bool ok = ready_proof_ok && proof_reasons_ok && sibling_ok && foreign_ok && owner_ok && retained_ok && descendant_ok && state_ok;
         if (ok) {
             emit_pass_literal("[PASS] lifetime: splice legality explicit reasons");
             (*pass)++;
         } else {
             io::printfn(
-                "[FAIL] lifetime: splice legality explicit reasons (ready_proof=%s proof_reasons=%s sibling=%s foreign=%s owner=%s retained=%s state_ok=%s reasons=%s/%s/%s/%s)",
+                "[FAIL] lifetime: splice legality explicit reasons (ready_proof=%s proof_reasons=%s sibling=%s foreign=%s owner=%s retained=%s descendant=%s state_ok=%s reasons=%s/%s/%s/%s)",
                 ready_proof_ok ? "yes" : "no",
                 proof_reasons_ok ? "yes" : "no",
                 sibling_ok ? "yes" : "no",
                 foreign_ok ? "yes" : "no",
                 owner_ok ? "yes" : "no",
                 retained_ok ? "yes" : "no",
+                descendant_ok ? "yes" : "no",
                 state_ok ? "yes" : "no",
                 boundary_scope_transfer_reason_name(sibling_result.reason),
                 boundary_scope_transfer_reason_name(foreign_result.reason),

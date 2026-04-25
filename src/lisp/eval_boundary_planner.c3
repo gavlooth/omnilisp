@@ -50,6 +50,8 @@ fn BoundaryPlanDecision boundary_plan_commit_escape(
                 plan.transplant_candidate = true;
                 plan.stable_materialization_candidate =
                     boundary_value_tag_is_stable_materialization_candidate(result.tag);
+                plan.compatibility_candidate =
+                    boundary_value_tag_has_compatibility_destination(result.tag);
             } else {
                 if (boundary_value_tag_is_stable_materialization_candidate(result.tag)) {
                     plan.route = BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION;

@@ -5741,3 +5741,717 @@ Validation:
   - `OMNI_LISP_TEST_SLICE=scheduler` (`143 passed, 0 failed`)
   - `OMNI_LISP_TEST_SLICE=advanced
     OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system` (`184 passed, 0 failed`)
+
+## 2026-04-25 - Memory model improvement evidence refresh
+
+- Closed `MEM-MODEL-IMPROVE-001` with three fresh bounded
+  counters-enabled `memory-lifetime-bench` runs.
+- Build and run profile:
+  - `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh c3c --threads 1 build --obj-out obj_mem_model -D OMNI_BOUNDARY_INSTR_COUNTERS`
+  - `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_BOUNDARY_BENCH=1 OMNI_BOUNDARY_INSTR_COUNTERS=1 OMNI_LISP_TEST_SLICE=memory-lifetime-bench ./build/main --test-suite lisp`
+  - `scripts/check_memory_telemetry_benchmark_envelope.sh` passed for each of
+    `.agents/memory-model-improve-001-runs/run-1.log`,
+    `.agents/memory-model-improve-001-runs/run-2.log`, and
+    `.agents/memory-model-improve-001-runs/run-3.log`.
+- The repeated baseline confirms:
+  - correctness counters are stable (`splice_ok=2048`,
+    `disallowed_ok=2048`, `reuse_ok=2048`, `partial_ok=2048`,
+    `shape_ok=128`, `closure_env_ok=32`, `stable_passport_ok=1`,
+    `splice_fail_total=0`);
+  - copy debt remains zero (`materialization_copy_bytes_delta=0`,
+    `materialization_copy_bytes_optimizer=0`,
+    `materialization_copy_bytes_forced_no_splice=0`);
+  - the largest repeatable non-copy pressures are allocator/slack and
+    collection growth (`escape_slow_delta=416`, `temp_slow_delta=209`,
+    `escape_destroy_slack_delta=603776`, `temp_destroy_slack_delta=209536`,
+    `hashmap_growth_delta=1024`, `set_growth_delta=512`,
+    `array_growth_delta=128`).
+- Next memory-model work should start with `MEM-MODEL-IMPROVE-002`, focused on
+  the escape-lane slow allocation / destroy slack policy. If that is blocked,
+  the next measured fallback is `MEM-MODEL-IMPROVE-003` on the shared
+  hashmap/set sizing path.
+
+## 2026-04-25 - Memory model slow-path slack histograms
+
+- Progressed `MEM-MODEL-IMPROVE-002` by adding gated TEMP/ESCAPE
+  slow-allocation slack histogram counters.
+- The histogram is exposed in:
+  - `runtime-memory-stats` scope counters,
+  - `OMNI_MEM_TELEMETRY` JSON scope output,
+  - `OMNI_BENCH_SUMMARY suite=boundary_value_shape_counters`,
+  - `scripts/check_memory_telemetry_benchmark_envelope.sh` when
+    `OMNI_MEM_TELEM_REQUIRE_SLOW_SLACK_HISTOGRAM=1`.
+- Validation:
+  - `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh c3c --threads 1 build --obj-out obj_mem_model -D OMNI_BOUNDARY_INSTR_COUNTERS`
+  - `OMNI_MEM_TELEM_REQUIRE_SLOW_SLACK_HISTOGRAM=1 scripts/check_memory_telemetry_benchmark_envelope.sh .agents/memory-model-improve-002-histogram.log`
+  - bounded `OMNI_LISP_TEST_SLICE=basic` passed with `173 passed, 0 failed`.
+- First histogram result:
+  - TEMP: exact `1`, `<=512` `0`, `<=4096` `64`, `>4096` `144`
+  - ESCAPE: exact `1`, `<=512` `0`, `<=4096` `415`, `>4096` `0`
+- Direct ESCAPE chunk size-class policy attempts were reverted before commit.
+  `memory-lifetime-smoke` still fails after the revert with
+  `handle ignore-k does not retain suspended context`; this is tracked as
+  `AUDIT-238` and should be fixed before using smoke as the allocator-policy
+  ownership gate.
+
+## 2026-04-25 - Handle ignore-k continuation retention fix
+
+- Closed `AUDIT-238`.
+- Handler result finalization now distinguishes real result-graph continuation
+  escape from transient retention caused by binding `k` into ESCAPE-lane
+  handler clause environments.
+- If a handler result does not reach the continuation, transient boundary
+  retention is released and the suspended context remains owned by the active
+  handle frame, so frame teardown returns it to the stack context pool.
+- Generic `checkpoint`/`capture` now keeps the suspended context alive when the
+  shift result graph carries `k`, which preserves stream-yield continuations
+  returned through function boundaries.
+- Stable destination materialization can now shallow-materialize continuation
+  leaves in returned cons graphs, using the same owner check and handle-retain
+  policy as existing continuation boundary copies.
+- The regression fixture now uses canonical hidden-continuation handle syntax
+  `(ask x body)` instead of unsupported stale `(ask k x body)`.
+- Validation:
+  - bounded `memory-lifetime-smoke` passed with `269 passed, 0 failed`;
+  - bounded `advanced-effect-continuation` passed with `56 passed, 0 failed`;
+  - `OMNI_BOUNDARY_GRAPH_AUDIT=1` evaluation of
+    `(handle (signal ask 1) (ask x 99))` returned `99` with no
+    continuation-path graph-audit diagnostic.
+- Note: full `memory-lifetime-smoke` still emits expected TEMP-edge diagnostics
+  from passing negative graph-audit tests. Those diagnostics are not from the
+  ignore-k continuation path.
+
+## 2026-04-25 - Collection known-entry sizing closure
+
+- Closed `MEM-MODEL-IMPROVE-003`.
+- `hashmap_capacity_hint_for_entry_count` now returns normalized power-of-two
+  capacities. Dictionary and Set constructors share this known-entry sizing
+  path instead of carrying duplicated capacity math.
+- Added checked known-entry constructors for internal/benchmark paths that know
+  the insertion count up front.
+- `boundary_value_shape_counters` now pre-sizes dictionary and set workloads
+  from `BOUNDARY_BENCH_SHAPE_ITEMS`, eliminating the benchmark hashmap/set
+  growth counters:
+  - `hashmap_growth_delta`: `1024 -> 0`
+  - `set_growth_delta`: `512 -> 0`
+  - `materialization_copy_bytes_delta` remains `0`.
+- `scripts/check_memory_telemetry_benchmark_envelope.sh` now treats
+  hashmap/set growth counters as required fields rather than mandatory positive
+  pressure. Set `OMNI_MEM_TELEM_REQUIRE_COLLECTION_GROWTH_ZERO=1` to require
+  the optimized known-count benchmark contract.
+- Negative memory recorded: direct TEMP large slow-allocation exact-fit and
+  exact-plus-4096-headroom policies were tried and reverted because they
+  increased `temp_slow_delta` and `temp_destroy_slack_delta` despite passing
+  correctness gates. Do not retry allocator chunk-size tuning from aggregate
+  slack counters alone; add per-scope allocation-sequence telemetry first.
+- Validation:
+  - bounded counters-enabled build passed;
+  - bounded `memory-lifetime-smoke` passed with `269 passed, 0 failed`;
+  - bounded `data-format` passed with `92 passed, 0 failed`;
+  - bounded `scope` passed with `64 passed, 0 failed`;
+  - bounded `basic` passed with `173 passed, 0 failed`;
+  - bounded `memory-lifetime-bench` passed with hashmap/set growth at zero;
+  - telemetry envelope passed with
+    `OMNI_MEM_TELEM_REQUIRE_COLLECTION_GROWTH_ZERO=1`.
+
+## 2026-04-25 - Boundary value policy coverage guard
+
+- Closed `MEM-MODEL-IMPROVE-004`.
+- Added `scripts/boundary_value_policy_manifest.tsv`, a manifest row for every
+  current `ValueTag` that declares:
+  - ownership policy,
+  - edge policy,
+  - copy route,
+  - stable-materialization eligibility,
+  - graph-audit class,
+  - destructor authority,
+  - native/FFI exclusion,
+  - rollback policy.
+- Added `scripts/check_boundary_value_policy_coverage.py`.
+  The guard verifies the manifest matches the `ValueTag` enum in order and
+  cross-checks ownership, edge, and copy-route entries against the runtime
+  switch tables.
+- Wired the guard into `scripts/check_boundary_change_policy.sh` so it runs
+  before boundary-sensitive validation-log checks, even when the current diff
+  has no boundary-sensitive file changes.
+- Expanded `scripts/boundary_sensitive_files.txt` to include the boundary
+  ownership policy, graph-audit policy, stable store/materialization files, and
+  the new manifest/guard.
+- Validation:
+  - `scripts/check_boundary_value_policy_coverage.py` passed for all 30
+    `ValueTag` entries;
+  - `OMNI_BOUNDARY_POLICY_RANGE=HEAD..HEAD scripts/check_boundary_change_policy.sh`
+    passed and confirmed the guard is invoked on the no-sensitive-change path.
+
+## 2026-04-25 - FFI bridge keepalive and stable scratch cleanup
+
+- Closed `MEM-MODEL-IMPROVE-005`.
+- `atomic-ref` is now the first explicit FFI bridge keepalive family. It uses
+  `FFI_BRIDGE_BOUNDARY_KEEPALIVE` because the payload is an Omni-allocated
+  native cell with one release authority and no Omni-owned graph edges.
+- FFI handle construction now preserves `FfiBridgeBoundaryMode` through both
+  `make_ffi_handle_ex` and `make_ffi_handle_ex_with_descriptor`.
+- `copy_ffi_handle_to_parent` now shallow-shares only opaque/keepalive handles
+  and fails closed for declared copy-hook, trace-hook, and unsafe modes.
+- Added direct tests for keepalive bridge declarations, copy fail-closed
+  behavior, and the real `(atomic ...)` construction path.
+- Fixed a stale advanced FFI metadata test expression that used the unbound
+  interpreter symbol `nil?`; it now uses normal falsy checking.
+- Closed the active stable escape Valgrind leak found during this slice:
+  `boundary_commit_pre_materialize_transplant_budget_available` now frees its
+  prepared-graph scratch buffers, and `Interp.destroy` uses
+  `stable_escape_store_destroy` to reset entries and destroy the store mutex.
+- Validation:
+  - bounded build passed;
+  - bounded `memory-lifetime-smoke` passed with `271 passed, 0 failed`;
+  - traced-child Valgrind `memory-lifetime-smoke` passed with `271 passed,
+    0 failed`, zero Memcheck errors, and zero definite/indirect/possible leaks;
+  - bounded `atomic` passed with `11 passed, 0 failed`;
+  - bounded `advanced-ffi-system` passed with `185 passed, 0 failed`;
+  - boundary policy coverage/status/whitespace gates passed.
+
+## 2026-04-25 - Product-style memory benchmark coverage
+
+- Started `MEM-MODEL-IMPROVE-006` workload broadening with a product-style
+  Finwatch benchmark slice.
+- Added `finwatch_product_memory` to `memory-lifetime-bench`. The fixture is
+  derived from the canonical `examples/finwatch` route/cache/portfolio shape:
+  quote arrays, holding arrays, watchlist sets, request dictionaries, response
+  dictionaries, strings, symbols, and a releasable FFI wrapper cross a
+  `boundary_commit_escape` return boundary.
+- Updated `scripts/check_memory_telemetry_benchmark_envelope.sh` to require
+  the new summary line and check fixture/commit success plus counter-field
+  presence/nonnegativity. Timing remains warning-only; no strict timing gate was
+  added.
+- Counters-enabled bounded benchmark result:
+  - `product_ok=64`
+  - `commit_ok=64`
+  - `hashmap_construct_delta=1472`
+  - `set_construct_delta=64`
+  - `array_construct_delta=128`
+  - `string_payload_bytes_delta=48512`
+  - `ffi_wrappers_delta=64`
+  - `ffi_releasable_delta=64`
+- Remaining MEM-MODEL-IMPROVE-006 slices are nested module returns,
+  closure-heavy iterator pipelines, and tensor-metadata crossings.
+
+## 2026-04-25 - Closure-heavy iterator memory benchmark coverage
+
+- Continued `MEM-MODEL-IMPROVE-006` with a dedicated closure-heavy iterator
+  workload slice.
+- Added `closure_iterator_pipeline_memory` to `memory-lifetime-bench`. The
+  fixture builds captured mapping/filter closures over `range-from`, returns
+  the lazy iterator through the top-level boundary, then materializes it with
+  `List` and checks the realized count and sum.
+- `BoundaryBenchCounterSnapshot` now includes `BoundaryEscapeShapeStats`, so
+  the workload can report iterator, partial, and closure root deltas alongside
+  closure env-copy and materialization-copy counters.
+- Updated `scripts/check_memory_telemetry_benchmark_envelope.sh` to require
+  the new summary line and gate only correctness/counter-presence fields.
+  Timing remains warning-only; no strict timing gate was added.
+- Counters-enabled bounded benchmark result:
+  - `pipeline_ok=64`
+  - `count_total=640`
+  - `sum_total=22720`
+  - `iterator_roots_delta=512`
+  - `partial_roots_delta=640`
+  - `closure_roots_delta=448`
+  - `closure_env_frame_delta=512`
+  - `closure_env_binding_delta=512`
+  - `materialization_copy_bytes_delta=0`
+- Remaining MEM-MODEL-IMPROVE-006 slices are nested module returns and
+  tensor-metadata crossings.
+
+## 2026-04-25 - Tensor metadata crossing memory benchmark coverage
+
+- Continued `MEM-MODEL-IMPROVE-006` with a dedicated tensor-heavy metadata
+  crossing workload slice.
+- Added `tensor_metadata_crossing_memory` to `memory-lifetime-bench`. The
+  fixture builds TEMP cons records containing CPU `Float64` tensors, shape
+  arrays, element counts, and per-record indices, then commits the graph
+  through `boundary_commit_escape` and validates the committed graph.
+- The fixture intentionally avoids Dictionary storage for the tensor graph
+  because current Dictionary insertion promotes entries toward root; using a
+  cons-rooted TEMP graph keeps `tensor_roots_delta` a real boundary-crossing
+  signal.
+- Updated `scripts/check_memory_telemetry_benchmark_envelope.sh` to require
+  the new summary line and gate only correctness/counter-presence fields.
+  Timing remains warning-only; no strict timing gate was added.
+- Counters-enabled bounded benchmark result:
+  - `tensor_ok=64`
+  - `commit_ok=64`
+  - `tensor_roots_delta=256`
+  - `tensor_payload_bytes_delta=12288`
+  - `array_construct_delta=256`
+  - `selected_transplant_delta=64`
+  - `materialization_copy_bytes_delta=0`
+- Remaining MEM-MODEL-IMPROVE-006 slice is nested module returns.
+
+## 2026-04-25 - Nested module return memory benchmark coverage
+
+- Closed `MEM-MODEL-IMPROVE-006` with the dedicated nested-module return
+  workload slice.
+- Added `nested_module_return_memory` to `memory-lifetime-bench`. The fixture
+  defines an outer module with a nested inner module, builds list/array graphs
+  inside `(with inner-module ...)` bodies, returns those graphs through the
+  top-level boundary, and validates the returned structure.
+- Fixed the boundary commit path so a region-transplant splice rejection can
+  fall back to stable destination materialization when the planner already
+  marked the returned graph as a stable materialization candidate. Unsupported
+  or budget-aborted fallback paths remain fail-closed.
+- Added an advanced module regression for a nested module returning a heap
+  graph, so the behavior is covered outside the benchmark-only gate.
+- Updated `scripts/check_memory_telemetry_benchmark_envelope.sh` to require
+  the nested-module summary and gate stable-materialization selection plus copy
+  debt evidence.
+- Counters-enabled bounded benchmark result:
+  - `setup_ok=1`
+  - `batch_ok=64`
+  - `array_construct_delta=384`
+  - `selected_transplant_delta=128`
+  - `selected_stable_materialize_delta=320`
+  - `materialization_copy_bytes_delta=220160`
+- Focused bounded `advanced-collections-module` passed with `2102` tests and
+  zero failures, covering the nested-module heap-graph regression outside the
+  benchmark-only gate.
+- `[INVALIDATED]` Do not assume a rejected transplant proof is always a hard
+  boundary error for stable graph candidates. The nested module workload proved
+  that module-scope return graphs can reject splicing but still be safely
+  committed by stable destination materialization.
+
+## 2026-04-26 - Scope allocator sequence telemetry
+
+- Continued `MEM-MODEL-IMPROVE-002` with the required per-scope
+  allocation-sequence evidence slice before another allocator policy change.
+- Added telemetry-only slow-sequence state to `ScopeRegion` for TEMP and
+  ESCAPE lanes. A sequence starts when a slow allocation opens a new chunk and
+  closes at the next slow allocation, reset, destroy, or splice/adoption
+  boundary.
+- `ScopeMemoryTelemetryStats`, `runtime-memory-stats`,
+  `OMNI_MEM_TELEMETRY`, and `boundary_value_shape_counters` now expose closed
+  sequence counts, follow-up allocation counts/bytes, unused bytes at close,
+  no-follow-up counts, and large-slack follow-up/no-follow-up evidence.
+- Updated `scripts/check_memory_telemetry_benchmark_envelope.sh` with
+  `OMNI_MEM_TELEM_REQUIRE_SCOPE_SEQUENCE=1` to gate the new fields.
+- First bounded sequence benchmark result:
+  - `temp_slow_sequence_closed_delta=177`
+  - `escape_slow_sequence_closed_delta=416`
+  - `temp_slow_sequence_followup_bytes_delta=2006032`
+  - `escape_slow_sequence_followup_bytes_delta=34696`
+  - `temp_slow_sequence_unused_close_delta=120184`
+  - `escape_slow_sequence_unused_close_delta=752664`
+  - `temp_slow_sequence_no_followup_delta=1`
+  - `escape_slow_sequence_no_followup_delta=256`
+  - `temp_slow_sequence_large_delta=144`
+  - `temp_slow_sequence_large_followup_bytes_delta=2002192`
+  - `temp_slow_sequence_large_no_followup_delta=0`
+- `[INVALIDATED]` Do not treat TEMP large slow-allocation slack as obvious
+  waste in the current workload. The sequence evidence shows every large-slack
+  TEMP sequence had follow-up allocations, with about two megabytes of
+  follow-up allocation after those slow chunks.
+- `[HYPOTHESIS]` ESCAPE no-follow-up sequences are the remaining allocator
+  policy target, but the next slice should split them by request and unused
+  size class before changing chunk selection because current ESCAPE large-slack
+  count is zero.
+
+## 2026-04-26 - ESCAPE no-follow-up sequence classification
+
+- Continued `MEM-MODEL-IMPROVE-002` by adding request and unused-at-close size
+  classes for no-follow-up slow-allocation sequences.
+- `ScopeRegion` now records the requested size for the active TEMP/ESCAPE slow
+  sequence. `ScopeMemoryTelemetryStats`, `runtime-memory-stats`,
+  `OMNI_MEM_TELEMETRY`, and `boundary_value_shape_counters` expose
+  no-follow-up request buckets (`<=512`, `<=4096`, `>4096`) and unused buckets
+  (`exact`, `<=512`, `<=4096`, `>4096`).
+- The benchmark envelope now verifies that ESCAPE no-follow-up request and
+  unused bucket sums equal `escape_slow_sequence_no_followup_delta`.
+- First bounded benchmark result:
+  - `escape_slow_sequence_no_followup_delta=256`
+  - `escape_slow_sequence_no_followup_request_le512_delta=128`
+  - `escape_slow_sequence_no_followup_request_le4096_delta=1`
+  - `escape_slow_sequence_no_followup_request_gt4096_delta=127`
+  - `escape_slow_sequence_no_followup_unused_exact_delta=1`
+  - `escape_slow_sequence_no_followup_unused_le512_delta=0`
+  - `escape_slow_sequence_no_followup_unused_le4096_delta=255`
+  - `escape_slow_sequence_no_followup_unused_gt4096_delta=0`
+- `[INVALIDATED]` Do not apply a broad ESCAPE size-class chunk reduction from
+  this evidence. No-follow-up requests are split between tiny and large
+  requests, while unused-at-close is almost entirely at most 4096 bytes.
+- `[HYPOTHESIS]` The next useful discriminator is source/site attribution for
+  ESCAPE no-follow-up sequences, not another size-only policy attempt.
+
+## 2026-04-26 - ESCAPE no-follow-up source attribution closure
+
+- Closed `MEM-MODEL-IMPROVE-002` after adding source/site attribution for
+  ESCAPE no-follow-up slow-allocation sequences.
+- Added a telemetry-only `ScopeEscapeAllocSource` carried by active ESCAPE
+  slow sequences and transferred across escape-sequence adoption.
+- Classified direct/manual allocation, ESCAPE destructor records, interpreter
+  Value/Env escape allocation, boundary payload materialization, promotion
+  signature copy, promotion closure copy, and JIT staged arguments.
+- `ScopeMemoryTelemetryStats`, `runtime-memory-stats`, `OMNI_MEM_TELEMETRY`,
+  and `boundary_value_shape_counters` now expose ESCAPE no-follow-up source
+  buckets, and the benchmark envelope verifies that the source bucket sum
+  equals `escape_slow_sequence_no_followup_delta`.
+- Final bounded benchmark result:
+  - `escape_slow_sequence_no_followup_delta=256`
+  - `escape_slow_sequence_no_followup_source_unknown_delta=0`
+  - `escape_slow_sequence_no_followup_source_direct_delta=256`
+  - `escape_slow_sequence_no_followup_source_dtor_delta=0`
+  - `escape_slow_sequence_no_followup_source_interp_value_delta=0`
+  - `escape_slow_sequence_no_followup_source_interp_env_delta=0`
+  - `escape_slow_sequence_no_followup_source_boundary_payload_delta=0`
+  - `escape_slow_sequence_no_followup_source_promotion_signature_delta=0`
+  - `escape_slow_sequence_no_followup_source_promotion_closure_delta=0`
+  - `escape_slow_sequence_no_followup_source_jit_args_delta=0`
+- `[INVALIDATED]` Do not tune allocator chunk policy from the remaining
+  ESCAPE no-follow-up bucket in the current benchmark. Source attribution
+  shows it is the synthetic direct allocator probe inside
+  `boundary_value_shape_counters`, not a runtime boundary/promotion allocation
+  family.
+- `[FACT]` The memory-model improvement queue is closed. Reopen allocator
+  policy only with non-synthetic source evidence from a real workload or a
+  repeated bounded benchmark.
+
+## 2026-04-26 - Env-copy destructor registration failure closure
+
+- Closed `AUDIT-239` after finding that env-copy frame materialization ignored
+  the boolean result from `scope_register_dtor`.
+- Added `BOUNDARY_ENV_COPY_FAULT_DTOR_REGISTRATION` to the env-copy fault
+  surface, fault-name table, and JIT env-copy diagnostic messages.
+- `copy_env_materialize_frame` now fails closed if a copied environment frame
+  cannot register its destructor: copied binding payloads are rolled back, the
+  active promotion context is invalidated, the partial frame's heap storage is
+  cleaned, and the copied frame is not returned as successful.
+- Added regression coverage that forces destructor-record allocation failure
+  during env-copy and asserts `env == null` with the typed dtor-registration
+  fault.
+- Validation passed in the bounded container build and
+  `memory-lifetime-smoke` with `272 passed, 0 failed`; the host build reached
+  link and failed only on the known missing `liblightning`/`libreplxx`
+  libraries.
+- `[FACT]` Env-copy success now requires teardown authority for materialized
+  frames. Destructor registration failure is a boundary fault, not a tolerated
+  partial-success case.
+
+## 2026-04-26 - Destination error escape destructor registration closure
+
+- Closed `AUDIT-240` after finding that
+  `boundary_build_destination_error_escape` ignored
+  `scope_register_dtor_escape` after allocating a malloc-backed error string in
+  a staged ESCAPE build scope.
+- The builder now checks ESCAPE destructor registration. On failure it manually
+  invokes `scope_dtor_value` for the partially built error wrapper and returns
+  the original error while the build scope aborts instead of committing an
+  unmanaged copy.
+- Added regression coverage that forces
+  `g_scope_force_escape_dtor_alloc_oom` during destination error building and
+  verifies fail-closed original-error behavior.
+- Validation passed in the bounded container build and
+  `memory-lifetime-smoke` with `273 passed, 0 failed`.
+- `[FAILED]` A first regression attempt used
+  `g_scope_force_dtor_alloc_oom`, which targets TEMP destructor records and
+  does not exercise `scope_register_dtor_escape`. Use
+  `g_scope_force_escape_dtor_alloc_oom` for ESCAPE-lane destructor
+  registration tests.
+
+## 2026-04-26 - Stable materialized closure destructor registration closure
+
+- Closed `AUDIT-241` after finding that
+  `stable_escape_materialize_init_closure` ignored
+  `scope_register_dtor_escape` for the closure-specific `scope_dtor_closure`
+  record.
+- The initializer now fails closed by returning `false` when the closure
+  destructor record cannot be allocated, preventing later finalization from
+  retaining or creating `env_scope` ownership without registered release
+  authority.
+- Added focused regression coverage that allocates the destination wrapper
+  first, then uses `g_scope_force_escape_dtor_alloc_oom` to exercise the
+  closure-specific registration seam directly.
+- Validation passed in the bounded container build and
+  `memory-lifetime-smoke` with `274 passed, 0 failed`.
+- `[FACT]` Stable materialized closure success requires both the generic
+  destination wrapper lifetime and the closure-specific env-scope teardown
+  registration to be available.
+
+## 2026-04-26 - Memory model proof matrix opened
+
+- Opened `docs/plans/memory-model-proof-matrix-2026-04-26.md` as the canonical
+  follow-up plan after the core memory migration and recent audit closures.
+- Added TODO Part 18 lanes `MEM-PROOF-001` through `MEM-PROOF-010`, covering
+  inventory/manifest coverage, ScopeRegion core, value constructors,
+  env/closure, boundary commit routes, stable escape/transplant,
+  collections/mutation, native tensor/device paths, async/scheduler/callbacks,
+  and FFI ScopeRegion migration closure.
+- Added general agent instructions requiring memory/lifetime work to update or
+  preserve inventory, proof, measurement, and hardening artifacts for the
+  touched proof lane.
+- `[FACT]` The implemented memory model remains green, but proof completeness
+  is now tracked separately from migration completion. The proof matrix is the
+  next quality gate for moving every subsystem from "works under current
+  tests" to "explicitly proved, measured, and hardened."
+
+## 2026-04-26 - Memory ownership inventory guard closure
+
+- Closed `MEM-PROOF-001` by adding a manifest-backed ownership inventory guard
+  for the memory proof matrix.
+- Added `scripts/check_memory_ownership_inventory.py` and
+  `scripts/memory_ownership_surface_manifest.tsv`. The guard classifies:
+  - memory-sensitive owning calls such as ScopeRegion retain/release and
+    destructor registration,
+  - FFI wrapper families such as async handles, scheduler handles, Deduce
+    handles, callback handles, and test-only FFI payloads,
+  - dynamic FFI handle call sites whose family name is provided by metadata or
+    caller input,
+  - tensor device finalizer authorities for CPU/no-device, CUDA, Vulkan, and
+    runtime allocation fault-injection finalizers.
+- Wired the guard into `scripts/check_boundary_change_policy.sh` and added the
+  guard plus manifest to `scripts/boundary_sensitive_files.txt`.
+- Validation passed:
+  - `python3 scripts/check_memory_ownership_inventory.py` classified all
+    memory-sensitive call sites across `1228` C3 files.
+  - `xargs -a scripts/boundary_sensitive_files.txt python3
+    scripts/check_memory_ownership_inventory.py` classified all relevant
+    boundary-sensitive files.
+  - `python3 scripts/check_boundary_value_policy_coverage.py` verified all
+    `30` `ValueTag` policy rows.
+- `OMNI_BOUNDARY_POLICY_RANGE=HEAD scripts/check_boundary_change_policy.sh`
+  exercised both policy guards, then failed closed because the current dirty
+  workspace does not include the required normal and ASAN boundary-hardening
+  evidence logs.
+- `[FACT]` `MEM-PROOF-001` inventory closure must not be used as proof closure
+  for the remaining lanes. `MEM-PROOF-002` through `MEM-PROOF-010` still need
+  lane-specific proof, measurement, hardening, and targeted runtime validation.
+
+## 2026-04-26 - ScopeRegion core proof closure
+
+- Closed `MEM-PROOF-002` after auditing the ScopeRegion core implementation
+  and tests against the proof matrix.
+- Verified existing coverage for TEMP and ESCAPE teardown, ESCAPE destructor
+  order/tail consistency, destructor-registration OOM in both lanes,
+  parent/child retain-release symmetry, invalid splice preconditions, and
+  owner-token mismatch rejection.
+- Verified `scope_splice_escapes` runs TEMP teardown before transferring
+  ESCAPE chunks/destructors, preserves deterministic ESCAPE order, and updates
+  child generation state before recycling.
+- `rg -n "scope_adopt" src scripts` found no current runtime or script call
+  site; only the proof-plan text mentions it as retired.
+- Validation passed:
+  - bounded container `c3c --threads 1 build --obj-out obj_container` linked
+    `build/main`,
+  - host `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib:/usr/lib
+    OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 ./build/main --test-suite scope`
+    reported `scope_region pass=64 fail=0`,
+  - bounded container `memory-lifetime-smoke` reported
+    `unified pass=274 fail=0`,
+  - bounded container Valgrind `memory-lifetime-smoke` reported zero Memcheck
+    errors and zero definite, indirect, or possible leaks.
+- `[FACT]` Host-side `memory-lifetime-smoke` refusal is expected: memory
+  ownership slices are container-only by policy and the host guard fails closed.
+
+## 2026-04-26 - Heap-backed value constructor proof closure
+
+- Closed `MEM-PROOF-003` after hardening the remaining value-constructor gap
+  found by the proof audit.
+- `make_ffi_handle_ex_with_descriptor` now registers the returned `FFI_HANDLE`
+  wrapper with `scope_register_value_dtor_or_cleanup` after allocation. If
+  destructor-record allocation fails, the helper destroys the partial wrapper,
+  releases the FFI box/payload through the single release authority, and the
+  constructor returns a runtime OOM error.
+- Added focused runtime allocation regressions for FFI handle
+  destructor-registration OOM:
+  - finalizer-owned payloads now prove the finalizer runs exactly once and no
+    dtor record remains registered,
+  - free-owned payloads now prove fail-closed return and no retained dtor
+    record; bounded Valgrind covers the raw-free cleanup signal.
+- Validation passed:
+  - C3 LSP diagnostics for `src/lisp/value_constructors.c3` and
+    `src/lisp/tests_memory_lifetime_runtime_alloc_groups_core.c3`,
+  - bounded container `c3c --threads 1 build --obj-out obj_container`,
+  - bounded container `memory-lifetime-smoke` with `unified pass=276 fail=0`,
+  - bounded container Valgrind `memory-lifetime-smoke` with zero Memcheck
+    errors and zero definite, indirect, or possible leaks,
+  - `python3 scripts/check_boundary_value_policy_coverage.py`,
+  - `python3 scripts/check_memory_ownership_inventory.py
+    src/lisp/value_constructors.c3
+    src/lisp/tests_memory_lifetime_runtime_alloc_groups_core.c3`.
+- `[FACT]` FFI handle construction is not successful unless its wrapper
+  destructor authority is registered or rollback has released the foreign
+  payload.
+
+## 2026-04-26 - Env and closure lifetime proof closure
+
+- Closed `MEM-PROOF-004` after Spark/local audits found unchecked destructor
+  registration on cloned closure wrappers in env-copy/copy-to-parent paths.
+- `copy_closure_to_parent` now treats `scope_dtor_closure` registration as part
+  of successful closure-copy construction. If destructor-record allocation
+  fails, it reports `BOUNDARY_COPY_FAULT_DTOR_REGISTRATION`, cleans the partial
+  closure clone, and releases any retained detached `env_scope`.
+- `copy_env_clone_closure_if_needed` now also requires `scope_dtor_closure`
+  registration; failure rolls back the partial clone and surfaces as a typed
+  env-copy binding-value-copy fault to the caller.
+- Added forced destructor-registration OOM regressions for copy-to-parent and
+  env-copy closure clones. The tests verify fail-closed return, source closure
+  visibility, retained `env_scope` refcount rollback, and deterministic
+  detached-env teardown.
+- Fixed a return-boundary route hole exposed by the focused JIT-policy filter:
+  rejected transplant proof for compatibility-destination iterator routes now
+  retries with fresh route context, so recursive closure-backed iterator thunks
+  survive method return boundaries after splice rejection instead of inheriting
+  an aborted/contaminated promotion context.
+- Validation passed:
+  - C3 LSP diagnostics for touched env/closure and boundary files,
+  - host `c3c --threads 1 build --obj-out obj_mem_proof_004_retry2`,
+  - focused host repro for `closure-method-iterator-boundary` returned `1`,
+  - bounded `memory-lifetime-smoke` with `unified pass=278 fail=0`,
+  - bounded graph-audit `memory-lifetime-smoke` with `unified pass=278 fail=0`,
+    closure traversal counters present, and no unexpected closure TEMP-edge
+    diagnostics,
+  - focused bounded `jit-policy` filter with `unified pass=6 fail=0`,
+  - bounded Valgrind `memory-lifetime-smoke` with zero Memcheck errors and zero
+    definite, indirect, or possible leaks.
+- ASAN was attempted with `c3c --threads 1 build --sanitize=address`; the
+  current C3 toolchain rejected it as unsupported for this target, so Valgrind
+  is the memory-safety evidence for this lane.
+- `[FACT]` Closure-copy success now requires both payload construction and
+  registered destructor authority; rollback owns any retained `env_scope`.
+- `[INVALIDATED]` Do not reuse a promotion context after a rejected transplant
+  proof as the context for a compatibility-destination retry. The failed JIT
+  filter showed that stale route state can suppress a valid iterator
+  destination build; use fresh route context for that retry.
+
+## 2026-04-26 - Boundary commit route proof closure
+
+- Closed `MEM-PROOF-005` after route/proof audits found that selected-route
+  assertions and direct closure escape destructor-registration rollback were not
+  complete enough to call boundary commit routes proven.
+- Direct closure escape promotion now requires `scope_dtor_closure`
+  registration. If destructor-record allocation fails, the route aborts the
+  promotion context, releases any retained detached `env_scope`, and returns a
+  boundary OOM error that the commit route fails closed instead of publishing an
+  untracked closure wrapper.
+- Strengthened route regressions so reuse, transplant, stable materialization,
+  compatibility destination, direct promotion, mixed destination, and
+  fail-closed paths assert explicit planned/selected route fields and selected
+  reasons where applicable.
+- Added direct-promotion-disallowed coverage and full boundary-route coverage
+  for closure dtor-registration OOM rollback. Forced no-splice stable
+  materialization is now asserted through selected stable-materialization route
+  fields and counters.
+- Validation passed:
+  - C3 LSP diagnostics for touched boundary route/promotion/test files,
+  - host `c3c --threads 1 build --obj-out obj_mem_proof_005_route`,
+  - bounded container `memory-lifetime-smoke` with `unified pass=280 fail=0`,
+  - `python3 scripts/check_boundary_value_policy_coverage.py`,
+  - `python3 scripts/check_memory_ownership_inventory.py` on touched files,
+  - `scripts/check_boundary_facade_usage.sh`,
+  - bounded counters `memory-lifetime-bench` plus
+    `scripts/check_memory_telemetry_benchmark_envelope.sh
+    /tmp/omni_mem_proof_005_bench_rerun.log` with one non-fatal optimizer-copy
+    drift warning,
+  - bounded Valgrind `memory-lifetime-smoke` with zero Memcheck errors and zero
+    definite, indirect, or possible leaks.
+- ASAN was attempted with `c3c --threads 1 build --sanitize=address`; the
+  current C3 toolchain rejected it as unsupported for this target, so Valgrind
+  is the memory-safety evidence for this lane.
+- `[FACT]` A boundary commit route is not considered proven unless selected
+  route, selected reason, destructor-registration authority, rollback behavior,
+  and fail-closed counters/tests are all observable.
+
+## 2026-04-26 - Stable escape and transplant proof closure
+
+- Closed `MEM-PROOF-006` after sidecar review found the remaining gap was stale
+  prepared-node index access after invalidation/teardown, not the broader
+  stable-escape or transplant proof shape.
+- Added a stale-index regression to the stable escape invalidation test so a
+  dead handle now rejects prepared-node tag and child lookups as well as
+  prepared-node-count access.
+- The lane now proves stable escape prepared-graph shape, mutation-drift
+  invalidation, cyclic/shared graph metadata, and transplant refcount gating.
+- Validation passed:
+  - host `c3c --threads 1 build --obj-out obj_mem_proof_006_pre`,
+  - bounded `memory-lifetime-smoke` with `unified pass=280 fail=0`,
+  - bounded `memory-lifetime-bench` with all benchmark suites reporting
+    `*_ok` completion,
+  - bounded Valgrind `memory-lifetime-smoke` with zero Memcheck errors and zero
+    definite, indirect, or possible leaks.
+- `[INVALIDATED]` Do not assume `prepared_node_count == 0` is enough to prove
+  a stale prepared handle is fully inert; dead handles must also reject
+  prepared-node tag and child lookups.
+
+## 2026-04-26 - Collection and mutation proof closure
+
+- Closed `MEM-PROOF-007` after the checked-collections review found the
+  remaining gap was known-capacity constructor OOM on dictionary/set
+  constructors, not the broader collection rollback shape.
+- Added a forced-OOM regression for known-capacity hashmap/set constructors so
+  `make_hashmap_for_entry_count_checked` and `make_set_for_entry_count_checked`
+  fail closed when the shared hash-map struct allocation is forced to fail.
+- The lane now proves array push growth rollback, checked hashmap/set
+  constructor failures, checked-growth rollback, method-table abort cleanup,
+  shared-wrapper partial cleanup, and known-capacity constructor OOM.
+- Validation passed:
+  - host `c3c --threads 1 build --obj-out obj_mem_proof_007_pre`,
+  - bounded `memory-lifetime-smoke` with `unified pass=281 fail=0`,
+  - bounded `memory-lifetime-bench` with all benchmark suites reporting
+    `*_ok` completion,
+  - bounded Valgrind `memory-lifetime-smoke` with zero Memcheck errors and zero
+    definite, indirect, or possible leaks.
+- `[INVALIDATED]` Do not assume checked collection growth rollback alone closes
+  the container lane; known-capacity constructor OOM on dictionary/set entry
+  counts also needs explicit coverage.
+
+## 2026-04-26 - Native tensor/device proof closure
+
+- Closed `MEM-PROOF-008` with targeted failure-closed coverage for CPU/native
+  tensor constructors, CUDA `to-device`, and Vulkan `ml/layer-normalization`
+  destructor-registration paths.
+- Added a CUDA `to-device` OOM regression and a Vulkan ML result destructor
+  OOM regression to the tensor lifetime suite.
+- Validation passed:
+  - `c3c --threads 1 build --obj-out obj_mem_proof_008_pre`
+  - bounded `memory-lifetime-smoke` with `unified pass=283 fail=0`
+  - bounded Valgrind `memory-lifetime-smoke` with zero Memcheck errors and
+    zero definite, indirect, or possible leaks
+- `[INVALIDATED]` Do not treat CPU tensor constructor cleanup alone as proof
+  for native/device ownership; CUDA and Vulkan result-registration failure
+  paths also need explicit coverage.
+
+## 2026-04-26 - Async/callback proof closure
+
+- Closed `MEM-PROOF-009` after hardening the uv-timer callback finalizer test
+  so wrapper-scope release now proves post-release invoke calls fail closed as
+  `invalid callback handle`.
+- The regression keeps the callback-owner scope release check and now matches
+  the actual teardown contract after wrapper detachment.
+- Validation passed:
+  - `c3c --threads 1 build --obj-out obj_mem_proof_009_pre`
+  - bounded `advanced-ffi-system-surface` runtime slice with
+    `OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system-surface`
+    `pass=167 fail=0`
+- Bounded Valgrind on the broader advanced surface still reported unrelated
+  leak contexts in existing ffi_callback/libffi paths, so treat that as
+  separate validation noise rather than a regression from this lane.
+- `[INVALIDATED]` Do not assume wrapper-scope release turns this callback path
+  into a stale-handle error; the runtime now rejects it as an invalid handle
+  after teardown.
+
+## 2026-04-27 - Foreign runtime proof closure
+
+- Closed `MEM-PROOF-010` after adding targeted metadata/release coverage for
+  the native `fs-handle`, `tcp-handle`, `udp-handle`, `process-handle`, and
+  `tls-handle` wrapper families.
+- The new proof sweep checks `foreign-describe` before and after
+  `foreign-release`, so the native wrappers remain explicitly owned by a
+  `ScopeRegion` and report release authority through their reflected metadata.
+- Validation passed:
+  - `c3c --threads 1 build --obj-out obj_mem_proof_010_pre`
+  - bounded `advanced-ffi-system-surface` runtime slice with
+    `OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system-surface`
+    `pass=167 fail=0`
+  - bounded `advanced-ffi-system-foreign-handle-metadata-dict` Valgrind with
+    `pass=19 fail=0`, zero Memcheck errors, and zero definite, indirect, or
+    possible leaks
+- `[INVALIDATED]` Do not rely on the broad advanced-ffi-system-surface
+  Valgrind slice as the closure gate for this lane; its callback/libffi leak
+  noise is unrelated to the native wrapper-family proof.

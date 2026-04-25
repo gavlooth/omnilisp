@@ -10,9 +10,10 @@ Auditor: GPT-5 Codex
 
 ## Verification Snapshot
 
-- `c3c -C build`: passed.
-- `scripts/check_e2e_baseline_policy.sh`: failed.
-- `scripts/check_file_size_gate.sh`: failed.
+- `c3c -C build`: passed in the original pass; follow-up build with
+  `c3c --threads 1 build --obj-out obj` passed.
+- `scripts/check_e2e_baseline_policy.sh`: passed on the follow-up audit pass.
+- `scripts/check_file_size_gate.sh`: passed on the follow-up audit pass.
 - `scripts/check_status_consistency.sh`: passed on the follow-up audit pass.
 - `scripts/check_build_config_parity.sh`: passed on the follow-up audit pass.
 - Follow-up source audit: C string boundary scan, macro conversion scan, TLS
@@ -141,7 +142,11 @@ Auditor: GPT-5 Codex
 - Source material reviewed: existing uncommitted `AUDIT_REPORT_2026-04-24.md`,
   live source scans, and direct gate runs.
 
-## Open Findings
+## Findings
+
+No canonical findings remain open as of the latest follow-up pass. Keep this
+section as the historical finding ledger and append new verified issues with the
+next stable ID.
 
 ### AUDIT-001: AOT runtime manifest omits live `src/lisp/*.c3` sources
 
@@ -1471,6 +1476,14 @@ Auditor: GPT-5 Codex
   tears down the mutex when supported by the C3 thread API, clears initialized
   state, and is used from `Interp.destroy`; add a create/use/destroy regression
   under Valgrind or ASAN.
+- Closure 2026-04-25: `stable_escape_store_destroy(Interp*)` now resets active
+  entries, destroys the initialized mutex, clears the store, and is used from
+  `Interp.destroy` before root-scope teardown. The same validation pass fixed a
+  separate prepared-graph scratch leak in
+  `boundary_commit_pre_materialize_transplant_budget_available` by adding the
+  missing scratch cleanup defer. Traced-child Valgrind
+  `memory-lifetime-smoke` now passes with `271/0`, zero Memcheck errors, and
+  zero definite/indirect/possible leaks.
 
 ### AUDIT-047: Shared dlopen registry leaks a just-opened handle on capacity overflow
 
@@ -1547,6 +1560,73 @@ Auditor: GPT-5 Codex
   `(with math ...)` succeeded and generated `aot::lookup_module_export("math",
   ...)` for `abs`, `sin`, and `cos`. The broader compiler slice still aborts in
   the unrelated `aot_init` global scope-mutex shutdown path.
+- Reopened 2026-04-25:
+  - The previous resolution covered external/runtime module-export lookups, but
+    inline module definitions still compile module body `define`s as ordinary
+    generated globals.
+  - `compile_module_flat` registers the module name and export list, then
+    compiles module body expressions inline. For `(module m (export v) (define
+    v 1))`, the body `define` emits a global `v = ...`, and top-level global
+    collection also declares `lisp::Value* v;`.
+  - `compile_with_module_open_flat_common` then aliases inline module exports to
+    the exported source symbol name, so `(block (with m v) v)` can read `v`
+    outside the scoped-open body in generated C3. Runtime/JIT semantics create a
+    child environment for the `with` body only, so the post-body `v` should
+    remain unbound.
+- Next action: extend AOT inline-module metadata so each exported source symbol
+  maps to a module-private backing symbol, stop global collection from adding
+  module-body definitions under user-facing names, and make scoped-open aliases
+  point at those private backing symbols. Add a codegen regression for
+  `(module scoped-aot-leak (export leak-value) (define leak-value 41)) (block
+  (with scoped-aot-leak leak-value) leak-value)` that rejects `lisp::Value*
+  leak_value;` and `leak_value =`.
+- Final closure 2026-04-25:
+  - AOT inline modules now allocate module-private backing globals recorded in
+    `CompiledModule.locals` / `CompiledModule.local_backings`; module-body
+    definitions, FFI bindings, and effect tags assign those private symbols
+    instead of user-facing export names.
+  - Generated global collection excludes module-body definitions under public
+    names and declares only the private backing symbols plus explicit import
+    bindings.
+  - Scoped module-open aliases for inline modules now point at private backing
+    symbols, while symbols outside the scoped body fall back to runtime
+    lookup/error behavior instead of reading leaked generated globals.
+  - Inline import all/selective/alias and inline `export-from` lowering were
+    updated to bind from private backing symbols rather than relying on leaked
+    export globals.
+  - Re-audit fixes after closure: nested module-body definitions are now
+    discovered recursively and assigned through private module backing targets,
+    and module-private backing storage grows for multi-export `export-from
+    'all` instead of exhausting the initial table.
+  - Second re-audit fix: nested module-body FFI and effect forms now assign
+    through private backing targets in block/type-form lowering, closing the
+    remaining mismatch where metadata was private but generated assignments
+    could still bypass it.
+  - Third re-audit fix: nested inline modules now have their private backing
+    globals collected recursively before code emission, and module-local
+    assignment target misses fail closed instead of falling back to public
+    symbols.
+- Final validation:
+  - `c3c -C --threads 1 build --obj-out obj_check` passed.
+  - `OMNI_VALIDATION_TIMEOUT_SEC=300 scripts/run_validation_container.sh c3c
+    --threads 1 build --obj-out obj_container` passed and linked `build/main`.
+  - `OMNI_VALIDATION_TIMEOUT_SEC=300 scripts/run_validation_container.sh env
+    LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1
+    OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp` passed.
+  - Direct audit probe for `(module scoped-aot-leak (export leak-value) (define
+    leak-value 41)) (block (with scoped-aot-leak leak-value) leak-value)`
+    generated `_aot_mod_...` and `_aot_with_...` symbols, retained
+    `aot::lookup_var("leak-value")` outside the scoped-open body, and rejected
+    `lisp::Value* leak_value;`, `leak_value =`, and ` = leak_value;`.
+  - Direct nested-module and multi-export `export-from 'all` probes compiled
+    successfully, rejected leaked nested public globals, and generated private
+    backing assignments for the final re-exported symbol.
+  - Direct nested-FFI and nested-effect module probes compiled successfully and
+    rejected leaked public `strlen` / `opened` generated globals while assigning
+    through `_aot_mod_...` private backings.
+  - Direct nested-inline-module probe compiled successfully with both inner and
+    outer `_aot_mod_...` declarations present, `y` imported from the outer
+    private backing, and no leaked public `x` assignment.
 
 ### AUDIT-049: TimePoint constructors accept impossible calendar dates
 
@@ -7494,25 +7574,294 @@ Auditor: GPT-5 Codex
 ### AUDIT-231: Deduce materialized restart fixtures rely on block-local `define` visibility
 
 - Severity: Medium
-- Status: Open
+- Status: Closed
 - Classification: Deduce validation, language/script binding contract
 - Evidence:
-  - The broad Deduce slice currently fails six materialized restart cases with
-    reader-side errors such as `unbound variable 'db-refresh'` or
-    `unbound variable 'analyze'`.
-  - Direct reproduction shows `(block (define db (deduce 'open "...")) db)`
-    fails with `unbound variable 'db'`, so the restart fixtures are relying on
-    a block-local `define` binding contract that is not currently available in
-    script execution.
-- Impact: `OMNI_LISP_TEST_SLICE=deduce` is not a reliable broad validation
-  gate until the block/define contract is fixed or the fixtures are rewritten to
-  use the supported binding form.
-- Next step: decide whether `define` should bind within `block`; either
-  implement that language contract and rerun the broad Deduce slice, or rewrite
-  the restart scripts to use `let`/supported local binding.
-- Validation: focused Deduce `basics` group for AUDIT-227/AUDIT-228 passed with
-  `11 passed, 0 failed`; full Deduce slice remains red with `411 passed, 6
-  failed`.
+  - The initial symptom was six materialized restart failures reporting
+    reader-side unbound variables such as `db-refresh` or `analyze`.
+  - Re-audit showed `define` already binds globally and remains visible to later
+    expressions in the same block. The unbound-variable report was caused by
+    small native JIT block lowering continuing after an earlier `ERROR`, then
+    evaluating later expressions that referenced names whose `define` RHS had
+    failed.
+  - After fixing JIT block error short-circuiting, the true restart error became
+    visible: materialized metadata restore opened a second LMDB read transaction
+    while the persisted rule-signature restore cursor already held one.
+- Impact: fixed. The Deduce broad slice is reliable again for this class of
+  materialized restart regression.
+- Resolution: JIT small-block lowering now returns the first non-final
+  `ERROR` immediately, matching the staged block path. Deduce persisted
+  rule-signature schema restoration now reads materialized relation metadata
+  through the active restore transaction instead of opening a nested read
+  transaction.
+- Validation:
+  - `c3c --threads 1 build --obj-out obj` passed.
+  - `OMNI_LISP_TEST_SLICE=jit-policy OMNI_JIT_POLICY_FILTER=block-define-rhs-error-short-circuit,empty-block-tail-nil OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp` passed with `2 passed, 0 failed`.
+  - `OMNI_LISP_TEST_SLICE=deduce OMNI_DEDUCE_GROUP_FILTER=basics OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp` passed with `12 passed, 0 failed`.
+  - `OMNI_LISP_TEST_SLICE=deduce OMNI_DEDUCE_GROUP_FILTER=materialized OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp` passed with `8 passed, 0 failed`.
+  - `OMNI_LISP_TEST_SLICE=deduce OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp` passed with `418 passed, 0 failed`.
+
+### AUDIT-232: Explicit validation memory override bypasses repo cap
+
+- Severity: Medium
+- Status: Closed
+- Classification: validation tooling, container resource policy
+- Evidence:
+  - `scripts/run_validation_container.sh` accepted `OMNI_VALIDATION_MEM_MB`
+    directly, so an explicit environment override could exceed the documented
+    30% host-memory validation policy.
+- Impact: broad validation could escape the bounded container policy by setting
+  a higher memory cap.
+- Resolution: added `omni_clamped_mem_cap_mb` to `scripts/c3c_limits.sh` and
+  routed validation memory selection through it, so explicit overrides clamp to
+  the policy cap.
+- Validation:
+  - `scripts/check_build_config_parity.sh` passed.
+  - `scripts/check_status_consistency.sh` passed.
+  - `c3c --threads 1 build --obj-out obj` passed.
+
+### AUDIT-233: Deduce immediate integrity scans fail open on scan corruption
+
+- Severity: High
+- Status: Closed
+- Classification: Deduce integrity, storage failure handling
+- Evidence:
+  - Immediate key/unique integrity scans treated tuple decode failure, decoded
+    arity mismatch, and cursor termination errors as ordinary no-conflict
+    outcomes.
+- Impact: storage corruption or LMDB cursor errors could let writes proceed
+  without proving key/unique integrity.
+- Resolution: key and unique immediate integrity scans now fail closed on tuple
+  decode failure, decoded arity mismatch, and non-`MDB_NOTFOUND` scan
+  termination. Dedicated test seams cover the scan-end failure branch.
+- Validation:
+  - `OMNI_LISP_TEST_SLICE=deduce OMNI_DEDUCE_GROUP_FILTER=core-surface,integrity OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp` passed with `41 passed, 0 failed`.
+  - `c3c --threads 1 build --obj-out obj` passed.
+
+### AUDIT-234: Deduce materialized refresh-policy metadata lacks fail-closed coverage
+
+- Severity: Medium
+- Status: Closed
+- Classification: Deduce persistence, metadata corruption handling
+- Evidence:
+  - Persisted materialized metadata did not reject impossible refresh-policy
+    states where both policy bits are set, and the new corruption path lacked a
+    regression. The initial patch also risked rejecting legacy V1 metadata with
+    no policy bit.
+- Impact: corrupt metadata could reopen with ambiguous refresh semantics, while
+  older V1 stores could be falsely rejected if compatibility was not explicit.
+- Resolution: V2 metadata now rejects neither-policy and both-policy states;
+  V1 metadata with no policy bit remains accepted as legacy manual refresh.
+  Added invalid-policy and V1 legacy compatibility regressions.
+- Validation:
+  - `OMNI_LISP_TEST_SLICE=deduce OMNI_DEDUCE_GROUP_FILTER=core-surface,integrity OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp` passed with `41 passed, 0 failed`.
+  - `c3c --threads 1 build --obj-out obj` passed.
+
+### AUDIT-235: C path-like primitives accept embedded NUL bytes
+
+- Severity: High
+- Status: Closed
+- Classification: C API string boundary, path truncation
+- Evidence:
+  - Async `read-file`, `write-file`, `file-exists?`, `read-lines`, and NN
+    checkpoint load/save path handling forwarded Omni strings to C/native file
+    APIs without first rejecting embedded NUL bytes.
+- Impact: an Omni string such as `"/tmp/a\0suffix"` could be observed by native
+  code as the truncated prefix, violating language-level string/path identity.
+- Resolution: async file primitives, async file helper entry points, and
+  `nn/load`, `nn/load-spec`, `nn/save`, and `nn/save-spec` now reject embedded
+  NUL path strings before native file calls. The async read-file offload worker
+  now also reports helper read failures as `OFFLOAD_RES_ERROR` instead of
+  collapsing them to nil.
+- Validation:
+  - `OMNI_LISP_TEST_SLICE=async OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp` still fails on unrelated pre-existing async lifecycle/network tests, but the new embedded-NUL file primitive regression did not appear in the failure list.
+  - `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp` still fails on unrelated `ml/softmax Vulkan Float32` interpreter behavior, but the new NN checkpoint embedded-NUL regression did not appear in the failure list.
+  - `c3c --threads 1 build --obj-out obj` passed.
+
+### AUDIT-236: JIT/AOT control flow treats predicate errors as ordinary truthy values
+
+- Severity: High
+- Status: Closed
+- Classification: compiler/runtime parity, error propagation
+- Evidence:
+  - JIT `if`/`and`/`or` and AOT `if`/short-circuit/block lowering did not
+    explicitly guard predicate and non-final expression results for `ERROR`
+    before truthiness or later-expression evaluation.
+- Impact: an earlier runtime error could be masked by later expressions or
+  treated as truthy, producing misleading diagnostics and control-flow parity
+  drift.
+- Resolution: JIT `if`/`and`/`or` and small-block lowering now propagate
+  `ERROR` values immediately. AOT sequence, short-circuit, `if`, block, and
+  scoped-open body lowering now emit `aot::is_error(...)` guards before
+  truthiness or later expressions.
+- Validation:
+  - `OMNI_LISP_TEST_SLICE=jit-policy OMNI_JIT_POLICY_FILTER=block-define-rhs-error-short-circuit,empty-block-tail-nil,control-flow-predicate-error OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp` passed with `6 passed, 0 failed`.
+  - `OMNI_LISP_TEST_SLICE=compiler OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp` passed with `345 passed, 0 failed`.
+  - `c3c --threads 1 build --obj-out obj` passed.
+
+### AUDIT-237: Native tensor result destructor registration failures are ignored
+
+- Severity: Medium
+- Status: Closed
+- Classification: tensor/native resource lifetime, destructor registration
+- Evidence:
+  - Several ML/tensor native-result paths called `scope_register_dtor` and
+    ignored registration failure, leaving heap/device-backed payload cleanup
+    authority ambiguous under allocation pressure.
+- Impact: native tensor results could be returned without registered cleanup on
+  scope teardown.
+- Resolution: affected attention, normalization, Vulkan optimizer, and device
+  copy paths now use the shared checked registration/cleanup helper and fail
+  closed if destructor registration cannot be recorded.
+- Validation:
+  - Worker validation: `c3c build --obj-out obj` passed.
+  - Worker targeted advanced tensor group passed relevant checks; broad
+    container memory-lifetime smoke exposed an unrelated continuation
+    lifecycle failure.
+  - Parent `c3c --threads 1 build --obj-out obj` passed.
+
+### AUDIT-238: `handle` ignore-k path retains a suspended continuation
+
+- Severity: High
+- Status: Closed on 2026-04-25
+- Classification: memory/lifetime, continuation boundary, graph-audit invariant
+- Evidence:
+  - Bounded `memory-lifetime-smoke` previously failed
+    `lifetime: handle ignore-k does not retain suspended context` with
+    `before=0 after=1`.
+  - The same run emits boundary graph-audit violations showing a reachable
+    ESCAPE root retaining an Omni edge into TEMP.
+  - Repro command:
+    `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`.
+  - The failing fixture is in
+    `src/lisp/tests_memory_lifetime_finalize_result_coroutine.c3`.
+- Impact: ignored handler continuations can keep suspended context state
+  reachable after the result path should have released it, violating the
+  boundary invariant that committed ESCAPE roots must not retain reachable
+  Omni-owned TEMP edges.
+- Current status:
+  - This was reproduced before keeping any allocator behavior change, so it is
+    not evidence that ESCAPE chunk size-class changes are inherently unsafe.
+  - It does block using `memory-lifetime-smoke` as a green post-policy gate
+    until the continuation retention bug is fixed.
+- Required fix:
+  - Done: handler-result finalization now releases transient clause-env
+    continuation retention unless the returned result graph reaches `k`.
+  - Done: generic `checkpoint`/`capture` now preserves the suspended context
+    when the shift result graph carries the continuation, and stable
+    destination materialization can shallow-materialize continuation leaves in
+    returned cons graphs.
+  - Done: the stale fixture form was corrected from unsupported
+    `(ask k x body)` to canonical hidden-continuation `(ask x body)`.
+  - Validation:
+    `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+    passed with `269 passed, 0 failed`.
+  - Validation:
+    `OMNI_VALIDATION_TIMEOUT_SEC=120 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_BOUNDARY_GRAPH_AUDIT=1 ./build/main --eval '(handle (signal ask 1) (ask x 99))'`
+    returned `99` with no continuation-path graph-audit diagnostic.
+  - Validation:
+    `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-effect-continuation ./build/main --test-suite lisp`
+    passed with `56 passed, 0 failed`.
+  - Note: the full `memory-lifetime-smoke` slice still prints expected
+    graph-audit TEMP-edge diagnostics from passing negative graph-audit
+    regression tests; those are not from the ignore-k continuation path.
+
+### AUDIT-239: Env-copy frame destructor registration failure returned success
+
+- Severity: High
+- Status: Closed on 2026-04-26
+- Classification: memory/lifetime, env-copy boundary, fail-closed allocation
+- Evidence:
+  - `src/lisp/eval_env_copy_helpers.c3` materialized a new environment frame,
+    copied bindings and parent state, then called `scope_register_dtor` without
+    checking its boolean result.
+  - `scope_register_dtor` can fail when destructor-record allocation fails
+    (`g_scope_force_dtor_alloc_oom` exists and is already used by runtime
+    allocation regressions).
+- Impact: env-copy could return a copied frame as a successful boundary result
+  even though the frame had no registered teardown authority for heap bindings
+  or hash-table storage.
+- Resolution:
+  - Added `BOUNDARY_ENV_COPY_FAULT_DTOR_REGISTRATION` as an explicit typed
+    env-copy fault, including the public fault-name table and JIT diagnostic
+    message.
+  - `copy_env_materialize_frame` now rolls back copied binding payloads,
+    invalidates the active promotion context, cleans the partially materialized
+    frame, and returns the typed fault when destructor registration fails.
+  - Added a regression that forces destructor-registration OOM during env-copy
+    and asserts fail-closed `env == null` behavior.
+- Validation:
+  - Host `c3c --threads 1 build --obj-out obj` reached link and failed only
+    because the host image lacks `liblightning` and `libreplxx`; this preserves
+    the known host limitation and did not expose C3 compile errors.
+  - `OMNI_VALIDATION_TIMEOUT_SEC=300 scripts/run_validation_container.sh c3c --threads 1 build --obj-out obj_container`
+    passed and linked `build/main`.
+  - `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+    passed with `272 passed, 0 failed`.
+
+### AUDIT-240: Destination error escape destructor registration failure returned an unmanaged copy
+
+- Severity: High
+- Status: Closed on 2026-04-26
+- Classification: memory/lifetime, boundary commit destination builder,
+  fail-closed allocation
+- Evidence:
+  - `src/lisp/eval_boundary_commit_escape_builders.c3` built an ESCAPE-lane
+    copy of a boundary error, malloc-backed its string payload, and then
+    called `scope_register_dtor_escape` without checking the result.
+  - `scope_register_dtor_escape` can fail independently from TEMP-lane
+    destructor registration via `g_scope_force_escape_dtor_alloc_oom`.
+- Impact: destination fallback could commit and return an escaped error wrapper
+  whose heap string had no registered cleanup authority.
+- Resolution:
+  - `boundary_build_destination_error_escape` now checks
+    `scope_register_dtor_escape`. On failure it manually runs
+    `scope_dtor_value` for the partially built error payload and returns the
+    original error while the staged build scope aborts.
+  - Added a regression that forces ESCAPE destructor-record allocation failure
+    after the destination error string is allocated and asserts fail-closed
+    original-error behavior.
+- Validation:
+  - C3 LSP diagnostics for
+    `src/lisp/eval_boundary_commit_escape_builders.c3` and
+    `src/lisp/tests_memory_lifetime_boundary_commit_escape_rollback_error.c3`
+    reported no diagnostics.
+  - `OMNI_VALIDATION_TIMEOUT_SEC=300 scripts/run_validation_container.sh c3c --threads 1 build --obj-out obj_container`
+    passed and linked `build/main`.
+  - `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+    passed with `273 passed, 0 failed`.
+
+### AUDIT-241: Stable materialized closure destructor registration failure returned success
+
+- Severity: High
+- Status: Closed on 2026-04-26
+- Classification: memory/lifetime, stable destination materialization,
+  closure env-scope teardown
+- Evidence:
+  - `src/lisp/eval_boundary_commit_destination.c3` materialized closure shells
+    for stable destination commits and called `scope_register_dtor_escape` for
+    `scope_dtor_closure` without checking the boolean result.
+  - Stable materialized closures can later retain or create `env_scope`
+    ownership during finalization, so losing the closure-specific destructor
+    record loses release authority for that retained scope.
+- Impact: stable destination materialization could treat a closure shell as
+  successfully initialized even though the closure-specific ESCAPE destructor
+  could not be recorded.
+- Resolution:
+  - `stable_escape_materialize_init_closure` now returns `false` when
+    closure-specific ESCAPE destructor registration fails.
+  - Added focused regression coverage that directly exercises the
+    closure-specific registration seam with `g_scope_force_escape_dtor_alloc_oom`
+    after allocating the destination wrapper.
+- Validation:
+  - C3 LSP diagnostics for
+    `src/lisp/eval_boundary_commit_destination.c3` and
+    `src/lisp/tests_memory_lifetime_boundary_commit_escape_destination_fault.c3`
+    reported no diagnostics.
+  - `OMNI_VALIDATION_TIMEOUT_SEC=300 scripts/run_validation_container.sh c3c --threads 1 build --obj-out obj_container`
+    passed and linked `build/main`.
+  - `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+    passed with `274 passed, 0 failed`.
 
 ## Closed Or Invalidated Findings
 

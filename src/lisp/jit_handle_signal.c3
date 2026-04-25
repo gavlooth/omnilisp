@@ -157,7 +157,9 @@ fn Value* jit_handle_dispatch_signal(HandleEffectState* hstate, Expr* expr, Env*
 
     // Evaluate handler clause
     Value* handler_v = jit_eval(clause.handler_body, clause_env, interp);
-    // Retain before frame cleanup when the continuation escapes in the clause result graph.
-    continuation_retain_if_referenced_by_result(handler_v, k);
+    // Keep only continuations reachable from the returned result graph. Binding
+    // k into the ESCAPE-lane clause env may retain transiently even when the
+    // handler ignores k, and that must not transfer the suspended ctx.
+    continuation_finish_handler_result(interp, handler_v, k);
     return handler_v;
 }

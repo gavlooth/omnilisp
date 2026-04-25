@@ -20,6 +20,8 @@ fn void scope_reset(ScopeRegion* scope) {
     scope_guard_owner(scope, "scope_reset");
     assert(scope.refcount == 1, "scope_reset: refcount must be 1 (nothing escaped)");
     scope_assert_escape_tail_consistency(scope);
+    scope_telemetry_note_temp_slow_sequence_close(scope);
+    scope_telemetry_note_escape_slow_sequence_close(scope);
     scope_telemetry_note_scope_unused_at_reset(scope, true);
     // Run destructors first for both lanes
     scope_run_dtors(scope);
@@ -64,6 +66,8 @@ fn void scope_reset(ScopeRegion* scope) {
     scope.escape_dtors_tail = null;
     scope.alloc_bytes = 0;
     scope.alloc_count = 0;
+    scope_telemetry_reset_temp_sequence_state(scope);
+    scope_telemetry_reset_escape_sequence_state(scope);
     scope_assert_escape_tail_consistency(scope);
 }
 
@@ -75,6 +79,7 @@ fn void scope_reset_temp_lane(ScopeRegion* scope) {
     scope_guard_owner(scope, "scope_reset_temp_lane");
     assert(scope.refcount == 1, "scope_reset_temp_lane: refcount must be 1");
     scope_assert_escape_tail_consistency(scope);
+    scope_telemetry_note_temp_slow_sequence_close(scope);
     scope_telemetry_note_scope_unused_at_reset(scope, false);
 
     // TEMP dtors only; ESCAPE dtors remain registered.
@@ -102,6 +107,7 @@ fn void scope_reset_temp_lane(ScopeRegion* scope) {
     scope.dtors = null;
     scope.alloc_bytes = 0;
     scope.alloc_count = 0;
+    scope_telemetry_reset_temp_sequence_state(scope);
     scope_assert_escape_tail_consistency(scope);
 }
 

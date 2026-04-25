@@ -3,6 +3,55 @@ module lisp;
 import std::io;
 import std::core::mem;
 
+fn Value* ffi_metadata_dict_lookup(Value* dict, Interp* interp, char[] key) {
+    if (dict == null || dict.tag != HASHMAP || dict.hashmap_val == null) return null;
+    return hashmap_get(dict.hashmap_val, make_symbol(interp, interp.symbols.intern(key)));
+}
+
+fn bool ffi_metadata_handle_contract(Value* handle_v, Interp* interp, char[] expected_name) {
+    if (handle_v == null || handle_v.tag != FFI_HANDLE) return false;
+    Value*[1] args = { handle_v };
+    Value* before = prim_foreign_describe(args[..], null, interp);
+    Value* runtime = before != null ? ffi_metadata_dict_lookup(before, interp, "runtime") : null;
+    Value* kind = before != null ? ffi_metadata_dict_lookup(before, interp, "kind") : null;
+    Value* ownership = before != null ? ffi_metadata_dict_lookup(before, interp, "ownership") : null;
+    Value* name = before != null ? ffi_metadata_dict_lookup(before, interp, "name") : null;
+    Value* live = before != null ? ffi_metadata_dict_lookup(before, interp, "live") : null;
+    Value* capabilities = before != null ? ffi_metadata_dict_lookup(before, interp, "capabilities") : null;
+    bool before_ok = before != null && before.tag == HASHMAP &&
+        runtime != null && runtime.tag == SYMBOL && runtime.sym_val == interp.symbols.intern("native") &&
+        kind != null && kind.tag == SYMBOL && kind.sym_val == interp.symbols.intern("opaque") &&
+        ownership != null && ownership.tag == SYMBOL && ownership.sym_val == interp.symbols.intern("owned") &&
+        ((expected_name.len == 0 && name != null && name.tag == NIL) ||
+            (name != null && name.tag == SYMBOL && name.sym_val == interp.symbols.intern(expected_name))) &&
+        live != null && live.tag == SYMBOL && live.sym_val == interp.sym_true &&
+        capabilities != null && capabilities.tag == ARRAY && capabilities.array_val != null &&
+        capabilities.array_val.length == 1 &&
+        capabilities.array_val.items[0] != null &&
+        capabilities.array_val.items[0].tag == SYMBOL &&
+        capabilities.array_val.items[0].sym_val == interp.symbols.intern("release");
+    if (!before_ok) return false;
+
+    Value* released = prim_foreign_release(args[..], null, interp);
+    if (released == null || released.tag == ERROR) return false;
+
+    Value* after = prim_foreign_describe(args[..], null, interp);
+    Value* after_runtime = after != null ? ffi_metadata_dict_lookup(after, interp, "runtime") : null;
+    Value* after_kind = after != null ? ffi_metadata_dict_lookup(after, interp, "kind") : null;
+    Value* after_name = after != null ? ffi_metadata_dict_lookup(after, interp, "name") : null;
+    Value* after_live = after != null ? ffi_metadata_dict_lookup(after, interp, "live") : null;
+    Value* after_caps = after != null ? ffi_metadata_dict_lookup(after, interp, "capabilities") : null;
+    bool after_ok = after != null && after.tag == HASHMAP &&
+        after_runtime != null && after_runtime.tag == SYMBOL && after_runtime.sym_val == interp.symbols.intern("native") &&
+        after_kind != null && after_kind.tag == SYMBOL && after_kind.sym_val == interp.symbols.intern("opaque") &&
+        ((expected_name.len == 0 && after_name != null && after_name.tag == NIL) ||
+            (after_name != null && after_name.tag == SYMBOL && after_name.sym_val == interp.symbols.intern(expected_name))) &&
+        after_live != null && after_live.tag == NIL &&
+        after_caps != null && after_caps.tag == ARRAY && after_caps.array_val != null &&
+        after_caps.array_val.length == 0;
+    return after_ok;
+}
+
 fn void run_advanced_ffi_system_foreign_handle_metadata_dict_tests(Interp* interp, int* pass, int* fail) {
     setup(interp, "(define [ffi lib] libc \"libc.so.6\")");
     setup(interp, "(define [ffi λ libc] (fopen (^String path) (^String mode)) ^{'type ForeignHandle 'name File 'ownership owned 'finalizer fclose})");
@@ -38,7 +87,7 @@ fn void run_advanced_ffi_system_foreign_handle_metadata_dict_tests(Interp* inter
         "(foreign-release h) "
         "(define after (foreign-describe h)) "
         "(and (ref before 'live) "
-        "     (nil? (ref after 'live)) "
+        "     (not (ref after 'live)) "
         "     (not (= (ref after 'ownership) 'owned)) "
         "     (= (length (ref after 'capabilities)) 0)))",
         pass, fail);
@@ -203,6 +252,37 @@ fn void run_advanced_ffi_system_foreign_handle_metadata_dict_tests(Interp* inter
         "  (foreign-release h))",
         "handle is not releasable",
         pass, fail);
+
+    {
+        Value* fs_handle_v = make_fs_handle(interp, -1);
+        Value* tcp_handle_v = make_tcp_stream_handle(interp, -1);
+        Value* udp_handle_v = make_udp_handle(interp, -1);
+        Value* process_handle_v = make_process_handle(interp, null);
+        TlsHandle* tls_handle = (TlsHandle*)mem::malloc(TlsHandle.sizeof);
+        Value* tls_handle_v = null;
+        if (tls_handle != null) {
+            *tls_handle = {};
+            tls_handle_v = make_tls_handle_val(interp, tls_handle, "ffi/tls-handle-out-of-memory", "ffi tls-handle out of memory");
+        }
+
+        bool ok = fs_handle_v != null && fs_handle_v.tag == FFI_HANDLE &&
+            tcp_handle_v != null && tcp_handle_v.tag == FFI_HANDLE &&
+            udp_handle_v != null && udp_handle_v.tag == FFI_HANDLE &&
+            process_handle_v != null && process_handle_v.tag == FFI_HANDLE &&
+            tls_handle_v != null && tls_handle_v.tag == FFI_HANDLE &&
+            ffi_metadata_handle_contract(fs_handle_v, interp, "fs-handle") &&
+            ffi_metadata_handle_contract(tcp_handle_v, interp, "tcp-handle") &&
+            ffi_metadata_handle_contract(udp_handle_v, interp, "udp-handle") &&
+            ffi_metadata_handle_contract(process_handle_v, interp, "process-handle") &&
+            ffi_metadata_handle_contract(tls_handle_v, interp, "tls-handle");
+        if (ok) {
+            emit_pass_literal("[PASS] ffi native wrapper families keep explicit foreign metadata and release cleanly");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] ffi native wrapper families keep explicit foreign metadata and release cleanly");
+            (*fail)++;
+        }
+    }
 
     setup(interp, "(define [ffi λ libc] (fclose (^{'name File 'ownership borrowed 'nullability non-null} file)))");
     test_error_contains(interp, "ffi dict fclose rejects nil for non-null handle",

@@ -19,6 +19,7 @@ as the source of truth for feature usage and coding conventions.
 For specialized work, also read:
 
 - Docs map (normalized entrypoint): `docs/README.md`
+- Validation/debugging tool guide: `docs/VALIDATION_TOOLS.md`
 - Plan index and active work queue: `docs/plans/README.md`
 - Area status hub + next steps: `docs/areas/README.md`
 - Type and dispatch work: `docs/type-system-syntax.md`
@@ -101,6 +102,33 @@ Use this as a hard gate before merging memory/lifetime changes:
   - includes tests for return/env/destruction boundaries,
   - is recorded in `memory/CHANGELOG.md` with rationale and rollback note.
 
+## Memory Proof Matrix (Required)
+
+The active proof plan is
+`docs/plans/memory-model-proof-matrix-2026-04-26.md`. When touching memory,
+lifetime, boundary, native-resource, async, scheduler, or FFI code, classify
+the change under the relevant `MEM-PROOF-*` lane before implementation.
+
+For the touched lane, agents must update or preserve all four proof artifacts:
+
+- Inventory: owning constructors, destructors, finalizers, retained scopes,
+  global tables, callbacks, native handles, and boundary routes are classified.
+- Proof: construction, return boundary, env/closure capture, mutation,
+  rollback, and destruction invariants are stated or covered by existing docs.
+- Measurement: counters or validation evidence show constructor/destructor,
+  finalizer, boundary-route, copy/materialization/transplant, native
+  acquire/release, and fail-closed behavior where relevant.
+- Hardening: allocation, destructor registration, finalizer registration,
+  bridge allocation, and partial-copy failures fail closed and clean partial
+  state.
+
+Do not call a memory lane complete only because the happy path works. Closure
+requires targeted fault injection, bounded validation, and documentation in the
+TODO-backed proof matrix. If a lane exposes an ownership exception, keep it
+rare and explicit: ordinary Omni values remain `ScopeRegion` owned; only
+foreign resources may have local release/RC policy, and that policy must not
+own arbitrary Omni `Value` graphs.
+
 ## Build and Test
 
 Use the commands that match the current repo:
@@ -131,6 +159,30 @@ Before finishing significant code changes:
   Use the bounded Docker validation path for broad/high-memory Valgrind runs.
 - When touching memory/lifetime logic, also run full suite:
   - `LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+
+## Regression Closure Rule (Required)
+
+Regressions must be closed as a contract failure, not as a one-off symptom.
+Use `docs/VALIDATION_TOOLS.md` to choose the right debugging, profiling, and
+memory-validation tools for the failure class.
+
+- Every regression fix must name the broken contract before editing. Examples:
+  evaluator/JIT parity, fail-closed error propagation, scope/region lifetime
+  ownership, persistence transaction boundaries, parser/runtime surface parity,
+  or public language semantics.
+- Fix the narrow failing case and the nearest shared implementation boundary
+  that allowed the regression. If a shared boundary cannot be fixed in the same
+  turn, record the blocker in `AUDIT.md`, `TODO.md`, the active plan or session
+  report, and memory.
+- Add or update regression tests that would fail on the old behavior and pass on
+  the fix. For parity-sensitive areas, include both the changed execution path
+  and at least one adjacent path that should obey the same rule.
+- Do not declare a regression closed while another implementation of the same
+  contract remains knowingly divergent. Either fix the divergent path or split it
+  into a named follow-up with a concrete validation command.
+- When an audit item was initially framed around the wrong cause, update the
+  audit entry and memory with an `[INVALIDATED]` note so the misleading cause is
+  not reused as future ground truth.
 
 ## C3 Implementation Rules
 

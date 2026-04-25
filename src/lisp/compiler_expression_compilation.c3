@@ -22,7 +22,7 @@ fn void Compiler.compile_expr(Compiler* self, Expr* expr) {
         case E_DEFINE:
             // Define in expression context
             self.emit("(");
-            self.emit_symbol_name(expr.define.name);
+            self.emit_symbol_assignment_target(expr.define.name);
             self.emit(" = ");
             self.compile_expr(expr.define.value);
             self.emit(")");

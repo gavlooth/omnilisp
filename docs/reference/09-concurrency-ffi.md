@@ -354,10 +354,12 @@ Design constraints from the grouped-FFI plan:
 - no `->` return syntax and no bracketed body entries in the first slice,
 - no raw integer pointer ABI surface,
 - normal C FFI stays on libffi and must not require a C++ runtime dependency,
-- optional C++/CppInterOp support, if added later, is a bindgen/API-mode
-  introspection backend that emits C ABI shims plus Omni facades,
+- optional C++/CppInterOp support is represented as bindgen/API-mode
+  metadata in the manifest and raw/facade output markers, and still emits
+  reviewable C ABI shims plus Omni facades,
 - polyglot runtime/plugin support belongs in a separate lane and must not
-  weaken `ForeignHandle` policy,
+  weaken `ForeignHandle` policy; that lane is not planned for the current FFI
+  area,
 - common runtime descriptors and `foreign-describe` are shared metadata, not a
   promise that every runtime adapter has shipped,
 - generic callback support must use explicit callback handles, not direct

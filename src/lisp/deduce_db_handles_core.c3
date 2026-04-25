@@ -77,6 +77,8 @@ bool g_deduce_force_materialized_meta_persist_fail = false;
 bool g_deduce_force_materialized_meta_read_fail = false;
 // Test seam: persist an invalid stale reason byte for corruption handling coverage.
 bool g_deduce_force_materialized_meta_invalid_stale_reason = false;
+// Test seam: persist invalid refresh policy flags for corruption handling coverage.
+bool g_deduce_force_materialized_meta_invalid_refresh_policy = false;
 const char DEDUCE_PERSISTED_RELATION_META_FLAG_MATERIALIZED = 1 << 0;
 const char DEDUCE_PERSISTED_RELATION_META_FLAG_MANUAL_REFRESH = 1 << 1;
 const char DEDUCE_PERSISTED_RELATION_META_FLAG_ON_READ_REFRESH = 1 << 2;

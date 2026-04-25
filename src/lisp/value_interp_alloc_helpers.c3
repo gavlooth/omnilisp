@@ -17,7 +17,10 @@ fn Value* Interp.alloc_value(Interp* self) @inline {
 // Allocate a Value in current scope's ESCAPE lane.
 // Not wired into constructors yet; used by dual-lane rollout phases.
 fn Value* Interp.alloc_value_escape(Interp* self) @inline {
-    Value* v = (Value*)self.current_scope.alloc_escape(Value.sizeof);
+    Value* v = (Value*)self.current_scope.alloc_escape_attributed(
+        Value.sizeof,
+        main::ScopeEscapeAllocSource.SCOPE_ESCAPE_ALLOC_INTERP_VALUE
+    );
     if (v == null) return null;
     v.tag = NIL;  // Safe default
     v.scope_gen = self.current_scope.escape_generation;
@@ -57,7 +60,10 @@ fn Env* Interp.alloc_env(Interp* self) @inline {
 }
 
 fn Env* Interp.alloc_env_escape(Interp* self) @inline {
-    Env* e = (Env*)self.current_scope.alloc_escape(Env.sizeof);
+    Env* e = (Env*)self.current_scope.alloc_escape_attributed(
+        Env.sizeof,
+        main::ScopeEscapeAllocSource.SCOPE_ESCAPE_ALLOC_INTERP_ENV
+    );
     if (e == null) return null;
     e.bindings = null;
     e.binding_count = 0;

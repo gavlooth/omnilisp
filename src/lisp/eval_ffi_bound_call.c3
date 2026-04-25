@@ -451,7 +451,7 @@ fn Value* ffi_return_value_for(FfiBoundFn* bound, FfiTypeTag return_type, FfiHan
             return make_int(interp, (long)ret_u64);
         case FFI_TYPE_BUFFER:
             if (ret_ptr == null) return make_nil(interp);
-            return make_ffi_handle_ex(interp, ret_ptr, "ffi-buffer", null, false, false, null);
+            return foreign_runtime_buffer_handle_from_pointer(interp, ret_ptr, "ffi-buffer", FOREIGN_RUNTIME_NATIVE, 0);
         case FFI_TYPE_STRUCT:
             if (ret_ptr == null) return make_nil(interp);
             return make_ffi_handle_ex(interp, ret_ptr, "ffi-struct", null, false, false, null);

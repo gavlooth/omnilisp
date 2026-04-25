@@ -180,7 +180,10 @@ fn Value* copy_env_clone_closure_if_needed(Value* val, Interp* interp, Promotion
     // Reuse the shared closure-clone payload path so env-copy and return-boundary
     // closure relocation keep the same retain/copy semantics.
     if (!copy_parent_clone_closure_payload(result, val, interp, null)) return null;
-    main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_closure);
+    if (!main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_closure)) {
+        boundary_cleanup_materialized_value(val, result, interp.current_scope);
+        return null;
+    }
     if (can_track && ctx != null) promotion_context_remember(ctx, val, result, interp);
     return result;
 }

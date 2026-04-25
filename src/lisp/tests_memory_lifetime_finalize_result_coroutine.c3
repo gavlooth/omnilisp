@@ -558,7 +558,7 @@ fn bool run_memory_lifetime_result_and_coroutine_tests(Interp* interp, int* pass
         }
 
         usz before = tmp.stack_ctx_pool.pool_size;
-        EvalResult r = run("(handle (signal ask 1) (ask k x 99))", tmp);
+        EvalResult r = run("(handle (signal ask 1) (ask x 99))", tmp);
         usz after = tmp.stack_ctx_pool.pool_size;
 
         bool ok = !r.error.has_error &&

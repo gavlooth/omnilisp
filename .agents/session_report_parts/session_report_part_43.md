@@ -1,3 +1,38 @@
+## 2026-04-27 - Planning Corpus Cleanup
+
+- Objective attempted:
+  - Inspect historical plan files for anything still worth considering, then
+    clean stale active wording so `TODO.md` remains the only live queue.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `.agents/PLAN.md`
+  - `docs/plans/README.md`
+  - selected historical plan files under `docs/plans/`
+- Code or configuration changes made:
+  - Added a `Worth Considering, Not Backlog` section to `docs/plans/README.md`.
+  - Marked stale active/historical plans as closed, historical, reference-only,
+    or not live TODO lanes.
+  - Trimmed `.agents/PLAN.md` to the current no-active-plan checkpoint and left
+    older history in the indexed part files/session reports.
+- Commands run:
+  - `rg` scans for active/open/TODO wording across plans and agent plan files.
+  - `git diff --check`
+  - `scripts/check_status_consistency.sh`
+- Key results:
+  - Canonical queue remains closed: `TODO.md` actionable count is `0`.
+  - Status consistency passes with memory runtime, types dispatch,
+    ffi foreign runtime, and validation all green.
+- Current best recommendation or checkpoint:
+  - Only reopen work by adding a new TODO-backed item. Conditional directions
+    worth considering are AArch64 stack backend, neutral runtime extraction,
+    Vulkan/ML expansion, CUDA/Vulkan complex numerical gaps, and allocator
+    policy tuning only after a non-synthetic benchmark signal.
+- Unresolved issues:
+  - None for planning status cleanup.
+- Dependencies, blockers, or restart requirements:
+  - No live process restart required.
+- Signature: GPT-5 Codex
+
 ## 2026-04-25 06:35 CEST - Audit Closure Integration Wave
 
 - Objective attempted:
@@ -67,6 +102,327 @@
   - Rebuild with `LIBRARY_PATH=/home/christos/.local/lib c3c --threads 1 build
     --obj-out obj` before runtime checks if concurrent workers have touched
     build output.
+- Signature: GPT-5 Codex
+
+## 2026-04-26 23:07 CEST - MEM-PROOF-007 Collection And Mutation Closure
+
+- Objective attempted:
+  - Close the collections/mutation proof lane by filling the remaining known-
+    capacity constructor OOM gap.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `src/lisp/tests_memory_lifetime_runtime_alloc_groups_checked_collections.c3`
+  - `docs/plans/memory-model-proof-matrix-2026-04-26.md`
+  - `docs/todo_parts/todo_part_18.md`
+- Code or configuration changes made:
+  - Added a forced-OOM regression for known-capacity hashmap/set constructors
+    using `make_hashmap_for_entry_count_checked(...)` and
+    `make_set_for_entry_count_checked(...)`.
+  - Closed `MEM-PROOF-007` in TODO Part 18, the proof matrix, the plan index,
+    the memory runtime area doc, the root TODO queue, and the memory changelog.
+- Commands run:
+  - `c3c --threads 1 build --obj-out obj_mem_proof_007_pre`
+  - `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+  - `OMNI_VALIDATION_TIMEOUT_SEC=1200 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_BOUNDARY_BENCH=1 OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-bench ./build/main --test-suite lisp`
+  - `OMNI_VALIDATION_TIMEOUT_SEC=1800 scripts/run_validation_container.sh valgrind --trace-children=yes --leak-check=full --show-leak-kinds=definite,indirect,possible --error-exitcode=99 env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+- Key results:
+  - Host build linked `build/main`.
+  - `memory-lifetime-smoke` passed with `unified pass=281 fail=0`.
+  - `memory-lifetime-bench` passed with all benchmark suites reporting
+    `*_ok` completion.
+  - Valgrind reported zero Memcheck errors and zero definite, indirect, or
+    possible leaks.
+- Invalidated assumptions or failed approaches:
+  - `[INVALIDATED]` Checked collection growth rollback alone is not enough to
+    close the lane; known-capacity constructor OOM on dictionary/set entry
+    counts also needs explicit coverage.
+- Current best recommendation or checkpoint:
+  - Continue with `MEM-PROOF-008` native tensor/device proof.
+- Unresolved issues:
+  - `MEM-PROOF-008` through `MEM-PROOF-010` remain open.
+- Dependencies, blockers, or restart requirements:
+  - No live process restart is required unless an already-running `build/main`
+    process should observe the updated regression coverage.
+- Signature: GPT-5 Codex
+
+## 2026-04-27 - CppInterop Surface and Tensor-Buffer Marshalling
+
+- Objective attempted:
+  - Land the retained optional FFI interop lanes: CppInterop/API-mode bindgen
+    output, native/CUDA tensor-buffer marshalling, and status docs that close
+    Python/Julia plus polyglot/plugin as not planned.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `src/lisp/bindgen.c3`
+  - `src/lisp/bindgen_emit.c3`
+  - `src/entry_bind_dep_generation.c3`
+  - `src/lisp/eval_ffi_bound_call.c3`
+  - `src/lisp/foreign_runtime_core.c3`
+  - `src/lisp/tests_advanced_io_effect_ffi_ffi_surface_groups.c3`
+  - `src/lisp/tests_advanced_io_effect_ffi_tensor_buffer_groups.c3`
+  - `src/lisp/tests_advanced_io_effect_ffi_groups.c3`
+  - `src/lisp/tests_compiler_codegen_groups_tail_bindgen_manifest.c3`
+  - `src/lisp/tests_compiler_codegen_groups_tail_bindgen_modules.c3`
+  - `docs/areas/ffi-foreign-runtime.md`
+  - `docs/plans/foreign-runtime-core-plan-2026-04-11.md`
+  - `docs/reference/09-concurrency-ffi.md`
+  - `docs/reference/10-system-tooling.md`
+  - `docs/PROJECT_TOOLING.part-03.md`
+  - `docs/todo_parts/todo_part_04.md`
+  - `docs/todo_parts/todo_part_05.md`
+  - `memory/CHANGELOG.md`
+  - `memory/changelog_parts/changelog_part_38.md`
+- Code or configuration changes made:
+  - Added `BindgenMode` and `BindgenGenerator` enums plus TOML parsing/helpers in `bindgen.c3`.
+  - Threaded mode/generator through bindgen manifest and module generation, and emitted visible `;; mode = api` / `;; generator = cppinterop` markers in the raw and facade headers only when selected.
+  - Wired bind dependency generation through `mode` and `generator` so the
+    `omni.toml` bind path writes those values into raw, facade, and manifest
+    outputs. `generator = "cppinterop"` now requires `mode = "api"`.
+  - Added compiler regressions for manifest fields and CppInterop API-mode
+    raw/facade markers.
+  - Added an FFI surface regression that exercises `ffi_return_value_for(..., FFI_TYPE_BUFFER, ...)` and verifies it returns an opaque borrowed buffer handle with native runtime and no release authority.
+  - Implemented and validated tensor-buffer marshalling for CPU and CUDA tensors in `foreign_runtime_core.c3` with fail-closed rejection for unsupported devices.
+  - Added a dedicated tensor-buffer regression group covering CPU, optional CUDA, and unsupported-device behavior.
+  - Fixed the tensor-buffer test helper ownership path after Valgrind exposed a bad manual free/nulling pattern.
+  - Updated docs, TODO status, and memory changelog so Python/Julia and
+    polyglot/plugin are explicitly not planned; CppInterop remains bindgen
+    API-mode tooling; CUDA/cuBLAS remains a Tensor backend with FFI
+    tensor-buffer marshalling as the crossing.
+- Commands run:
+  - `c3c build`
+  - `git diff --check`
+  - `scripts/check_status_consistency.sh`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system-tensor-buffer ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system-surface ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh sh -lc 'c3c build && env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system-surface ./build/main --test-suite lisp && valgrind --trace-children=yes --leak-check=full --show-leak-kinds=definite,indirect,possible --error-exitcode=99 env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system-tensor-buffer ./build/main --test-suite lisp'`
+  - `scripts/run_validation_container.sh valgrind --trace-children=yes --leak-check=full --show-leak-kinds=definite,indirect,possible --error-exitcode=99 env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system-tensor-buffer ./build/main --test-suite lisp`
+- Key results:
+  - FFI surface tests passed, including the new native buffer-return conversion regression.
+  - Tensor-buffer tests passed for the CPU path and optional CUDA path.
+  - Compiler slice passed with `pass=335 fail=0`, covering the bindgen
+    manifest/module regressions.
+  - FFI surface slice passed with `pass=168 fail=0`.
+  - Tensor-buffer slice passed with `pass=2 fail=0`.
+  - Valgrind on the bounded tensor-buffer slice reported zero Memcheck errors and zero definite/indirect/possible leaks.
+  - Repo status checks now require `ffi foreign runtime` to be `green` after
+    the retained lanes landed and Python/Julia plus polyglot/plugin were
+    removed from the required scope.
+- Invalidated assumptions or failed approaches:
+  - `[INVALIDATED]` Do not manually free a tensor payload in these test helpers without also clearing the owning `Value` payload pointer; that produced double-free/invalid-read noise under Valgrind.
+  - `[INVALIDATED]` Do not treat Python/Julia or polyglot/plugin as active
+    residual FFI work. The retained optional lanes are CppInterop API-mode
+    bindgen output and CPU/CUDA tensor-buffer marshalling.
+- Current best recommendation or checkpoint:
+  - Keep `ffi-foreign-runtime` scoped to C ABI handles, CppInterop API-mode
+    bindgen tooling, and tensor-buffer marshalling. Do not add Python/Julia or
+    polyglot/plugin runtime adapters unless the product direction changes.
+- Unresolved issues:
+  - No active FFI foreign-runtime residual lane remains in scope.
+- Dependencies, blockers, or restart requirements:
+  - No restart is required for the checked-in validation results. A running `build/main` process would need a restart to observe the new code.
+- Signature: GPT-5 Codex
+
+## 2026-04-27 00:07 CEST - MEM-PROOF-010 Foreign Runtime Closure
+
+- Objective attempted:
+  - Close the FFI ScopeRegion migration proof lane by proving the native
+    wrapper families still reflect explicit ownership and fail-closed teardown.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `src/lisp/tests_advanced_io_effect_ffi_ffi_metadata_groups.c3`
+  - `docs/areas/ffi-foreign-runtime.md`
+  - `docs/plans/memory-model-proof-matrix-2026-04-26.md`
+  - `docs/todo_parts/todo_part_18.md`
+  - `TODO.md`
+  - `.agents/PLAN.md`
+- Code or configuration changes made:
+  - Added a native wrapper-family metadata sweep covering `fs-handle`,
+    `tcp-handle`, `udp-handle`, `process-handle`, and `tls-handle`.
+  - The new sweep checks `foreign-describe` before and after `foreign-release`
+    so the wrappers stay explicit about runtime, kind, ownership, live state,
+    and release capability.
+  - Updated the foreign-runtime area status from yellow to green and closed
+    `MEM-PROOF-010` in the queue, plan, and proof matrix.
+- Commands run:
+  - `c3c --threads 1 build --obj-out obj_mem_proof_010_pre`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system-surface ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh valgrind --trace-children=yes --leak-check=full --show-leak-kinds=definite,indirect,possible --error-exitcode=99 env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system-foreign-handle-metadata-dict ./build/main --test-suite lisp`
+- Key results:
+  - Build linked `build/main`.
+  - The advanced FFI surface slice passed with `pass=167 fail=0`.
+  - The isolated foreign-handle metadata group passed with `pass=19 fail=0`.
+  - Valgrind on the isolated metadata group reported zero Memcheck errors and
+    zero definite, indirect, or possible leaks.
+- Invalidated assumptions or failed approaches:
+  - `[INVALIDATED]` Manual cleanup after `foreign-release` was not needed for
+    the TLS test fixture; `foreign-release` already transfers teardown through
+    the wrapper finalizer path.
+  - `[FAILED]` The broader advanced-ffi-system-surface Valgrind slice still
+    includes unrelated callback/libffi leak noise, so it is not the right
+    closure gate for this lane.
+- Current best recommendation or checkpoint:
+  - The remaining work is outside this proof lane; keep the foreign-runtime
+    area green unless a new wrapper family or adapter mode lands.
+- Unresolved issues:
+  - Optional non-C runtime adapters and backend buffer hooks remain future
+    tracks.
+- Dependencies, blockers, or restart requirements:
+  - No live process restart is required unless an already-running `build/main`
+    process should observe the updated regression coverage.
+- Signature: GPT-5 Codex
+
+## 2026-04-26 23:50 CEST - MEM-PROOF-009 Async And Callback Closure
+
+- Objective attempted:
+  - Close the async/scheduler/callback proof lane by making the uv-timer
+    callback finalizer regression explicit and validating the wrapper teardown
+    path.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `src/lisp/tests_advanced_io_effect_ffi_scheduler_boundary.c3`
+  - `docs/plans/memory-model-proof-matrix-2026-04-26.md`
+  - `docs/todo_parts/todo_part_18.md`
+  - `TODO.md`
+  - `.agents/PLAN.md`
+- Code or configuration changes made:
+  - Hardened `run_advanced_uv_timer_callback_finalizer_scope_release_test_impl`
+    so a post-release invoke is checked as an invalid-handle error after the
+    wrapper scope is released.
+  - Kept the finalizer check tied to the retained callback owner scope release
+    and updated the pass/fail text to reflect the invalid-handle contract.
+  - Closed `MEM-PROOF-009` in TODO Part 18, the proof matrix, the plan index,
+    the memory runtime area doc, the root TODO queue, the active plan, the
+    session report, and the memory changelog.
+- Commands run:
+  - `c3c --threads 1 build --obj-out obj_mem_proof_009_pre`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system-surface ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh valgrind --trace-children=yes --leak-check=full --show-leak-kinds=definite,indirect,possible --error-exitcode=99 env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system-surface ./build/main --test-suite lisp`
+- Key results:
+  - Build linked `build/main`.
+  - Advanced FFI system surface slice passed with `pass=167 fail=0`.
+  - The callback finalizer regression now fails closed with
+    `uv-timer-callback-invoke: invalid callback handle` after wrapper-scope
+    release.
+  - Valgrind on the broader advanced surface reported unrelated leak contexts
+    in existing ffi_callback/libffi paths; the new regression itself passed.
+- Invalidated assumptions or failed approaches:
+  - `[INVALIDATED]` The stale-handle wording was wrong for this teardown path;
+    after wrapper-scope release the runtime returns an invalid callback handle,
+    not a stale one.
+- Current best recommendation or checkpoint:
+  - Continue with `MEM-PROOF-010` FFI ScopeRegion migration closure.
+- Unresolved issues:
+  - `MEM-PROOF-010` remains open.
+  - The broader advanced-ffi-system-surface Valgrind run still shows existing
+    leak contexts in unrelated ffi_callback/libffi paths.
+- Dependencies, blockers, or restart requirements:
+  - No live process restart is required unless an already-running `build/main`
+    process should observe the updated regression coverage.
+- Signature: GPT-5 Codex
+
+## 2026-04-26 23:29 CEST - Native tensor/device proof closure
+
+- Objective attempted:
+  - Close `MEM-PROOF-008` by proving native tensor, CUDA, and Vulkan payload
+    cleanup stays under ScopeRegion ownership and fails closed on destructor
+    registration OOM.
+- Relevant workspace or target:
+  - `src/lisp/tests_memory_lifetime_runtime_alloc_groups_array_tensor_ctor.c3`
+  - `docs/plans/memory-model-proof-matrix-2026-04-26.md`
+  - `docs/todo_parts/todo_part_18.md`
+  - `TODO.md`
+  - `.agents/PLAN.md`
+- Code or configuration changes made:
+  - Added a CUDA `to-device` destructor-registration OOM regression.
+  - Added a Vulkan `ml/layer-normalization` destructor-registration OOM
+    regression.
+  - Kept the existing CPU/native tensor constructor destructor-registration
+    OOM regression in place.
+- Commands run:
+  - `c3c --threads 1 build --obj-out obj_mem_proof_008_pre`
+  - `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+  - `OMNI_VALIDATION_TIMEOUT_SEC=1800 scripts/run_validation_container.sh valgrind --trace-children=yes --leak-check=full --show-leak-kinds=definite,indirect,possible --error-exitcode=99 env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+- Key results, metrics, or observed failure modes:
+  - Build linked `build/main`.
+  - Smoke slice passed with `unified pass=283 fail=0`.
+  - Valgrind reported zero Memcheck errors and zero definite, indirect, or
+    possible leaks.
+  - Existing boundary graph-audit warnings still appeared, but they did not
+    fail the slice and were not introduced by this change.
+- Invalidated assumptions or failed approaches:
+  - `[INVALIDATED]` `MEM-PROOF-008` was still open after the earlier tensor
+    constructor-only coverage; CUDA/Vulkan destructor-registration failure
+    paths also needed explicit proof.
+- Current best recommendation or checkpoint:
+  - Continue with `MEM-PROOF-009` async/scheduler/callback proof.
+- Unresolved issues:
+  - `MEM-PROOF-009` and `MEM-PROOF-010` remain open.
+- Dependencies, blockers, or restart requirements:
+  - No live process restart is required unless an already-running `build/main`
+    process should observe the updated regression coverage.
+- Signature: GPT-5 Codex
+
+## 2026-04-26 05:20 CEST - MEM-PROOF-004 Env/Closure Closure
+
+- Objective attempted:
+  - Continue Spark-agent TODO implementation and close env/closure lifetime
+    symmetry only if code, tests, and bounded validation met the proof matrix.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `src/lisp/eval_env_copy_values.c3`
+  - `src/lisp/eval_promotion_copy_wrapper_helpers.c3`
+  - `src/lisp/eval_boundary_commit_escape_helpers.c3`
+  - `src/lisp/eval_boundary_commit_destination.c3`
+  - `src/lisp/eval_boundary_planner.c3`
+  - `src/lisp/tests_memory_lifetime_env_copy_closure_groups.c3`
+  - `src/lisp/tests_memory_lifetime_env_copy_groups_more.c3`
+- Code or configuration changes made:
+  - Added `BOUNDARY_COPY_FAULT_DTOR_REGISTRATION`.
+  - Checked `scope_dtor_closure` registration in copy-to-parent and env-copy
+    closure clone paths, with rollback of partial clones and retained
+    `env_scope` state.
+  - Added forced dtor-registration OOM regressions for both closure-copy paths.
+  - Allowed rejected-transplant compatibility retry for iterator destination
+    builders with a fresh route context, fixing closure-backed recursive
+    iterator return boundaries.
+  - Closed `MEM-PROOF-004` in TODO Part 18 and updated the proof matrix,
+    plans index, memory runtime area doc, changelog, and active plan.
+- Commands run:
+  - C3 LSP diagnostics for all touched env/closure and boundary files.
+  - `c3c --threads 1 build --obj-out obj_mem_proof_004_retry2`
+  - `c3c --threads 1 build --sanitize=address --obj-out obj_mem_proof_004_asan`
+  - `./build/main --eval '(block ... (car (next (wrap [1 2 3]))))'`
+  - bounded `memory-lifetime-smoke`
+  - bounded graph-audit `memory-lifetime-smoke`
+  - focused bounded `jit-policy` filter for closure/env-copy/iterator cases
+  - bounded Valgrind `memory-lifetime-smoke`
+- Key results:
+  - Host build linked `build/main`.
+  - ASAN was rejected by the current C3 toolchain as unsupported for this
+    target.
+  - Focused host iterator-boundary repro returned `1`.
+  - Bounded `memory-lifetime-smoke` passed with `unified pass=278 fail=0`.
+  - Bounded graph-audit smoke passed with `unified pass=278 fail=0`; closure
+    traversal counters were present and no unexpected closure TEMP-edge
+    diagnostics appeared.
+  - Focused bounded `jit-policy` filter passed with `unified pass=6 fail=0`.
+  - Bounded Valgrind smoke reported zero Memcheck errors and zero definite,
+    indirect, or possible leaks.
+- Invalidated assumptions or failed approaches:
+  - `[INVALIDATED]` A rejected transplant proof's promotion context is not safe
+    to reuse for a later compatibility-destination retry; stale route state can
+    suppress valid iterator destination builds.
+  - A Spark investigation worker for the JIT failure hit the Codex Spark usage
+    limit before returning; local integration completed the root-cause fix.
+- Current best recommendation or checkpoint:
+  - Continue with `MEM-PROOF-005`, focusing on route-contract proof for every
+    selected planner route and each fail-closed rejection reason.
+- Unresolved issues:
+  - `MEM-PROOF-005` through `MEM-PROOF-010` remain open.
+- Dependencies, blockers, or restart requirements:
+  - No live process restart is required unless an already-running `build/main`
+    process should observe the new boundary behavior.
 - Signature: GPT-5 Codex
 
 ## 2026-04-25 06:44 CEST - Audit Closure Integration Wave 2
@@ -530,8 +886,8 @@
     rejects unknown persisted stale-reason bytes.
   - JSON/TOML native metadata corruption now returns structured
     `parser/invalid-state` errors instead of empty/nil values.
-  - Added `AUDIT-231` for the still-red broad Deduce materialized restart
-    fixtures that rely on unsupported `block`/`define` visibility.
+  - Added `AUDIT-231` for the then-red broad Deduce materialized restart
+    fixtures; later closure in this report supersedes the initial diagnosis.
 - Commands run:
   - `scripts/build_omni_chelpers.sh`
   - `LIBRARY_PATH=/home/christos/.local/lib c3c --threads 1 build --obj-out obj`
@@ -554,23 +910,511 @@
   - Pika slice passed with `pass=128 fail=0`.
   - Data-format slice passed with `pass=92 fail=0`.
   - Deduce basics group passed with `pass=11 fail=0`.
-  - Full Deduce slice remains red with `pass=411 fail=6`; failures are the
-    materialized restart fixtures recorded as `AUDIT-231`.
+  - At this checkpoint, the full Deduce slice remained red with
+    `pass=411 fail=6`; those materialized restart fixtures were tracked as
+    `AUDIT-231` and later closed in this report.
   - `git diff --check` passed.
 - Invalidated assumptions or failed approaches:
-  - `[INVALIDATED]` Do not treat the broad Deduce slice as a clean gate for this
-    patch until `AUDIT-231` is resolved. The current failure reproduces with
-    block-local `define` visibility, independent of the metadata-read
-    fail-closed tests.
+  - `[INVALIDATED]` This checkpoint's initial framing of `AUDIT-231` as a
+    block-local `define` contract issue was later corrected. `define` remains
+    global; the actual fixes were JIT block error short-circuiting and LMDB
+    restore transaction reuse.
 - Current best recommendation or checkpoint:
-  - Commit and push the closed `AUDIT-219` through `AUDIT-230` remediation with
-    `AUDIT-231` left open as the next work item.
+  - Superseded by the later `AUDIT-231` closure entry below.
 - Unresolved issues:
-  - `AUDIT-231` remains open: decide whether `define` should bind within
-    `block`, or rewrite the materialized restart fixtures to use a supported
-    local binding form.
+  - Superseded by the later `AUDIT-231` closure entry below.
 - Dependencies, blockers, or restart requirements:
   - Rebuild `build/main` after C3 changes before relying on runtime tests.
   - Host full `c3c build` without `LIBRARY_PATH=/home/christos/.local/lib`
     can fail to find local `liblightning`/`libreplxx`.
+- Signature: GPT-5 Codex
+
+## 2026-04-25 12:06 CEST - AUDIT-231 Closure And Reaudit
+
+- Objective attempted:
+  - Close the remaining canonical `AUDIT.md` item, then run a focused reaudit
+    before committing and pushing non-artifact work.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `AUDIT.md`
+  - JIT small-block lowering and Deduce persisted materialized metadata restore.
+- Code or configuration changes made:
+  - Closed `AUDIT-231`.
+  - Kept `define` as a global definition form; no local struct/type/relation
+    registry was introduced.
+  - Fixed native JIT small-block lowering so non-final `ERROR` values
+    short-circuit immediately instead of allowing later expressions to mask the
+    real failure with unbound-variable symptoms.
+  - Added focused JIT policy regressions for masked `define` RHS errors and
+    synthesized empty blocks compiled in tail position.
+  - Refactored Deduce materialized metadata restore to support lookup through an
+    existing LMDB transaction, and reused the persisted rule-signature restore
+    read transaction instead of opening a nested read transaction while a cursor
+    is live.
+  - Tightened materialized metadata DBI open handling so only `MDB_NOTFOUND`
+    becomes "no metadata"; other LMDB open errors fail closed.
+  - Added Deduce failure-injection coverage for forced materialized metadata
+    restore failure during `deduce/open`.
+- Commands run:
+  - `LIBRARY_PATH=/home/christos/.local/lib c3c --threads 1 build --obj-out obj`
+  - `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib ./build/main /tmp/audit231-error.omni`
+  - `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=jit-policy OMNI_JIT_POLICY_FILTER=block-define-rhs-error-short-circuit OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=jit-policy OMNI_JIT_POLICY_FILTER=block-define-rhs-error-short-circuit,empty-block-tail-nil OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=deduce OMNI_DEDUCE_GROUP_FILTER=basics OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=deduce OMNI_DEDUCE_GROUP_FILTER=materialized OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=deduce OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - Focused read-only mini-agent reaudit of JIT, Deduce persistence, and audit
+    consistency surfaces.
+- Key results:
+  - C3 build passed and linked `build/main`.
+  - Direct masked-error probe now reports `unbound variable 'missing-fn'`
+    instead of the later `audit231-e` binding name.
+  - Focused JIT policy regression first passed with `pass=1 fail=0`; after
+    reaudit follow-up, the combined JIT filter passed with `pass=2 fail=0`.
+  - Focused Deduce basics group passed with `pass=12 fail=0`, including the
+    new metadata-restore failure-injection case.
+  - Focused Deduce materialized restart group passed with `pass=8 fail=0`.
+  - Full Deduce slice first passed with `pass=417 fail=0`; after adding the
+    failure-injection case, it passed with `pass=418 fail=0`.
+  - At this checkpoint, `AUDIT.md` had no remaining `Status: Open`,
+    `Status: In Progress`, or `Status: Partial` markers after closing
+    `AUDIT-231`; this was later superseded by the `AUDIT-048` inline-module
+    scoped-open reopen entry in this same report.
+  - Focused reaudit findings were addressed before commit: stale report wording
+    was marked superseded, empty-block tail nil handling now uses the tail-aware
+    helper, and materialized metadata DBI open failures now fail closed.
+- Invalidated assumptions or failed approaches:
+  - `[INVALIDATED]` `AUDIT-231` was not a request to make `define`
+    block-local. The owner clarified that `define` should bind globally, and the
+    reproducible language issue was native block error masking.
+  - `[INVALIDATED]` The materialized restart fixtures did not require a local
+    registry rewrite. Once error masking was fixed, the real blocker was nested
+    LMDB read transaction usage during persisted rule-signature restore.
+- Current best recommendation or checkpoint:
+  - Commit and push the `AUDIT-231` closure. Treat `AUDIT.md` as clear unless a
+    later fresh audit appends new issues.
+- Unresolved issues:
+  - None known in canonical `AUDIT.md` at this checkpoint.
+- Dependencies, blockers, or restart requirements:
+  - Rebuild `build/main` after further C3 changes before relying on runtime
+    test results.
+- Signature: GPT-5 Codex
+
+## 2026-04-25 12:42 CEST - Validation Tooling Rule And Host Install
+
+- Objective attempted:
+  - Add a durable rule/pointer so future agents know which debugging,
+    profiling, and memory-validation tools to use for regression closure, and
+    install available host tools.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `AGENTS.md`
+  - `docs/README.md`
+  - `docs/VALIDATION_TOOLS.md`
+- Code or configuration changes made:
+  - Added `docs/VALIDATION_TOOLS.md` as the canonical regression/debugging tool
+    guide for Valgrind, ASAN, gdb, perf, hyperfine, heaptrack, rr, and strace.
+  - Linked the guide from `AGENTS.md` and `docs/README.md`.
+  - Installed missing Ubuntu packages: `hyperfine`, `heaptrack`, and `rr`.
+- Commands run:
+  - `uname -a`
+  - `sed -n '1,120p' /etc/os-release`
+  - `apt-cache policy hyperfine heaptrack rr linux-tools-common linux-tools-generic linux-tools-$(uname -r)`
+  - `sudo apt-get install -y hyperfine heaptrack rr`
+  - `valgrind --version`
+  - `gdb --version | head -n 1`
+  - `perf --version`
+  - `hyperfine --version`
+  - `heaptrack --version`
+  - `rr --version`
+  - `strace -V | head -n 1`
+  - `rr record true`
+  - `rr record -n true`
+  - `perf stat true`
+  - `hyperfine --warmup 1 --runs 2 true`
+  - `valgrind --error-exitcode=99 true`
+  - `heaptrack /usr/bin/true`
+  - `strace -o /tmp/omni-strace-smoke.out true`
+  - `git diff --check -- AGENTS.md docs/README.md docs/VALIDATION_TOOLS.md .agents/session_report_parts/session_report_part_43.md`
+- Key results:
+  - Host is Ubuntu 24.04.4 LTS on aarch64.
+  - Installed/verified versions: Valgrind 3.22.0, gdb 15.0.50, perf 6.17.9,
+    hyperfine 1.18.0, heaptrack 1.5.0, rr 5.7.0, strace 6.8.
+  - Valgrind, hyperfine, heaptrack, and strace smoke checks ran.
+  - `perf stat true` and normal `rr record true` are blocked by
+    `kernel.perf_event_paranoid=4`.
+  - `rr record -n true` also fails on this aarch64 host because rr does not
+    recognize the CPU microarchitecture.
+  - `git diff --check` passed for the new guide/rule files and this report.
+- Invalidated assumptions or failed approaches:
+  - `[INVALIDATED]` Do not assume installed `rr` is usable on this host. It is
+    present, but both normal and `-n` recording paths are currently blocked.
+  - `[INVALIDATED]` Do not assume installed `perf` is enough for profiling
+    evidence. The current kernel perf security setting blocks unprivileged use.
+- Current best recommendation or checkpoint:
+  - Future regression work should start from `docs/VALIDATION_TOOLS.md` after
+    naming the broken contract in the Regression Closure Rule.
+- Unresolved issues:
+  - Broad/high-memory validation remains container-bound by repo policy.
+  - Usable `perf`/`rr` capture requires a capable host or explicit host
+    administration changes; do not change sysctl as a routine repo step.
+- Dependencies, blockers, or restart requirements:
+  - New packages are installed on the host; existing long-running processes may
+    need restart only if they should observe updated system libraries.
+- Signature: GPT-5 Codex
+
+## 2026-04-25 13:28 CEST - Audit Follow-Up Wave And Reopened Scoped-Open Residual
+
+- Objective attempted:
+  - Continue addressing audited issues with delegated review, update the audit
+    ledger, commit non-artifact work, and push.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `AUDIT.md`, `TODO.md`, `docs/todo_parts/todo_part_17.md`
+  - Deduce metadata/integrity, async/NN C string boundaries, JIT/AOT
+    control-flow lowering, tensor native result cleanup, validation tooling.
+- Code or configuration changes made:
+  - Added clamped validation memory override handling in
+    `scripts/c3c_limits.sh` and `scripts/run_validation_container.sh`.
+  - Added `docs/VALIDATION_TOOLS.md` and linked it from repo guidance.
+  - Hardened Deduce immediate key/unique scans to fail closed on tuple decode,
+    arity, and cursor-termination failures.
+  - Hardened Deduce materialized metadata refresh-policy restore, while keeping
+    legacy V1 no-policy metadata compatible as manual refresh.
+  - Rejected embedded NUL paths in async file primitives/helpers and NN
+    checkpoint load/save paths.
+  - Made the async read-file offload worker report helper read failures as
+    `OFFLOAD_RES_ERROR` rather than nil, with direct worker-boundary coverage
+    for the embedded-NUL path case.
+  - Added JIT and AOT error-propagation guards for predicate/non-final
+    `ERROR` values.
+  - Replaced ignored tensor native destructor registration returns with checked
+    cleanup-or-error helper calls.
+  - Added tests for Deduce invalid metadata policy, V1 compatibility, immediate
+    scan-end failures, async file NUL paths, NN checkpoint NUL paths, JIT
+    middle-expression error propagation, and AOT generated error guards.
+  - Reopened `AUDIT-048` because inline module exports still leak as AOT
+    generated globals; added `SCOPED-MODULE-AOT-002` to Part 17 and the live
+    queue.
+  - Added closed `AUDIT-232` through `AUDIT-237` entries for this wave.
+- Commands run:
+  - `LIBRARY_PATH=/home/christos/.local/lib c3c --threads 1 build --obj-out obj`
+  - `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce OMNI_DEDUCE_GROUP_FILTER=core-surface,integrity ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=jit-policy OMNI_JIT_POLICY_FILTER=block-define-rhs-error-short-circuit,empty-block-tail-nil,control-flow-predicate-error ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=async ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp`
+  - `scripts/check_status_consistency.sh`
+  - `scripts/check_build_config_parity.sh`
+  - `scripts/check_file_size_gate.sh`
+  - `scripts/check_e2e_baseline_policy.sh`
+  - `git diff --check`
+- Key results:
+  - C3 build passed and linked `build/main`.
+  - Deduce focused group passed with `pass=41 fail=0`.
+  - JIT policy focused filter passed with `pass=6 fail=0`.
+  - Compiler slice passed with `pass=345 fail=0`.
+  - Status, build-config parity, file-size, e2e baseline, and whitespace gates
+    passed.
+  - Async slice still failed on unrelated lifecycle/network cases:
+    `async file read cancel stress`, `pipe connect/listen in fiber via libuv
+    bridge`, and `udp-recv in fiber via async bridge`; the new embedded-NUL file
+    regression did not appear in the failure list.
+  - Advanced collections group still failed on unrelated
+    `ml/softmax Vulkan Float32 stays on device and normalizes rows`; the new NN
+    checkpoint embedded-NUL regression did not appear in the failure list.
+- Invalidated assumptions or failed approaches:
+  - `[INVALIDATED]` Treating `AUDIT-048` as completely closed was too broad.
+    External module scoped-open AOT lowering works, but inline module body
+    definitions still leak exported names as globals.
+  - `[INVALIDATED]` Do not reject legacy V1 Deduce materialized metadata simply
+    because no refresh-policy bit exists; V1 no-policy rows must read as manual
+    refresh for compatibility.
+- Current best recommendation or checkpoint:
+  - Superseded by the later `AUDIT-048` inline-module leak closure: the
+    module-private backing-symbol implementation shipped, `SCOPED-MODULE-AOT-002`
+    is closed, and the current live queue has moved to the Part 18 memory-model
+    improvement items.
+- Unresolved issues:
+  - The later closure entry in `.agents/SESSION_REPORT.md` and `AUDIT.md`
+    closes `AUDIT-048` / `SCOPED-MODULE-AOT-002`.
+  - Pre-existing async lifecycle/network failures and Vulkan softmax
+    interpreter failure remained outside this wave.
+- Dependencies, blockers, or restart requirements:
+  - Rebuild `build/main` after further C3 changes before relying on runtime
+    tests. Broad/high-memory validation remains container-bound.
+- Signature: GPT-5 Codex
+
+## 2026-04-26 03:10 CEST - MEM-PROOF-001 Inventory Guard Closure
+
+- Objective attempted:
+  - Use fast Spark subagents to implement active TODO items from the memory
+    proof matrix, starting with the shared inventory/manifest coverage lane.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `docs/todo_parts/todo_part_18.md`
+  - `docs/plans/memory-model-proof-matrix-2026-04-26.md`
+  - `scripts/check_memory_ownership_inventory.py`
+  - `scripts/memory_ownership_surface_manifest.tsv`
+- Code or configuration changes made:
+  - Closed `MEM-PROOF-001`.
+  - Added a manifest-backed memory ownership inventory guard that scans C3
+    files for memory-sensitive owning calls, FFI wrapper families, dynamic FFI
+    handle construction sites, and tensor device finalizer assignments.
+  - Wired the new guard into `scripts/check_boundary_change_policy.sh`.
+  - Added the new guard and manifest to `scripts/boundary_sensitive_files.txt`.
+  - Updated `TODO.md`, TODO Part 18, the proof matrix, plans index, memory
+    runtime area doc, and changelog state.
+- Commands run:
+  - `jj file track --include-ignored scripts/check_memory_ownership_inventory.py`
+  - `python3 scripts/check_memory_ownership_inventory.py`
+  - `xargs -a scripts/boundary_sensitive_files.txt python3 scripts/check_memory_ownership_inventory.py`
+  - `python3 scripts/check_boundary_value_policy_coverage.py`
+  - `OMNI_BOUNDARY_POLICY_RANGE=HEAD scripts/check_boundary_change_policy.sh`
+- Key results:
+  - Full inventory guard passed across `1228` C3 files.
+  - Boundary-sensitive subset inventory guard passed across `36` files.
+  - Value policy coverage passed for all `30` `ValueTag` entries.
+  - Boundary policy exercised both policy guards, then failed closed because
+    the current dirty workspace lacks required normal/ASAN hardening evidence
+    logs: `build/boundary_hardening_normal.log` and
+    `build/boundary_hardening_asan.log`.
+- Invalidated assumptions or failed approaches:
+  - `[INVALIDATED]` The coarse `FFI_HANDLE` and `TENSOR` `ValueTag` policy rows
+    are not enough for proof-matrix inventory closure. Family-level FFI wrapper
+    classification and tensor finalizer authority classification are now
+    required by the guard.
+- Current best recommendation or checkpoint:
+  - Continue with `MEM-PROOF-002` through `MEM-PROOF-010`. Spark read-only
+    review found ScopeRegion and value constructor evidence is substantial but
+    not yet lane-complete without consolidated proof/measurement/hardening
+    artifacts and targeted runtime validation.
+- Unresolved issues:
+  - `MEM-PROOF-002` through `MEM-PROOF-010` remain open.
+  - Full boundary policy remains blocked until normal and ASAN boundary
+    hardening logs are produced for this dirty boundary-sensitive workspace.
+- Dependencies, blockers, or restart requirements:
+  - No live process restart is required for this static guard/doc slice.
+  - Runtime proof lanes still require bounded validation and, for memory work,
+    ASAN or Valgrind where supported by the current toolchain/container.
+- Signature: GPT-5 Codex
+
+## 2026-04-26 03:45 CEST - MEM-PROOF-002 ScopeRegion Core Closure
+
+- Objective attempted:
+  - Continue TODO implementation with Spark agents and close the ScopeRegion
+    core proof lane if the code/test/validation evidence met the matrix gate.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `src/scope_region*.c3`
+  - `src/scope_region_tests*.c3`
+  - `docs/plans/memory-model-proof-matrix-2026-04-26.md`
+  - `docs/todo_parts/todo_part_18.md`
+- Code or configuration changes made:
+  - No ScopeRegion code change was needed; Spark audit found no missing core
+    proof gap in the ScopeRegion implementation or tests.
+  - Closed `MEM-PROOF-002` in TODO Part 18 and updated the proof matrix,
+    plans index, memory runtime area doc, changelog, and active plan.
+- Commands run:
+  - `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib:/usr/lib OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 ./build/main --test-suite scope`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib:/usr/lib OMNI_LISP_TEST_SLICE=memory-lifetime-smoke OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `OMNI_VALIDATION_TIMEOUT_SEC=900 scripts/run_validation_container.sh valgrind --trace-children=yes --leak-check=full --show-leak-kinds=definite,indirect,possible --error-exitcode=99 env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+  - `rg -n "scope_adopt" src scripts docs/plans/memory-model-proof-matrix-2026-04-26.md docs/todo_parts/todo_part_18.md`
+  - `OMNI_VALIDATION_TIMEOUT_SEC=300 scripts/run_validation_container.sh c3c --threads 1 build --obj-out obj_container`
+- Key results:
+  - ScopeRegion unit suite passed with `scope_region pass=64 fail=0`.
+  - Bounded container `memory-lifetime-smoke` passed with
+    `unified pass=274 fail=0`.
+  - Host-side `memory-lifetime-smoke` correctly refused to run outside the
+    bounded container path.
+  - Bounded container Valgrind `memory-lifetime-smoke` reported zero Memcheck
+    errors and zero definite, indirect, or possible leaks.
+  - Bounded container build linked `build/main`.
+  - `scope_adopt` has no current `src/` or `scripts/` call sites; only the
+    proof-plan text mentions it as retired.
+- Invalidated assumptions or failed approaches:
+  - `[FACT]` The host memory-lifetime refusal is not a regression; it is the
+    intended container-only validation guard.
+  - Host `c3c build` without local library path remains blocked by missing
+    `liblightning`/`libreplxx`, so bounded container build is the integration
+    signal for this closure.
+- Current best recommendation or checkpoint:
+  - Continue with `MEM-PROOF-003`. Spark lookahead identified
+    `make_ffi_handle_ex_with_descriptor` as a concrete value-constructor
+    hardening target for checked destructor-registration rollback coverage.
+- Unresolved issues:
+  - `MEM-PROOF-003` through `MEM-PROOF-010` remain open.
+- Dependencies, blockers, or restart requirements:
+  - No live process restart is required for the documentation/proof state
+    change.
+- Signature: GPT-5 Codex
+
+## 2026-04-26 04:15 CEST - MEM-PROOF-003 Value Constructor Closure
+
+- Objective attempted:
+  - Continue Spark-agent TODO implementation after ScopeRegion proof closure,
+    targeting the concrete heap-backed constructor gap found by the
+    MEM-PROOF-003 lookahead.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `src/lisp/value_constructors.c3`
+  - `src/lisp/tests_memory_lifetime_runtime_alloc_groups_core.c3`
+  - `docs/plans/memory-model-proof-matrix-2026-04-26.md`
+  - `docs/todo_parts/todo_part_18.md`
+- Code or configuration changes made:
+  - Hardened `make_ffi_handle_ex_with_descriptor` so successful FFI wrapper
+    construction requires `scope_dtor_value` registration through
+    `scope_register_value_dtor_or_cleanup`.
+  - On destructor-record allocation failure, the partial FFI wrapper is rolled
+    back through the checked helper and the constructor returns a runtime OOM
+    error.
+  - Added focused FFI handle destructor-registration OOM tests for
+    finalizer-owned and free-owned payloads.
+  - Closed `MEM-PROOF-003` in TODO Part 18 and updated the proof matrix, plans
+    index, memory runtime area doc, changelog, and active plan.
+- Commands run:
+  - C3 LSP diagnostics for `src/lisp/value_constructors.c3`
+  - C3 LSP diagnostics for `src/lisp/tests_memory_lifetime_runtime_alloc_groups_core.c3`
+  - `OMNI_VALIDATION_TIMEOUT_SEC=300 scripts/run_validation_container.sh c3c --threads 1 build --obj-out obj_container`
+  - `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+  - `python3 scripts/check_boundary_value_policy_coverage.py`
+  - `python3 scripts/check_memory_ownership_inventory.py src/lisp/value_constructors.c3 src/lisp/tests_memory_lifetime_runtime_alloc_groups_core.c3`
+  - `git diff --check -- src/lisp/value_constructors.c3 src/lisp/tests_memory_lifetime_runtime_alloc_groups_core.c3`
+  - `OMNI_VALIDATION_TIMEOUT_SEC=900 scripts/run_validation_container.sh valgrind --trace-children=yes --leak-check=full --show-leak-kinds=definite,indirect,possible --error-exitcode=99 env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+- Key results:
+  - C3 diagnostics passed for both touched files.
+  - Bounded container build linked `build/main`.
+  - Bounded container `memory-lifetime-smoke` passed with
+    `unified pass=276 fail=0`, including the two new FFI dtor-registration OOM
+    regressions.
+  - Bounded container Valgrind `memory-lifetime-smoke` passed with zero
+    Memcheck errors and zero definite, indirect, or possible leaks.
+  - Value policy coverage and ownership inventory guards passed for the
+    touched constructor files.
+- Invalidated assumptions or failed approaches:
+  - `[FACT]` The coarse `FFI_HANDLE` policy row was not enough to prove
+    constructor success. The wrapper must either have registered destructor
+    authority or release its foreign payload during rollback.
+  - Host `c3c build` remained blocked by missing `liblightning`/`libreplxx`, so
+    bounded container build is the accepted build signal.
+- Current best recommendation or checkpoint:
+  - Continue with `MEM-PROOF-004` env/closure lifetime symmetry.
+- Unresolved issues:
+  - `MEM-PROOF-004` through `MEM-PROOF-010` remain open.
+- Dependencies, blockers, or restart requirements:
+  - No live process restart is required for this test/build-validated code
+    change unless an already-running `build/main` process should observe the
+    new constructor behavior.
+- Signature: GPT-5 Codex
+
+## 2026-04-26 05:35 CEST - MEM-PROOF-005 Boundary Commit Route Closure
+
+- Objective attempted:
+  - Continue the proof-matrix TODO queue by closing boundary commit route
+    contracts across selected route observability, fail-closed hardening, and
+    benchmark/counter evidence.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `src/lisp/eval_promotion_escape_structured.c3`
+  - `src/lisp/tests_memory_lifetime_boundary_commit_escape_primary_groups.c3`
+  - `src/lisp/tests_memory_lifetime_boundary_commit_escape_destination_commit.c3`
+  - `src/lisp/tests_memory_lifetime_boundary_commit_escape_rollback_error.c3`
+  - `docs/plans/memory-model-proof-matrix-2026-04-26.md`
+  - `docs/todo_parts/todo_part_18.md`
+- Code or configuration changes made:
+  - Hardened direct closure escape promotion so `scope_dtor_closure`
+    registration failure aborts the promotion context, releases retained
+    detached `env_scope`, and returns a boundary OOM error.
+  - Added a boundary commit regression that forces closure escape dtor
+    registration OOM and proves fail-closed route outcome plus env-scope
+    rollback.
+  - Added/strengthened route assertions for mixed destination, compatibility
+    partial/iterator destination, stable materialization, forced no-splice
+    materialization, and direct-promotion disallowance.
+  - Closed `MEM-PROOF-005` in TODO Part 18 and updated the proof matrix, plan
+    index, memory runtime area doc, changelog, and active plan.
+- Commands run:
+  - C3 LSP diagnostics for touched promotion and boundary test files.
+  - `c3c --threads 1 build --obj-out obj_mem_proof_005_route`
+  - `c3c --threads 1 build --sanitize=address --obj-out obj_mem_proof_005_asan`
+  - `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+  - `python3 scripts/check_boundary_value_policy_coverage.py`
+  - `python3 scripts/check_memory_ownership_inventory.py src/lisp/eval_promotion_escape_structured.c3 src/lisp/tests_memory_lifetime_boundary_commit_escape_rollback_error.c3 src/lisp/tests_memory_lifetime_boundary_commit_escape_destination_commit.c3 src/lisp/tests_memory_lifetime_boundary_commit_escape_primary_groups.c3`
+  - `scripts/check_boundary_facade_usage.sh`
+  - `OMNI_VALIDATION_TIMEOUT_SEC=1200 scripts/run_validation_container.sh bash -lc 'c3c --threads 1 build --obj-out obj_mem_proof_005_bench -D OMNI_BOUNDARY_INSTR_COUNTERS && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_BOUNDARY_BENCH=1 OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-bench ./build/main --test-suite lisp'`
+  - `scripts/check_memory_telemetry_benchmark_envelope.sh /tmp/omni_mem_proof_005_bench_rerun.log`
+  - `OMNI_VALIDATION_TIMEOUT_SEC=1800 scripts/run_validation_container.sh valgrind --trace-children=yes --leak-check=full --show-leak-kinds=definite,indirect,possible --error-exitcode=99 env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+- Key results:
+  - C3 diagnostics passed and host build linked `build/main`.
+  - ASAN remains unavailable: the current C3 toolchain rejected
+    `--sanitize=address` as unsupported for this target.
+  - Bounded `memory-lifetime-smoke` passed with `unified pass=280 fail=0`.
+  - Boundary value policy, ownership inventory, and facade guards passed.
+  - Bounded counters `memory-lifetime-bench` passed; the envelope passed with a
+    non-fatal warning that optimizer materialization-copy bytes drifted from
+    the baseline.
+  - Bounded Valgrind `memory-lifetime-smoke` passed with zero Memcheck errors
+    and zero definite, indirect, or possible leaks.
+- Invalidated assumptions or failed approaches:
+  - `[FACT]` Spark agents were unavailable for part of this slice due the
+    GPT-5.3-Codex-Spark usage limit until 2026-04-27 02:08, so integration
+    continued locally with default non-Spark read-only review.
+  - `[FACT]` ASAN is not a current closure signal for this toolchain/target;
+    Valgrind is the memory-safety substitute.
+  - `[FACT]` A boundary commit route is not proven by happy-path value shape
+    alone; tests or counters must expose selected route, selected reason,
+    destructor-registration authority, rollback, and fail-closed behavior.
+- Current best recommendation or checkpoint:
+  - Continue with `MEM-PROOF-006`, focusing on stable escape/prepared graph and
+    transplant fast-path proof: stale handles, mutation drift, cyclic/shared
+    graph coverage, and refcount-rejection coverage.
+- Unresolved issues:
+  - `MEM-PROOF-006` through `MEM-PROOF-010` remain open.
+- Dependencies, blockers, or restart requirements:
+  - No live process restart is required unless an already-running `build/main`
+    should observe the new boundary route hardening.
+- Signature: GPT-5 Codex
+
+## 2026-04-26 22:51 CEST - MEM-PROOF-006 Stable Escape And Transplant Closure
+
+- Objective attempted:
+  - Close the remaining stable escape/prepared graph/transplant proof lane and
+    eliminate the last stale-index coverage gap.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `src/lisp/tests_memory_lifetime_boundary_groups.c3`
+  - `src/lisp/tests_memory_lifetime_boundary_groups_splice_legality.c3`
+  - `docs/plans/memory-model-proof-matrix-2026-04-26.md`
+  - `docs/todo_parts/todo_part_18.md`
+- Code or configuration changes made:
+  - Added a stale prepared-node index regression so dead stable-escape handles
+    now reject prepared-node tag and child lookups after invalidation.
+  - Fixed the descendant-child splice-legality teardown bug that was
+    over-releasing the child scope after introducing a grandchild.
+  - Closed `MEM-PROOF-006` in TODO Part 18, the proof matrix, the plan index,
+    the memory-runtime area doc, the root TODO queue, and the memory changelog.
+- Commands run:
+  - `c3c --threads 1 build --obj-out obj_mem_proof_006_pre`
+  - `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+  - `OMNI_VALIDATION_TIMEOUT_SEC=1200 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_BOUNDARY_BENCH=1 OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-bench ./build/main --test-suite lisp`
+  - `OMNI_VALIDATION_TIMEOUT_SEC=1800 scripts/run_validation_container.sh valgrind --trace-children=yes --leak-check=full --show-leak-kinds=definite,indirect,possible --error-exitcode=99 env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+- Key results:
+  - Host build linked `build/main`.
+  - `memory-lifetime-smoke` passed with `unified pass=280 fail=0`.
+  - `memory-lifetime-bench` passed with all benchmark suites reporting
+    `*_ok` completion.
+  - Valgrind reported zero Memcheck errors and zero definite, indirect, or
+    possible leaks.
+- Invalidated assumptions or failed approaches:
+  - `[INVALIDATED]` `prepared_node_count == 0` alone is not sufficient stale
+    handle coverage; dead handles must also reject prepared-node tag and child
+    lookups.
+- Current best recommendation or checkpoint:
+  - Continue with `MEM-PROOF-007` collections/mutation proof.
+- Unresolved issues:
+  - `MEM-PROOF-007` through `MEM-PROOF-010` remain open.
+- Dependencies, blockers, or restart requirements:
+  - No live process restart is required unless an already-running `build/main`
+    process should observe the updated regression coverage.
 - Signature: GPT-5 Codex

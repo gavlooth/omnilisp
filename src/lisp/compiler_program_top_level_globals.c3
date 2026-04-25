@@ -16,6 +16,116 @@ fn bool compiler_has_inline_compiled_module(Compiler* self, SymbolId module_name
     return false;
 }
 
+fn void Compiler.add_inline_module_backing_globals(Compiler* self, Expr* expr) {
+    if (expr == null || expr.tag != E_MODULE) return;
+    if (!self.ensure_inline_compiled_module_metadata(expr)) return;
+    CompiledModule* mod = self.find_inline_compiled_module(expr.module_expr.name);
+    if (mod == null) return;
+    for (usz i = 0; i < mod.local_count; i++) {
+        self.add_global_if_missing(mod.local_backings[i]);
+    }
+    for (usz i = 0; i < expr.module_expr.body_count; i++) {
+        self.collect_inline_module_backing_globals_in_expr(expr.module_expr.body[i]);
+    }
+}
+
+fn void Compiler.collect_inline_module_backing_globals_in_expr(Compiler* self, Expr* expr) {
+    if (expr == null) return;
+    switch (expr.tag) {
+        case E_MODULE:
+            self.add_inline_module_backing_globals(expr);
+        case E_DEFINE:
+            self.collect_inline_module_backing_globals_in_expr(expr.define.value);
+        case E_LAMBDA:
+            if (expr.lambda != null) self.collect_inline_module_backing_globals_in_expr(expr.lambda.body);
+        case E_APP:
+            self.collect_inline_module_backing_globals_in_expr(expr.app.func);
+            self.collect_inline_module_backing_globals_in_expr(expr.app.arg);
+        case E_IF:
+            self.collect_inline_module_backing_globals_in_expr(expr.if_expr.test);
+            self.collect_inline_module_backing_globals_in_expr(expr.if_expr.then_branch);
+            self.collect_inline_module_backing_globals_in_expr(expr.if_expr.else_branch);
+        case E_LET:
+            self.collect_inline_module_backing_globals_in_expr(expr.let_expr.init);
+            self.collect_inline_module_backing_globals_in_expr(expr.let_expr.body);
+        case E_RESET:
+            self.collect_inline_module_backing_globals_in_expr(expr.reset.body);
+        case E_SHIFT:
+            self.collect_inline_module_backing_globals_in_expr(expr.shift.body);
+        case E_PERFORM:
+            if (expr.perform.has_tag_expr) self.collect_inline_module_backing_globals_in_expr(expr.perform.tag_expr);
+            self.collect_inline_module_backing_globals_in_expr(expr.perform.arg);
+        case E_RESOLVE:
+            self.collect_inline_module_backing_globals_in_expr(expr.resolve.value);
+        case E_HANDLE:
+            if (expr.handle != null) {
+                self.collect_inline_module_backing_globals_in_expr(expr.handle.body);
+                for (usz hi = 0; hi < expr.handle.clause_count; hi++) {
+                    if (expr.handle.clauses[hi].has_effect_tag_expr) {
+                        self.collect_inline_module_backing_globals_in_expr(expr.handle.clauses[hi].effect_tag_expr);
+                    }
+                    self.collect_inline_module_backing_globals_in_expr(expr.handle.clauses[hi].handler_body);
+                }
+            }
+        case E_INDEX:
+            self.collect_inline_module_backing_globals_in_expr(expr.index.collection);
+            self.collect_inline_module_backing_globals_in_expr(expr.index.index);
+        case E_MATCH:
+            if (expr.match != null) {
+                self.collect_inline_module_backing_globals_in_expr(expr.match.scrutinee);
+                for (usz mi = 0; mi < expr.match.clause_count; mi++) {
+                    self.collect_inline_module_backing_globals_in_expr(expr.match.clauses[mi].result);
+                }
+            }
+        case E_AND:
+            self.collect_inline_module_backing_globals_in_expr(expr.and_expr.left);
+            self.collect_inline_module_backing_globals_in_expr(expr.and_expr.right);
+        case E_OR:
+            self.collect_inline_module_backing_globals_in_expr(expr.or_expr.left);
+            self.collect_inline_module_backing_globals_in_expr(expr.or_expr.right);
+        case E_CALL:
+            if (expr.call != null) {
+                self.collect_inline_module_backing_globals_in_expr(expr.call.func);
+                for (usz ai = 0; ai < expr.call.arg_count; ai++) {
+                    self.collect_inline_module_backing_globals_in_expr(expr.call.args[ai]);
+                }
+            }
+        case E_BLOCK:
+            if (expr.block != null) {
+                for (usz bi = 0; bi < expr.block.expr_count; bi++) {
+                    self.collect_inline_module_backing_globals_in_expr(expr.block.exprs[bi]);
+                }
+            }
+        case E_SET:
+            self.collect_inline_module_backing_globals_in_expr(expr.set_expr.value);
+        case E_QUASIQUOTE:
+            self.collect_inline_module_backing_globals_in_expr(expr.quasiquote.body);
+        case E_UNQUOTE:
+            self.collect_inline_module_backing_globals_in_expr(expr.unquote.body);
+        case E_UNQUOTE_SPLICING:
+            self.collect_inline_module_backing_globals_in_expr(expr.unquote_splicing.body);
+        default:
+    }
+}
+
+fn void Compiler.add_inline_import_globals(Compiler* self, ExprImport* imp) {
+    if (imp == null || imp.has_path) return;
+    CompiledModule* mod = self.find_inline_compiled_module(imp.name);
+    if (mod == null) return;
+
+    if (imp.import_all) {
+        for (usz i = 0; i < mod.export_count; i++) {
+            self.add_global_if_missing(mod.exports[i]);
+        }
+        return;
+    }
+
+    for (usz ii = 0; ii < imp.import_count; ii++) {
+        SymbolId bind_name = (uint)imp.aliases[ii] != 0 ? imp.aliases[ii] : imp.imports[ii];
+        self.add_global_if_missing(bind_name);
+    }
+}
+
 fn void Compiler.collect_expr_generated_globals(Compiler* self, Expr* expr) {
     if (expr == null) return;
 
@@ -100,11 +210,7 @@ fn void Compiler.collect_expr_generated_globals(Compiler* self, Expr* expr) {
         case E_UNQUOTE_SPLICING:
             self.collect_expr_generated_globals(expr.unquote_splicing.body);
         case E_MODULE:
-            if (expr.module_expr != null) {
-                for (usz mi = 0; mi < expr.module_expr.body_count; mi++) {
-                    self.collect_expr_generated_globals(expr.module_expr.body[mi]);
-                }
-            }
+            self.add_inline_module_backing_globals(expr);
         case E_WITH_MODULE:
             if (expr.with_module != null) {
                 for (usz wi = 0; wi < expr.with_module.body_count; wi++) {
@@ -152,9 +258,7 @@ fn void Compiler.collect_pattern_generated_globals(Compiler* self, Pattern* pat)
 fn void Compiler.collect_top_level_defines(Compiler* self, List{Expr*}* exprs) {
     foreach (expr : *exprs) {
         if (expr.tag == E_MODULE) {
-            for (usz mi = 0; mi < expr.module_expr.body_count; mi++) {
-                self.collect_expr_generated_globals(expr.module_expr.body[mi]);
-            }
+            self.add_inline_module_backing_globals(expr);
         } else if (expr.tag == E_WITH_MODULE) {
             if (expr.with_module != null) {
                 for (usz wi = 0; wi < expr.with_module.body_count; wi++) {
@@ -162,9 +266,13 @@ fn void Compiler.collect_top_level_defines(Compiler* self, List{Expr*}* exprs) {
                 }
             }
         } else if (expr.tag == E_IMPORT) {
+            self.add_inline_import_globals(&expr.import_expr);
+            bool inline_import = !expr.import_expr.has_path
+                && compiler_has_inline_compiled_module(self, expr.import_expr.name);
             if (!expr.import_expr.has_path) {
                 self.add_global_if_missing(expr.import_expr.name);
             }
+            if (inline_import) continue;
             for (usz ii = 0; ii < expr.import_expr.import_count; ii++) {
                 SymbolId imp_name = expr.import_expr.imports[ii];
                 SymbolId alias_name = expr.import_expr.aliases[ii];

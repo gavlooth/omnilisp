@@ -9,9 +9,80 @@ The live backlog has been consolidated into `TODO.md` at the repo root.
 2. Keep `TODO.md` as the only live execution queue.
 3. Treat files in this folder as design context or one-off implementation notes, not as parallel backlog sources.
 
+## Current Planning State
+
+No plan file in this directory is a live execution queue by itself. `TODO.md`
+is the only live queue, and it currently reports `Current actionable count: 0`.
+The items below are either closed plans, reference specs, or conditional future
+directions that must be reopened through a new TODO entry before implementation.
+
+## Worth Considering, Not Backlog
+
+These are the only inspected directions that still look technically worth
+keeping visible:
+
+- AArch64 stack backend: useful only if ARM runtime support becomes a product
+  target. Reopen from `stack-aarch64-implementation-plan-2026-04-08.md` with a
+  concrete validation host/toolchain.
+- Neutral runtime module extraction: useful only if the current documented
+  `main` <-> `lisp` cycle stops being an acceptable build boundary. Reopen from
+  `main-lisp-module-cycle-isolation-2026-04-21.md`.
+- Vulkan/ML expansion: useful only when backend ML product work resumes. Reopen
+  from `vulkan-ml-suite-roadmap-2026-04-19.md` with specific operation slices.
+- CUDA/Vulkan complex numerical gaps: useful only when complex SVD/norm or
+  eigen families become product requirements. Reopen from the fixed-width
+  complex and Vulkan/CUDA tensor roadmap notes.
+- Memory allocator policy tuning: useful only after a non-synthetic bounded
+  benchmark shows runtime boundary/promotion pressure. Do not reopen from the
+  old aggregate slack counters alone.
+
+Everything else inspected is historical, closed, superseded, or already covered
+by the current green status docs.
+
 ## TODO-Linked Plan Status
 
-- Current live queue status: memory-boundary telemetry/benchmark evidence work
+- `memory-model-proof-matrix-2026-04-26.md`: closed proof plan for applying the
+  same proof/measurement/hardening treatment to the entire memory model after
+  the core migration closed. TODO Part 18 lane `MEM-PROOF-001` is closed with
+  a manifest-backed ownership inventory guard for memory-sensitive call sites,
+  FFI wrapper families, dynamic FFI handle call sites, and tensor device
+  finalizer authorities. `MEM-PROOF-002` is closed with ScopeRegion unit,
+  memory-smoke, and Valgrind evidence for TEMP/ESCAPE teardown, dtor-record
+  OOM, retain/release symmetry, owner guards, splice preconditions, and retired
+  `scope_adopt` runtime paths. `MEM-PROOF-003` is closed with checked
+  `FFI_HANDLE` constructor destructor-registration rollback and focused
+  finalizer/free-owned payload OOM coverage. `MEM-PROOF-004` is closed with
+  checked closure-copy destructor-registration rollback, forced env/copy-parent
+  closure dtor OOM regressions, rejected-transplant compatibility retry for
+  closure-backed iterator boundaries, and bounded memory/JIT/Valgrind evidence.
+  `MEM-PROOF-005` is closed with checked boundary-route selected outcomes,
+  direct closure escape dtor-registration rollback, direct-promotion
+  disallowance coverage, forced-no-splice materialization evidence, policy
+  guards, benchmark-envelope counters, and Valgrind evidence.
+  `MEM-PROOF-006` is closed with stable escape/prepared graph/transplant proof,
+  stale-handle invalidation, mutation-drift invalidation, cyclic/shared graph
+  coverage, refcount rejection, benchmark evidence, and Valgrind evidence.
+  `MEM-PROOF-007` is closed with collection copy/materialization, rollback,
+  known-capacity constructor OOM, benchmark, and Valgrind evidence.
+  `MEM-PROOF-008` is closed with native tensor/device cleanup proof and leak
+  validation. `MEM-PROOF-010` is closed with native wrapper-family metadata
+  coverage and isolated Valgrind on the foreign-handle metadata group.
+- `memory-model-improvement-plan-2026-04-25.md`: completed memory-model
+  improvement plan. It keeps `ScopeRegion` as ordinary Omni value ownership
+  authority and treats the planner/passport/transplant work as current
+  foundation, not a work item to reopen. The TODO Part 18 memory-model
+  improvement queue is closed: `MEM-MODEL-IMPROVE-002` added allocator
+  histograms, per-scope sequence evidence, request/unused buckets, and
+  source/site attribution, then closed without a policy change because the
+  remaining ESCAPE no-follow-up bucket is synthetic direct benchmark traffic.
+  `MEM-MODEL-IMPROVE-003` closed the shared Dictionary/Set known-entry sizing
+  slice by reducing hashmap/set growth counters to zero. `MEM-MODEL-IMPROVE-004`
+  closed the boundary value policy coverage guard with a manifest-backed check
+  wired into the boundary change policy script, `MEM-MODEL-IMPROVE-005` closed
+  the `atomic-ref` FFI bridge keepalive slice, and `MEM-MODEL-IMPROVE-006`
+  landed product-style Finwatch, closure-heavy iterator, tensor-metadata, and
+  nested-module return workload slices.
+- Current queue status: memory-boundary telemetry/benchmark evidence work
   in `TODO.md` Part 18 is closed through `MEM-BENCH-OBSERVE-005`. The lane
   produced the signal inventory, runtime counter coverage, benchmark workload
   coverage, first counter baseline, and
@@ -213,9 +284,10 @@ Recently closed TODO-linked plans:
   grouped bindgen output, generated bind manifests, strict bind TOML hardening,
   and `exclude-functions` denylist filtering.
 - `foreign-runtime-core-plan-2026-04-11.md`: common `ForeignHandle` runtime
-  descriptor and adapter boundary for future C, Python, Julia, CUDA/cuBLAS,
-  optional C++ tooling, and polyglot lanes; the common-core lane is closed
-  through `FOREIGN-CORE-002R`.
+  descriptor and adapter boundary for C ABI handles, CppInterop API-mode
+  bindgen tooling, and CPU/CUDA tensor-buffer marshalling. Python/Julia and
+  polyglot/plugin runtime lanes are out of scope; the common-core lane is
+  closed through `FOREIGN-CORE-002S`.
 - `tensor-scientific-computing-plan-2026-04-11.md`: canonical `Tensor`,
   tensor-dispatched `map` and `contract`, constructor-driven materialization,
   flat row-major `Iterator(Tensor)` conversion, public surface cleanup,

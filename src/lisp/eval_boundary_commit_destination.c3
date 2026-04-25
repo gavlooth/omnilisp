@@ -25,13 +25,28 @@ fn bool stable_escape_materialization_candidate(ValueTag tag) @inline {
     return boundary_value_tag_is_stable_materialization_candidate(tag);
 }
 
+fn bool boundary_value_tag_has_compatibility_destination(ValueTag tag) @inline {
+    switch (tag) {
+        case ERROR:
+        case CONS:
+        case PARTIAL_PRIM:
+        case ITERATOR:
+            return true;
+        default:
+            return false;
+    }
+}
+
 fn Value* stable_escape_materialize_alloc_value(Interp* interp, bool register_value_dtor = false) @inline {
     return boundary_alloc_value_in_current_escape(interp, register_value_dtor);
 }
 
 fn void* stable_escape_materialize_alloc_payload(Interp* interp, usz size) @inline {
     if (interp == null || interp.current_scope == null) return null;
-    return interp.current_scope.alloc_escape(size);
+    return interp.current_scope.alloc_escape_attributed(
+        size,
+        main::ScopeEscapeAllocSource.SCOPE_ESCAPE_ALLOC_BOUNDARY_PAYLOAD
+    );
 }
 
 fn bool stable_escape_materialize_copy_chars(Value* dst, Value* src, ValueTag tag) {
@@ -159,6 +174,17 @@ fn bool stable_escape_materialize_init_hashmap_like(Interp* interp, Value* dst, 
     return true;
 }
 
+fn bool stable_escape_materialize_init_continuation(Interp* interp, Value* dst, StableEscapePreparedNode* node) {
+    if (interp == null || dst == null || node == null || node.source == null) return false;
+    Continuation* k = node.source.cont_val;
+    if (k != null && k.owner_interp != null && k.owner_interp != interp) return false;
+    bool retained_now = continuation_retain_handle_state_for_boundary(k);
+    dst.tag = CONTINUATION;
+    dst.cont_val = k;
+    dst.continuation_boundary_owned = retained_now;
+    return true;
+}
+
 fn bool stable_escape_materialize_init_closure(Interp* interp, Value* dst, StableEscapePreparedNode* node) {
     if (interp == null || dst == null || node == null || node.source == null) return false;
     Closure* src = node.source.closure_val;
@@ -188,7 +214,9 @@ fn bool stable_escape_materialize_init_closure(Interp* interp, Value* dst, Stabl
     }
     dst.tag = CLOSURE;
     dst.closure_val = closure;
-    main::scope_register_dtor_escape(interp.current_scope, (void*)dst, &scope_dtor_closure);
+    if (!main::scope_register_dtor_escape(interp.current_scope, (void*)dst, &scope_dtor_closure)) {
+        return false;
+    }
     return true;
 }
 
@@ -207,6 +235,8 @@ fn bool stable_escape_materialize_init_shell(Interp* interp, Value* dst, StableE
             return stable_escape_materialize_init_hashmap_like(interp, dst, node);
         case CLOSURE:
             return stable_escape_materialize_init_closure(interp, dst, node);
+        case CONTINUATION:
+            return stable_escape_materialize_init_continuation(interp, dst, node);
         default:
             return stable_escape_materialize_scalar_node(dst, node);
     }

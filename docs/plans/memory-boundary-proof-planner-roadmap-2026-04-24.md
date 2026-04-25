@@ -1,7 +1,7 @@
 # Memory Boundary Proof Planner Roadmap
 
 Date: 2026-04-24
-Status: active roadmap
+Status: closed roadmap; retained as memory-boundary design reference
 
 ## Objective
 

@@ -98,6 +98,15 @@ omni_hard_cap_mb() {
   printf "%d\n" "$cap_mb"
 }
 
+omni_clamped_mem_cap_mb() {
+  local requested_cap_mb="${1:-}"
+  if [[ -n "$requested_cap_mb" ]]; then
+    OMNI_HARD_MEM_CAP_MB="$requested_cap_mb" omni_hard_cap_mb
+    return $?
+  fi
+  omni_hard_cap_mb
+}
+
 omni_detect_total_cpus() {
   if command -v nproc >/dev/null 2>&1; then
     local nproc_count

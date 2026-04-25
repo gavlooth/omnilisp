@@ -303,7 +303,9 @@ fn Value* ml_batch_norm_eval_vulkan(
     }
     result.tag = TENSOR;
     result.tensor_val = tensor;
-    main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
+    if (!scope_register_value_dtor_or_cleanup(interp.current_scope, result)) {
+        return tensor_runtime_raise(interp, "ml/batch-normalization: failed to register Vulkan result tensor destructor");
+    }
     return result;
 }
 
@@ -376,7 +378,9 @@ fn Value* ml_layer_norm_eval_vulkan(
     }
     result.tag = TENSOR;
     result.tensor_val = tensor;
-    main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
+    if (!scope_register_value_dtor_or_cleanup(interp.current_scope, result)) {
+        return tensor_runtime_raise(interp, "ml/layer-normalization: failed to register Vulkan result tensor destructor");
+    }
     return result;
 }
 

@@ -1,7 +1,7 @@
 # Compiler, Parser, and Refactor Structure
 
 Status: `green` (major split landed; remaining compiler/parser files are below the active split threshold and this lane is no longer an active work queue)
-As of: 2026-04-24
+As of: 2026-04-26
 
 ## Canonical Sources
 

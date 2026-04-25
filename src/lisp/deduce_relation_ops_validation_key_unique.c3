@@ -2,6 +2,9 @@ module lisp;
 
 import std::core::mem;
 
+// Test seam: force immediate key/unique integrity scan termination down storage-error paths.
+bool g_deduce_force_immediate_integrity_scan_end_fail = false;
+
 fn Value* deduce_assert_fact_check_key_integrity(
     Relation* rel,
     MdbTxn* txn,
@@ -40,12 +43,12 @@ fn Value* deduce_assert_fact_check_key_integrity(
     while (rc == MDB_SUCCESS) {
         usz? decoded_count = decode_tuple((char*)existing_key.mv_data, existing_key.mv_size, decoded, interp);
         if (catch err = decoded_count) {
-            rc = mdb_cursor_get(cursor, &existing_key, &existing_data, MDB_NEXT);
-            continue;
+            return deduce_raise(interp, "deduce/fact-key-integrity-scan-failed",
+                "fact!: keyed relation integrity tuple decode failed");
         }
         if (decoded_count != rel.col_count) {
-            rc = mdb_cursor_get(cursor, &existing_key, &existing_data, MDB_NEXT);
-            continue;
+            return deduce_raise(interp, "deduce/fact-key-integrity-scan-failed",
+                "fact!: keyed relation integrity tuple arity mismatch");
         }
         if (deduce_compare_value(decoded[key_pos], tuple_vals[key_pos]) != 0) {
             rc = mdb_cursor_get(cursor, &existing_key, &existing_data, MDB_NEXT);
@@ -66,6 +69,10 @@ fn Value* deduce_assert_fact_check_key_integrity(
             "fact!: keyed relation write conflicts with existing tuple",
             data
         );
+    }
+    if (g_deduce_force_immediate_integrity_scan_end_fail || rc != MDB_NOTFOUND) {
+        return deduce_raise(interp, "deduce/fact-key-integrity-scan-failed",
+            "fact!: keyed relation integrity scan failed");
     }
 
     return null;
@@ -120,12 +127,12 @@ fn Value* deduce_assert_fact_check_unique_integrity(
     while (rc == MDB_SUCCESS) {
         usz? decoded_count = decode_tuple((char*)existing_key.mv_data, existing_key.mv_size, decoded, interp);
         if (catch err = decoded_count) {
-            rc = mdb_cursor_get(cursor, &existing_key, &existing_data, MDB_NEXT);
-            continue;
+            return deduce_raise(interp, "deduce/fact-unique-integrity-scan-failed",
+                "fact!: unique relation integrity tuple decode failed");
         }
         if (decoded_count != rel.col_count) {
-            rc = mdb_cursor_get(cursor, &existing_key, &existing_data, MDB_NEXT);
-            continue;
+            return deduce_raise(interp, "deduce/fact-unique-integrity-scan-failed",
+                "fact!: unique relation integrity tuple arity mismatch");
         }
         if (!deduce_tuples_match_at_positions(decoded, tuple_vals, unique_positions)) {
             rc = mdb_cursor_get(cursor, &existing_key, &existing_data, MDB_NEXT);
@@ -148,6 +155,10 @@ fn Value* deduce_assert_fact_check_unique_integrity(
             "fact!: unique relation write conflicts with existing tuple",
             data
         );
+    }
+    if (g_deduce_force_immediate_integrity_scan_end_fail || rc != MDB_NOTFOUND) {
+        return deduce_raise(interp, "deduce/fact-unique-integrity-scan-failed",
+            "fact!: unique relation integrity scan failed");
     }
 
     return null;

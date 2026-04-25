@@ -84,6 +84,31 @@ fn bool ffi_unsigned_libffi_contract_for_tests(Interp* interp) {
         ret_u64_high == (ulong)long.max + (ulong)1;
 }
 
+fn bool ffi_buffer_return_contract_for_tests(Interp* interp) {
+    char[4] buffer = { 'o', 'm', 'n', 0 };
+    Value* returned = ffi_return_value_for(null, FfiTypeTag.FFI_TYPE_BUFFER, null,
+        0, 0, 0, 0.0f, 0.0, (void*)&buffer[0], interp);
+    if (returned == null || returned.tag != FFI_HANDLE || returned.ffi_val == null) return false;
+
+    Value* desc = foreign_runtime_describe_handle(returned, interp);
+    if (desc == null || desc.tag != HASHMAP) return false;
+
+    Value* runtime = ffi_metadata_dict_lookup(desc, interp, "runtime");
+    Value* kind = ffi_metadata_dict_lookup(desc, interp, "kind");
+    Value* name = ffi_metadata_dict_lookup(desc, interp, "name");
+    Value* caps = ffi_metadata_dict_lookup(desc, interp, "capabilities");
+    bool describe_ok = runtime != null && runtime.tag == SYMBOL && runtime.sym_val == interp.symbols.intern("native") &&
+        kind != null && kind.tag == SYMBOL && kind.sym_val == interp.symbols.intern("buffer") &&
+        name != null && name.tag == SYMBOL && name.sym_val == interp.symbols.intern("ffi-buffer") &&
+        caps != null && caps.tag == ARRAY && caps.array_val != null &&
+        caps.array_val.length == 0;
+
+    Value* released = foreign_runtime_release_handle(returned, interp);
+    bool release_rejected = released != null && released.tag == ERROR &&
+        ffi_test_error_contains(released, "handle is not releasable");
+    return describe_ok && release_rejected;
+}
+
 fn bool ffi_invalid_libffi_type_contract_for_tests() {
     return omni_ffi_call_rejects_unsupported_type_tags_for_tests() == 0 &&
         omni_ffi_closure_alloc_rejects_unsupported_type_tags_for_tests() == 0;
@@ -505,6 +530,11 @@ fn void run_advanced_ffi_system_surface_tests(Interp* interp, int* pass, int* fa
     ftxui_record_result(
         "ffi native unsigned libffi storage preserves unsigned ABI bits",
         ffi_unsigned_libffi_contract_for_tests(interp),
+        pass,
+        fail);
+    ftxui_record_result(
+        "ffi native buffer return conversion exports opaque handles",
+        ffi_buffer_return_contract_for_tests(interp),
         pass,
         fail);
     ftxui_record_result(

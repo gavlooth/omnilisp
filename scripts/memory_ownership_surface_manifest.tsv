@@ -1,0 +1,57 @@
+# kind	pattern	lane	authority	bridge	note
+call	scope_register_dtor	MEM-PROOF-002	scope-dtor-record	n/a	ScopeRegion TEMP destructor registration
+call	scope_register_dtor_escape	MEM-PROOF-002	scope-dtor-record	n/a	ScopeRegion ESCAPE destructor registration
+call	scope_retain	MEM-PROOF-002	scope-region-retain	n/a	ScopeRegion lifetime envelope retain
+call	scope_release	MEM-PROOF-002	scope-region-release	n/a	ScopeRegion lifetime envelope release
+call	make_*handle*	MEM-PROOF-009	ffi-wrapper-constructor	opaque	Async scheduler and FFI wrapper constructor family
+call	make_ffi_handle*	MEM-PROOF-010	ffi-wrapper-constructor	opaque	FFI handle constructor family
+call	ffi_handle_retain	MEM-PROOF-010	ffi-payload-retain	opaque	FFI payload retain helper
+call	ffi_handle_release	MEM-PROOF-010	ffi-payload-release	opaque	FFI payload release helper
+call	ffi_handle_release_payload	MEM-PROOF-010	ffi-payload-release	opaque	FFI payload release helper
+call	ffi_handle_release_raw_payload	MEM-PROOF-010	ffi-payload-release	opaque	FFI raw payload release helper
+call	ffi_handle_release_raw_allowed	MEM-PROOF-010	ffi-payload-policy	opaque	FFI raw release policy helper
+call	ffi_handle_can_release_payload	MEM-PROOF-010	ffi-payload-policy	opaque	FFI payload release policy helper
+call	promote_escape_ffi_handle	MEM-PROOF-010	boundary-ffi-promotion	opaque	FFI handle boundary promotion path
+call	promote_to_root	MEM-PROOF-005	boundary-root-promotion	n/a	Boundary/root promotion path
+call	*callback*register*	MEM-PROOF-009	callback-registration	keepalive	Callback registration path
+call	*callback*unregister*	MEM-PROOF-009	callback-unregistration	keepalive	Callback unregistration path
+ffi-family	atomic-ref	MEM-PROOF-010	foreign-payload-finalizer	keepalive	Atomic reference bridge keeps the foreign payload authority explicit
+ffi-family	bad-library-release	MEM-PROOF-010	test-foreign-payload	opaque	Negative metadata test handle family
+ffi-family	bench-ffi-owned	MEM-PROOF-010	test-foreign-payload	opaque	Boundary benchmark owned FFI payload
+ffi-family	deduce-db	MEM-PROOF-010	foreign-payload-finalizer	opaque	Deduce database handle family
+ffi-family	deduce-relation	MEM-PROOF-010	foreign-payload-finalizer	opaque	Deduce relation handle family
+ffi-family	deduce-txn	MEM-PROOF-010	foreign-payload-finalizer	opaque	Deduce transaction handle family
+ffi-family	ffi-buffer	MEM-PROOF-010	borrowed-foreign-payload	opaque	FFI buffer return payload without Omni graph ownership
+ffi-family	ffi-callback	MEM-PROOF-010	foreign-callback-finalizer	keepalive	FFI callback closure handle with owner scope retention
+ffi-family	ffi-struct	MEM-PROOF-010	borrowed-foreign-payload	opaque	FFI struct return payload without Omni graph ownership
+ffi-family	finwatch-feed-cache	MEM-PROOF-010	test-foreign-payload	opaque	Product benchmark FFI payload
+ffi-family	fs-handle	MEM-PROOF-009	foreign-payload-finalizer	opaque	Async filesystem handle finalizer closes fd
+ffi-family	mixed-release-test	MEM-PROOF-010	test-foreign-payload	opaque	FFI release policy regression family
+ffi-family	not-atomic-ref	MEM-PROOF-010	test-foreign-payload	opaque	Atomic-ref negative regression payload
+ffi-family	oom-ffi*	MEM-PROOF-010	test-foreign-payload	opaque	Runtime allocation fault-injection FFI family
+ffi-family	process-handle	MEM-PROOF-009	foreign-payload-finalizer	opaque	Process handle finalizer closes libuv process state
+ffi-family	signal-handle	MEM-PROOF-009	callback-finalizer	keepalive	Signal handle finalizer releases callback owner state
+ffi-family	task-handle	MEM-PROOF-009	scheduler-handle-finalizer	opaque	Scheduler task handle drops retained task slot
+ffi-family	tcp-handle	MEM-PROOF-009	foreign-payload-finalizer	opaque	TCP handle finalizer closes fd or libuv listener
+ffi-family	thread-handle	MEM-PROOF-009	scheduler-handle-finalizer	opaque	Scheduler OS thread handle drops retained thread slot
+ffi-family	tls-handle	MEM-PROOF-009	foreign-payload-finalizer	opaque	TLS handle finalizer closes SSL resources and native allocations
+ffi-family	udp-handle	MEM-PROOF-009	foreign-payload-finalizer	opaque	UDP handle finalizer closes fd
+ffi-family	ui-ftxui-session	MEM-PROOF-010	foreign-payload-finalizer	opaque	FTXUI session wrapper finalizer owns UI session payload
+ffi-family	uv-timer-callback-handle	MEM-PROOF-009	callback-finalizer	keepalive	UV timer callback handle releases retained callback owner scope
+ffi-family	__disjoint	MEM-PROOF-010	test-foreign-payload	opaque	Wrapper reuse regression disjoint payload
+ffi-family	__leaf-wrapper-fail	MEM-PROOF-010	test-foreign-payload	opaque	Wrapper reuse negative regression payload
+ffi-family	__reuse	MEM-PROOF-010	test-foreign-payload	opaque	Wrapper reuse regression reusable payload
+ffi-family	bad-opaque-release	MEM-PROOF-010	test-foreign-payload	opaque	Negative metadata opaque-release test handle family
+ffi-family	test-keepalive	MEM-PROOF-010	test-foreign-payload	keepalive	Boundary keepalive regression payload
+ffi-dynamic	src/lisp/aot_runtime_bridge_ffi_lib.c3:make_ffi_handle_ex_with_descriptor	MEM-PROOF-010	dynamic-library-handle	opaque	AOT FFI preload library handle name comes from manifest soname
+ffi-dynamic	src/lisp/eval_ffi_bound_call.c3:make_ffi_handle_ex_with_descriptor	MEM-PROOF-010	dynamic-foreign-return	opaque	Bound FFI descriptor names are declared by FFI metadata
+ffi-dynamic	src/lisp/eval_ffi_eval.c3:make_ffi_handle	MEM-PROOF-010	dynamic-library-handle	opaque	Runtime ffi/lib handle name comes from requested library path
+ffi-dynamic	src/lisp/prim_ffi_callback.c3:make_ffi_handle_ex	MEM-PROOF-010	dynamic-callback-payload	opaque	FFI callback helper may pass through a declared callback name
+ffi-dynamic	src/lisp/value_constructors.c3:make_ffi_handle	MEM-PROOF-010	ffi-constructor-facade	opaque	Constructor facade forwards caller-declared family name
+ffi-dynamic	src/lisp/value_constructors.c3:make_ffi_handle_ex	MEM-PROOF-010	ffi-constructor-facade	opaque	Constructor facade forwards caller-declared family name
+ffi-dynamic	src/lisp/value_constructors.c3:make_ffi_handle_ex_with_descriptor	MEM-PROOF-010	ffi-constructor-facade	opaque	Constructor implementation stores caller-declared family name
+tensor-finalizer	null	MEM-PROOF-008	no-device-finalizer	n/a	CPU or borrowed tensor storage has no device finalizer authority
+tensor-finalizer	tensor_cuda_device_finalizer	MEM-PROOF-008	cuda-device-finalizer	n/a	CUDA tensor payload finalizer authority
+tensor-finalizer	runtime_alloc_tensor_cuda_free_finalizer	MEM-PROOF-008	test-device-finalizer	n/a	Runtime allocation fault-injection CUDA finalizer
+tensor-finalizer	runtime_alloc_tensor_device_finalizer	MEM-PROOF-008	test-device-finalizer	n/a	Runtime allocation fault-injection tensor finalizer
+tensor-finalizer	tensor_vulkan_device_finalizer	MEM-PROOF-008	vulkan-device-finalizer	n/a	Vulkan tensor payload finalizer authority

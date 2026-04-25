@@ -184,10 +184,27 @@ This mode runs each capped command in a constrained container with:
 Default policy:
 - Docker-bound execution for gate scripts when run outside validation containers.
 - Max resource envelope of 30% host memory + 30% host CPUs per capped command (CPU and memory overrides are clamped to this maximum).
-- Host-side sliced Lisp runs are intentionally restricted by subsystem ownership:
-  - boundary/lifetime ownership changes must use `scripts/run_validation_container.sh` for the minimum required ownership lane (`memory-lifetime-smoke`) and for any broader ownership lane (`memory-lifetime-policy`, `memory-lifetime-bench`, `memory-lifetime-soak`, `memory-stress`).
-  - AST allocator ownership changes use allocator lanes, not boundary/lifetime lanes: run `allocator-validation` for non-benchmark correctness and add `allocator-bench` only when parser/compiler/macro allocation benchmarks or throughput claims changed.
-  - syntax/compiler-only work that does not touch boundary/lifetime or allocator ownership paths should stay on explicit non-memory lanes (for example `advanced`, `compiler`, `list-closure`, `json`) and does not require `memory-lifetime*` or allocator-lane coverage for contributor parity.
+- Sliced Lisp validation evidence is container-bound by default. Run slice
+  commands through `scripts/run_validation_container.sh` so the 30% memory/CPU
+  cap is active.
+- Host-side sliced Lisp runs are allowed only as local reproduction or debugger
+  setup, and must be reported as reproduction evidence rather than validation
+  closure.
+- Slice ownership remains subsystem-specific:
+  - boundary/lifetime ownership changes use the minimum required ownership lane
+    (`memory-lifetime-smoke`) and any broader ownership lane
+    (`memory-lifetime-policy`, `memory-lifetime-bench`,
+    `memory-lifetime-soak`, `memory-stress`) through
+    `scripts/run_validation_container.sh`.
+  - AST allocator ownership changes use allocator lanes, not
+    boundary/lifetime lanes: run `allocator-validation` for non-benchmark
+    correctness and add `allocator-bench` only when parser/compiler/macro
+    allocation benchmarks or throughput claims changed.
+  - syntax/compiler-only work that does not touch boundary/lifetime or
+    allocator ownership paths should stay on explicit non-memory lanes (for
+    example `advanced`, `compiler`, `list-closure`, `json`) and does not
+    require `memory-lifetime*` or allocator-lane coverage for contributor
+    parity.
 - Deprecated `OMNI_LISP_TEST_SLICE` aliases (`memory-soak`, `syntax`) are rejected by `src/lisp/tests_slice_policy.c3`; use the explicit slice names above instead.
 - Contributor rule: choose the narrowest lane that owns the changed subsystem; do not bundle memory/allocator ownership lanes into syntax/compiler-only work for convenience.
 
@@ -214,7 +231,8 @@ Slice-aware run profiles:
   - run via `scripts/run_validation_container.sh` when you intentionally want that broader integration lane.
   - do not treat it as required for syntax/compiler-only changes.
 - non-memory syntax/runtime lanes (for example `advanced`, `compiler`, `list-closure`, etc.):
-  - safe to run independently on the host when no boundary/lifetime or allocator ownership path changed.
+  - run through `scripts/run_validation_container.sh` for validation closure.
+  - host runs are acceptable for narrow reproduction/debugger setup only.
   - do not add `memory-lifetime*` or allocator lanes unless the change actually owns those subsystems.
 
 To include benchmark-adjacent lanes in global gates, opt in explicitly:

@@ -12,8 +12,9 @@ fn bool deduce_value_supported_by_tuple_codec(Value* v) @inline {
         v.tag == TIME_POINT;
 }
 
-fn Value* deduce_relation_meta_apply_persisted_state(
+fn Value* deduce_relation_meta_apply_persisted_state_in_txn(
     DeduceDb* db,
+    MdbTxn* txn,
     SymbolId relation_name,
     bool* materialized_view_io,
     SymbolId* materialized_refresh_policy_io,
@@ -24,7 +25,7 @@ fn Value* deduce_relation_meta_apply_persisted_state(
     Interp* interp
 ) {
     if (interp == null) return null;
-    if (db == null || !db.open || relation_name == (SymbolId)0) {
+    if (db == null || !db.open || txn == null || relation_name == (SymbolId)0) {
         return deduce_raise(interp, "deduce/materialized-meta-invalid-state",
             "deduce: invalid relation metadata state");
     }
@@ -45,16 +46,13 @@ fn Value* deduce_relation_meta_apply_persisted_state(
             "deduce: forced materialized relation metadata read failure");
     }
 
-    MdbTxn* txn = null;
-    int rc = mdb_txn_begin(db.env, null, MDB_RDONLY, &txn);
-    if (rc != MDB_SUCCESS || txn == null) {
-        return deduce_raise(interp, "deduce/materialized-meta-txn-open-failed",
-            "deduce: materialized relation metadata txn open failed");
-    }
-    defer mdb_txn_abort(txn);
-
     MdbDbi meta_dbi = 0;
-    if (!deduce_open_relation_meta_dbi(db, txn, false, &meta_dbi)) return null;
+    int meta_open_rc = deduce_open_relation_meta_dbi_rc(db, txn, false, &meta_dbi);
+    if (meta_open_rc == MDB_NOTFOUND) return null;
+    if (meta_open_rc != MDB_SUCCESS) {
+        return deduce_raise(interp, "deduce/materialized-meta-open-failed",
+            "deduce: materialized relation metadata dbi open failed");
+    }
 
     char[] relation_name_str = interp.symbols.get_name(relation_name);
     MdbVal key = {
@@ -62,7 +60,7 @@ fn Value* deduce_relation_meta_apply_persisted_state(
         .mv_data = relation_name_str.ptr
     };
     MdbVal data = {};
-    rc = mdb_get(txn, meta_dbi, &key, &data);
+    int rc = mdb_get(txn, meta_dbi, &key, &data);
     if (rc == MDB_NOTFOUND) return null;
     if (rc != MDB_SUCCESS || data.mv_data == null || data.mv_size < DeducePersistedRelationMetaV1.sizeof) {
         return deduce_raise(interp, "deduce/materialized-meta-read-failed",
@@ -76,8 +74,20 @@ fn Value* deduce_relation_meta_apply_persisted_state(
             return deduce_raise(interp, "deduce/materialized-meta-invalid-state",
                 "deduce: persisted relation metadata is not materialized");
         }
+        char policy_flags = meta_v1.flags & (
+            DEDUCE_PERSISTED_RELATION_META_FLAG_MANUAL_REFRESH |
+            DEDUCE_PERSISTED_RELATION_META_FLAG_ON_READ_REFRESH
+        );
+        if (policy_flags == (
+                DEDUCE_PERSISTED_RELATION_META_FLAG_MANUAL_REFRESH |
+                DEDUCE_PERSISTED_RELATION_META_FLAG_ON_READ_REFRESH
+            )) {
+            return deduce_raise(interp, "deduce/materialized-meta-invalid-state",
+                "deduce: persisted relation metadata contains invalid refresh policy");
+        }
+
         *materialized_view_io = true;
-        if ((meta_v1.flags & DEDUCE_PERSISTED_RELATION_META_FLAG_MANUAL_REFRESH) != 0) {
+        if (policy_flags == 0 || (policy_flags & DEDUCE_PERSISTED_RELATION_META_FLAG_MANUAL_REFRESH) != 0) {
             SymbolId policy = interp.symbols.intern("manual");
             if (policy == INVALID_SYMBOL_ID) {
                 return deduce_raise(interp, "deduce/materialized-meta-invalid-state",
@@ -105,8 +115,21 @@ fn Value* deduce_relation_meta_apply_persisted_state(
             "deduce: persisted relation metadata is not materialized");
     }
 
+    char policy_flags = meta_v2.flags & (
+        DEDUCE_PERSISTED_RELATION_META_FLAG_MANUAL_REFRESH |
+        DEDUCE_PERSISTED_RELATION_META_FLAG_ON_READ_REFRESH
+    );
+    if (policy_flags == 0 ||
+        policy_flags == (
+            DEDUCE_PERSISTED_RELATION_META_FLAG_MANUAL_REFRESH |
+            DEDUCE_PERSISTED_RELATION_META_FLAG_ON_READ_REFRESH
+        )) {
+        return deduce_raise(interp, "deduce/materialized-meta-invalid-state",
+            "deduce: persisted relation metadata contains invalid refresh policy");
+    }
+
     *materialized_view_io = true;
-    if ((meta_v2.flags & DEDUCE_PERSISTED_RELATION_META_FLAG_MANUAL_REFRESH) != 0) {
+    if ((policy_flags & DEDUCE_PERSISTED_RELATION_META_FLAG_MANUAL_REFRESH) != 0) {
         SymbolId policy = interp.symbols.intern("manual");
         if (policy == INVALID_SYMBOL_ID) {
             return deduce_raise(interp, "deduce/materialized-meta-invalid-state",
@@ -131,6 +154,45 @@ fn Value* deduce_relation_meta_apply_persisted_state(
             "deduce: persisted relation metadata contains invalid stale reason");
     }
     return null;
+}
+
+fn Value* deduce_relation_meta_apply_persisted_state(
+    DeduceDb* db,
+    SymbolId relation_name,
+    bool* materialized_view_io,
+    SymbolId* materialized_refresh_policy_io,
+    ulong* materialized_refresh_count_io,
+    ulong* materialized_last_refresh_mutation_epoch_io,
+    ulong* materialized_last_stale_mutation_epoch_io,
+    DeduceMaterializedStaleReason* materialized_last_stale_reason_io,
+    Interp* interp
+) {
+    if (interp == null) return null;
+    if (db == null || !db.open || relation_name == (SymbolId)0) {
+        return deduce_raise(interp, "deduce/materialized-meta-invalid-state",
+            "deduce: invalid relation metadata state");
+    }
+
+    MdbTxn* txn = null;
+    int rc = mdb_txn_begin(db.env, null, MDB_RDONLY, &txn);
+    if (rc != MDB_SUCCESS || txn == null) {
+        return deduce_raise(interp, "deduce/materialized-meta-txn-open-failed",
+            "deduce: materialized relation metadata txn open failed");
+    }
+    defer mdb_txn_abort(txn);
+
+    return deduce_relation_meta_apply_persisted_state_in_txn(
+        db,
+        txn,
+        relation_name,
+        materialized_view_io,
+        materialized_refresh_policy_io,
+        materialized_refresh_count_io,
+        materialized_last_refresh_mutation_epoch_io,
+        materialized_last_stale_mutation_epoch_io,
+        materialized_last_stale_reason_io,
+        interp
+    );
 }
 
 fn Value* deduce_relation_meta_persist_state(
@@ -195,7 +257,10 @@ fn Value* deduce_relation_meta_persist_state(
             .materialized_last_stale_mutation_epoch = materialized_last_stale_mutation_epoch,
         };
         if (materialized_view) meta.flags |= DEDUCE_PERSISTED_RELATION_META_FLAG_MATERIALIZED;
-        if (materialized_refresh_policy != (SymbolId)0) {
+        if (g_deduce_force_materialized_meta_invalid_refresh_policy) {
+            meta.flags |= DEDUCE_PERSISTED_RELATION_META_FLAG_MANUAL_REFRESH |
+                DEDUCE_PERSISTED_RELATION_META_FLAG_ON_READ_REFRESH;
+        } else if (materialized_refresh_policy != (SymbolId)0) {
             char[] policy_name = interp.symbols.get_name(materialized_refresh_policy);
             if (deduce_name_equals(policy_name, "manual")) {
                 meta.flags |= DEDUCE_PERSISTED_RELATION_META_FLAG_MANUAL_REFRESH;

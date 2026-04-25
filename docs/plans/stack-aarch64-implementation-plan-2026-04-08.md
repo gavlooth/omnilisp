@@ -1,5 +1,7 @@
 # STACK-AARCH64-001 Implementation Plan (2026-04-08)
 
+Status: historical implementation plan; not a live TODO lane
+
 ## Scope
 - TODO lane: `STACK-AARCH64-001`
 - Objective: implement a real `aarch64` stack-switch backend behind the existing backend contract seam without widening runtime call-site branching.

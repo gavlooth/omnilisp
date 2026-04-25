@@ -85,6 +85,24 @@ fn void run_atomic_core_tests(Interp* interp, int* pass, int* fail) {
         "(atomic 0)", FFI_HANDLE, pass, fail);
 
     {
+        EvalResult r = run("(atomic 1)", interp);
+        bool ok = !r.error.has_error &&
+                  r.value != null &&
+                  r.value.tag == FFI_HANDLE &&
+                  r.value.ffi_val != null &&
+                  r.value.ffi_val.boundary_mode == FFI_BRIDGE_BOUNDARY_KEEPALIVE &&
+                  ffi_bridge_boundary_value_can_share_across_boundary(r.value) &&
+                  !ffi_bridge_boundary_value_requires_native_traversal(r.value);
+        if (ok) {
+            emit_pass_literal("[PASS] atomic declares FFI keepalive boundary mode");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] atomic declares FFI keepalive boundary mode");
+            (*fail)++;
+        }
+    }
+
+    {
         setup(interp, "(define a (atomic 42))");
         EvalResult r = run("(atomic-read a)", interp);
         if (!r.error.has_error && is_int(r.value) && r.value.int_val == 42) {

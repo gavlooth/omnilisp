@@ -77,6 +77,12 @@ fn IoReadFileResult io_async_read_file_result(char[] path, Interp* interp) {
         .value = null
     };
 
+    if (c_api_string_contains_nul(path)) {
+        result.status = IO_READ_FILE_RUNTIME_ERROR;
+        result.value = io_file_raise(interp, "io/read-file-invalid-path", "read-file: path contains embedded NUL byte");
+        return result;
+    }
+
     OffloadWork work = {};
     work.op = OFFLOAD_READ_FILE;
     work.shared = scheduler_domain_publish_shared(scheduler_current_domain(), path);
@@ -87,8 +93,11 @@ fn IoReadFileResult io_async_read_file_result(char[] path, Interp* interp) {
 
     Value* out = io_run_fiber_offload(&work, interp);
     if (out != null && out.tag == ERROR) {
-        result.status = IO_READ_FILE_RUNTIME_ERROR;
-        result.value = out;
+        interp.flags.raise_pending = false;
+        interp.raise_payload = null;
+        interp.raise_msg_len = 0;
+        interp.raise_msg[0] = 0;
+        result.status = IO_READ_FILE_FAILED;
         return result;
     }
     if (out == null || is_nil(out) || !is_string(out)) {
@@ -118,6 +127,7 @@ fn Value* io_async_read_file_value(char[] path, Interp* interp) {
 fn bool io_uv_read_all_file(char[] path, char** out_buf, usz* out_len) {
     *out_buf = null;
     *out_len = 0;
+    if (c_api_string_contains_nul(path)) return false;
 
     int fd = omni_uv_fs_open((ZString)path.ptr, 0, 0);
     if (fd < 0) return false;

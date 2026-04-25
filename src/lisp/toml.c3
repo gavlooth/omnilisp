@@ -41,6 +41,12 @@ struct TomlFfiDep {
     char[16] raw_syntax;               // "legacy" (default) or "grouped"
     bool raw_syntax_seen;              // true after first raw-syntax key
     bool raw_syntax_invalid;           // true when raw-syntax parse must fail closed
+    char[16] mode;                     // "abi" (default) or "api"
+    bool mode_seen;                    // true after first mode key
+    bool mode_invalid;                 // true when mode parse must fail closed
+    char[32] generator;                // "clang" (default) or "cppinterop"
+    bool generator_seen;               // true after first generator key
+    bool generator_invalid;            // true when generator parse must fail closed
     char[TOML_MAX_STR][TOML_MAX_HEADERS] headers;
     usz header_count;
     bool headers_seen;                 // true after first headers key

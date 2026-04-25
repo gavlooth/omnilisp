@@ -3,8 +3,16 @@
 
 src/stack_engine.c3
 src/lisp/eval_boundary_api.c3
+src/lisp/value_boundary_ownership_policy.c3
+src/lisp/eval_boundary_graph_audit_result.c3
 src/lisp/eval_promotion_copy.c3
 src/lisp/eval_promotion_escape.c3
+src/lisp/eval_boundary_commit_destination.c3
+src/lisp/stable_escape_store.c3
 src/lisp/eval_env_copy.c3
 src/lisp/jit_eval_scopes.c3
 src/lisp/eval_run_pipeline.c3
+scripts/boundary_value_policy_manifest.tsv
+scripts/check_boundary_value_policy_coverage.py
+scripts/check_memory_ownership_inventory.py
+scripts/memory_ownership_surface_manifest.tsv

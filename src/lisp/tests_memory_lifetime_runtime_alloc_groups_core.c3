@@ -469,6 +469,78 @@ fn void run_memory_lifetime_runtime_alloc_groups_core_tests(Interp* interp, int*
     }
 
     {
+        usz values_before = runtime_alloc_active_value_dtor_count(interp.current_scope);
+        int* payload = (int*)mem::malloc(int.sizeof);
+        bool payload_ok = payload != null;
+        if (payload_ok) {
+            *payload = 0x7BEEF;
+        }
+
+        g_runtime_alloc_ffi_finalizer_calls = 0;
+        bool saved_dtor_oom = main::g_scope_force_dtor_alloc_oom;
+        main::g_scope_force_dtor_alloc_oom = true;
+        Value* failed = payload_ok
+            ? make_ffi_handle_ex(interp, payload, "oom-ffi-finalizer-dtor", &runtime_alloc_ffi_finalizer, false, false)
+            : null;
+        main::g_scope_force_dtor_alloc_oom = saved_dtor_oom;
+        usz values_after = runtime_alloc_active_value_dtor_count(interp.current_scope);
+
+        bool ok = payload_ok &&
+            runtime_alloc_error_matches(failed, "runtime/out-of-memory") &&
+            g_runtime_alloc_ffi_finalizer_calls == 1 &&
+            *payload == 0 &&
+            values_after == values_before;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: ffi finalizer-owned payload release survives dtor registration OOM");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: ffi finalizer-owned payload release survives dtor registration OOM (payload_ok=%s result=%s calls=%d payload=%d before_dtors=%d after_dtors=%d)",
+                payload_ok ? "yes" : "no",
+                runtime_alloc_error_text(failed),
+                g_runtime_alloc_ffi_finalizer_calls,
+                payload_ok ? *payload : -1,
+                (long)values_before,
+                (long)values_after);
+            (*fail)++;
+        }
+
+        if (payload_ok) {
+            mem::free(payload);
+        }
+    }
+
+    {
+        usz values_before = runtime_alloc_active_value_dtor_count(interp.current_scope);
+        void* payload = mem::malloc(8);
+        bool payload_ok = payload != null;
+
+        bool saved_dtor_oom = main::g_scope_force_dtor_alloc_oom;
+        main::g_scope_force_dtor_alloc_oom = true;
+        Value* failed = payload_ok
+            ? make_ffi_handle_ex(interp, payload, "oom-ffi-free-only-dtor", null, true, false)
+            : null;
+        main::g_scope_force_dtor_alloc_oom = saved_dtor_oom;
+        usz values_after = runtime_alloc_active_value_dtor_count(interp.current_scope);
+
+        bool ok = payload_ok &&
+            runtime_alloc_error_matches(failed, "runtime/out-of-memory") &&
+            values_after == values_before;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: ffi free-owned payload release survives dtor registration OOM");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: ffi free-owned payload release survives dtor registration OOM (payload_ok=%s result=%s before_dtors=%d after_dtors=%d)",
+                payload_ok ? "yes" : "no",
+                runtime_alloc_error_text(failed),
+                (long)values_before,
+                (long)values_after);
+            (*fail)++;
+        }
+    }
+
+    {
         EvalResult cb_eval = run("(lambda (sig) nil)", interp);
         bool setup_ok = !cb_eval.error.has_error && cb_eval.value != null;
 

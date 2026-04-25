@@ -4,8 +4,8 @@ Source: `docs/areas/memory-runtime.md`
 
 # Memory and Runtime
 
-Status: `green` (boundary hardening, nested fail-closed wrapper promotion, bounded runtime/JIT gates, signal-handle rollback cleanup, lazy Tensor cleanup, structured-error payload cleanup, checked-hashmap rollback cleanup, and transactional destination materialization are all currently validated)
-As of: 2026-04-25
+Status: `green` (boundary hardening, nested fail-closed wrapper promotion, bounded runtime/JIT gates, signal-handle rollback cleanup, lazy Tensor cleanup, structured-error payload cleanup, checked-hashmap rollback cleanup, transactional destination materialization, memory workload coverage, and scope allocator sequence telemetry are all currently validated)
+As of: 2026-04-27
 
 ## Canonical Sources
 
@@ -30,6 +30,33 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
 - The stable-escape graph work is implemented through interpreter-owned stable
   store metadata, prepared publication, destination materialization, and
   bounded memory-lifetime smoke coverage.
+- The memory-model improvement lane is closed. `MEM-MODEL-IMPROVE-006` is
+  closed with product, closure-iterator, tensor-metadata, and nested-module
+  return workloads. `MEM-MODEL-IMPROVE-002` added allocator histograms,
+  per-scope sequence evidence, request/unused buckets, and source/site
+  attribution; it closed without a chunk-policy change because the remaining
+  ESCAPE no-follow-up bucket is synthetic direct benchmark traffic rather than
+  runtime boundary/promotion pressure.
+- The memory model proof matrix is active. `MEM-PROOF-001` is closed with a
+  manifest-backed ownership inventory guard covering memory-sensitive call
+  sites, FFI wrapper families, dynamic FFI handle call sites, and tensor device
+  finalizer authorities. `MEM-PROOF-002` is closed with ScopeRegion unit,
+  memory-smoke, and Valgrind evidence for core TEMP/ESCAPE ownership.
+  `MEM-PROOF-003` is closed with checked heap-backed constructor coverage,
+  including FFI handle destructor-registration rollback. `MEM-PROOF-004` is
+  closed with checked closure-copy destructor-registration rollback, forced
+  env/copy-parent closure dtor OOM regressions, rejected-transplant
+  compatibility retry for closure-backed iterator return boundaries, and
+  bounded memory/JIT/Valgrind evidence. `MEM-PROOF-005` is closed with
+  boundary-route selected outcomes and Valgrind evidence. `MEM-PROOF-006` is
+  closed with stable escape/prepared graph/transplant proof, stale-handle
+  invalidation, mutation-drift invalidation, cyclic/shared graph coverage,
+  refcount rejection, benchmark evidence, and Valgrind evidence.
+  `MEM-PROOF-007` is closed with collection copy/materialization, rollback,
+  known-capacity constructor OOM, benchmark, and Valgrind evidence.
+  `MEM-PROOF-008` is closed with native tensor/device proof and leak
+  validation. `MEM-PROOF-010` is closed with native wrapper-family metadata
+  coverage and isolated Valgrind on the foreign-handle metadata group.
 - The active next architecture roadmap is
   `docs/plans/memory-boundary-proof-planner-roadmap-2026-04-24.md`: centralize
   route choice in a proof-driven `BoundaryPlanner`, then expand stable graph
@@ -509,3 +536,12 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
   - sampled by `OMNI_BOUNDARY_GRAPH_AUDIT_RATE` (default 1),
   - bounded by `OMNI_BOUNDARY_GRAPH_AUDIT_MAX_ROOTS` (default unlimited),
   - and reported through boundary telemetry counters (`graph_audit_*`) when verbose diagnostics are enabled.
+- Boundary commit routes now require explicit selected-route evidence:
+  - direct closure escape promotion checks `scope_dtor_closure` registration and
+    rolls back retained `env_scope` state on failure,
+  - compatibility/direct/mixed/stable-materialization routes have positive and
+    fail-closed regressions, including direct-promotion disallowance and forced
+    no-splice stable materialization,
+  - counters-backed `memory-lifetime-bench`, bounded `memory-lifetime-smoke`,
+    policy guards, and Valgrind are the current closure evidence for
+    `MEM-PROOF-005`.

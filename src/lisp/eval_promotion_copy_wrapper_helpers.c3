@@ -203,7 +203,11 @@ fn Value* copy_closure_to_parent(
         boundary_cleanup_materialized_value(v, result, interp.current_scope);
         return null;
     }
-    main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_closure);
+    if (!main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_closure)) {
+        if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_DTOR_REGISTRATION;
+        boundary_cleanup_materialized_value(v, result, interp.current_scope);
+        return null;
+    }
     return result;
 }
 
@@ -238,6 +242,7 @@ fn Value* copy_instance_to_parent(Value* v, Interp* interp) {
 }
 
 fn Value* copy_ffi_handle_to_parent(Value* v, Interp* interp) {
+    if (!ffi_bridge_boundary_value_can_share_across_boundary(v)) return null;
     if (!needs_wrapper_copy(v, interp)) return v;
     Value* result = g_boundary_force_copy_ffi_handle_wrapper_alloc_fail
         ? null

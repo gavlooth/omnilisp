@@ -25,6 +25,8 @@ fn void scope_destroy(ScopeRegion* scope) {
     g_scope_memory_telemetry_stats.scope_destroy_count++;
     scope_guard_owner(scope, "scope_destroy");
     scope_assert_escape_tail_consistency(scope);
+    scope_telemetry_note_temp_slow_sequence_close(scope);
+    scope_telemetry_note_escape_slow_sequence_close(scope);
     scope_telemetry_note_scope_unused_at_destroy(scope);
     scope.refcount = uint.max;
     // 1. Run destructors (reverse order — LIFO) for both lanes
@@ -69,6 +71,8 @@ fn void scope_destroy(ScopeRegion* scope) {
     scope.escape_dtors = null;
     scope.escape_dtors_tail = null;
     scope.fiber_temp_eligible = false;
+    scope_telemetry_reset_temp_sequence_state(scope);
+    scope_telemetry_reset_escape_sequence_state(scope);
     scope_assert_escape_tail_consistency(scope);
 
     // 5. Recycle ScopeRegion struct (increment generation, add to freelist)

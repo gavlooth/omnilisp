@@ -52,7 +52,7 @@ fn usz Compiler.compile_define_rhs_with_typed_bridge(Compiler* self, Expr* defin
 fn usz Compiler.compile_define_flat(Compiler* self, Expr* expr) {
     usz def_val_r = self.compile_define_rhs_with_typed_bridge(expr);
     self.emit_indent();
-    self.emit_symbol_name(expr.define.name);
+    self.emit_symbol_assignment_target(expr.define.name);
     self.emit(" = ");
     self.emit_temp_ref(def_val_r);
     self.emit(";\n");

@@ -65,6 +65,21 @@ fn Value* jit_reset_value(Interp* interp, Value* body) {
 
     if (state.shifted) {
         Value* shift_result = jit_apply_value(state.shift_body, state.shift_k, interp);
+        if (shift_result != null && shift_result.tag == ERROR) {
+            if (state.shift_k != null && state.shift_k.tag == CONTINUATION) {
+                interp_discard_lisp_continuation(interp, state.shift_k.cont_val);
+            }
+            main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
+            return shift_result;
+        }
+        if (state.shift_k != null &&
+            state.shift_k.tag == CONTINUATION &&
+            continuation_result_references_target(shift_result, state.shift_k.cont_val)) {
+            return shift_result;
+        }
+        if (state.shift_k != null && state.shift_k.tag == CONTINUATION) {
+            interp_discard_lisp_continuation(interp, state.shift_k.cont_val);
+        }
         main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
         return shift_result;
     }

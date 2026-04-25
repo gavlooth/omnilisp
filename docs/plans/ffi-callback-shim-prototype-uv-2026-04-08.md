@@ -1,6 +1,6 @@
 # Shim-Only Callback Prototype Plan (`uv`) (2026-04-08)
 
-Status: implementation plan (not shipped)
+Status: historical prototype plan; not a live TODO lane
 
 ## Scope
 

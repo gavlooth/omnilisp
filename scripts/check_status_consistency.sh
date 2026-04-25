@@ -128,7 +128,7 @@ validation_status="$(extract_status "$validation_status_doc")"
 
 [[ "$memory_status" == "green" ]] || fail "$memory_runtime_doc must be green on the current fully validated runtime baseline (got $memory_status)"
 [[ "$types_status" == "green" ]] || fail "$types_dispatch_doc must be green once the e2e baseline cleanup is closed (got $types_status)"
-[[ "$ffi_status" == "yellow" ]] || fail "$ffi_foreign_runtime_doc must remain yellow until the non-C adapter/backend lanes are implemented (got $ffi_status)"
+[[ "$ffi_status" == "green" ]] || fail "$ffi_foreign_runtime_doc must be green after retained FFI interop lanes are implemented and Python/Julia plus polyglot/plugin are out of scope (got $ffi_status)"
 [[ "$validation_status" == "green" ]] || fail "$validation_status_doc must be green while no validation residual lane is open (got $validation_status)"
 
 validate_index_line_counts() {

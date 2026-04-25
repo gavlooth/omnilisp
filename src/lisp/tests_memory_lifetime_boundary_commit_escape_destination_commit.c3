@@ -39,6 +39,9 @@ fn void run_memory_lifetime_boundary_commit_escape_destination_commit_tests(Inte
             bool ok = !committed.releasing_scope_spliced &&
                       !committed.reused_in_target_chain &&
                       committed.outcome == BOUNDARY_COMMIT_MIXED_DESTINATION_PROMOTED &&
+                      committed.planned_route == BOUNDARY_PLAN_ROUTE_MIXED_DESTINATION &&
+                      committed.selected_route == BOUNDARY_PLAN_ROUTE_MIXED_DESTINATION &&
+                      committed.selected_reason == BOUNDARY_PLAN_REASON_DESTINATION_COMMITTED_COMPATIBILITY &&
                       committed.value != src &&
                       committed.value != null &&
                       committed.value.tag == INT &&
@@ -138,6 +141,62 @@ fn void run_memory_lifetime_boundary_commit_escape_destination_commit_tests(Inte
                     outer_ctx.aborted ? "yes" : "no",
                     interp.active_promotion_ctx == null ? "no" : (interp.active_promotion_ctx == &outer_ctx ? "yes" : "other"),
                     promotion.value == src ? "yes" : "no"
+                );
+                (*fail)++;
+            }
+        }
+    }
+
+    // Invariant: compatibility routes do not silently direct-promote scalar
+    // values unless the route explicitly allows that fallback.
+    {
+        main::ScopeRegion* root_scope = interp.current_scope;
+        main::ScopeRegion* target_scope = main::scope_create(root_scope);
+        main::ScopeRegion* releasing_scope = target_scope == null ? null : main::scope_create(target_scope);
+        if (target_scope == null || releasing_scope == null) {
+            if (releasing_scope != null) main::scope_release(releasing_scope);
+            if (target_scope != null) main::scope_release(target_scope);
+            io::printn("[FAIL] lifetime: boundary_commit_escape direct promotion disallowed");
+            (*fail)++;
+        } else {
+            interp.current_scope = releasing_scope;
+            Value* src = make_int(interp, 1702);
+
+            PromotionContext ctx = {};
+            boundary_promotion_context_begin(interp, &ctx, PROMOTION_CTX_BUDGET_RETURN);
+            BoundaryCommitDestinationPromotion promotion =
+                boundary_commit_try_destination_promotion(
+                    src,
+                    interp,
+                    target_scope,
+                    releasing_scope,
+                    &ctx,
+                    BOUNDARY_PLAN_ROUTE_COMPATIBILITY_DESTINATION,
+                    false
+                );
+            boundary_promotion_context_end(interp, &ctx);
+
+            bool ok = !promotion.committed &&
+                      promotion.value == src &&
+                      promotion.fault_code == BOUNDARY_COMMIT_FAULT_NONE &&
+                      !ctx.aborted &&
+                      !main::is_in_scope((void*)src, target_scope);
+
+            interp.current_scope = root_scope;
+            main::scope_release(releasing_scope);
+            main::scope_release(target_scope);
+
+            if (ok) {
+                emit_pass_literal("[PASS] lifetime: boundary_commit_escape direct promotion disallowed");
+                (*pass)++;
+            } else {
+                io::printfn(
+                    "[FAIL] lifetime: boundary_commit_escape direct promotion disallowed (committed=%s fault=%s same=%s aborted=%s in_target=%s)",
+                    promotion.committed ? "yes" : "no",
+                    (ZString)boundary_commit_fault_name(promotion.fault_code),
+                    promotion.value == src ? "yes" : "no",
+                    ctx.aborted ? "yes" : "no",
+                    main::is_in_scope((void*)src, target_scope) ? "yes" : "no"
                 );
                 (*fail)++;
             }

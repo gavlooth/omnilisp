@@ -839,6 +839,7 @@ fn void run_memory_lifetime_boundary_transition_regression_tests(Interp* interp,
             setup_ok = prepared_root != null && prepared_root.tag == CONS;
             if (setup_ok) setup_ok = stable_escape_store_prepare_value(interp, prepared_root, &handle);
         }
+        usz root_index = setup_ok ? stable_escape_store_prepared_root_index(interp, &handle) : STABLE_ESCAPE_PREPARED_INVALID_INDEX;
         bool before_live = setup_ok && stable_escape_store_handle_is_alive(interp, &handle);
         if (setup_ok) {
             prepared_root.cons_val.car = make_int(interp, 6061);
@@ -849,6 +850,8 @@ fn void run_memory_lifetime_boundary_transition_regression_tests(Interp* interp,
                                     stale_passport_ok &&
                                     stale_passport.invalidation_reason == STABLE_GRAPH_PASSPORT_PREPARED_GRAPH_STALE &&
                                     !stable_escape_store_handle_is_alive(interp, &handle) &&
+                                    stable_escape_store_prepared_node_tag(interp, &handle, root_index) == VOID &&
+                                    stable_escape_store_prepared_node_child(interp, &handle, root_index, 0) == STABLE_ESCAPE_PREPARED_INVALID_INDEX &&
                                     stable_escape_store_resolve_value(interp, &handle) == null &&
                                     stable_escape_store_prepared_node_count(interp, &handle) == 0;
         bool retire_ok = setup_ok && stable_escape_store_retire(interp, &handle);

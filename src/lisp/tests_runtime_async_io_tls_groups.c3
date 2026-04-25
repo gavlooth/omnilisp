@@ -141,6 +141,48 @@ fn void run_async_tests_io_tls(Interp* interp, int* pass, int* fail) {
     test_str_val(interp, "read-lines invalid args payload code",
         "(handle (read-lines 42) (raise msg (String (ref msg 'code))))",
         "runtime/effect-arg-mismatch", pass, fail);
+
+    {
+        Value* bad_path = dns_test_nul_string(interp, "/tmp/omni-async-file-nul-", "suffix");
+        Value* content = make_string(interp, "x");
+        Value*[1] one_bad = { bad_path };
+        Value*[2] write_args = { bad_path, content };
+        bool ok = bad_path != null &&
+            bad_path.tag == STRING &&
+            content != null &&
+            content.tag == STRING &&
+            dns_test_error_contains(prim_read_file(one_bad[..], null, interp), "path contains embedded NUL byte") &&
+            dns_test_error_contains(prim_write_file(write_args[..], null, interp), "path contains embedded NUL byte") &&
+            dns_test_error_contains(prim_file_exists(one_bad[..], null, interp), "path contains embedded NUL byte") &&
+            dns_test_error_contains(prim_read_lines(one_bad[..], null, interp), "path contains embedded NUL byte");
+        if (ok) {
+            emit_pass_literal("[PASS] async file primitives reject embedded NUL paths before runtime entry");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] async file primitives reject embedded NUL paths before runtime entry");
+            (*fail)++;
+        }
+
+        OffloadCompletion completion = {};
+        SharedHandle* shared = bad_path != null && bad_path.tag == STRING
+            ? scheduler_domain_publish_shared(scheduler_current_domain(), bad_path.str_chars[:bad_path.str_len])
+            : null;
+        bool worker_ok = shared != null && !scheduler_offload_read_file(shared, &completion);
+        scheduler_release_shared(shared);
+        bool worker_failed_closed = worker_ok &&
+            completion.kind == OFFLOAD_RES_ERROR &&
+            completion.error_msg != null &&
+            str_contains(completion.error_msg[:completion.error_len], "read failed");
+        if (completion.error_msg != null) mem::free(completion.error_msg);
+        if (worker_failed_closed) {
+            emit_pass_literal("[PASS] async read-file offload worker fails closed on embedded NUL path");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] async read-file offload worker fails closed on embedded NUL path");
+            (*fail)++;
+        }
+    }
+
     test_tag(interp, "write-file returns Void on success",
         "(block "
         "  (define p (string-append \"/tmp/omni-write-file-void-\" (String (time-ms)) \".txt\")) "

@@ -11,6 +11,10 @@ fn Value* prim_read_file(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_string(args[0])) {
         return io_file_raise(interp, "io/read-file-expected-path", "read-file: expected (read-file path)");
     }
+    char[] path = args[0].str_chars[:args[0].str_len];
+    if (c_api_string_contains_nul(path)) {
+        return io_file_raise(interp, "io/read-file-invalid-path", "read-file: path contains embedded NUL byte");
+    }
 
     Value* runtime_err = io_file_require_async_runtime(
         interp,
@@ -20,7 +24,6 @@ fn Value* prim_read_file(Value*[] args, Env* env, Interp* interp) {
     );
     if (runtime_err != null) return runtime_err;
 
-    char[] path = args[0].str_chars[:args[0].str_len];
     return io_async_read_file_value(path, interp);
 }
 
@@ -34,6 +37,10 @@ fn Value* prim_write_file(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2 || !is_string(args[0]) || !is_string(args[1])) {
         return io_file_raise(interp, "io/write-file-expected-path-content", "write-file: expected (write-file path content)");
     }
+    char[] path = args[0].str_chars[:args[0].str_len];
+    if (c_api_string_contains_nul(path)) {
+        return io_file_raise(interp, "io/write-file-invalid-path", "write-file: path contains embedded NUL byte");
+    }
 
     Value* runtime_err = io_file_require_async_runtime(
         interp,
@@ -43,7 +50,6 @@ fn Value* prim_write_file(Value*[] args, Env* env, Interp* interp) {
     );
     if (runtime_err != null) return runtime_err;
 
-    char[] path = args[0].str_chars[:args[0].str_len];
     char[] content = args[1].str_chars[:args[1].str_len];
 
     if (path.len > usz.max - (usz)1) {
@@ -90,6 +96,10 @@ fn Value* prim_file_exists(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_string(args[0])) {
         return io_file_raise(interp, "io/file-exists?-expected-path", "file-exists?: expected (file-exists? path)");
     }
+    char[] path = args[0].str_chars[:args[0].str_len];
+    if (c_api_string_contains_nul(path)) {
+        return io_file_raise(interp, "io/file-exists?-invalid-path", "file-exists?: path contains embedded NUL byte");
+    }
 
     Value* runtime_err = io_file_require_async_runtime(
         interp,
@@ -98,8 +108,6 @@ fn Value* prim_file_exists(Value*[] args, Env* env, Interp* interp) {
         "io/file-exists?-libuv-unavailable"
     );
     if (runtime_err != null) return runtime_err;
-
-    char[] path = args[0].str_chars[:args[0].str_len];
 
     OffloadWork work = {};
     work.op = OFFLOAD_FILE_EXISTS;
@@ -124,6 +132,10 @@ fn Value* prim_read_lines(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_string(args[0])) {
         return io_file_raise(interp, "io/read-lines-expected-path", "read-lines: expected (read-lines path)");
     }
+    char[] path = args[0].str_chars[:args[0].str_len];
+    if (c_api_string_contains_nul(path)) {
+        return io_file_raise(interp, "io/read-lines-invalid-path", "read-lines: path contains embedded NUL byte");
+    }
 
     Value* runtime_err = io_file_require_async_runtime(
         interp,
@@ -133,7 +145,6 @@ fn Value* prim_read_lines(Value*[] args, Env* env, Interp* interp) {
     );
     if (runtime_err != null) return runtime_err;
 
-    char[] path = args[0].str_chars[:args[0].str_len];
     IoReadFileResult read_result = io_async_read_file_result(path, interp);
     if (read_result.status == IO_READ_FILE_OUT_OF_MEMORY) {
         return io_file_raise(interp, "io/read-lines-out-of-memory", "read-lines: out of memory");

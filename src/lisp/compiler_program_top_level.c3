@@ -73,6 +73,43 @@ fn void Compiler.emit_top_level_exprs(Compiler* self, List{Expr*}* exprs) {
 
         if ((*exprs)[i].tag == E_IMPORT) {
             ExprImport imp = (*exprs)[i].import_expr;
+            CompiledModule* inline_mod = imp.has_path ? null : self.find_inline_compiled_module(imp.name);
+            if (inline_mod != null) {
+                if (imp.import_all) {
+                    for (usz ii = 0; ii < inline_mod.export_count; ii++) {
+                        SymbolId backing = INVALID_SYMBOL_ID;
+                        if (!self.find_inline_module_export_backing(imp.name, inline_mod.exports[ii], &backing)) {
+                            self.set_compile_error("compiler: inline import all could not resolve export backing");
+                            break;
+                        }
+                        self.emit_indent();
+                        self.emit_symbol_name(inline_mod.exports[ii]);
+                        self.emit(" = ");
+                        self.emit_symbol_name(backing);
+                        self.emit("; // import: inline module\n");
+                    }
+                    continue;
+                }
+                if (imp.import_count == 0) {
+                    self.emit_indent();
+                    self.emit("(void)aot::make_void(); // import: inline module\n");
+                    continue;
+                }
+                for (usz ii = 0; ii < imp.import_count; ii++) {
+                    SymbolId bind_name = (uint)imp.aliases[ii] != 0 ? imp.aliases[ii] : imp.imports[ii];
+                    SymbolId backing = INVALID_SYMBOL_ID;
+                    if (!self.find_inline_module_export_backing(imp.name, imp.imports[ii], &backing)) {
+                        self.set_compile_error("compiler: inline selective import could not resolve export backing");
+                        break;
+                    }
+                    self.emit_indent();
+                    self.emit_symbol_name(bind_name);
+                    self.emit(" = ");
+                    self.emit_symbol_name(backing);
+                    self.emit("; // import: inline module\n");
+                }
+                continue;
+            }
             if (!imp.has_path
                 && imp.import_count == 0
                 && compiler_has_inline_compiled_module(self, imp.name)) {

@@ -12,6 +12,16 @@ enum BindgenRawSyntax : char {
     BINDGEN_RAW_SYNTAX_GROUPED,
 }
 
+enum BindgenMode : char {
+    BINDGEN_MODE_ABI,
+    BINDGEN_MODE_API,
+}
+
+enum BindgenGenerator : char {
+    BINDGEN_GENERATOR_CLANG,
+    BINDGEN_GENERATOR_CPPINTEROP,
+}
+
 fn bool bindgen_cstr_eq(char* text, char[] expected) {
     if (text == null) return false;
     for (usz i = 0; i < expected.len; i++) {
@@ -53,6 +63,61 @@ fn bool bindgen_raw_syntax_from_dep(TomlFfiDep* dep, BindgenRawSyntax* out) {
     }
     return false;
 }
+
+fn bool bindgen_mode_from_dep(TomlFfiDep* dep, BindgenMode* out) {
+    if (dep == null || out == null) return false;
+    char* mode = &dep.mode;
+    if (mode[0] == 0 || bindgen_cstr_eq(mode, "abi")) {
+        *out = BINDGEN_MODE_ABI;
+        return true;
+    }
+    if (bindgen_cstr_eq(mode, "api")) {
+        *out = BINDGEN_MODE_API;
+        return true;
+    }
+    return false;
+}
+
+fn char[] bindgen_mode_name(BindgenMode mode) {
+    switch (mode) {
+        case BINDGEN_MODE_ABI:
+            return "abi";
+        case BINDGEN_MODE_API:
+            return "api";
+    }
+}
+
+fn bool bindgen_mode_is_api(BindgenMode mode) {
+    return mode == BINDGEN_MODE_API;
+}
+
+fn bool bindgen_generator_from_dep(TomlFfiDep* dep, BindgenGenerator* out) {
+    if (dep == null || out == null) return false;
+    char* generator = &dep.generator;
+    if (generator[0] == 0 || bindgen_cstr_eq(generator, "clang")) {
+        *out = BINDGEN_GENERATOR_CLANG;
+        return true;
+    }
+    if (bindgen_cstr_eq(generator, "cppinterop")) {
+        *out = BINDGEN_GENERATOR_CPPINTEROP;
+        return true;
+    }
+    return false;
+}
+
+fn char[] bindgen_generator_name(BindgenGenerator generator) {
+    switch (generator) {
+        case BINDGEN_GENERATOR_CLANG:
+            return "clang";
+        case BINDGEN_GENERATOR_CPPINTEROP:
+            return "cppinterop";
+    }
+}
+
+fn bool bindgen_generator_requires_api(BindgenGenerator generator) {
+    return generator == BINDGEN_GENERATOR_CPPINTEROP;
+}
+
 
 fn char[] bindgen_raw_syntax_name(BindgenRawSyntax raw_syntax) {
     switch (raw_syntax) {
@@ -121,7 +186,9 @@ fn bool generate_ffi_bindgen_manifest(
     char[64]* exclude_functions,
     usz exclude_function_count,
     char[64]* strip_prefixes,
-    usz strip_prefix_count
+    usz strip_prefix_count,
+    BindgenMode mode = BINDGEN_MODE_ABI,
+    BindgenGenerator generator = BINDGEN_GENERATOR_CLANG
 ) {
     if (exclude_function_count > 0 && exclude_functions == null) return false;
     if (strip_prefix_count > 0 && strip_prefixes == null) return false;
@@ -142,6 +209,12 @@ fn bool generate_ffi_bindgen_manifest(
     pos = buf_append(buf[..], pos, "\n", &ok);
     pos = buf_append(buf[..], pos, "raw-syntax = ", &ok);
     pos = bindgen_append_toml_quoted(buf[..], pos, bindgen_raw_syntax_name(raw_syntax), &ok);
+    pos = buf_append(buf[..], pos, "\n", &ok);
+    pos = buf_append(buf[..], pos, "mode = ", &ok);
+    pos = bindgen_append_toml_quoted(buf[..], pos, bindgen_mode_name(mode), &ok);
+    pos = buf_append(buf[..], pos, "\n", &ok);
+    pos = buf_append(buf[..], pos, "generator = ", &ok);
+    pos = bindgen_append_toml_quoted(buf[..], pos, bindgen_generator_name(generator), &ok);
     pos = buf_append(buf[..], pos, "\n", &ok);
     pos = buf_append(buf[..], pos, "raw-output = ", &ok);
     pos = bindgen_append_toml_quoted(buf[..], pos, raw_output_path, &ok);
@@ -187,7 +260,9 @@ fn bool generate_ffi_module_with_syntax(
     ParsedFunc* funcs,
     usz func_count,
     char[] output_path,
-    BindgenRawSyntax raw_syntax
+    BindgenRawSyntax raw_syntax,
+    BindgenMode mode = BINDGEN_MODE_ABI,
+    BindgenGenerator generator = BINDGEN_GENERATOR_CLANG
 ) {
     return generate_ffi_module_with_options(
         module_name,
@@ -197,7 +272,9 @@ fn bool generate_ffi_module_with_syntax(
         output_path,
         raw_syntax,
         null,
-        0
+        0,
+        mode,
+        generator
     );
 }
 
@@ -209,7 +286,9 @@ fn bool generate_ffi_module_with_options(
     char[] output_path,
     BindgenRawSyntax raw_syntax,
     char[64]* strip_prefixes,
-    usz strip_prefix_count
+    usz strip_prefix_count,
+    BindgenMode mode = BINDGEN_MODE_ABI,
+    BindgenGenerator generator = BINDGEN_GENERATOR_CLANG
 ) {
     if (!bindgen_validate_emitted_function_names(funcs, func_count, null, 0)) return false;
     if (!bindgen_library_name_slice_is_safe(so_name)) return false;
@@ -225,7 +304,7 @@ fn bool generate_ffi_module_with_options(
         case BINDGEN_RAW_SYNTAX_GROUPED:
             raw_syntax_note = "grouped";
     }
-    pos = bindgen_append_raw_header(buf[..], pos, so_name, raw_syntax_note, &ok);
+    pos = bindgen_append_raw_header(buf[..], pos, so_name, raw_syntax_note, mode, generator, &ok);
     pos = bindgen_append_module_open(buf[..], pos, module_name, "-raw", funcs, func_count,
         null, 0, &ok);
     switch (raw_syntax) {
@@ -255,7 +334,9 @@ fn bool generate_ffi_module(
         funcs,
         func_count,
         output_path,
-        BINDGEN_RAW_SYNTAX_LEGACY
+        BINDGEN_RAW_SYNTAX_LEGACY,
+        BINDGEN_MODE_ABI,
+        BINDGEN_GENERATOR_CLANG
     );
 }
 
@@ -273,7 +354,9 @@ fn bool generate_ffi_facade_module_if_missing(
         func_count,
         output_path,
         null,
-        0
+        0,
+        BINDGEN_MODE_ABI,
+        BINDGEN_GENERATOR_CLANG
     );
 }
 
@@ -284,7 +367,9 @@ fn bool generate_ffi_facade_module_if_missing_with_prefixes(
     usz func_count,
     char[] output_path,
     char[64]* strip_prefixes,
-    usz strip_prefix_count
+    usz strip_prefix_count,
+    BindgenMode mode = BINDGEN_MODE_ABI,
+    BindgenGenerator generator = BINDGEN_GENERATOR_CLANG
 ) {
     if (!bindgen_validate_emitted_function_names(funcs, func_count,
         strip_prefixes, strip_prefix_count)) return false;
@@ -295,7 +380,7 @@ fn bool generate_ffi_facade_module_if_missing_with_prefixes(
     usz pos = 0;
     bool ok = true;
 
-    pos = bindgen_append_facade_header(buf[..], pos, so_name, &ok);
+    pos = bindgen_append_facade_header(buf[..], pos, so_name, mode, generator, &ok);
     pos = bindgen_append_module_open(buf[..], pos, module_name, "", funcs, func_count,
         strip_prefixes, strip_prefix_count, &ok);
     pos = bindgen_append_facade_import(buf[..], pos, module_name, &ok);
@@ -327,7 +412,9 @@ fn bool generate_ffi_module_pair_with_syntax(
         facade_output_path,
         raw_syntax,
         null,
-        0
+        0,
+        BINDGEN_MODE_ABI,
+        BINDGEN_GENERATOR_CLANG
     );
 }
 
@@ -340,15 +427,17 @@ fn bool generate_ffi_module_pair_with_options(
     char[] facade_output_path,
     BindgenRawSyntax raw_syntax,
     char[64]* strip_prefixes,
-    usz strip_prefix_count
+    usz strip_prefix_count,
+    BindgenMode mode = BINDGEN_MODE_ABI,
+    BindgenGenerator generator = BINDGEN_GENERATOR_CLANG
 ) {
     if (!bindgen_validate_emitted_function_names(funcs, func_count,
         strip_prefixes, strip_prefix_count)) return false;
     bool raw_existed = bindgen_output_file_exists(raw_output_path);
     if (!generate_ffi_module_with_options(module_name, so_name, funcs, func_count,
-        raw_output_path, raw_syntax, strip_prefixes, strip_prefix_count)) return false;
+        raw_output_path, raw_syntax, strip_prefixes, strip_prefix_count, mode, generator)) return false;
     if (generate_ffi_facade_module_if_missing_with_prefixes(module_name, so_name, funcs,
-        func_count, facade_output_path, strip_prefixes, strip_prefix_count)) return true;
+        func_count, facade_output_path, strip_prefixes, strip_prefix_count, mode, generator)) return true;
     if (!raw_existed && !bindgen_delete_output_file_if_exists(raw_output_path)) return false;
     return false;
 }

@@ -1,6 +1,6 @@
-# Dual-Lane Scope Region Rollout (Corrected Execution Plan)
+# Dual-Lane Scope Region Rollout (Historical Execution Plan)
 
-Status: Active
+Status: closed; superseded by the memory boundary architecture/proof matrix
 Owner: Codex
 Source of truth: `memory/DESTINATION_ARENA_PLAN.md` Section 20 (Clean Consolidated Systems Spec)
 

@@ -276,6 +276,93 @@ fn void run_memory_lifetime_copy_parent_closure_wrapper_alloc_fail_test(Interp* 
     }
 }
 
+fn void run_memory_lifetime_copy_parent_closure_dtor_registration_oom_test(Interp* interp, int* pass, int* fail) {
+    // Invariant: copy_to_parent fails closed if a cloned closure wrapper cannot
+    // register its destructor, and it rolls back env_scope retains immediately.
+    {
+        main::ScopeRegion* saved_scope = interp.current_scope;
+        main::ScopeRegion* saved_releasing_scope = interp.releasing_scope;
+        main::ScopeRegion* source = main::scope_create(saved_scope);
+        main::ScopeRegion* target = main::scope_create(saved_scope);
+        if (source == null || target == null) {
+            interp.current_scope = saved_scope;
+            interp.releasing_scope = saved_releasing_scope;
+            if (source != null) main::scope_release(source);
+            if (target != null) main::scope_release(target);
+            io::printn("[FAIL] lifetime: copy_to_parent closure dtor registration OOM fails closed");
+            (*fail)++;
+            return;
+        }
+
+        SymbolId payload_sym = interp.symbols.intern("__copy_parent_closure_dtor_oom_payload");
+
+        interp.current_scope = source;
+        Env* captured_env = make_env(interp, interp.global_env);
+        main::ScopeRegion* closure_env_scope = null;
+        int closure_env_destroy_count = 0;
+        Value* closure = null;
+        if (captured_env != null) {
+            env_define_with_barrier(captured_env, payload_sym, make_int(interp, 181), interp);
+            closure = make_env_scope_closure_for_test(interp, captured_env, &closure_env_scope);
+            if (closure_env_scope != null) {
+                main::scope_register_dtor(closure_env_scope, (void*)&closure_env_destroy_count, fn void(void* ptr) {
+                    int* counter = (int*)ptr;
+                    if (counter != null) (*counter)++;
+                });
+            }
+        }
+
+        bool setup_ok = closure != null &&
+                        closure.tag == CLOSURE &&
+                        closure_env_scope != null &&
+                        closure_env_scope.refcount == 1;
+
+        interp.current_scope = target;
+        interp.releasing_scope = source;
+        bool saved_dtor_oom = main::g_scope_force_dtor_alloc_oom;
+        main::g_scope_force_dtor_alloc_oom = true;
+        BoundaryCopyFault copy_fault = BOUNDARY_COPY_FAULT_NONE;
+        Value* copied = setup_ok ? copy_to_parent_with_fault(closure, interp, &copy_fault) : null;
+        main::g_scope_force_dtor_alloc_oom = saved_dtor_oom;
+        interp.releasing_scope = saved_releasing_scope;
+
+        int rc_after_fail = closure_env_scope != null ? (int)closure_env_scope.refcount : -1;
+        bool fault_ok = copied == null &&
+                        copy_fault == BOUNDARY_COPY_FAULT_DTOR_REGISTRATION;
+        bool rollback_ok = rc_after_fail == 1 &&
+                           closure_env_lookup_int(closure, payload_sym, 181);
+
+        interp.current_scope = saved_scope;
+        main::scope_release(target);
+        int rc_after_target_release = closure_env_scope != null ? (int)closure_env_scope.refcount : -1;
+        int destroy_count_after_target_release = closure_env_destroy_count;
+        bool teardown_ok = rc_after_target_release == 1 &&
+                           destroy_count_after_target_release == 0;
+
+        main::scope_release(source);
+        int destroy_count_after_source_release = closure_env_destroy_count;
+        bool owner_release_ok = destroy_count_after_source_release == 1;
+
+        bool ok = setup_ok && fault_ok && rollback_ok && teardown_ok && owner_release_ok;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: copy_to_parent closure dtor registration OOM fails closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: copy_to_parent closure dtor registration OOM fails closed (setup_ok=%s fault=%s rc_after_fail=%d rc_after_target_release=%d destroy_target=%d destroy_source=%d rollback_ok=%s)",
+                setup_ok ? "yes" : "no",
+                (ZString)boundary_copy_fault_name(copy_fault),
+                rc_after_fail,
+                rc_after_target_release,
+                destroy_count_after_target_release,
+                destroy_count_after_source_release,
+                rollback_ok ? "yes" : "no"
+            );
+            (*fail)++;
+        }
+    }
+}
+
 fn void run_memory_lifetime_env_copy_nested_closure_retain_test(Interp* interp, int* pass, int* fail) {
     // Invariant: nested env-copy memoizes one cloned closure per source wrapper,
     // retains standalone closure env scopes once for that clone, and source
@@ -439,6 +526,96 @@ fn void run_memory_lifetime_env_copy_closure_wrapper_alloc_fail_test(Interp* int
         } else {
             io::printfn(
                 "[FAIL] lifetime: env-copy closure wrapper alloc fail (setup_ok=%s fault=%s rc_after_fail=%d rc_after_target_release=%d destroy_count_after_target_release=%d destroy_count_after_source_release=%d rollback_ok=%s)",
+                setup_ok ? "yes" : "no",
+                (ZString)boundary_env_copy_fault_name(copied.fault_code),
+                rc_after_fail,
+                rc_after_target_release,
+                destroy_count_after_target_release,
+                destroy_count_after_source_release,
+                rollback_ok ? "yes" : "no"
+            );
+            (*fail)++;
+        }
+    }
+}
+
+fn void run_memory_lifetime_env_copy_closure_dtor_registration_oom_test(Interp* interp, int* pass, int* fail) {
+    // Invariant: env-copy fails closed if a cloned closure wrapper cannot
+    // register scope_dtor_closure, without leaking the retained env_scope.
+    {
+        main::ScopeRegion* saved_scope = interp.current_scope;
+        main::ScopeRegion* source = main::scope_create(saved_scope);
+        main::ScopeRegion* target = main::scope_create(saved_scope);
+        if (source == null || target == null) {
+            interp.current_scope = saved_scope;
+            if (source != null) main::scope_release(source);
+            if (target != null) main::scope_release(target);
+            io::printn("[FAIL] lifetime: env-copy closure dtor registration OOM fails closed");
+            (*fail)++;
+            return;
+        }
+
+        SymbolId payload_sym = interp.symbols.intern("__copy_env_closure_dtor_oom_payload");
+        SymbolId closure_sym = interp.symbols.intern("__copy_env_closure_dtor_oom");
+
+        interp.current_scope = source;
+        Env* captured_env = make_env(interp, interp.global_env);
+        main::ScopeRegion* closure_env_scope = null;
+        int closure_env_destroy_count = 0;
+        Value* closure = null;
+        if (captured_env != null) {
+            env_define_with_barrier(captured_env, payload_sym, make_int(interp, 182), interp);
+            closure = make_env_scope_closure_for_test(interp, captured_env, &closure_env_scope);
+            if (closure_env_scope != null) {
+                main::scope_register_dtor(closure_env_scope, (void*)&closure_env_destroy_count, fn void(void* ptr) {
+                    int* counter = (int*)ptr;
+                    if (counter != null) (*counter)++;
+                });
+            }
+        }
+
+        Env* frame = make_env(interp, interp.global_env);
+        bool setup_ok = frame != null &&
+                        closure != null &&
+                        closure.tag == CLOSURE &&
+                        closure_env_scope != null &&
+                        closure_env_scope.refcount == 1;
+        if (setup_ok) {
+            env_define_with_barrier(frame, closure_sym, closure, interp);
+        }
+
+        bool saved_dtor_oom = main::g_scope_force_dtor_alloc_oom;
+        main::g_scope_force_dtor_alloc_oom = true;
+        BoundaryEnvCopyResult copied =
+            setup_ok ? boundary_copy_env_to_target_scope_checked(frame, interp, target)
+                     : boundary_env_copy_fail(BOUNDARY_ENV_COPY_FAULT_ENV_ALLOC, 0);
+        main::g_scope_force_dtor_alloc_oom = saved_dtor_oom;
+
+        int rc_after_fail = closure_env_scope != null ? (int)closure_env_scope.refcount : -1;
+        bool fault_ok = copied.env == null &&
+                        copied.fault_code == BOUNDARY_ENV_COPY_FAULT_BINDING_VALUE_COPY &&
+                        copied.depth == 0;
+        bool rollback_ok = rc_after_fail == 1 &&
+                           closure_env_lookup_int(closure, payload_sym, 182);
+
+        interp.current_scope = saved_scope;
+        main::scope_release(target);
+        int rc_after_target_release = closure_env_scope != null ? (int)closure_env_scope.refcount : -1;
+        int destroy_count_after_target_release = closure_env_destroy_count;
+        bool teardown_ok = rc_after_target_release == 1 &&
+                           destroy_count_after_target_release == 0;
+
+        main::scope_release(source);
+        int destroy_count_after_source_release = closure_env_destroy_count;
+        bool owner_release_ok = destroy_count_after_source_release == 1;
+
+        bool ok = setup_ok && fault_ok && rollback_ok && teardown_ok && owner_release_ok;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: env-copy closure dtor registration OOM fails closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: env-copy closure dtor registration OOM fails closed (setup_ok=%s fault=%s rc_after_fail=%d rc_after_target_release=%d destroy_target=%d destroy_source=%d rollback_ok=%s)",
                 setup_ok ? "yes" : "no",
                 (ZString)boundary_env_copy_fault_name(copied.fault_code),
                 rc_after_fail,

@@ -4,13 +4,31 @@ fn bool bindgen_func_is_hidden(ParsedFunc* f) {
     return f == null || f.filtered_out;
 }
 
-fn usz bindgen_append_raw_header(char[] buf, usz pos, char[] so_name, char[] raw_syntax_note, bool* ok) {
+fn usz bindgen_append_raw_header(
+    char[] buf,
+    usz pos,
+    char[] so_name,
+    char[] raw_syntax_note,
+    BindgenMode mode,
+    BindgenGenerator generator,
+    bool* ok
+) {
     pos = buf_append(buf, pos, ";; Auto-generated raw FFI bindings for lib", ok);
     pos = buf_append(buf, pos, so_name, ok);
     pos = buf_append(buf, pos, "\n;; Regenerate with: omni --bind\n", ok);
     if (raw_syntax_note.len > 0) {
         pos = buf_append(buf, pos, ";; Raw syntax: ", ok);
         pos = buf_append(buf, pos, raw_syntax_note, ok);
+        pos = buf_append(buf, pos, "\n", ok);
+    }
+    if (mode == BINDGEN_MODE_API) {
+        pos = buf_append(buf, pos, ";; mode = ", ok);
+        pos = buf_append(buf, pos, bindgen_mode_name(mode), ok);
+        pos = buf_append(buf, pos, "\n", ok);
+    }
+    if (generator == BINDGEN_GENERATOR_CPPINTEROP) {
+        pos = buf_append(buf, pos, ";; generator = ", ok);
+        pos = buf_append(buf, pos, bindgen_generator_name(generator), ok);
         pos = buf_append(buf, pos, "\n", ok);
     }
     pos = buf_append(buf, pos, ";; This file is regenerated on every bind run.\n\n", ok);
@@ -44,10 +62,27 @@ fn bool bindgen_metadata_text_is_safe(char* text) @inline {
     return true;
 }
 
-fn usz bindgen_append_facade_header(char[] buf, usz pos, char[] so_name, bool* ok) {
+fn usz bindgen_append_facade_header(
+    char[] buf,
+    usz pos,
+    char[] so_name,
+    BindgenMode mode,
+    BindgenGenerator generator,
+    bool* ok
+) {
     pos = buf_append(buf, pos, ";; Auto-generated FFI facade stub for lib", ok);
     pos = buf_append(buf, pos, so_name, ok);
     pos = buf_append(buf, pos, "\n;; Raw bindings live in the sibling *_raw.omni file.\n", ok);
+    if (mode == BINDGEN_MODE_API) {
+        pos = buf_append(buf, pos, ";; mode = ", ok);
+        pos = buf_append(buf, pos, bindgen_mode_name(mode), ok);
+        pos = buf_append(buf, pos, "\n", ok);
+    }
+    if (generator == BINDGEN_GENERATOR_CPPINTEROP) {
+        pos = buf_append(buf, pos, ";; generator = ", ok);
+        pos = buf_append(buf, pos, bindgen_generator_name(generator), ok);
+        pos = buf_append(buf, pos, "\n", ok);
+    }
     pos = buf_append(buf, pos, ";; This facade is created only when missing so local edits survive reruns.\n\n", ok);
     return pos;
 }

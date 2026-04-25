@@ -542,6 +542,76 @@ fn void run_memory_lifetime_runtime_alloc_groups_array_tensor_ctor_tests(Interp*
     }
 
     {
+        EvalResult guard = run("(let (cuda-backend (ref (tensor-backends) 1)) (and (ref cuda-backend 'available) (ref cuda-backend 'float64)))", interp);
+        bool backend_ok = !guard.error.has_error &&
+            guard.value != null &&
+            is_symbol(guard.value) &&
+            guard.value.sym_val == interp.sym_true;
+        bool saved_dtor_oom = main::g_scope_force_dtor_alloc_oom;
+        usz active_tensor_dtors_before = runtime_alloc_active_tensor_dtor_count(interp.current_scope);
+        EvalResult tensor_eval = guard;
+
+        main::g_scope_force_dtor_alloc_oom = true;
+        if (backend_ok) {
+            tensor_eval = run("(to-device (Tensor Float64 [2] [1 2]) 'cuda)", interp);
+        }
+        main::g_scope_force_dtor_alloc_oom = saved_dtor_oom;
+        usz active_tensor_dtors_after = runtime_alloc_active_tensor_dtor_count(interp.current_scope);
+
+        bool ok = !backend_ok ||
+            (tensor_eval.error.has_error &&
+                runtime_alloc_error_matches(tensor_eval.value, "to-device: failed to register CUDA tensor destructor") &&
+                active_tensor_dtors_after == active_tensor_dtors_before);
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: CUDA tensor to-device destructor registration OOM fails closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: CUDA tensor to-device destructor registration OOM fails closed (backend=%s result=%s before=%d after=%d)",
+                backend_ok ? "yes" : "no",
+                runtime_alloc_error_text(tensor_eval.value),
+                (long)active_tensor_dtors_before,
+                (long)active_tensor_dtors_after);
+            (*fail)++;
+        }
+    }
+
+    {
+        EvalResult guard = run("(let (vulkan-backend (ref (tensor-backends) 3)) (and (ref vulkan-backend 'available) (ref vulkan-backend 'float64)))", interp);
+        bool backend_ok = !guard.error.has_error &&
+            guard.value != null &&
+            is_symbol(guard.value) &&
+            guard.value.sym_val == interp.sym_true;
+        bool saved_dtor_oom = main::g_scope_force_dtor_alloc_oom;
+        usz active_tensor_dtors_before = runtime_alloc_active_tensor_dtor_count(interp.current_scope);
+        EvalResult tensor_eval = guard;
+
+        main::g_scope_force_dtor_alloc_oom = true;
+        if (backend_ok) {
+            tensor_eval = run("(ml/layer-normalization (to-device (Tensor Float64 [2 3] [1 2 3 2 4 6]) 'vulkan) 1)", interp);
+        }
+        main::g_scope_force_dtor_alloc_oom = saved_dtor_oom;
+        usz active_tensor_dtors_after = runtime_alloc_active_tensor_dtor_count(interp.current_scope);
+
+        bool ok = !backend_ok ||
+            (tensor_eval.error.has_error &&
+                runtime_alloc_error_matches(tensor_eval.value, "ml/layer-normalization: failed to register Vulkan result tensor destructor") &&
+                active_tensor_dtors_after == active_tensor_dtors_before);
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: Vulkan layer-normalization destructor registration OOM fails closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: Vulkan layer-normalization destructor registration OOM fails closed (backend=%s result=%s before=%d after=%d)",
+                backend_ok ? "yes" : "no",
+                runtime_alloc_error_text(tensor_eval.value),
+                (long)active_tensor_dtors_before,
+                (long)active_tensor_dtors_after);
+            (*fail)++;
+        }
+    }
+
+    {
         EvalResult expr_eval = run("(map + (Tensor Float64 [2] [1 2]) 3)", interp);
         EvalResult index_eval = run("[1]", interp);
         bool setup_ok = !expr_eval.error.has_error &&

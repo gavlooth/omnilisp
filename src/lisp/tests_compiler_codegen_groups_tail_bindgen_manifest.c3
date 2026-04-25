@@ -45,6 +45,8 @@ fn bool compiler_bindgen_manifest_and_helper_tests(usz* pass, usz* fail) {
                 str_contains(generated, "dependency = \"sqlite\"") &&
                 str_contains(generated, "library = \"sqlite3\"") &&
                 str_contains(generated, "raw-syntax = \"grouped\"") &&
+                str_contains(generated, "mode = \"abi\"") &&
+                str_contains(generated, "generator = \"clang\"") &&
                 str_contains(generated, "raw-output = \"lib/ffi/sqlite_raw.omni\"") &&
                 str_contains(generated, "facade-output = \"lib/ffi/sqlite.omni\"") &&
                 str_contains(generated, "exclude-functions = []") &&
@@ -96,6 +98,8 @@ fn bool compiler_bindgen_manifest_and_helper_tests(usz* pass, usz* fail) {
                 escaped_manifest_ok =
                     str_contains(escaped_generated, "dependency = \"sqlite\"") &&
                     str_contains(escaped_generated, "library = \"sqlite3\"") &&
+                    str_contains(escaped_generated, "mode = \"abi\"") &&
+                    str_contains(escaped_generated, "generator = \"clang\"") &&
                     str_contains(escaped_generated, "raw-output = \"raw\\u0001path\\\"quoted.omni\"") &&
                     str_contains(escaped_generated, "facade-output = \"facade\\\\path\\\"quoted.omni\"") &&
                     str_contains(escaped_generated, "exclude-functions = []") &&
@@ -111,6 +115,51 @@ fn bool compiler_bindgen_manifest_and_helper_tests(usz* pass, usz* fail) {
         } else {
             (*fail)++;
             io::printn("[FAIL] Compiler: bindgen manifest compose escaped output path");
+        }
+
+        char[512] cppinterop_manifest_output_path_buf;
+        char[] cppinterop_manifest_output_path;
+        if (try cppinterop_rendered = io::bprintf(
+            &cppinterop_manifest_output_path_buf,
+            "/tmp/omni_bindgen_manifest_cppinterop-%d-%d.toml",
+            manifest_pid,
+            (int)manifest_seq
+        )) {
+            cppinterop_manifest_output_path = cppinterop_rendered;
+            defer (void)io::file::delete((String)cppinterop_manifest_output_path);
+
+            bool cppinterop_wrote_manifest = generate_ffi_bindgen_manifest(
+                "sqlite",
+                "sqlite3",
+                "lib/ffi/sqlite_raw.omni",
+                "lib/ffi/sqlite.omni",
+                cppinterop_manifest_output_path,
+                BINDGEN_RAW_SYNTAX_GROUPED,
+                null,
+                0,
+                &manifest_prefixes,
+                2,
+                BINDGEN_MODE_API,
+                BINDGEN_GENERATOR_CPPINTEROP
+            );
+            bool cppinterop_manifest_ok = false;
+            if (try cppinterop_generated = io::file::load_temp((String)cppinterop_manifest_output_path)) {
+                cppinterop_manifest_ok =
+                    str_contains(cppinterop_generated, "raw-syntax = \"grouped\"") &&
+                    str_contains(cppinterop_generated, "mode = \"api\"") &&
+                    str_contains(cppinterop_generated, "generator = \"cppinterop\"") &&
+                    str_contains(cppinterop_generated, "strip-prefixes = [\"sqlite3_\", \"omni_\"]");
+            }
+            compiler_test_finish_bool(
+                cppinterop_wrote_manifest && cppinterop_manifest_ok,
+                "Compiler: bindgen manifest records CppInterop API-mode generation",
+                "[FAIL] Compiler: bindgen manifest records CppInterop API-mode generation",
+                pass,
+                fail
+            );
+        } else {
+            (*fail)++;
+            io::printn("[FAIL] Compiler: bindgen manifest compose CppInterop output path");
         }
 
         char[512] atomic_fail_path_buf;

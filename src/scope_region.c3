@@ -27,6 +27,18 @@ extern fn ZString scope_c_getenv(ZString name) @extern("getenv");
 
 alias ScopeDestructorFn = fn void(void* ptr);
 
+enum ScopeEscapeAllocSource : char {
+    SCOPE_ESCAPE_ALLOC_UNKNOWN,
+    SCOPE_ESCAPE_ALLOC_DIRECT,
+    SCOPE_ESCAPE_ALLOC_DTOR,
+    SCOPE_ESCAPE_ALLOC_INTERP_VALUE,
+    SCOPE_ESCAPE_ALLOC_INTERP_ENV,
+    SCOPE_ESCAPE_ALLOC_BOUNDARY_PAYLOAD,
+    SCOPE_ESCAPE_ALLOC_PROMOTION_SIGNATURE,
+    SCOPE_ESCAPE_ALLOC_PROMOTION_CLOSURE,
+    SCOPE_ESCAPE_ALLOC_JIT_ARGS,
+}
+
 // =============================================================================
 // Structs
 // =============================================================================
@@ -79,6 +91,20 @@ struct ScopeRegion {
     ScopeChunk*  escape_chunks; // Linked list of escape chunks (head = current)
     ScopeChunk*  escape_chunks_tail; // Tail of escape_chunks (oldest, next=null)
 
+    // Telemetry-only current slow-chunk sequence state.
+    bool         temp_slow_sequence_active;
+    bool         temp_slow_sequence_large_slack;
+    usz          temp_slow_sequence_requested_bytes;
+    usz          temp_slow_sequence_followup_count;
+    usz          temp_slow_sequence_followup_bytes;
+    bool         escape_slow_sequence_active;
+    bool         escape_slow_sequence_large_slack;
+    ScopeEscapeAllocSource escape_alloc_source;
+    ScopeEscapeAllocSource escape_slow_sequence_source;
+    usz          escape_slow_sequence_requested_bytes;
+    usz          escape_slow_sequence_followup_count;
+    usz          escape_slow_sequence_followup_bytes;
+
     // Cleanup
     ScopeDtor*   dtors;         // Destructor list (LIFO)
     ScopeDtor*   escape_dtors;  // Escape-lane destructors (LIFO)
@@ -95,7 +121,7 @@ struct ScopeRegion {
 
 // ABI/interop guard: scope regions are retained and inspected across runtime
 // boundary helpers. Update bindings and this assertion together on layout change.
-$assert(ScopeRegion.sizeof == 168);
+$assert(ScopeRegion.sizeof == 232);
 
 // =============================================================================
 // Constants

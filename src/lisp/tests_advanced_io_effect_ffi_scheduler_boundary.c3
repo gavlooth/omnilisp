@@ -626,6 +626,7 @@ fn void run_advanced_uv_timer_callback_finalizer_scope_release_test_impl(Interp*
     uint root_before = ok ? interp.root_scope.refcount : 0;
     uint root_after_create = 0;
     uint root_after_release = 0;
+    Value* stale_invoke = null;
     Value* handle = null;
     main::ScopeRegion* saved_scope = ok ? interp.current_scope : null;
     main::ScopeRegion* wrapper_scope = null;
@@ -654,21 +655,34 @@ fn void run_advanced_uv_timer_callback_finalizer_scope_release_test_impl(Interp*
         interp.current_scope = saved_scope;
         main::scope_release(wrapper_scope);
         root_after_release = interp.root_scope.refcount;
+        if (handle != null && handle.tag != ERROR) {
+            Value*[1] invoke_args;
+            invoke_args[0] = handle;
+            stale_invoke = prim_uv_timer_callback_invoke(invoke_args[..], null, interp);
+        }
         wrapper_scope = null;
     }
 
-    ok = ok && root_after_release == root_before;
+    ok = ok && root_after_release == root_before &&
+        stale_invoke != null && stale_invoke.tag == ERROR &&
+        ffi_test_error_contains(stale_invoke, "invalid callback handle");
 
     if (ok) {
-        emit_pass("uv timer callback shim finalizer releases retained callback owner scope");
+        emit_pass("uv timer callback shim finalizer releases retained callback owner scope and invalid invoke fails closed");
         (*pass)++;
     } else {
+        char[] stale_msg = "<null>";
+        if (stale_invoke != null && stale_invoke.str_chars != null) {
+            stale_msg = stale_invoke.str_chars[:stale_invoke.str_len];
+        }
         io::printfn(
-            "[FAIL] uv timer callback shim finalizer releases retained callback owner scope (root_before=%d root_after_create=%d root_after_release=%d handle_tag=%d)",
+            "[FAIL] uv timer callback shim finalizer releases retained callback owner scope and invalid invoke fails closed (root_before=%d root_after_create=%d root_after_release=%d handle_tag=%d stale_tag=%d stale_msg=%s)",
             (int)root_before,
             (int)root_after_create,
             (int)root_after_release,
-            handle != null ? (int)handle.tag : -1
+            handle != null ? (int)handle.tag : -1,
+            stale_invoke != null ? (int)stale_invoke.tag : -1,
+            stale_msg
         );
         (*fail)++;
     }

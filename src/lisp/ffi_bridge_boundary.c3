@@ -51,7 +51,11 @@ fn bool ffi_bridge_boundary_value_requires_native_traversal(Value* value) @inlin
     return declaration.copy_hook || declaration.trace_hook;
 }
 
-fn bool ffi_bridge_boundary_value_is_transplant_safe(Value* value) @inline {
+fn bool ffi_bridge_boundary_value_can_share_across_boundary(Value* value) @inline {
     FfiBridgeBoundaryDeclaration declaration = ffi_bridge_boundary_declaration_for_value(value);
     return declaration.opaque || declaration.keepalive;
+}
+
+fn bool ffi_bridge_boundary_value_is_transplant_safe(Value* value) @inline {
+    return ffi_bridge_boundary_value_can_share_across_boundary(value);
 }

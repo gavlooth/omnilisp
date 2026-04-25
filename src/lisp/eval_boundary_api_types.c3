@@ -122,16 +122,18 @@ enum BoundaryEnvCopyFault : char {
     BOUNDARY_ENV_COPY_FAULT_BINDING_BUFFER_ALLOC,
     BOUNDARY_ENV_COPY_FAULT_BINDING_VALUE_COPY,
     BOUNDARY_ENV_COPY_FAULT_PARENT_COPY,
+    BOUNDARY_ENV_COPY_FAULT_DTOR_REGISTRATION,
 }
 
 const usz BOUNDARY_ENV_COPY_FAULT_COUNT =
-    (usz)BoundaryEnvCopyFault.BOUNDARY_ENV_COPY_FAULT_PARENT_COPY + 1;
+    (usz)BoundaryEnvCopyFault.BOUNDARY_ENV_COPY_FAULT_DTOR_REGISTRATION + 1;
 
 enum BoundaryCopyFault : char {
     BOUNDARY_COPY_FAULT_NONE,
     BOUNDARY_COPY_FAULT_MISSING_SCOPE_PROVENANCE,
     BOUNDARY_COPY_FAULT_CONTEXT_ABORTED,
     BOUNDARY_COPY_FAULT_CLOSURE_TYPE_SIG_COPY,
+    BOUNDARY_COPY_FAULT_DTOR_REGISTRATION,
     BOUNDARY_COPY_FAULT_OPAQUE_PRIMITIVE_PAYLOAD,
     BOUNDARY_COPY_FAULT_NULL_RESULT,
 }
@@ -366,6 +368,7 @@ const char[][] BOUNDARY_ENV_COPY_FAULT_NAMES = {
     "binding-buffer-alloc",
     "binding-value-copy",
     "parent-copy",
+    "dtor-registration",
 };
 
 const char[][] BOUNDARY_COPY_FAULT_NAMES = {
@@ -373,6 +376,7 @@ const char[][] BOUNDARY_COPY_FAULT_NAMES = {
     "missing-scope-provenance",
     "context-aborted",
     "closure-type-sig-copy",
+    "dtor-registration",
     "opaque-primitive-payload",
     "null-result",
 };

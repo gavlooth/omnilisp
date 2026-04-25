@@ -163,3 +163,13 @@ fn void continuation_retain_if_referenced_by_result(Value* result, Continuation*
         continuation_retain_handle_state_for_boundary(k);
     }
 }
+
+fn void continuation_finish_handler_result(Interp* interp, Value* result, Continuation* k) {
+    if (k == null) return;
+    if (continuation_result_references_target(result, k)) {
+        continuation_retain_handle_state_for_boundary(k);
+        return;
+    }
+    continuation_release_handle_state_for_boundary(k);
+    interp_discard_lisp_continuation(interp, k);
+}

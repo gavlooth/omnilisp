@@ -127,6 +127,75 @@ if (!grouped_generated_ok) {
     io::printn("[FAIL] Compiler: bindgen canonical types load grouped raw module");
 }
 
+{
+    char[512] cppinterop_raw_output_path_buf;
+    char[512] cppinterop_output_path_buf;
+    int cppinterop_pid = compiler_test_getpid();
+    usz cppinterop_seq = g_compiler_bindgen_temp_seq++;
+    char[] cppinterop_raw_output_path;
+    char[] cppinterop_output_path;
+    bool cppinterop_paths_ok = false;
+    if (try rendered_raw = io::bprintf(
+        &cppinterop_raw_output_path_buf,
+        "/tmp/omni_bindgen_cppinterop-%d-%d_raw.omni",
+        cppinterop_pid,
+        (int)cppinterop_seq
+    )) {
+        cppinterop_raw_output_path = rendered_raw;
+        if (try rendered_facade = io::bprintf(
+            &cppinterop_output_path_buf,
+            "/tmp/omni_bindgen_cppinterop-%d-%d.omni",
+            cppinterop_pid,
+            (int)cppinterop_seq
+        )) {
+            cppinterop_output_path = rendered_facade;
+            cppinterop_paths_ok = true;
+        }
+    }
+
+    if (!cppinterop_paths_ok) {
+        (*fail)++;
+        io::printn("[FAIL] Compiler: bindgen compose CppInterop API-mode output paths");
+    } else {
+        defer (void)io::file::delete((String)cppinterop_raw_output_path);
+        defer (void)io::file::delete((String)cppinterop_output_path);
+        bool cppinterop_generated_ok = generate_ffi_module_pair_with_options(
+            "bindgen-cppinterop",
+            "bindgen",
+            funcs,
+            func_count,
+            cppinterop_raw_output_path,
+            cppinterop_output_path,
+            BINDGEN_RAW_SYNTAX_GROUPED,
+            null,
+            0,
+            BINDGEN_MODE_API,
+            BINDGEN_GENERATOR_CPPINTEROP
+        );
+        bool cppinterop_raw_ok = false;
+        bool cppinterop_facade_ok = false;
+        if (try generated = io::file::load_temp((String)cppinterop_raw_output_path)) {
+            cppinterop_raw_ok =
+                str_contains(generated, ";; mode = api") &&
+                str_contains(generated, ";; generator = cppinterop") &&
+                str_contains(generated, "(define [ffi module] _lib \"libbindgen.so\"");
+        }
+        if (try generated = io::file::load_temp((String)cppinterop_output_path)) {
+            cppinterop_facade_ok =
+                str_contains(generated, ";; mode = api") &&
+                str_contains(generated, ";; generator = cppinterop") &&
+                str_contains(generated, "(import ffi-bindgen-cppinterop-raw");
+        }
+        compiler_test_finish_bool(
+            cppinterop_generated_ok && cppinterop_raw_ok && cppinterop_facade_ok,
+            "Compiler: bindgen emits CppInterop API-mode raw and facade markers",
+            "[FAIL] Compiler: bindgen emits CppInterop API-mode raw and facade markers",
+            pass,
+            fail
+        );
+    }
+}
+
     return true;
 }
 

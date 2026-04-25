@@ -11,9 +11,11 @@ runtime-lane follow-ons)
 ## Purpose
 
 Define a minimal foreign runtime core that keeps the C ABI / `ForeignHandle`
-contract stable while leaving Python, Julia, CUDA/cuBLAS, optional C++
-tooling, polyglot/plugin machinery, and tensor buffer hooks as separate
-optional lanes instead of one overloaded runtime model.
+contract stable while separating optional tooling and backend concerns from the
+runtime model. CppInterop is represented as bindgen API-mode/generator metadata
+and output marking. CUDA/cuBLAS stays in the Tensor backend, with only
+CPU/CUDA tensor-buffer `ForeignHandle` export crossing this runtime boundary.
+Python/Julia adapters and polyglot/plugin machinery are closed as not planned.
 
 The first goal is a small, explicit, safe contract:
 
@@ -39,10 +41,10 @@ The first goal is a small, explicit, safe contract:
   output remains available.
 - `foreign-describe`, `foreign-release`, and C ABI bound-function calls now
   route through a small internal `ForeignRuntimeAdapter` dispatch point. The
-  current adapter preserves the shipped C ABI/generic-handle behavior and gives
-  Python, Julia, CUDA/cuBLAS, optional C++ tooling, polyglot/plugin machinery,
-  and tensor backend buffer hooks separate places to plug in later without
-  exposing raw pointers to Omni code.
+  current adapter preserves the shipped C ABI/generic-handle behavior and
+  supports the retained CPU/CUDA tensor-buffer export path without exposing raw
+  pointers to Omni code. Python/Julia and polyglot/plugin adapters are not
+  planned.
 
 ## `LANG-FOREIGN-RUNTIME-CORE-107` lane closure
 
@@ -63,21 +65,22 @@ What is already landed:
 - Reflection metadata policy as dictionaries/arrays, with no user-facing raw
   pointer exposure.
 
-Residuals split out from this lane:
+Residual decisions split out from this lane:
 
-- C ABI-adjacent follow-on lane only: `FOREIGN-CORE-004` runtime tracks.
-  - Python/JL runtime adapter wiring (plugin/bridge behavior, `import_module`/
-    `resolve_member` runtime implementation).
-  - CUDA/cuBLAS adapter + tensor-buffer marshalling path.
-  - Optional C++ tooling/CppInterOp integration remains shim-generation-only and
-    is not part of common-core runtime paths.
-  - Polyglot/plugin runtime support remains separate from `ForeignRuntimeAdapter`
-    core contract.
-  - Tensor backend hooks for non-C call paths remain behind optional lanes.
-  - Generalized runtime validation follow-ups that are still concrete and exact:
-    none remain for the scheduler-bound TLS lifecycle gate; the
-    `tls-close`/`tls-read`/`tls-write` race is covered by regression in the
-    runtime async I/O TLS test surface.
+- Python/JL runtime adapter wiring is closed as not planned.
+- Polyglot/plugin runtime support is closed as not planned.
+- CUDA/cuBLAS math stays under the Tensor backend. The foreign-runtime crossing
+  is tensor-buffer marshalling through `FOREIGN_CAP_TENSOR_BUFFER`, which is
+  implemented for CPU/native and CUDA tensors and fails closed for unsupported
+  devices.
+- Optional C++ tooling/CppInterOp integration is bindgen API mode only:
+  `mode = "api"` with `generator = "cppinterop"` is recorded in manifests and
+  emitted as review markers in raw/facade output; ordinary C ABI startup does
+  not depend on C++ tooling.
+- Generalized runtime validation follow-ups that are still concrete and exact:
+  none remain for the scheduler-bound TLS lifecycle gate; the
+  `tls-close`/`tls-read`/`tls-write` race is covered by regression in the
+  runtime async I/O TLS test surface.
 
 ## Design sketch (minimal core)
 
@@ -171,7 +174,7 @@ Define adapter responsibilities and split-by-runtime behavior.
   - describe.
 - Keep each adapter constrained to policy boundaries defined by metadata.
 - C ABI adapter remains libffi-centric and portable.
-- Python/Julia adapters are explicit plugin/bridge lanes.
+- Python/Julia adapters are not planned runtime lanes.
 - `FOREIGN-CORE-002D` added the first internal adapter shape around:
   - runtime kind,
   - adapter operation capability bits,
@@ -189,8 +192,9 @@ Define adapter responsibilities and split-by-runtime behavior.
   - `load_bound` owns the current `dlopen` path,
   - `resolve_bound` owns the current `dlsym` path,
   - `call_bound` now reaches libffi only after adapter load/resolve succeeds,
-  - `tensor_buffer` is reserved behind `FOREIGN_CAP_TENSOR_BUFFER` for a later
-    BLAS/cuBLAS backend and is not registered for C ABI yet.
+  - `tensor_buffer` is registered behind `FOREIGN_CAP_TENSOR_BUFFER` for
+    native CPU tensor buffers and CUDA tensor buffers. cuBLAS execution remains
+    a Tensor backend concern instead of a foreign-runtime adapter.
 - `FOREIGN-CORE-002F` split runtime/module import and member lookup into
   capability-gated adapter slots:
   - `FOREIGN_CAP_IMPORT` and `FOREIGN_CAP_MEMBER` guard the new adapter
@@ -199,8 +203,8 @@ Define adapter responsibilities and split-by-runtime behavior.
   - `resolve_member` owns member lookup for those imported runtime objects,
   - internal dispatch helpers `foreign_runtime_import_module` and
     `foreign_runtime_resolve_member` route the current adapter calls,
-  - no new public user primitive was added, and Python/Julia/CUDA behavior is
-    still not wired yet.
+  - no new public user primitive was added, and Python/Julia runtime adapter
+    behavior is not planned.
 - `FOREIGN-CORE-002G` cleaned up the C ABI `^String` return path:
   - non-null C `char*` returns are copied into Omni `String` values,
   - null returns continue to map to `nil`,
@@ -307,11 +311,11 @@ Route bindgen/headers/API workflows through the reflection data shape.
 
 - Add runtime adapters for non-C lanes with explicit feature gates.
 
-- CUDA/cuBLAS: adapter and call path through `Tensor` marshalling first.
+- CUDA/cuBLAS: cuBLAS stays in the Tensor backend; the foreign-runtime crossing
+  is CPU/CUDA tensor-buffer marshalling.
 - Optional C++ backend remains tooling/API mode for shim generation and layout
   validation, not part of the startup/runtime-required path.
-- Polyglot runtime lane remains separate (plugin-style), with a clear host/guest
-  direction boundary and explicit stubs.
+- Python/Julia adapters and polyglot/plugin runtime support are not planned.
 
 ## Non-goals
 

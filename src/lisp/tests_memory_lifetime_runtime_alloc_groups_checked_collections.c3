@@ -143,6 +143,37 @@ fn void run_memory_lifetime_runtime_alloc_groups_checked_collections_tests(Inter
     }
 
     {
+        bool saved_struct_fail = g_hashmap_force_struct_alloc_fail;
+        bool saved_entries_fail = g_hashmap_force_entries_alloc_fail;
+        g_hashmap_force_struct_alloc_fail = true;
+        Value* dict_fail = make_hashmap_for_entry_count_checked(
+            interp,
+            4,
+            "known-capacity collection: out of memory"
+        );
+        Value* set_fail = make_set_for_entry_count_checked(
+            interp,
+            4,
+            "known-capacity collection: out of memory"
+        );
+        g_hashmap_force_entries_alloc_fail = saved_entries_fail;
+        g_hashmap_force_struct_alloc_fail = saved_struct_fail;
+
+        bool ok = runtime_alloc_error_matches(dict_fail, "known-capacity collection: out of memory") &&
+                  runtime_alloc_error_matches(set_fail, "known-capacity collection: out of memory");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: known-capacity collection constructors fail closed on struct OOM");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: known-capacity collection constructors fail closed on struct OOM (dict=%s set=%s)",
+                runtime_alloc_error_text(dict_fail),
+                runtime_alloc_error_text(set_fail));
+            (*fail)++;
+        }
+    }
+
+    {
         main::ScopeRegion* saved = interp.current_scope;
         main::ScopeRegion* foreign = main::scope_create(saved);
         Value* checked_map = make_hashmap_checked(interp, 4, "hashmap test: ctor oom");

@@ -67,6 +67,10 @@ fn void run_memory_lifetime_boundary_commit_escape_rollback_error_tests(Interp* 
                              !committed.reused_in_target_chain &&
                              committed.outcome == BOUNDARY_COMMIT_DESTINATION_DIRECT_PROMOTED &&
                              committed.fault_code == BOUNDARY_COMMIT_FAULT_NONE &&
+                             committed.planned_route == BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION &&
+                             committed.selected_route == BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION &&
+                             committed.selected_reason == BOUNDARY_PLAN_REASON_DESTINATION_COMMITTED_STABLE &&
+                             committed.stable_materialization_used &&
                              committed.value != null &&
                              committed.value != alias_closure &&
                              committed.value.tag == CLOSURE;
@@ -88,6 +92,106 @@ fn void run_memory_lifetime_boundary_commit_escape_rollback_error_tests(Interp* 
                     setup_ok && alias_closure != null && alias_closure.tag == CLOSURE && alias_closure.closure_val != null && alias_closure.closure_val.env_scope == env_scope_before ? "yes" : "no",
                     rc_before,
                     rc_after);
+                (*fail)++;
+            }
+        }
+    }
+
+    // Invariant: direct closure escape promotion through a boundary route fails
+    // closed when closure destructor registration fails, and rolls back the
+    // retained env_scope immediately.
+    {
+        main::ScopeRegion* saved_scope = interp.current_scope;
+        main::ScopeRegion* saved_releasing_scope = interp.releasing_scope;
+        main::ScopeRegion* target_scope = main::scope_create(saved_scope);
+        main::ScopeRegion* releasing_scope = target_scope == null ? null : main::scope_create(target_scope);
+        main::ScopeRegion* disjoint_scope = main::scope_create(saved_scope);
+        if (target_scope == null || releasing_scope == null || disjoint_scope == null) {
+            interp.current_scope = saved_scope;
+            interp.releasing_scope = saved_releasing_scope;
+            if (disjoint_scope != null) main::scope_release(disjoint_scope);
+            if (releasing_scope != null) main::scope_release(releasing_scope);
+            if (target_scope != null) main::scope_release(target_scope);
+            io::printn("[FAIL] lifetime: boundary direct closure dtor OOM fails closed");
+            (*fail)++;
+        } else {
+            interp.current_scope = disjoint_scope;
+            SymbolId payload_sym = interp.symbols.intern("__boundary_direct_closure_dtor_oom_payload");
+            Env* captured_env = make_env(interp, interp.global_env);
+            main::ScopeRegion* closure_env_scope = null;
+            int closure_env_destroy_count = 0;
+            Value* closure = null;
+            if (captured_env != null) {
+                env_define_with_barrier(captured_env, payload_sym, make_int(interp, 733), interp);
+                closure = make_env_scope_closure_for_test(interp, captured_env, &closure_env_scope);
+                if (closure_env_scope != null) {
+                    main::scope_register_dtor(closure_env_scope, (void*)&closure_env_destroy_count, fn void(void* ptr) {
+                        int* counter = (int*)ptr;
+                        if (counter != null) (*counter)++;
+                    });
+                }
+            }
+
+            bool setup_ok = closure != null &&
+                            closure.tag == CLOSURE &&
+                            closure_env_scope != null &&
+                            closure_env_scope.refcount == 1;
+            BoundaryCommitEscapeResult committed = {};
+            bool saved_escape_dtor_oom = main::g_scope_force_escape_dtor_alloc_oom;
+            main::g_scope_force_escape_dtor_alloc_oom = true;
+            if (setup_ok) {
+                PromotionContext ctx = {};
+                boundary_promotion_context_begin(interp, &ctx, PROMOTION_CTX_BUDGET_RETURN);
+                committed = boundary_commit_escape(
+                    closure,
+                    interp,
+                    target_scope,
+                    releasing_scope,
+                    &ctx
+                );
+                boundary_promotion_context_end(interp, &ctx);
+            }
+            main::g_scope_force_escape_dtor_alloc_oom = saved_escape_dtor_oom;
+            interp.releasing_scope = saved_releasing_scope;
+
+            int rc_after_fail = closure_env_scope != null ? (int)closure_env_scope.refcount : -1;
+            bool fault_ok = setup_ok &&
+                            committed.outcome == BOUNDARY_COMMIT_FALLBACK_DISALLOWED &&
+                            committed.fault_code == BOUNDARY_COMMIT_FAULT_MIXED_DESTINATION_PROMOTION &&
+                            committed.selected_route == BOUNDARY_PLAN_ROUTE_FAIL_CLOSED &&
+                            committed.value != null &&
+                            committed.value.tag == ERROR &&
+                            main::is_in_scope((void*)committed.value, target_scope);
+            bool rollback_ok = rc_after_fail == 1 &&
+                               closure_env_lookup_int(closure, payload_sym, 733);
+
+            interp.current_scope = saved_scope;
+            main::scope_release(releasing_scope);
+            main::scope_release(target_scope);
+            int rc_after_target_release = closure_env_scope != null ? (int)closure_env_scope.refcount : -1;
+            int destroy_count_after_target_release = closure_env_destroy_count;
+            bool target_release_ok = rc_after_target_release == 1 &&
+                                     destroy_count_after_target_release == 0;
+            main::scope_release(disjoint_scope);
+            bool owner_release_ok = closure_env_destroy_count == 1;
+
+            bool ok = setup_ok && fault_ok && rollback_ok && target_release_ok && owner_release_ok;
+            if (ok) {
+                emit_pass_literal("[PASS] lifetime: boundary direct closure dtor OOM fails closed");
+                (*pass)++;
+            } else {
+                io::printfn(
+                    "[FAIL] lifetime: boundary direct closure dtor OOM fails closed (setup_ok=%s outcome=%d fault=%s selected=%d rc_after_fail=%d rc_after_target=%d destroy_target=%d destroy_final=%d rollback=%s)",
+                    setup_ok ? "yes" : "no",
+                    (int)committed.outcome,
+                    (ZString)boundary_commit_fault_name(committed.fault_code),
+                    (int)committed.selected_route,
+                    rc_after_fail,
+                    rc_after_target_release,
+                    destroy_count_after_target_release,
+                    closure_env_destroy_count,
+                    rollback_ok ? "yes" : "no"
+                );
                 (*fail)++;
             }
         }
@@ -122,6 +226,53 @@ fn void run_memory_lifetime_boundary_commit_escape_rollback_error_tests(Interp* 
                 (*pass)++;
             } else {
                 io::printfn("[FAIL] lifetime: boundary destination error escape OOM fails closed (same=%s tag=%d scope_gen=%d target_escape=%d in_target=%s current_restored=%s)",
+                    result == source_error ? "yes" : "no",
+                    result != null ? (int)result.tag : -1,
+                    result != null ? (int)result.scope_gen : -1,
+                    (int)target_escape_gen,
+                    result != null && main::is_in_scope((void*)result, target_scope) ? "yes" : "no",
+                    interp.current_scope == saved_scope ? "yes" : "no");
+                (*fail)++;
+            }
+        }
+    }
+
+    // Invariant: destination error escape build fails closed when destructor
+    // registration fails after the escaped error string has been allocated.
+    {
+        main::ScopeRegion* saved_scope = interp.current_scope;
+        main::ScopeRegion* target_scope = main::scope_create(saved_scope);
+        if (target_scope == null) {
+            io::printn("[FAIL] lifetime: boundary destination error escape dtor OOM fails closed");
+            (*fail)++;
+        } else {
+            uint target_escape_gen = target_scope.escape_generation;
+            Value* source_error = make_error(interp, "boundary error escape dtor oom");
+            bool setup_ok = source_error != null && source_error.tag == ERROR;
+            bool saved_dtor_oom = main::g_scope_force_escape_dtor_alloc_oom;
+            main::g_scope_force_escape_dtor_alloc_oom = true;
+            Value* result = setup_ok
+                ? boundary_build_destination_error_escape(source_error, interp, target_scope)
+                : null;
+            main::g_scope_force_escape_dtor_alloc_oom = saved_dtor_oom;
+
+            bool ok = setup_ok &&
+                      result == source_error &&
+                      result != null &&
+                      result.tag == ERROR &&
+                      result.scope_gen != target_escape_gen &&
+                      interp.current_scope == saved_scope &&
+                      !main::is_in_scope((void*)result, target_scope);
+
+            main::scope_release(target_scope);
+
+            if (ok) {
+                emit_pass_literal("[PASS] lifetime: boundary destination error escape dtor OOM fails closed");
+                (*pass)++;
+            } else {
+                io::printfn(
+                    "[FAIL] lifetime: boundary destination error escape dtor OOM fails closed (setup_ok=%s same=%s tag=%d scope_gen=%d target_escape=%d in_target=%s current_restored=%s)",
+                    setup_ok ? "yes" : "no",
                     result == source_error ? "yes" : "no",
                     result != null ? (int)result.tag : -1,
                     result != null ? (int)result.scope_gen : -1,

@@ -1,7 +1,7 @@
 # Memory Boundary Architecture Spec
 
 Date: 2026-04-24
-Status: active implementation spec
+Status: current reference spec; no live TODO lane
 
 ## Objective
 

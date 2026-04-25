@@ -244,11 +244,12 @@ generation, and overflow section keys cannot mutate the last accepted
 dependency.
 Inline `#` comments are ignored outside quoted bind dependency values and
 preserved inside quoted strings.
-The same plan tracks future fail-closed `omni.toml` extension fields such as
+The same plan tracks fail-closed `omni.toml` extension fields such as
 `exclude-functions`, `clang-args`, `mode`, `facade`, `name-style`,
-`ownership-policy`, `output-raw`, `output-facade`, and `generator`;
-`raw-syntax` and facade-only `strip-prefixes` are the first shipped
-output-format fields.
+`ownership-policy`, `output-raw`, `output-facade`, and `generator`.
+The shipped output-format fields are `raw-syntax`, facade-only
+`strip-prefixes`, `exclude-functions`, `mode`, and `generator`, with
+`generator = "cppinterop"` constrained to `mode = "api"`.
 
 ### Other Flags
 

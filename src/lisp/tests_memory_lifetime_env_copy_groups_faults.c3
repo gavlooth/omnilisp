@@ -53,6 +53,52 @@ fn void run_memory_lifetime_env_copy_fault_surface_tests(Interp* interp, int* pa
             (*fail)++;
         }
     }
+
+    {
+        main::ScopeRegion* saved_scope = interp.current_scope;
+        main::ScopeRegion* source = main::scope_create(saved_scope);
+        main::ScopeRegion* target = main::scope_create(saved_scope);
+        if (source == null || target == null) {
+            if (source != null) main::scope_release(source);
+            if (target != null) main::scope_release(target);
+            io::printn("[FAIL] lifetime: env-copy destructor registration OOM fails closed");
+            (*fail)++;
+            return;
+        }
+
+        interp.current_scope = source;
+        Env* source_frame = make_env(interp, interp.global_env);
+        bool setup_ok = source_frame != null;
+
+        bool saved_dtor_oom = main::g_scope_force_dtor_alloc_oom;
+        main::g_scope_force_dtor_alloc_oom = true;
+        BoundaryEnvCopyResult copied =
+            setup_ok ? boundary_copy_env_to_target_scope_checked(source_frame, interp, target)
+                     : boundary_env_copy_fail(BOUNDARY_ENV_COPY_FAULT_ENV_ALLOC, 0);
+        main::g_scope_force_dtor_alloc_oom = saved_dtor_oom;
+
+        bool ok = setup_ok &&
+                  copied.env == null &&
+                  copied.fault_code == BOUNDARY_ENV_COPY_FAULT_DTOR_REGISTRATION &&
+                  copied.depth == 0;
+
+        interp.current_scope = saved_scope;
+        main::scope_release(source);
+        main::scope_release(target);
+
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: env-copy destructor registration OOM fails closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: env-copy destructor registration OOM fails closed (setup_ok=%s fault=%s depth=%d env=%s)",
+                setup_ok ? "yes" : "no",
+                (ZString)boundary_env_copy_fault_name(copied.fault_code),
+                (long)copied.depth,
+                copied.env == null ? "null" : "non-null");
+            (*fail)++;
+        }
+    }
 }
 
 fn void run_memory_lifetime_env_copy_invalid_persistent_in_place_guard_test(Interp* interp, int* pass, int* fail) {

@@ -39,6 +39,7 @@ fn void scope_splice_escapes(ScopeRegion* parent, ScopeRegion* child) {
     // Move child's ESCAPE chunks to parent's ESCAPE chunk list.
     if (child.escape_chunks != null) {
         ScopeChunk* parent_head = parent.escape_chunks;
+        scope_telemetry_adopt_escape_slow_sequence(parent, child);
         if (parent_head == null) {
             parent.escape_chunks_tail = child.escape_chunks_tail;
         } else {
@@ -58,6 +59,7 @@ fn void scope_splice_escapes(ScopeRegion* parent, ScopeRegion* child) {
     scope_assert_escape_tail_consistency(child);
 
     // Destroy TEMP lane immediately.
+    scope_telemetry_note_temp_slow_sequence_close(child);
     scope_run_dtors(child);
     child.dtors = null;
 
@@ -75,6 +77,8 @@ fn void scope_splice_escapes(ScopeRegion* parent, ScopeRegion* child) {
     child.escape_chunks_tail = null;
     child.escape_dtors_tail = null;
     child.fiber_temp_eligible = false;
+    scope_telemetry_reset_temp_sequence_state(child);
+    scope_telemetry_reset_escape_sequence_state(child);
     scope_assert_escape_tail_consistency(child);
 
     // Detach and release child scope ownership.

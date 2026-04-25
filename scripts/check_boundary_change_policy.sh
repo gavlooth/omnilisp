@@ -7,6 +7,8 @@ normal_log="${1:-build/boundary_hardening_normal.log}"
 asan_log="${2:-build/boundary_hardening_asan.log}"
 diff_range="${OMNI_BOUNDARY_POLICY_RANGE:-}"
 sensitive_file_list="${OMNI_BOUNDARY_SENSITIVE_FILE_LIST:-scripts/boundary_sensitive_files.txt}"
+value_policy_guard="${OMNI_BOUNDARY_VALUE_POLICY_GUARD:-scripts/check_boundary_value_policy_coverage.py}"
+ownership_inventory_guard="${OMNI_BOUNDARY_OWNERSHIP_INVENTORY_GUARD:-scripts/check_memory_ownership_inventory.py}"
 
 declare -A boundary_sensitive_files=()
 
@@ -117,6 +119,7 @@ require_fiber_temp_enabled() {
 }
 
 main() {
+  "$value_policy_guard"
   load_sensitive_files
 
   local -a changed_files=()
@@ -138,6 +141,12 @@ main() {
     echo "OK: boundary change policy skipped (no boundary-sensitive file changes)."
     echo "Sensitive file list: $sensitive_file_list"
     return 0
+  fi
+
+  if [[ -x "$ownership_inventory_guard" ]]; then
+    "$ownership_inventory_guard" "${changed_files[@]}"
+  else
+    python3 "$ownership_inventory_guard" "${changed_files[@]}"
   fi
 
   if [[ ! -f "$normal_log" ]]; then

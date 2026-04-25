@@ -12,14 +12,16 @@
 
 ## Current Status
 
-Status: `yellow`
-As of: 2026-04-25
+Status: `green`
+As of: 2026-04-27
 
-Yellow is intentional for this area: the C ABI / `ForeignHandle` runtime path
-is shipped and validated, while optional non-C runtime adapter families and
-backend buffer hooks remain future tracks. This is not a live TODO queue by
-itself; open concrete work in `TODO.md` before treating any residual track below
-as active implementation work.
+The C ABI / `ForeignHandle` runtime path is shipped, validated, and now has
+lane-level proof closure for the wrapper families in scope. The only non-C
+interop work kept in this area is the CppInterop/API-mode bindgen surface and
+the CPU/CUDA tensor-buffer export path; both are now implemented as
+configuration/output and `ForeignHandle` marshalling contracts. Python/Julia
+adapters and polyglot/plugin runtime support are explicitly not planned for
+this area.
 
 ## Lane Closure Snapshot
 
@@ -35,17 +37,20 @@ Already-landed core behavior:
 - Shared metadata and capability model (`'runtime`, `'parameters`, `'returns`,
   `'capabilities`, `'ownership`, `'finalizer`).
 
-Runtime-specific residuals explicitly split out of this closed common-core
-lane:
+Runtime-specific decisions split out of this closed common-core lane:
 
-- Non-C runtime adapters (Python, Julia, CUDA/cuBLAS, polyglot/plugin).
-- Optional C++ tooling via C++ shim/API mode only.
-- Tensor backend buffer hooks (`FOREIGN_CAP_TENSOR_BUFFER` path).
+- Python/Julia adapters are closed as not planned.
+- Polyglot/plugin runtime support is closed as not planned.
+- Optional C++ tooling is represented by bindgen `mode = "api"` plus
+  `generator = "cppinterop"` metadata/output markers; it does not add a
+  startup/runtime C++ dependency.
+- CUDA/cuBLAS math stays in the Tensor backend; the foreign-runtime boundary
+  exposes tensor buffers through the `FOREIGN_CAP_TENSOR_BUFFER` path.
 - Exact concrete follow-up closed by regression coverage:
   - scheduler-bound TLS lifecycle regression (`tls-close` while `tls-read` or
     `tls-write` is active)
 
-The shipped C ABI path is still the stable runtime path. It now has a clearer
+The shipped C ABI path is the stable runtime path. It now has a clearer
 first-class surface:
 
 - `[ffi module]` is grouped parser sugar over `[ffi lib]` plus `[ffi lambda]`.
@@ -112,8 +117,22 @@ first-class surface:
   opened pipes and process state are cleaned before each failed spawn returns.
 - Released handles are no longer reflected as owned after payload cleanup clears
   the live pointer and release capability.
+- `MEM-PROOF-010` closed the remaining wrapper-family proof gap with isolated
+  metadata and release coverage for fs, tcp, udp, process, and tls handles,
+  plus targeted Valgrind on the foreign-handle metadata group.
 - Bindgen can emit grouped raw modules with
   `[dependencies.ffi.NAME] raw-syntax = "grouped"`.
+- Bindgen dependency generation now carries `[dependencies.ffi.NAME] mode`
+  (`abi` or `api`) and `generator` (`clang` or `cppinterop`) through raw module,
+  facade, and manifest output. `generator = "cppinterop"` is accepted only with
+  `mode = "api"`, keeping CppInterop as an API/tooling selection rather than a
+  runtime dependency.
+- Native FFI `^buffer` returns now become borrowed `ForeignHandle` buffer
+  descriptors instead of raw pointers. `foreign-describe` reports them as
+  native buffer handles with no release authority.
+- `foreign_runtime_tensor_buffer` exports CPU tensors as native buffer handles
+  and CUDA tensors as CUDA buffer handles through `FOREIGN_CAP_TENSOR_BUFFER`;
+  unsupported tensor devices fail closed.
 - Bind TOML fail-closed parsing now marks the active dependency invalid when a
   malformed section-header line starts with `[`, so a broken section line cannot
   leave the previous dependency looking valid while following keys are ignored.
@@ -187,31 +206,31 @@ first-class surface:
   `strip-prefixes` plus `exclude-functions`.
 
 The internal foreign runtime adapter boundary has landed enough structure for
-future optional lanes behind the stable C ABI / `ForeignHandle` contract:
+the stable C ABI / `ForeignHandle` contract and the retained tensor-buffer lane:
 
 - runtime kind,
 - operation capability bits,
 - handle/callable description,
 - handle release,
 - C ABI load/resolve/call slots,
-- import/member hook slots for future runtime adapters.
+- import/member hook slots retained as internal extension points.
 
-Python, Julia, CUDA/cuBLAS, optional C++ tooling, polyglot/plugin machinery,
-and tensor backend buffer hooks remain separate follow-on lanes and are not
-user-facing runtime paths yet.
+CppInterop support is bindgen/API-mode tooling metadata and output marking.
+CUDA/cuBLAS support remains the existing Tensor backend acceleration path; the
+foreign runtime does not add a separate cuBLAS adapter. Python/Julia adapters
+and polyglot/plugin runtime support are not planned.
 
 ## Residual Tracks
 
-These are optional follow-on families, not active TODO-backed work:
+No optional runtime-lane follow-on is active for this area:
 
-1. Keep C ABI grouped FFI stable while expanding runtime-lane follow-ons in
-   separate tracks:
-   - Python/JL adapter lane.
-   - CUDA/cuBLAS lane.
-   - Optional C++/CppInterOp toolchain lane (shim/API-only).
-   - Polyglot/plugin support lane.
-2. Keep tensor backend buffer hooks as their own optional lane.
-3. Keep the TLS offload/in-flight lifecycle regression as a closed validation
+1. Python/JL adapter lane: closed as not planned.
+2. Polyglot/plugin support lane: closed as not planned.
+3. CppInterop toolchain lane: implemented as bindgen API-mode/generator
+   selection, manifest fields, and raw/facade output markers.
+4. CUDA/cuBLAS lane: cuBLAS stays under the Tensor backend; FFI marshalling is
+   implemented through CPU/CUDA tensor-buffer `ForeignHandle` export.
+5. TLS offload/in-flight lifecycle regression remains a closed validation
    checkpoint; no live implementation follow-up remains for that lane.
 
 ## Validation

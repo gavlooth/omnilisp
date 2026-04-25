@@ -599,6 +599,16 @@ fn void stable_escape_store_reset(Interp* interp) {
     }
 }
 
+fn void stable_escape_store_destroy(Interp* interp) {
+    StableEscapeStore* store = stable_escape_store_from_interp(interp);
+    if (store == null) return;
+    if (store.initialized) {
+        stable_escape_store_reset(interp);
+        (void)store.mu.destroy();
+    }
+    *store = {};
+}
+
 fn bool stable_escape_store_publish_entry(
     Interp* interp,
     Value* root,

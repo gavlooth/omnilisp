@@ -248,6 +248,77 @@ fn Value* foreign_runtime_handle_name_value(FfiHandle* handle, Interp* interp) {
     return make_symbol(interp, sym);
 }
 
+fn Value* foreign_runtime_buffer_handle_from_pointer(
+    Interp* interp,
+    void* buffer,
+    char[] name,
+    ForeignRuntimeKind runtime_kind,
+    uint capabilities
+) {
+    if (buffer == null) return make_nil(interp);
+    Value* out = make_ffi_handle_ex_with_descriptor(
+        interp,
+        buffer,
+        name,
+        null,
+        false,
+        runtime_kind,
+        FOREIGN_HANDLE_BUFFER,
+        capabilities,
+        false,
+        FFI_HANDLE_BORROWED,
+        null,
+        null,
+        FFI_BRIDGE_BOUNDARY_OPAQUE);
+    if (out == null) {
+        return ffi_raise(interp, "ffi/out-of-memory", "foreign-buffer: out of memory while exporting buffer");
+    }
+    return out;
+}
+
+fn Value* foreign_runtime_tensor_buffer(Value* tensor_v, Interp* interp) {
+    if (!is_tensor(tensor_v) || tensor_v.tensor_val == null) {
+        return ffi_raise(interp, "ffi/type-mismatch", "foreign-tensor-buffer: expected Tensor");
+    }
+
+    TensorVal* tensor = tensor_v.tensor_val;
+    if (!tensor_has_valid_metadata(tensor)) {
+        return ffi_raise(interp, "ffi/invalid-state", "foreign-tensor-buffer: tensor metadata is missing");
+    }
+    if (tensor.byte_len == 0) return make_nil(interp);
+
+    void* buffer = null;
+    ForeignRuntimeKind runtime_kind = FOREIGN_RUNTIME_NATIVE;
+    switch (tensor.device) {
+        case TENSOR_DEVICE_CPU:
+            if (!tensor_has_valid_storage(tensor)) {
+                return ffi_raise(interp, "ffi/invalid-state", "foreign-tensor-buffer: tensor backing storage is missing");
+            }
+            buffer = tensor.data;
+            runtime_kind = FOREIGN_RUNTIME_NATIVE;
+            break;
+        case TENSOR_DEVICE_CUDA:
+            if (!tensor_has_valid_device_storage(tensor, TENSOR_DEVICE_CUDA)) {
+                return ffi_raise(interp, "ffi/invalid-state", "foreign-tensor-buffer: CUDA tensor backing storage is missing");
+            }
+            buffer = tensor.device_handle;
+            runtime_kind = FOREIGN_RUNTIME_CUDA;
+            break;
+        default:
+            return ffi_raise(interp, "ffi/unsupported", "foreign-tensor-buffer: tensor device is not buffer-exportable");
+    }
+
+    if (buffer == null) {
+        return ffi_raise(interp, "ffi/invalid-state", "foreign-tensor-buffer: tensor buffer storage is missing");
+    }
+    return foreign_runtime_buffer_handle_from_pointer(
+        interp,
+        buffer,
+        "tensor-buffer",
+        runtime_kind,
+        FOREIGN_CAP_TENSOR_BUFFER);
+}
+
 fn Value* foreign_runtime_ffi_type_descriptor(Interp* interp, FfiTypeTag tag, FfiHandlePolicy* policy) {
     Value* out = make_hashmap_checked(interp, 12, "foreign-describe: out of memory");
     if (out == null || out.tag == ERROR) return out;
@@ -404,6 +475,14 @@ fn bool foreign_runtime_adapter_for_kind(ForeignRuntimeKind kind, ForeignRuntime
             out.call_bound = &foreign_runtime_call_c_abi_bound;
             return true;
         case FOREIGN_RUNTIME_NATIVE:
+            out.operation_capabilities = FOREIGN_CAP_REFLECT | FOREIGN_CAP_RELEASE |
+                FOREIGN_CAP_TENSOR_BUFFER;
+            out.tensor_buffer = &foreign_runtime_tensor_buffer;
+            return true;
+        case FOREIGN_RUNTIME_CUDA:
+            out.operation_capabilities = FOREIGN_CAP_REFLECT | FOREIGN_CAP_RELEASE |
+                FOREIGN_CAP_TENSOR_BUFFER;
+            out.tensor_buffer = &foreign_runtime_tensor_buffer;
             return true;
         default:
             *out = {};

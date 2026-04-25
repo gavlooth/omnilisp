@@ -111,12 +111,12 @@ preserved.
 
 Planned FFI tooling extensions are tracked in
 `docs/plans/ffi-first-class-grouped-module-plan-2026-04-11.md`, not all
-implemented in the current parser/bindgen path. The intended direction is to
-add fail-closed fields such as `exclude-functions`, `clang-args`, `mode`
+implemented in the current parser/bindgen path. The parser now accepts
+fail-closed fields such as `exclude-functions`, `clang-args`, `mode`
 (`abi` or `api`), `facade`, `name-style`, `ownership-policy`, `output-raw`,
-`output-facade`, and `generator`. `raw-syntax`, facade-only
-`strip-prefixes`, and the generated effective-config manifest are the first
-shipped output-format pieces.
+`output-facade`, and `generator`. The shipped output-format pieces are
+`raw-syntax`, facade-only `strip-prefixes`, `exclude-functions`,
+`mode`, `generator`, and the generated effective-config manifest.
 
 The policy split is:
 
@@ -124,10 +124,11 @@ The policy split is:
 - API mode may compile or generate a shim against headers to validate layout,
   constants, macros, inline functions, and platform details.
 - Optional C++/CppInterOp-style introspection belongs in API/tooling mode and
-  must emit reviewable C ABI shims plus Omni facades, not add a required C++
-  runtime dependency for ordinary Omni startup.
-- Polyglot runtime/plugin support is a separate future lane and should not
-  reuse or weaken the C FFI `ForeignHandle` policy.
+  is recorded as API-mode metadata in the bindgen manifest and raw/facade
+  output markers; it must still emit reviewable C ABI shims plus Omni facades,
+  not add a required C++ runtime dependency for ordinary Omni startup.
+- Polyglot runtime/plugin support is not planned for this FFI tooling surface
+  and should not reuse or weaken the C FFI `ForeignHandle` policy.
 
 ### Multiple Dependencies
 

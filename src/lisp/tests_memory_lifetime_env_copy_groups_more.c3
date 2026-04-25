@@ -37,8 +37,10 @@ fn void run_memory_lifetime_env_copy_escape_mode_tests(Interp* interp, int* pass
     run_memory_lifetime_copy_parent_closure_env_scope_retain_test(interp, pass, fail);
     run_memory_lifetime_copy_parent_closure_env_scope_parent_detach_test(interp, pass, fail);
     run_memory_lifetime_copy_parent_closure_wrapper_alloc_fail_test(interp, pass, fail);
+    run_memory_lifetime_copy_parent_closure_dtor_registration_oom_test(interp, pass, fail);
     run_memory_lifetime_env_copy_nested_closure_retain_test(interp, pass, fail);
     run_memory_lifetime_env_copy_closure_wrapper_alloc_fail_test(interp, pass, fail);
+    run_memory_lifetime_env_copy_closure_dtor_registration_oom_test(interp, pass, fail);
     run_memory_lifetime_env_copy_closure_retain_stress_test(interp, pass, fail);
     run_memory_lifetime_env_copy_memo_tests(interp, pass, fail);
     run_memory_lifetime_env_copy_reuses_target_owned_frame_test(interp, pass, fail);

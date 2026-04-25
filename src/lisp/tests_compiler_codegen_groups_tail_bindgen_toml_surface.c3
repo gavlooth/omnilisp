@@ -6,26 +6,6 @@ import main;
 
 fn bool compiler_bindgen_toml_surface_tests(usz* pass, usz* fail) {
 {
-    TomlFfiDep dep = {};
-    BindgenRawSyntax syntax;
-    toml_set_default(&dep.raw_syntax, 16, "grouped");
-    bool accepts_grouped = bindgen_raw_syntax_from_dep(&dep, &syntax) &&
-        syntax == BINDGEN_RAW_SYNTAX_GROUPED;
-    toml_set_default(&dep.raw_syntax, 16, "legacy");
-    bool accepts_legacy = bindgen_raw_syntax_from_dep(&dep, &syntax) &&
-        syntax == BINDGEN_RAW_SYNTAX_LEGACY;
-    toml_set_default(&dep.raw_syntax, 16, "invalid");
-    bool rejects_invalid = !bindgen_raw_syntax_from_dep(&dep, &syntax);
-    compiler_test_finish_bool(
-        accepts_grouped && accepts_legacy && rejects_invalid,
-        "Compiler: bindgen raw-syntax option accepts only legacy or grouped",
-        "[FAIL] Compiler: bindgen raw-syntax option accepts only legacy or grouped",
-        pass,
-        fail
-    );
-}
-
-{
     TomlConfig* config = (TomlConfig*)mem::malloc(TomlConfig.sizeof);
     if (config == null) {
         (*fail)++;

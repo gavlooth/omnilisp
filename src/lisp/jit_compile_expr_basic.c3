@@ -9,6 +9,10 @@ import main;
 const usz JIT_NATIVE_BLOCK_EXPR_LIMIT = 40;
 const usz JIT_NATIVE_LOGICAL_CHAIN_LIMIT = 32;
 
+fn bool jit_value_is_error(Value* value) @inline {
+    return value != null && value.tag == ERROR;
+}
+
 fn Value* jit_eval_staged_block(Interp* interp, Expr* expr, Env* env) {
     if (expr == null || expr.tag != E_BLOCK) {
         return runtime_raise(interp, "runtime/evaluation-error", "jit: staged block helper expects block expression");
@@ -100,8 +104,11 @@ fn void? jit_compile_if(void* s, Expr* expr, Interp* interp, JitLocals* locals, 
     // Compile test expression -> R0 (test is never in tail position)
     jit_compile_expr(s, expr.if_expr.test, interp, locals)!;
 
-    // Save test result to V1, call is_falsy(V1, interp)
     _jit_new_node_ww(s, CODE_MOVR, JIT_V1, JIT_R0);  // V1 = test result
+    emit_call_1r(s, locals, (void*)&jit_value_is_error, JIT_V1);
+    void* jump_error = _jit_new_node_pww(s, CODE_BNEI, null, (long)JIT_R0, 0);
+
+    // Save test result to V1, call is_falsy(V1, interp)
     emit_call_2(s, locals, (void*)&jit_is_falsy, JIT_V1, JIT_V0);
 
     // If is_falsy returned true (non-zero), jump to else branch
@@ -114,9 +121,12 @@ fn void? jit_compile_if(void* s, Expr* expr, Interp* interp, JitLocals* locals, 
     // Else branch — inherits tail position
     _jit_patch(s, jump_else);
     jit_compile_expr(s, expr.if_expr.else_branch, interp, locals, is_tail)!;
+    void* jump_after_else = _jit_new_node_p(s, CODE_JMPI, null);
 
-    // End
+    _jit_patch(s, jump_error);
+    _jit_new_node_ww(s, CODE_MOVR, JIT_R0, JIT_V1);
     _jit_patch(s, jump_end);
+    _jit_patch(s, jump_after_else);
 }
 
 fn void? jit_compile_and(void* s, Expr* expr, Interp* interp, JitLocals* locals, bool is_tail) {
@@ -132,6 +142,9 @@ fn void? jit_compile_and(void* s, Expr* expr, Interp* interp, JitLocals* locals,
 
     // Check if left is falsy
     _jit_new_node_ww(s, CODE_MOVR, JIT_V1, JIT_R0);  // V1 = left result
+    void* error_jump = null;
+    emit_call_1r(s, locals, (void*)&jit_value_is_error, JIT_V1);
+    error_jump = _jit_new_node_pww(s, CODE_BNEI, null, (long)JIT_R0, 0);
     emit_call_2(s, locals, (void*)&jit_is_falsy, JIT_V1, JIT_V0);
 
     // If falsy, short-circuit: result = left (V1)
@@ -143,6 +156,7 @@ fn void? jit_compile_and(void* s, Expr* expr, Interp* interp, JitLocals* locals,
 
     // Short-circuit: restore V1 to R0
     _jit_patch(s, jump_done);
+    _jit_patch(s, error_jump);
     _jit_new_node_ww(s, CODE_MOVR, JIT_R0, JIT_V1);
 
     _jit_patch(s, jump_end);
@@ -161,6 +175,9 @@ fn void? jit_compile_or(void* s, Expr* expr, Interp* interp, JitLocals* locals, 
 
     // Check if left is falsy
     _jit_new_node_ww(s, CODE_MOVR, JIT_V1, JIT_R0);  // V1 = left result
+    void* error_jump = null;
+    emit_call_1r(s, locals, (void*)&jit_value_is_error, JIT_V1);
+    error_jump = _jit_new_node_pww(s, CODE_BNEI, null, (long)JIT_R0, 0);
     emit_call_2(s, locals, (void*)&jit_is_falsy, JIT_V1, JIT_V0);
 
     // If NOT falsy, short-circuit: result = left (V1)
@@ -172,6 +189,7 @@ fn void? jit_compile_or(void* s, Expr* expr, Interp* interp, JitLocals* locals, 
 
     // Short-circuit: restore V1 to R0
     _jit_patch(s, jump_done);
+    _jit_patch(s, error_jump);
     _jit_new_node_ww(s, CODE_MOVR, JIT_R0, JIT_V1);
 
     _jit_patch(s, jump_end);
@@ -180,7 +198,8 @@ fn void? jit_compile_or(void* s, Expr* expr, Interp* interp, JitLocals* locals, 
 fn void? jit_compile_block(void* s, Expr* expr, Interp* interp, JitLocals* locals, bool is_tail) {
     usz count = expr.block.expr_count;
     if (count == 0) {
-        emit_call_1(s, locals, (void*)&jit_make_nil);
+        void* nil_fn = is_tail ? (void*)&jit_make_nil_escape : (void*)&jit_make_nil;
+        emit_call_1(s, locals, nil_fn);
         return;
     }
     if (count > JIT_NATIVE_BLOCK_EXPR_LIMIT) {
@@ -190,9 +209,25 @@ fn void? jit_compile_block(void* s, Expr* expr, Interp* interp, JitLocals* local
         return;
     }
     // Evaluate all expressions; last inherits tail position
+    void*[JIT_NATIVE_BLOCK_EXPR_LIMIT] error_jumps;
+    usz error_jump_count = 0;
     for (usz i = 0; i < count; i++) {
         bool tail = is_tail && (i == count - 1);
         jit_compile_expr(s, expr.block.exprs[i], interp, locals, tail)!;
+        if (i + 1 < count) {
+            _jit_new_node_ww(s, CODE_MOVR, JIT_V1, JIT_R0);
+            emit_call_1r(s, locals, (void*)&jit_value_is_error, JIT_V1);
+            error_jumps[error_jump_count++] =
+                _jit_new_node_pww(s, CODE_BNEI, null, (long)JIT_R0, 0);
+        }
+    }
+    if (error_jump_count > 0) {
+        void* normal_done = _jit_new_node_p(s, CODE_JMPI, null);
+        for (usz i = 0; i < error_jump_count; i++) {
+            _jit_patch(s, error_jumps[i]);
+        }
+        _jit_new_node_ww(s, CODE_MOVR, JIT_R0, JIT_V1);
+        _jit_patch(s, normal_done);
     }
 }
 

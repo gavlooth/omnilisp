@@ -126,8 +126,10 @@ fn Value* jit_handle_run_signals(Interp* interp, main::StackCtx* ctx, HandleEffe
             interp_discard_lisp_continuation(interp, k);
             return last_handler_v;
         }
-        // Retain before frame cleanup when the continuation escapes in the handler result graph.
-        continuation_retain_if_referenced_by_result(last_handler_v, k);
+        // Keep only continuations reachable from the returned result graph.
+        // ESCAPE-lane handler argument materialization can retain k transiently
+        // before the result tells us whether it actually escaped.
+        continuation_finish_handler_result(interp, last_handler_v, k);
         if (ctx.status == main::StackCtxStatus.CTX_COMPLETED) break;
     }
     return last_handler_v;

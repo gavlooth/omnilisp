@@ -122,6 +122,90 @@ fn void run_jit_policy_with_module_continuation_scan_test(Interp* interp, int* p
     }
 }
 
+fn void run_jit_policy_block_define_rhs_error_short_circuit_test(Interp* interp, int* pass, int* fail) {
+    bool saved_jit_enabled = interp.flags.jit_enabled;
+    interp.flags.jit_enabled = true;
+    defer interp.flags.jit_enabled = saved_jit_enabled;
+
+    test_error_contains(
+        interp,
+        "jit policy: small block stops after define rhs error",
+        "(block (define __audit231-masked (audit231-missing-call 1)) __audit231-masked)",
+        "audit231-missing-call",
+        pass,
+        fail
+    );
+    test_error_contains(
+        interp,
+        "jit policy: small block stops after middle expression error",
+        "(block 1 (audit231-middle-missing-call 2) 3)",
+        "audit231-middle-missing-call",
+        pass,
+        fail
+    );
+}
+
+fn void run_jit_policy_empty_block_tail_nil_test(Interp* interp, int* pass, int* fail) {
+    Expr* empty_block = interp.alloc_expr();
+    bool ok = empty_block != null;
+    if (ok) {
+        empty_block.tag = E_BLOCK;
+        empty_block.block = (ExprBlock*)ast_arena_alloc(&interp.ast_arena, ExprBlock.sizeof);
+        ok = empty_block.block != null;
+    }
+    if (ok) {
+        empty_block.block.expr_count = 0;
+        empty_block.block.exprs = null;
+    }
+
+    bool saved_jit_enabled = interp.flags.jit_enabled;
+    interp.flags.jit_enabled = true;
+    JitCompiledFn compiled = ok ? jit_compile(empty_block, interp) : jit_compiled_fn_null();
+    ok = ok && !jit_compiled_fn_is_null(compiled);
+    Value* result = ok ? jit_exec(compiled, interp) : null;
+    interp.flags.jit_enabled = saved_jit_enabled;
+
+    ok = ok && result != null && result.tag == NIL;
+    if (ok) {
+        emit_pass_literal("[PASS] jit policy: empty block tail returns nil");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] jit policy: empty block tail returns nil");
+        (*fail)++;
+    }
+}
+
+fn void run_jit_policy_control_flow_predicate_error_test(Interp* interp, int* pass, int* fail) {
+    bool saved_jit_enabled = interp.flags.jit_enabled;
+    interp.flags.jit_enabled = true;
+    defer interp.flags.jit_enabled = saved_jit_enabled;
+
+    test_error_contains(
+        interp,
+        "jit policy: if predicate error propagates",
+        "(if (audit232-missing-if 1) 2 3)",
+        "audit232-missing-if",
+        pass,
+        fail
+    );
+    test_error_contains(
+        interp,
+        "jit policy: and predicate error propagates",
+        "(and (audit232-missing-and 1) 2)",
+        "audit232-missing-and",
+        pass,
+        fail
+    );
+    test_error_contains(
+        interp,
+        "jit policy: or predicate error propagates",
+        "(or (audit232-missing-or 1) 2)",
+        "audit232-missing-or",
+        pass,
+        fail
+    );
+}
+
 fn void run_jit_policy_tests(Interp* interp, int* pass, int* fail) {
     emit_test_section_banner("JIT Policy Tests");
 
@@ -178,6 +262,9 @@ fn void run_jit_policy_tests(Interp* interp, int* pass, int* fail) {
         run_jit_policy_case("pending-raise-payload-alloc-failure", &run_jit_policy_pending_raise_payload_alloc_failure_test, interp, pass, fail);
         run_jit_policy_case("dispatch-payload-alloc-failure-does-not-preseed-raise", &run_jit_policy_dispatch_payload_alloc_failure_does_not_preseed_raise_test, interp, pass, fail);
         run_jit_policy_case("handle-continuation-alloc-failure", &run_jit_policy_handle_continuation_alloc_failure_test, interp, pass, fail);
+        run_jit_policy_case("block-define-rhs-error-short-circuit", &run_jit_policy_block_define_rhs_error_short_circuit_test, interp, pass, fail);
+        run_jit_policy_case("empty-block-tail-nil", &run_jit_policy_empty_block_tail_nil_test, interp, pass, fail);
+        run_jit_policy_case("control-flow-predicate-error", &run_jit_policy_control_flow_predicate_error_test, interp, pass, fail);
         run_jit_policy_case("continuation-wrapper-alloc-failure", &run_jit_policy_continuation_wrapper_alloc_failure_test, interp, pass, fail);
         run_jit_policy_case("handler-arg-list-alloc-failure", &run_jit_policy_handler_arg_list_alloc_failure_test, interp, pass, fail);
         run_jit_policy_case("handle-clause-bind-failure-releases-continuation", &run_jit_policy_handle_clause_bind_failure_releases_continuation_test, interp, pass, fail);

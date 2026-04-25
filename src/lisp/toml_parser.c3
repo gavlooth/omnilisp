@@ -248,6 +248,12 @@ fn void toml_parse_section(char[] header, int* section_kind, usz* current_dep, T
             toml_set_default(&dep.raw_syntax, 16, "legacy");
             dep.raw_syntax_seen = false;
             dep.raw_syntax_invalid = false;
+            toml_set_default(&dep.mode, 16, "abi");
+            dep.mode_seen = false;
+            dep.mode_invalid = false;
+            toml_set_default(&dep.generator, 32, "clang");
+            dep.generator_seen = false;
+            dep.generator_invalid = false;
             dep.header_count = 0;
             dep.headers_seen = false;
             dep.headers_invalid = false;
@@ -322,6 +328,20 @@ fn void toml_assign_value(char[] key, char[] val, int section_kind, usz current_
             } else {
                 dep.raw_syntax_seen = true;
                 dep.raw_syntax_invalid = !toml_copy_quoted_strict(val, &dep.raw_syntax, 15, false);
+            }
+        } else if (toml_str_match(key, "mode")) {
+            if (dep.mode_seen) {
+                dep.mode_invalid = true;
+            } else {
+                dep.mode_seen = true;
+                dep.mode_invalid = !toml_copy_quoted_strict(val, &dep.mode, 15, false);
+            }
+        } else if (toml_str_match(key, "generator")) {
+            if (dep.generator_seen) {
+                dep.generator_invalid = true;
+            } else {
+                dep.generator_seen = true;
+                dep.generator_invalid = !toml_copy_quoted_strict(val, &dep.generator, 31, false);
             }
         } else if (toml_str_match(key, "headers")) {
             if (dep.headers_seen) {
