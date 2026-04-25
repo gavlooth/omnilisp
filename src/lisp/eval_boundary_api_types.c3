@@ -122,10 +122,11 @@ enum BoundaryEnvCopyFault : char {
     BOUNDARY_ENV_COPY_FAULT_BINDING_BUFFER_ALLOC,
     BOUNDARY_ENV_COPY_FAULT_BINDING_VALUE_COPY,
     BOUNDARY_ENV_COPY_FAULT_PARENT_COPY,
+    BOUNDARY_ENV_COPY_FAULT_DTOR_REGISTRATION,
 }
 
 const usz BOUNDARY_ENV_COPY_FAULT_COUNT =
-    (usz)BoundaryEnvCopyFault.BOUNDARY_ENV_COPY_FAULT_PARENT_COPY + 1;
+    (usz)BoundaryEnvCopyFault.BOUNDARY_ENV_COPY_FAULT_DTOR_REGISTRATION + 1;
 
 enum BoundaryCopyFault : char {
     BOUNDARY_COPY_FAULT_NONE,
@@ -366,6 +367,7 @@ const char[][] BOUNDARY_ENV_COPY_FAULT_NAMES = {
     "binding-buffer-alloc",
     "binding-value-copy",
     "parent-copy",
+    "dtor-registration",
 };
 
 const char[][] BOUNDARY_COPY_FAULT_NAMES = {

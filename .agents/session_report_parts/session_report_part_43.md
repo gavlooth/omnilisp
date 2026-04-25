@@ -530,8 +530,8 @@
     rejects unknown persisted stale-reason bytes.
   - JSON/TOML native metadata corruption now returns structured
     `parser/invalid-state` errors instead of empty/nil values.
-  - Added `AUDIT-231` for the still-red broad Deduce materialized restart
-    fixtures that rely on unsupported `block`/`define` visibility.
+  - Added `AUDIT-231` for the then-red broad Deduce materialized restart
+    fixtures; later closure in this report supersedes the initial diagnosis.
 - Commands run:
   - `scripts/build_omni_chelpers.sh`
   - `LIBRARY_PATH=/home/christos/.local/lib c3c --threads 1 build --obj-out obj`
@@ -554,23 +554,237 @@
   - Pika slice passed with `pass=128 fail=0`.
   - Data-format slice passed with `pass=92 fail=0`.
   - Deduce basics group passed with `pass=11 fail=0`.
-  - Full Deduce slice remains red with `pass=411 fail=6`; failures are the
-    materialized restart fixtures recorded as `AUDIT-231`.
+  - At this checkpoint, the full Deduce slice remained red with
+    `pass=411 fail=6`; those materialized restart fixtures were tracked as
+    `AUDIT-231` and later closed in this report.
   - `git diff --check` passed.
 - Invalidated assumptions or failed approaches:
-  - `[INVALIDATED]` Do not treat the broad Deduce slice as a clean gate for this
-    patch until `AUDIT-231` is resolved. The current failure reproduces with
-    block-local `define` visibility, independent of the metadata-read
-    fail-closed tests.
+  - `[INVALIDATED]` This checkpoint's initial framing of `AUDIT-231` as a
+    block-local `define` contract issue was later corrected. `define` remains
+    global; the actual fixes were JIT block error short-circuiting and LMDB
+    restore transaction reuse.
 - Current best recommendation or checkpoint:
-  - Commit and push the closed `AUDIT-219` through `AUDIT-230` remediation with
-    `AUDIT-231` left open as the next work item.
+  - Superseded by the later `AUDIT-231` closure entry below.
 - Unresolved issues:
-  - `AUDIT-231` remains open: decide whether `define` should bind within
-    `block`, or rewrite the materialized restart fixtures to use a supported
-    local binding form.
+  - Superseded by the later `AUDIT-231` closure entry below.
 - Dependencies, blockers, or restart requirements:
   - Rebuild `build/main` after C3 changes before relying on runtime tests.
   - Host full `c3c build` without `LIBRARY_PATH=/home/christos/.local/lib`
     can fail to find local `liblightning`/`libreplxx`.
+- Signature: GPT-5 Codex
+
+## 2026-04-25 12:06 CEST - AUDIT-231 Closure And Reaudit
+
+- Objective attempted:
+  - Close the remaining canonical `AUDIT.md` item, then run a focused reaudit
+    before committing and pushing non-artifact work.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `AUDIT.md`
+  - JIT small-block lowering and Deduce persisted materialized metadata restore.
+- Code or configuration changes made:
+  - Closed `AUDIT-231`.
+  - Kept `define` as a global definition form; no local struct/type/relation
+    registry was introduced.
+  - Fixed native JIT small-block lowering so non-final `ERROR` values
+    short-circuit immediately instead of allowing later expressions to mask the
+    real failure with unbound-variable symptoms.
+  - Added focused JIT policy regressions for masked `define` RHS errors and
+    synthesized empty blocks compiled in tail position.
+  - Refactored Deduce materialized metadata restore to support lookup through an
+    existing LMDB transaction, and reused the persisted rule-signature restore
+    read transaction instead of opening a nested read transaction while a cursor
+    is live.
+  - Tightened materialized metadata DBI open handling so only `MDB_NOTFOUND`
+    becomes "no metadata"; other LMDB open errors fail closed.
+  - Added Deduce failure-injection coverage for forced materialized metadata
+    restore failure during `deduce/open`.
+- Commands run:
+  - `LIBRARY_PATH=/home/christos/.local/lib c3c --threads 1 build --obj-out obj`
+  - `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib ./build/main /tmp/audit231-error.omni`
+  - `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=jit-policy OMNI_JIT_POLICY_FILTER=block-define-rhs-error-short-circuit OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=jit-policy OMNI_JIT_POLICY_FILTER=block-define-rhs-error-short-circuit,empty-block-tail-nil OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=deduce OMNI_DEDUCE_GROUP_FILTER=basics OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=deduce OMNI_DEDUCE_GROUP_FILTER=materialized OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=deduce OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - Focused read-only mini-agent reaudit of JIT, Deduce persistence, and audit
+    consistency surfaces.
+- Key results:
+  - C3 build passed and linked `build/main`.
+  - Direct masked-error probe now reports `unbound variable 'missing-fn'`
+    instead of the later `audit231-e` binding name.
+  - Focused JIT policy regression first passed with `pass=1 fail=0`; after
+    reaudit follow-up, the combined JIT filter passed with `pass=2 fail=0`.
+  - Focused Deduce basics group passed with `pass=12 fail=0`, including the
+    new metadata-restore failure-injection case.
+  - Focused Deduce materialized restart group passed with `pass=8 fail=0`.
+  - Full Deduce slice first passed with `pass=417 fail=0`; after adding the
+    failure-injection case, it passed with `pass=418 fail=0`.
+  - At this checkpoint, `AUDIT.md` had no remaining `Status: Open`,
+    `Status: In Progress`, or `Status: Partial` markers after closing
+    `AUDIT-231`; this was later superseded by the `AUDIT-048` inline-module
+    scoped-open reopen entry in this same report.
+  - Focused reaudit findings were addressed before commit: stale report wording
+    was marked superseded, empty-block tail nil handling now uses the tail-aware
+    helper, and materialized metadata DBI open failures now fail closed.
+- Invalidated assumptions or failed approaches:
+  - `[INVALIDATED]` `AUDIT-231` was not a request to make `define`
+    block-local. The owner clarified that `define` should bind globally, and the
+    reproducible language issue was native block error masking.
+  - `[INVALIDATED]` The materialized restart fixtures did not require a local
+    registry rewrite. Once error masking was fixed, the real blocker was nested
+    LMDB read transaction usage during persisted rule-signature restore.
+- Current best recommendation or checkpoint:
+  - Commit and push the `AUDIT-231` closure. Treat `AUDIT.md` as clear unless a
+    later fresh audit appends new issues.
+- Unresolved issues:
+  - None known in canonical `AUDIT.md` at this checkpoint.
+- Dependencies, blockers, or restart requirements:
+  - Rebuild `build/main` after further C3 changes before relying on runtime
+    test results.
+- Signature: GPT-5 Codex
+
+## 2026-04-25 12:42 CEST - Validation Tooling Rule And Host Install
+
+- Objective attempted:
+  - Add a durable rule/pointer so future agents know which debugging,
+    profiling, and memory-validation tools to use for regression closure, and
+    install available host tools.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `AGENTS.md`
+  - `docs/README.md`
+  - `docs/VALIDATION_TOOLS.md`
+- Code or configuration changes made:
+  - Added `docs/VALIDATION_TOOLS.md` as the canonical regression/debugging tool
+    guide for Valgrind, ASAN, gdb, perf, hyperfine, heaptrack, rr, and strace.
+  - Linked the guide from `AGENTS.md` and `docs/README.md`.
+  - Installed missing Ubuntu packages: `hyperfine`, `heaptrack`, and `rr`.
+- Commands run:
+  - `uname -a`
+  - `sed -n '1,120p' /etc/os-release`
+  - `apt-cache policy hyperfine heaptrack rr linux-tools-common linux-tools-generic linux-tools-$(uname -r)`
+  - `sudo apt-get install -y hyperfine heaptrack rr`
+  - `valgrind --version`
+  - `gdb --version | head -n 1`
+  - `perf --version`
+  - `hyperfine --version`
+  - `heaptrack --version`
+  - `rr --version`
+  - `strace -V | head -n 1`
+  - `rr record true`
+  - `rr record -n true`
+  - `perf stat true`
+  - `hyperfine --warmup 1 --runs 2 true`
+  - `valgrind --error-exitcode=99 true`
+  - `heaptrack /usr/bin/true`
+  - `strace -o /tmp/omni-strace-smoke.out true`
+  - `git diff --check -- AGENTS.md docs/README.md docs/VALIDATION_TOOLS.md .agents/session_report_parts/session_report_part_43.md`
+- Key results:
+  - Host is Ubuntu 24.04.4 LTS on aarch64.
+  - Installed/verified versions: Valgrind 3.22.0, gdb 15.0.50, perf 6.17.9,
+    hyperfine 1.18.0, heaptrack 1.5.0, rr 5.7.0, strace 6.8.
+  - Valgrind, hyperfine, heaptrack, and strace smoke checks ran.
+  - `perf stat true` and normal `rr record true` are blocked by
+    `kernel.perf_event_paranoid=4`.
+  - `rr record -n true` also fails on this aarch64 host because rr does not
+    recognize the CPU microarchitecture.
+  - `git diff --check` passed for the new guide/rule files and this report.
+- Invalidated assumptions or failed approaches:
+  - `[INVALIDATED]` Do not assume installed `rr` is usable on this host. It is
+    present, but both normal and `-n` recording paths are currently blocked.
+  - `[INVALIDATED]` Do not assume installed `perf` is enough for profiling
+    evidence. The current kernel perf security setting blocks unprivileged use.
+- Current best recommendation or checkpoint:
+  - Future regression work should start from `docs/VALIDATION_TOOLS.md` after
+    naming the broken contract in the Regression Closure Rule.
+- Unresolved issues:
+  - Broad/high-memory validation remains container-bound by repo policy.
+  - Usable `perf`/`rr` capture requires a capable host or explicit host
+    administration changes; do not change sysctl as a routine repo step.
+- Dependencies, blockers, or restart requirements:
+  - New packages are installed on the host; existing long-running processes may
+    need restart only if they should observe updated system libraries.
+- Signature: GPT-5 Codex
+
+## 2026-04-25 13:28 CEST - Audit Follow-Up Wave And Reopened Scoped-Open Residual
+
+- Objective attempted:
+  - Continue addressing audited issues with delegated review, update the audit
+    ledger, commit non-artifact work, and push.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `AUDIT.md`, `TODO.md`, `docs/todo_parts/todo_part_17.md`
+  - Deduce metadata/integrity, async/NN C string boundaries, JIT/AOT
+    control-flow lowering, tensor native result cleanup, validation tooling.
+- Code or configuration changes made:
+  - Added clamped validation memory override handling in
+    `scripts/c3c_limits.sh` and `scripts/run_validation_container.sh`.
+  - Added `docs/VALIDATION_TOOLS.md` and linked it from repo guidance.
+  - Hardened Deduce immediate key/unique scans to fail closed on tuple decode,
+    arity, and cursor-termination failures.
+  - Hardened Deduce materialized metadata refresh-policy restore, while keeping
+    legacy V1 no-policy metadata compatible as manual refresh.
+  - Rejected embedded NUL paths in async file primitives/helpers and NN
+    checkpoint load/save paths.
+  - Made the async read-file offload worker report helper read failures as
+    `OFFLOAD_RES_ERROR` rather than nil, with direct worker-boundary coverage
+    for the embedded-NUL path case.
+  - Added JIT and AOT error-propagation guards for predicate/non-final
+    `ERROR` values.
+  - Replaced ignored tensor native destructor registration returns with checked
+    cleanup-or-error helper calls.
+  - Added tests for Deduce invalid metadata policy, V1 compatibility, immediate
+    scan-end failures, async file NUL paths, NN checkpoint NUL paths, JIT
+    middle-expression error propagation, and AOT generated error guards.
+  - Reopened `AUDIT-048` because inline module exports still leak as AOT
+    generated globals; added `SCOPED-MODULE-AOT-002` to Part 17 and the live
+    queue.
+  - Added closed `AUDIT-232` through `AUDIT-237` entries for this wave.
+- Commands run:
+  - `LIBRARY_PATH=/home/christos/.local/lib c3c --threads 1 build --obj-out obj`
+  - `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce OMNI_DEDUCE_GROUP_FILTER=core-surface,integrity ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=jit-policy OMNI_JIT_POLICY_FILTER=block-define-rhs-error-short-circuit,empty-block-tail-nil,control-flow-predicate-error ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=async ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp`
+  - `scripts/check_status_consistency.sh`
+  - `scripts/check_build_config_parity.sh`
+  - `scripts/check_file_size_gate.sh`
+  - `scripts/check_e2e_baseline_policy.sh`
+  - `git diff --check`
+- Key results:
+  - C3 build passed and linked `build/main`.
+  - Deduce focused group passed with `pass=41 fail=0`.
+  - JIT policy focused filter passed with `pass=6 fail=0`.
+  - Compiler slice passed with `pass=345 fail=0`.
+  - Status, build-config parity, file-size, e2e baseline, and whitespace gates
+    passed.
+  - Async slice still failed on unrelated lifecycle/network cases:
+    `async file read cancel stress`, `pipe connect/listen in fiber via libuv
+    bridge`, and `udp-recv in fiber via async bridge`; the new embedded-NUL file
+    regression did not appear in the failure list.
+  - Advanced collections group still failed on unrelated
+    `ml/softmax Vulkan Float32 stays on device and normalizes rows`; the new NN
+    checkpoint embedded-NUL regression did not appear in the failure list.
+- Invalidated assumptions or failed approaches:
+  - `[INVALIDATED]` Treating `AUDIT-048` as completely closed was too broad.
+    External module scoped-open AOT lowering works, but inline module body
+    definitions still leak exported names as globals.
+  - `[INVALIDATED]` Do not reject legacy V1 Deduce materialized metadata simply
+    because no refresh-policy bit exists; V1 no-policy rows must read as manual
+    refresh for compatibility.
+- Current best recommendation or checkpoint:
+  - Superseded by the later `AUDIT-048` inline-module leak closure: the
+    module-private backing-symbol implementation shipped, `SCOPED-MODULE-AOT-002`
+    is closed, and the current live queue has moved to the Part 18 memory-model
+    improvement items.
+- Unresolved issues:
+  - The later closure entry in `.agents/SESSION_REPORT.md` and `AUDIT.md`
+    closes `AUDIT-048` / `SCOPED-MODULE-AOT-002`.
+  - Pre-existing async lifecycle/network failures and Vulkan softmax
+    interpreter failure remained outside this wave.
+- Dependencies, blockers, or restart requirements:
+  - Rebuild `build/main` after further C3 changes before relying on runtime
+    tests. Broad/high-memory validation remains container-bound.
 - Signature: GPT-5 Codex

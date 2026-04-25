@@ -97,6 +97,8 @@ fn char[] jit_env_copy_fault_message(BoundaryEnvCopyFault fault_code) @inline {
             return "jit: closure env-copy failed (binding value copy)";
         case BOUNDARY_ENV_COPY_FAULT_PARENT_COPY:
             return "jit: closure env-copy failed (parent chain copy)";
+        case BOUNDARY_ENV_COPY_FAULT_DTOR_REGISTRATION:
+            return "jit: closure env-copy failed (destructor registration)";
     }
 }
 

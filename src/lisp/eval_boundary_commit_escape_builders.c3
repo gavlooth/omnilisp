@@ -53,7 +53,10 @@ fn Value* boundary_build_destination_error_escape(
     }
     result.str_chars[len] = 0;
     result.str_len = len;
-    main::scope_register_dtor_escape(build_scope, (void*)result, &scope_dtor_value);
+    if (!main::scope_register_dtor_escape(build_scope, (void*)result, &scope_dtor_value)) {
+        scope_dtor_value((void*)result);
+        return error_value;
+    }
     boundary_destination_build_scope_commit(&build_scope, target_scope);
     if (result != null && result.scope_gen != target_scope.escape_generation) {
         result.scope_gen = target_scope.escape_generation;

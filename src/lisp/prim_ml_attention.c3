@@ -309,7 +309,9 @@ fn Value* ml_attention_eval_vulkan(
     }
     result.tag = TENSOR;
     result.tensor_val = tensor;
-    main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
+    if (!scope_register_value_dtor_or_cleanup(interp.current_scope, result)) {
+        return tensor_runtime_raise(interp, "ml/scaled-dot-product-attention: failed to register Vulkan result tensor destructor");
+    }
     return result;
 }
 

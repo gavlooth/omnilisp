@@ -15,8 +15,8 @@ fn bool scheduler_offload_read_file(SharedHandle* path_blob, OffloadCompletion* 
     char* content_buf = null;
     usz content_len = 0;
     if (!io_uv_read_all_file(path, &content_buf, &content_len)) {
-        completion.kind = OFFLOAD_RES_NIL;
-        return true;
+        scheduler_set_offload_error(completion, "offload read-file: read failed");
+        return false;
     }
 
     return scheduler_set_offload_bytes_owned(

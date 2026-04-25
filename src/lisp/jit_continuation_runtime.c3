@@ -32,6 +32,7 @@ fn void jit_continuation_init_resume_state(ResetState* resume_state, Interp* int
     resume_state.shifted = false;
     resume_state.shift_body = null;
     resume_state.shift_env = null;
+    resume_state.shift_k = null;
     resume_state.body = null;
     resume_state.env = null;
     resume_state.interp = interp;

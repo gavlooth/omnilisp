@@ -59,7 +59,12 @@ fn BoundaryEnvCopyResult copy_env_materialize_frame(Env* env, Interp* interp, us
     if (env.hash_table != null) {
         new_env.build_hash_table();
     }
-    main::scope_register_dtor(interp.current_scope, (void*)new_env, &scope_dtor_env);
+    if (!main::scope_register_dtor(interp.current_scope, (void*)new_env, &scope_dtor_env)) {
+        copy_env_rollback_materialized_bindings(env, new_env, target_scope, env.binding_count);
+        promotion_context_invalidate(active_ctx);
+        copy_env_cleanup_partial_frame(new_env);
+        return boundary_env_copy_fail(BOUNDARY_ENV_COPY_FAULT_DTOR_REGISTRATION, depth);
+    }
     boundary_value_shape_note_env_copy_frame(depth, env.binding_count);
     return boundary_env_copy_ok(new_env, depth);
 }

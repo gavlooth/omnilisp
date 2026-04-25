@@ -431,6 +431,7 @@ fn Value* nn_ckpt_load_source(Value* source, Interp* interp, char[] prim_name, c
     if (source == null || source.tag != STRING) return primitive_arg_type_raise(interp, prim_name, 0, "JSON checkpoint string or path", source);
     if (nn_ckpt_source_is_json(source)) return source;
     char[] path = source.str_chars[:source.str_len];
+    if (c_api_string_contains_nul(path)) return nn_ckpt_io_error(interp, "checkpoint: path contains embedded NUL byte");
     if (try content = io::file::load_temp((String)path)) return make_string(interp, content);
     return nn_ckpt_io_error(interp, read_error_message);
 }
@@ -467,7 +468,12 @@ fn Value* nn_ckpt_save_text_or_path(Value* json, Value*[] args, Interp* interp, 
     if (args.len == 1) return json;
     if (args.len != 2) return primitive_arity_raise(interp, prim_name, "1 or 2 arguments: value [path]", args.len);
     if (args[1] == null || args[1].tag != STRING) return primitive_arg_type_raise(interp, prim_name, 1, "path string", args[1]);
-    int fd = fs_uv_open(args[1].str_chars, 577, 420);
+    char[] path_slice = args[1].str_chars[:args[1].str_len];
+    CApiStringResult path = c_api_string_dup_no_nul(path_slice);
+    if (path.contains_nul) return nn_ckpt_io_error(interp, "checkpoint: path contains embedded NUL byte");
+    if (path.too_long || path.out_of_memory || !path.ok) return nn_ckpt_io_error(interp, "checkpoint: failed to open checkpoint path");
+    defer c_api_string_free(&path);
+    int fd = fs_uv_open(path.ptr, 577, 420);
     if (fd < 0) return nn_ckpt_io_error(interp, "checkpoint: failed to open checkpoint path");
     usz written = 0;
     bool ok = true;

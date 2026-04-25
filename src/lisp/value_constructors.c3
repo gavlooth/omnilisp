@@ -231,7 +231,8 @@ fn void instance_release(Instance* inst) @inline {
 
 fn Value* make_ffi_handle_ex(Interp* interp, void* handle, char[] name,
     FfiHandleFinalizer finalizer, bool free_lib_handle, bool root_lifetime = false,
-    bool* constructor_owns_handle = null, void* user_data = null) {
+    bool* constructor_owns_handle = null, void* user_data = null,
+    FfiBridgeBoundaryMode boundary_mode = FFI_BRIDGE_BOUNDARY_OPAQUE) {
     FfiHandleOwnership ownership = FFI_HANDLE_BORROWED;
     if (finalizer != null) ownership = FFI_HANDLE_OWNED;
     if (free_lib_handle) ownership = FFI_HANDLE_OWNED;
@@ -247,7 +248,8 @@ fn Value* make_ffi_handle_ex(Interp* interp, void* handle, char[] name,
         root_lifetime,
         ownership,
         constructor_owns_handle,
-        user_data);
+        user_data,
+        boundary_mode);
 }
 
 fn Value* make_ffi_handle_ex_with_descriptor(
@@ -262,14 +264,15 @@ fn Value* make_ffi_handle_ex_with_descriptor(
     bool root_lifetime = false,
     FfiHandleOwnership ownership = FFI_HANDLE_BORROWED,
     bool* constructor_owns_handle = null,
-    void* user_data = null
+    void* user_data = null,
+    FfiBridgeBoundaryMode boundary_mode = FFI_BRIDGE_BOUNDARY_OPAQUE
 ) {
     main::ScopeRegion* target_scope = root_lifetime ? interp.root_scope : interp.current_scope;
     if (constructor_owns_handle != null) {
         *constructor_owns_handle = ffi_handle_release_raw_allowed(handle, finalizer, free_lib_handle, handle_kind);
     }
     FfiHandle* box = make_ffi_box(handle, name, finalizer, free_lib_handle,
-        runtime_kind, handle_kind, capabilities, ownership, user_data);
+        runtime_kind, handle_kind, capabilities, ownership, user_data, boundary_mode);
     if (box == null) {
         ffi_handle_release_raw_payload(handle, finalizer, free_lib_handle, handle_kind);
         return null;

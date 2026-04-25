@@ -221,6 +221,223 @@ fn void run_deduce_open_named_test(Interp* interp, int* pass, int* fail) {
             (*fail)++;
         }
     }
+
+    {
+        EvalResult r = run("(deduce 'open 'memory)", interp);
+        bool ok = !r.error.has_error &&
+            r.value != null &&
+            r.value.tag == FFI_HANDLE &&
+            r.value.ffi_val != null &&
+            r.value.ffi_val.lib_handle != null;
+        if (!ok) {
+            io::printn("[FAIL] deduce open-named rejects invalid persisted refresh policy (setup)");
+            (*fail)++;
+            return;
+        }
+
+        DeduceDb* db = (DeduceDb*)r.value.ffi_val.lib_handle;
+        SymbolId rel_name = interp.symbols.intern("deduce_meta_invalid_refresh_policy");
+        bool saved_invalid_policy = g_deduce_force_materialized_meta_invalid_refresh_policy;
+        g_deduce_force_materialized_meta_invalid_refresh_policy = true;
+        Value* persist_err = deduce_relation_meta_persist_state(
+            db,
+            rel_name,
+            true,
+            interp.symbols.intern("manual"),
+            0,
+            0,
+            0,
+            DEDUCE_MATERIALIZED_STALE_NONE,
+            false,
+            interp
+        );
+        g_deduce_force_materialized_meta_invalid_refresh_policy = saved_invalid_policy;
+        if (persist_err != null && persist_err.tag == ERROR) {
+            io::printn("[FAIL] deduce open-named rejects invalid persisted refresh policy (persist)");
+            (*fail)++;
+            return;
+        }
+
+        Value* db_handle = make_ffi_handle_ex(interp, (void*)db, "deduce-db", null, false, false);
+        if (db_handle == null || db_handle.tag == ERROR) {
+            io::printn("[FAIL] deduce open-named rejects invalid persisted refresh policy (handle)");
+            (*fail)++;
+            return;
+        }
+        Value* rel_name_v = make_symbol(interp, rel_name);
+        Value* db_name_v = make_string(interp, "deduce_meta_invalid_refresh_policy");
+        Value* col_name_v = make_symbol(interp, interp.symbols.intern("name"));
+
+        Value*[4] open_args = { db_handle, rel_name_v, db_name_v, col_name_v };
+        Value* open_err = prim_deduce_open_named(open_args[0:4], null, interp);
+        Value*[3] define_args = { db_handle, rel_name_v, col_name_v };
+        Value* define_err = prim_define_relation(define_args[0:3], null, interp);
+
+        bool open_ok = compiler_error_value_contains(open_err, "persisted relation metadata contains invalid refresh policy");
+        bool define_ok = compiler_error_value_contains(define_err, "persisted relation metadata contains invalid refresh policy");
+        if (open_ok && define_ok) {
+            emit_pass_literal("[PASS] deduce open-named and define-relation reject invalid persisted refresh policies");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] deduce open-named and define-relation reject invalid persisted refresh policies");
+            (*fail)++;
+        }
+    }
+
+    {
+        EvalResult r = run("(deduce 'open 'memory)", interp);
+        bool ok = !r.error.has_error &&
+            r.value != null &&
+            r.value.tag == FFI_HANDLE &&
+            r.value.ffi_val != null &&
+            r.value.ffi_val.lib_handle != null;
+        if (!ok) {
+            io::printn("[FAIL] deduce open-named accepts legacy V1 materialized metadata without refresh policy (setup)");
+            (*fail)++;
+            return;
+        }
+
+        DeduceDb* db = (DeduceDb*)r.value.ffi_val.lib_handle;
+        SymbolId rel_name = interp.symbols.intern("deduce_meta_v1_legacy_policy");
+        char[] rel_name_str = interp.symbols.get_name(rel_name);
+        MdbTxn* txn = null;
+        int rc = mdb_txn_begin(db.env, null, 0, &txn);
+        MdbDbi meta_dbi = 0;
+        if (rc == MDB_SUCCESS) rc = deduce_open_relation_meta_dbi_rc(db, txn, true, &meta_dbi);
+        DeducePersistedRelationMetaV1 meta = {
+            .version = 1,
+            .flags = DEDUCE_PERSISTED_RELATION_META_FLAG_MATERIALIZED
+        };
+        MdbVal key = {
+            .mv_size = rel_name_str.len,
+            .mv_data = rel_name_str.ptr
+        };
+        MdbVal data = {
+            .mv_size = DeducePersistedRelationMetaV1.sizeof,
+            .mv_data = &meta
+        };
+        if (rc == MDB_SUCCESS) rc = mdb_put(txn, meta_dbi, &key, &data, 0);
+        if (rc == MDB_SUCCESS) {
+            rc = mdb_txn_commit(txn);
+        } else if (txn != null) {
+            mdb_txn_abort(txn);
+        }
+        if (rc != MDB_SUCCESS) {
+            io::printn("[FAIL] deduce open-named accepts legacy V1 materialized metadata without refresh policy (persist)");
+            (*fail)++;
+            return;
+        }
+
+        Value* db_handle = make_ffi_handle_ex(interp, (void*)db, "deduce-db", null, false, false);
+        Value* rel_name_v = make_symbol(interp, rel_name);
+        Value* db_name_v = make_string(interp, "deduce_meta_v1_legacy_policy");
+        Value* col_name_v = make_symbol(interp, interp.symbols.intern("name"));
+        Value*[4] open_args = { db_handle, rel_name_v, db_name_v, col_name_v };
+        Value* opened = prim_deduce_open_named(open_args[0:4], null, interp);
+
+        bool open_ok = opened != null && opened.tag == FFI_HANDLE;
+        if (open_ok) {
+            emit_pass_literal("[PASS] deduce open-named accepts legacy V1 materialized metadata without refresh policy");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] deduce open-named accepts legacy V1 materialized metadata without refresh policy");
+            (*fail)++;
+        }
+    }
+
+    {
+        uint pid = (uint)deduce_test_getpid();
+        usz seq = g_deduce_test_long_path_seq++;
+
+        char[512] db_path_buf;
+        char[] db_path;
+        if (try char[] rendered = io::bprintf(
+            &db_path_buf,
+            "/tmp/omni-deduce-meta-restore-fail-%d-%d",
+            (int)pid,
+            (int)seq
+        )) {
+            db_path = rendered;
+        } else {
+            io::printn("[FAIL] deduce open restores materialized metadata read failures (db path)");
+            (*fail)++;
+            return;
+        }
+        db_path_buf[db_path.len] = 0;
+        defer deduce_test_unlink(&db_path_buf[0]);
+
+        char[640] lock_path_buf;
+        if (try char[] rendered_lock = io::bprintf(&lock_path_buf, "%s-lock", (ZString)db_path)) {
+            lock_path_buf[rendered_lock.len] = 0;
+            defer deduce_test_unlink(&lock_path_buf[0]);
+        }
+
+        char[512] script_path_buf;
+        char[] script_path;
+        if (try char[] rendered = io::bprintf(
+            &script_path_buf,
+            "/tmp/omni-deduce-meta-restore-fail-%d-%d.omni",
+            (int)pid,
+            (int)seq
+        )) {
+            script_path = rendered;
+        } else {
+            io::printn("[FAIL] deduce open restores materialized metadata read failures (script path)");
+            (*fail)++;
+            return;
+        }
+        script_path_buf[script_path.len] = 0;
+        defer deduce_test_unlink(&script_path_buf[0]);
+
+        char[2048] script_buf;
+        char[] script;
+        if (try char[] rendered = io::bprintf(
+            &script_buf,
+            "(block "
+            "  (define db-restore-meta-fail (deduce 'open \"%s\")) "
+            "  (define [relation db-restore-meta-fail] edge_restore_meta_fail (src) (dst)) "
+            "  (define [relation db-restore-meta-fail materialized] ancestor_restore_meta_fail (src) (dst)) "
+            "  (deduce 'fact! edge_restore_meta_fail 1 2) "
+            "  (deduce/rule! db-restore-meta-fail '(ancestor_restore_meta_fail ?x ?y) '(edge_restore_meta_fail ?x ?y)) "
+            "  (deduce/materialize! ancestor_restore_meta_fail) "
+            "  true)",
+            (ZString)db_path
+        )) {
+            script = rendered;
+        } else {
+            io::printn("[FAIL] deduce open restores materialized metadata read failures (script render)");
+            (*fail)++;
+            return;
+        }
+
+        if (!write_text_file(script_path, script) || !deduce_test_run_main_script(script_path)) {
+            io::printn("[FAIL] deduce open restores materialized metadata read failures (setup)");
+            (*fail)++;
+            return;
+        }
+
+        char[768] open_buf;
+        char[] open_src;
+        if (try char[] rendered = io::bprintf(&open_buf, "(deduce 'open \"%s\")", (ZString)db_path)) {
+            open_src = rendered;
+        } else {
+            io::printn("[FAIL] deduce open restores materialized metadata read failures (open render)");
+            (*fail)++;
+            return;
+        }
+
+        bool saved_force = g_deduce_force_materialized_meta_read_fail;
+        g_deduce_force_materialized_meta_read_fail = true;
+        test_error_contains(
+            interp,
+            "deduce open restores materialized metadata read failures",
+            open_src,
+            "forced materialized relation metadata read failure",
+            pass,
+            fail
+        );
+        g_deduce_force_materialized_meta_read_fail = saved_force;
+    }
 }
 
 fn void run_deduce_relation_open_commit_failure_test(Interp* interp, int* pass, int* fail) {

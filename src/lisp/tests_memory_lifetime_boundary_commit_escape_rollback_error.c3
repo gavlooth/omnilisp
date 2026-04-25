@@ -133,6 +133,53 @@ fn void run_memory_lifetime_boundary_commit_escape_rollback_error_tests(Interp* 
         }
     }
 
+    // Invariant: destination error escape build fails closed when destructor
+    // registration fails after the escaped error string has been allocated.
+    {
+        main::ScopeRegion* saved_scope = interp.current_scope;
+        main::ScopeRegion* target_scope = main::scope_create(saved_scope);
+        if (target_scope == null) {
+            io::printn("[FAIL] lifetime: boundary destination error escape dtor OOM fails closed");
+            (*fail)++;
+        } else {
+            uint target_escape_gen = target_scope.escape_generation;
+            Value* source_error = make_error(interp, "boundary error escape dtor oom");
+            bool setup_ok = source_error != null && source_error.tag == ERROR;
+            bool saved_dtor_oom = main::g_scope_force_escape_dtor_alloc_oom;
+            main::g_scope_force_escape_dtor_alloc_oom = true;
+            Value* result = setup_ok
+                ? boundary_build_destination_error_escape(source_error, interp, target_scope)
+                : null;
+            main::g_scope_force_escape_dtor_alloc_oom = saved_dtor_oom;
+
+            bool ok = setup_ok &&
+                      result == source_error &&
+                      result != null &&
+                      result.tag == ERROR &&
+                      result.scope_gen != target_escape_gen &&
+                      interp.current_scope == saved_scope &&
+                      !main::is_in_scope((void*)result, target_scope);
+
+            main::scope_release(target_scope);
+
+            if (ok) {
+                emit_pass_literal("[PASS] lifetime: boundary destination error escape dtor OOM fails closed");
+                (*pass)++;
+            } else {
+                io::printfn(
+                    "[FAIL] lifetime: boundary destination error escape dtor OOM fails closed (setup_ok=%s same=%s tag=%d scope_gen=%d target_escape=%d in_target=%s current_restored=%s)",
+                    setup_ok ? "yes" : "no",
+                    result == source_error ? "yes" : "no",
+                    result != null ? (int)result.tag : -1,
+                    result != null ? (int)result.scope_gen : -1,
+                    (int)target_escape_gen,
+                    result != null && main::is_in_scope((void*)result, target_scope) ? "yes" : "no",
+                    interp.current_scope == saved_scope ? "yes" : "no");
+                (*fail)++;
+            }
+        }
+    }
+
     // Invariant: destination builders fail closed when ESCAPE wrapper
     // allocation itself fails.
     {

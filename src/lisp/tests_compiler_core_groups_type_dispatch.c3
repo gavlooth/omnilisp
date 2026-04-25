@@ -233,8 +233,10 @@ fn void run_compiler_group_type_dispatch_bridge_tests(Interp* interp, usz* pass,
             "(module cmod (export add) (define (add x y) (+ x y)))",
             interp
         );
-        bool ok = str_contains(code, "add = ")
+        bool ok = str_contains(code, "_aot_mod_")
             && str_contains(code, "aot::make_void()")
+            && !str_contains(code, "lisp::Value* add;")
+            && !str_contains(code, "add =")
             && !str_contains(code, "aot::eval_serialized_expr")
             && !str_contains(code, "unsupported expr type");
         if (ok) { (*pass)++; compiler_print_pass("Compiler: module lowers as static inline form"); }
@@ -334,46 +336,100 @@ fn void run_compiler_group_type_dispatch_bridge_tests(Interp* interp, usz* pass,
         else    { (*fail)++; io::printn("[FAIL] Compiler: scoped module open lowers through local aliases"); }
     }
 
-    // Inline import 'all remains static no-op because inline module exports are already global.
+    // AOT control-flow lowering must propagate ERROR values before truthiness or later expressions.
+    {
+        char[] code = compile_to_c3("(if (audit232-missing-if 1) 2 3)", interp);
+        bool ok = str_contains(code, "if (aot::is_error(")
+            && !str_contains(code, "aot::eval_serialized_expr")
+            && !str_contains(code, "unsupported expr type");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: AOT if predicate errors bypass truthiness"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: AOT if predicate errors bypass truthiness"); }
+    }
+
+    {
+        char[] code = compile_to_c3("(and (audit232-missing-and 1) 2)", interp);
+        bool ok = str_contains(code, "if (aot::is_error(")
+            && !str_contains(code, "aot::eval_serialized_expr")
+            && !str_contains(code, "unsupported expr type");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: AOT and predicate errors short-circuit"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: AOT and predicate errors short-circuit"); }
+    }
+
+    {
+        char[] code = compile_to_c3("(or (audit232-missing-or 1) 2)", interp);
+        bool ok = str_contains(code, "if (aot::is_error(")
+            && !str_contains(code, "aot::eval_serialized_expr")
+            && !str_contains(code, "unsupported expr type");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: AOT or predicate errors short-circuit"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: AOT or predicate errors short-circuit"); }
+    }
+
+    {
+        char[] code = compile_to_c3("(block 1 (audit232-missing-block 2) 3)", interp);
+        bool ok = str_contains(code, "if (aot::is_error(")
+            && str_contains(code, "audit232-missing-block")
+            && !str_contains(code, "aot::eval_serialized_expr")
+            && !str_contains(code, "unsupported expr type");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: AOT block stops after non-final errors"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: AOT block stops after non-final errors"); }
+    }
+
+    {
+        char[] code = compile_to_c3("(with math (block (audit232-missing-with 1) 2))", interp);
+        bool ok = str_contains(code, "if (aot::is_error(")
+            && str_contains(code, "audit232-missing-with")
+            && !str_contains(code, "aot::eval_serialized_expr")
+            && !str_contains(code, "unsupported expr type");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: AOT scoped-open body stops after non-final errors"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: AOT scoped-open body stops after non-final errors"); }
+    }
+
+    // Inline import 'all binds exported globals from module-private backing storage.
     {
         char[] code = compile_to_c3(
             "(module imod-all (export v) (define v 1)) (import imod-all 'all)",
             interp
         );
         bool ok = str_contains(code, "import: inline module")
+            && str_contains(code, "v = _aot_mod_")
             && !str_contains(code, "aot::import_module(\"imod-all\"")
+            && !str_contains(code, "aot::lookup_var(\"v\")")
             && !str_contains(code, "aot::eval_serialized_expr")
             && !str_contains(code, "unsupported expr type");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: inline import all lowers as static no-op"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: inline import all lowers as static no-op"); }
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: inline import all binds private backing"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: inline import all binds private backing"); }
     }
 
-    // Inline selective import still binds requested names instead of no-oping.
+    // Inline selective import binds requested names from module-private backing storage.
     {
         char[] code = compile_to_c3(
             "(module imod-sel (export v) (define v 1)) (import imod-sel (v))",
             interp
         );
-        bool ok = str_contains(code, "aot::import_module(\"imod-sel\", \"\", false, false)")
-            && str_contains(code, "v = aot::lookup_var(\"v\")")
+        bool ok = str_contains(code, "v = _aot_mod_")
+            && str_contains(code, "import: inline module")
+            && !str_contains(code, "aot::import_module(\"imod-sel\"")
+            && !str_contains(code, "aot::lookup_var(\"v\")")
             && !str_contains(code, "aot::eval_serialized_expr")
             && !str_contains(code, "unsupported expr type");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: inline selective import keeps symbol binding"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: inline selective import keeps symbol binding"); }
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: inline selective import binds private backing"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: inline selective import binds private backing"); }
     }
 
-    // Inline selective alias import keeps alias target binding and original symbol lookup.
+    // Inline selective alias import binds the alias target from module-private backing storage.
     {
         char[] code = compile_to_c3(
             "(module imod-sel-alias (export v) (define v 1)) (import imod-sel-alias (v 'as vv))",
             interp
         );
-        bool ok = str_contains(code, "aot::import_module(\"imod-sel-alias\", \"\", false, false)")
-            && str_contains(code, "vv = aot::lookup_var(\"v\")")
+        bool ok = str_contains(code, "vv = _aot_mod_")
+            && str_contains(code, "import: inline module")
+            && !str_contains(code, "aot::import_module(\"imod-sel-alias\"")
+            && !str_contains(code, "aot::lookup_var(\"v\")")
             && !str_contains(code, "aot::eval_serialized_expr")
             && !str_contains(code, "unsupported expr type");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: inline selective alias import keeps symbol binding"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: inline selective alias import keeps symbol binding"); }
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: inline selective alias import binds private backing"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: inline selective alias import binds private backing"); }
     }
 
     // Non-top-level import keeps runtime bridge side effects in expression lowering.
@@ -441,46 +497,52 @@ fn void run_compiler_group_type_dispatch_bridge_tests(Interp* interp, usz* pass,
         else    { (*fail)++; io::printn("[FAIL] Compiler: non-top-level path selective alias import keeps runtime binding"); }
     }
 
-    // Non-top-level inline selective import is not no-op: it keeps runtime binding semantics.
+    // Non-top-level inline selective import binds runtime env from private backing storage.
     {
         char[] code = compile_to_c3(
             "(module imod-block-sel (export v) (define v 1)) (block (import imod-block-sel (v)) 0)",
             interp
         );
-        bool ok = str_contains(code, "aot::import_module(\"imod-block-sel\", \"\", false, false)")
-            && str_contains(code, "aot::define_var(\"v\", aot::lookup_var(\"v\"))")
+        bool ok = str_contains(code, "aot::define_var(\"v\", _aot_mod_")
+            && str_contains(code, "import: inline module")
+            && !str_contains(code, "aot::import_module(\"imod-block-sel\"")
+            && !str_contains(code, "aot::lookup_var(\"v\")")
             && !str_contains(code, "aot::eval_serialized_expr")
             && !str_contains(code, "unsupported expr type");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: non-top-level inline selective import keeps runtime binding"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: non-top-level inline selective import keeps runtime binding"); }
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: non-top-level inline selective import binds private backing"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: non-top-level inline selective import binds private backing"); }
     }
 
-    // Non-top-level inline selective alias import is not no-op: it keeps runtime alias binding.
+    // Non-top-level inline selective alias import binds runtime env alias from private backing storage.
     {
         char[] code = compile_to_c3(
             "(module imod-block-sel-alias (export v) (define v 1)) (block (import imod-block-sel-alias (v 'as vv)) 0)",
             interp
         );
-        bool ok = str_contains(code, "aot::import_module(\"imod-block-sel-alias\", \"\", false, false)")
-            && str_contains(code, "aot::define_var(\"vv\", aot::lookup_var(\"v\"))")
+        bool ok = str_contains(code, "aot::define_var(\"vv\", _aot_mod_")
+            && str_contains(code, "import: inline module")
+            && !str_contains(code, "aot::import_module(\"imod-block-sel-alias\"")
+            && !str_contains(code, "aot::lookup_var(\"v\")")
             && !str_contains(code, "aot::eval_serialized_expr")
             && !str_contains(code, "unsupported expr type");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: non-top-level inline selective alias import keeps runtime binding"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: non-top-level inline selective alias import keeps runtime binding"); }
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: non-top-level inline selective alias import binds private backing"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: non-top-level inline selective alias import binds private backing"); }
     }
 
-    // Non-top-level inline import 'all remains static no-op for compiled-inline modules.
+    // Non-top-level inline import 'all binds runtime env exports from private backing storage.
     {
         char[] code = compile_to_c3(
             "(module imod-block-all (export v) (define v 1)) (block (import imod-block-all 'all) 0)",
             interp
         );
         bool ok = str_contains(code, "import: inline module")
+            && str_contains(code, "aot::define_var(\"v\", _aot_mod_")
             && !str_contains(code, "aot::import_module(\"imod-block-all\"")
+            && !str_contains(code, "aot::lookup_var(\"v\")")
             && !str_contains(code, "aot::eval_serialized_expr")
             && !str_contains(code, "unsupported expr type");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: non-top-level inline import all lowers as static no-op"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: non-top-level inline import all lowers as static no-op"); }
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: non-top-level inline import all binds private backing"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: non-top-level inline import all binds private backing"); }
     }
 
     // Non-top-level inline import remains static no-op when module is compiled inline.
@@ -504,12 +566,125 @@ fn void run_compiler_group_type_dispatch_bridge_tests(Interp* interp, usz* pass,
             "(module exp-dst (export z) (export-from exp-src (z)))",
             interp
         );
-        bool ok = str_contains(code, "export-from: no-op in compiled mode")
+        bool ok = str_contains(code, "export-from: compiled inline bridge")
+            && str_contains(code, "_aot_mod_")
             && str_contains(code, "aot::make_void()")
             && !str_contains(code, "aot::eval_serialized_expr")
             && !str_contains(code, "unsupported expr type");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: export-from lowers as static no-op"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: export-from lowers as static no-op"); }
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: export-from lowers through private backing"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: export-from lowers through private backing"); }
+    }
+
+    // Inline module bodies can contain nested definitions without leaking public globals.
+    {
+        char[] code = compile_to_c3(
+            "(module nested-mod (export nested-value) "
+            "  (if true (define nested-value 42) nil)) "
+            "(with nested-mod nested-value)",
+            interp
+        );
+        bool ok = str_contains(code, "_aot_mod_")
+            && str_contains(code, "_aot_with_")
+            && !str_contains(code, "lisp::Value* nested_value;")
+            && !str_contains(code, "nested_value =")
+            && !str_contains(code, "unsupported expr type");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: inline module nested defines use private backing"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: inline module nested defines use private backing"); }
+    }
+
+    // Nested module-body FFI bindings write through private backing targets.
+    {
+        char[] code = compile_to_c3(
+            "(module nested-ffi-mod (export strlen) "
+            "  (if true "
+            "    (block "
+            "      (define [ffi lib] libc \"libc.so.6\") "
+            "      (define [ffi λ libc] (strlen (^String s)) ^Integer)) "
+            "    nil)) "
+            "(with nested-ffi-mod strlen)",
+            interp
+        );
+        bool ok = str_contains(code, "_aot_mod_")
+            && str_contains(code, "_aot_with_")
+            && str_contains(code, "aot::ffi_declare_fn(\"libc\", \"strlen\", \"strlen\"")
+            && !str_contains(code, "lisp::Value* strlen;")
+            && !str_contains(code, "strlen =")
+            && !str_contains(code, "unsupported expr type");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: inline module nested FFI uses private backing"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: inline module nested FFI uses private backing"); }
+    }
+
+    // Nested module-body effect tags write through private backing targets.
+    {
+        char[] code = compile_to_c3(
+            "(module nested-effect-mod (export opened) "
+            "  (if true (define [effect] (opened (^Any payload))) nil)) "
+            "(with nested-effect-mod opened)",
+            interp
+        );
+        bool ok = str_contains(code, "_aot_mod_")
+            && str_contains(code, "_aot_with_")
+            && str_contains(code, "aot::define_effect(\"opened\"")
+            && !str_contains(code, "lisp::Value* opened;")
+            && !str_contains(code, "opened =")
+            && !str_contains(code, "unsupported expr type");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: inline module nested effects use private backing"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: inline module nested effects use private backing"); }
+    }
+
+    // Multi-export export-from all grows private backing storage and re-exports every name.
+    {
+        char[] code = compile_to_c3(
+            "(module exp-all-src (export a b c d e f g h i j k l m n o p q r) "
+            "  (define a 1) (define b 2) (define c 3) (define d 4) (define e 5) "
+            "  (define f 6) (define g 7) (define h 8) (define i 9) (define j 10) "
+            "  (define k 11) (define l 12) (define m 13) (define n 14) (define o 15) "
+            "  (define p 16) (define q 17) (define r 18)) "
+            "(module exp-all-dst (export a b c d e f g h i j k l m n o p q r) "
+            "  (export-from exp-all-src 'all)) "
+            "(import exp-all-dst 'all)",
+            interp
+        );
+        bool ok = str_contains(code, "export-from: compiled inline bridge")
+            && str_contains(code, "r = _aot_mod_")
+            && !str_contains(code, "private binding capacity exhausted")
+            && !str_contains(code, "unsupported expr type");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: export-from all grows private backing table"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: export-from all grows private backing table"); }
+    }
+
+    // Exported names must have an inline backing; dangling exports fail closed.
+    {
+        char[] err = "";
+        char[] code = compile_to_c3(
+            "(module missing-backing (export missing-value) (define other-value 1))",
+            interp,
+            &err
+        );
+        bool ok = code.len == 0
+            && str_contains(err, "inline module export has no compiled private backing");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: inline module dangling export fails closed"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: inline module dangling export fails closed"); }
+    }
+
+    // Nested inline module declarations receive private backing globals before lowering.
+    {
+        char[] code = compile_to_c3(
+            "(module outer-nested (export y) "
+            "  (module inner-nested (export x) (define x 1)) "
+            "  (define y (with inner-nested x))) "
+            "(import outer-nested (y))",
+            interp
+        );
+        bool ok = str_contains(code, "_aot_mod_")
+            && str_contains(code, "_aot_with_")
+            && str_contains(code, "y = _aot_mod_")
+            && !str_contains(code, "lisp::Value* x;")
+            && !str_contains(code, "\n    x =")
+            && !str_contains(code, "missing private backing")
+            && !str_contains(code, "unsupported expr type");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: nested inline modules declare private backing globals"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: nested inline modules declare private backing globals"); }
     }
 
     // Strict handles must thread the strict bit through the AOT bridge.

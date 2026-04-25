@@ -128,3 +128,39 @@ Source: `AUDIT_REPORT_VULKAN_CUDA_ML_2026-04-23.md`.
     export resolution.
   - validation: compiler slice and scoped-module open compiler regressions
     recorded in `AUDIT.md`.
+
+- [x] `SCOPED-MODULE-AOT-002` stop inline scoped module exports from leaking as AOT globals.
+  - classification: runtime behavior, structural compiler/runtime parity.
+  - blocker/task: `AUDIT-048` reopened because inline module definitions still
+    compile exported names as ordinary generated globals, so `(block (with m v)
+    v)` can read `v` after the scoped-open body in generated C3.
+  - why: runtime/JIT scoped open evaluates the body in a child env and must not
+    publish inline module exports as user-facing globals.
+  - concrete next step: extend AOT inline-module metadata with export-to-private
+    backing symbol mappings, exclude module-body definitions from ordinary
+    generated-global collection, and make scoped-open aliases point at the
+    private backing symbols.
+  - prerequisites: inspect `CompiledModule`, `compile_module_flat`,
+    `compiler_program_top_level_globals.c3`, and
+    `compile_with_module_open_flat_common` together so the fix lands across the
+    real ownership boundary.
+  - negative-memory constraint: do not patch only `with` alias lookup while
+    leaving leaked top-level `lisp::Value* leak_value;` declarations in
+    generated output.
+  - done 2026-04-25: inline modules now lower definitions through generated
+    private `_aot_mod_...` backing globals, scoped-open aliases bind
+    `_aot_with_...` to those private symbols, explicit inline imports bind from
+    private storage, and unimported post-`with` public export references fall
+    back to runtime lookup/error behavior instead of leaked generated globals.
+  - re-audit fix 2026-04-25: recursive module-body definitions now receive
+    private backing targets, `export-from 'all` grows the private backing table
+    for multi-export modules, and dangling exports have direct fail-closed
+    coverage.
+  - second re-audit fix 2026-04-25: nested module-body FFI and effect forms now
+    assign through private backing targets in block/type-form lowering.
+  - third re-audit fix 2026-04-25: nested inline module private backing globals
+    are collected before lowering, and missed module-local assignment backings
+    fail closed instead of falling back to public symbols.
+  - validation: bounded container build and compiler slice passed; direct
+    audit probe rejected `lisp::Value* leak_value;`, `leak_value =`, and
+    ` = leak_value;`.

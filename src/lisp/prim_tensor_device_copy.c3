@@ -118,7 +118,9 @@ fn Value* tensor_copy_cpu_to_cuda_value(Value* source_value, Interp* interp) {
     }
     result.tag = TENSOR;
     result.tensor_val = tensor;
-    main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
+    if (!scope_register_value_dtor_or_cleanup(interp.current_scope, result)) {
+        return tensor_runtime_raise(interp, "to-device: failed to register CUDA tensor destructor");
+    }
     return result;
 }
 
@@ -273,7 +275,9 @@ fn Value* tensor_copy_cpu_to_vulkan_value(Value* source_value, Interp* interp) {
     }
     result.tag = TENSOR;
     result.tensor_val = tensor;
-    main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
+    if (!scope_register_value_dtor_or_cleanup(interp.current_scope, result)) {
+        return tensor_runtime_raise(interp, "to-device: failed to register Vulkan tensor destructor");
+    }
     return result;
 }
 

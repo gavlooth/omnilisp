@@ -202,19 +202,7 @@ fn Value* prim_set_bang(Value*[] args, Env* env, Interp* interp) {
 // --- Phase 9: Set primitives ---
 
 fn bool set_constructor_capacity(usz elem_count, uint* out) {
-    if (out == null) return false;
-    if (elem_count > usz.max / (usz)2) return false;
-    usz required = elem_count * (usz)2;
-    if (required < (usz)16) required = (usz)16;
-    if (required > (usz)uint.max) return false;
-
-    uint cap = 16;
-    while ((usz)cap < required) {
-        if (cap > uint.max / (uint)2) return false;
-        cap *= 2;
-    }
-    *out = cap;
-    return true;
+    return hashmap_capacity_hint_for_entry_count(elem_count, out);
 }
 
 <*

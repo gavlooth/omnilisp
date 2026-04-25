@@ -66,6 +66,13 @@ fn bool compiler_prim_emit_code_is_runtime_lookup(char[] emit_code) @inline {
 }
 
 fn void Compiler.emit_symbol_value_reference(Compiler* self, SymbolId sym) {
+    for (usz i = self.module_private_symbols.len(); i > 0; i--) {
+        if ((uint)self.module_private_symbols.entries[i - 1] == (uint)sym) {
+            self.emit_symbol_name(self.module_private_backings.entries[i - 1]);
+            return;
+        }
+    }
+
     for (usz i = self.module_open_exports.len(); i > 0; i--) {
         if ((uint)self.module_open_exports.entries[i - 1] == (uint)sym) {
             self.emit_symbol_name(self.module_open_aliases.entries[i - 1]);
@@ -92,7 +99,30 @@ fn void Compiler.emit_symbol_value_reference(Compiler* self, SymbolId sym) {
         return;
     }
 
+    if (!self.is_global(sym) && !self.is_declared(sym)) {
+        char[] sym_name = self.interp.symbols.get_name(sym);
+        self.emit("aot::lookup_var(\"");
+        self.emit_escaped(sym_name);
+        self.emit("\")");
+        return;
+    }
+
     self.emit_symbol_name(sym);
+}
+
+fn bool Compiler.emit_symbol_assignment_target(Compiler* self, SymbolId sym) {
+    SymbolId backing = INVALID_SYMBOL_ID;
+    if (self.find_active_module_private_backing(sym, &backing)) {
+        self.emit_symbol_name(backing);
+        return true;
+    }
+    if (self.module_private_symbols.len() > 0) {
+        self.set_compile_error("compiler: inline module local assignment missing private backing");
+        self.emit_symbol_name(sym);
+        return false;
+    }
+    self.emit_symbol_name(sym);
+    return true;
 }
 
 /**

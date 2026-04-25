@@ -24,7 +24,9 @@ fn Value* ml_optimizer_vulkan_tensor_value(TensorVal* source, void* device_handl
     }
     result.tag = TENSOR;
     result.tensor_val = tensor;
-    main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
+    if (!scope_register_value_dtor_or_cleanup(interp.current_scope, result)) {
+        return tensor_runtime_raise(interp, value_label);
+    }
     return result;
 }
 

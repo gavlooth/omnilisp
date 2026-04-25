@@ -4,8 +4,8 @@ Source: `docs/areas/memory-runtime.md`
 
 # Memory and Runtime
 
-Status: `green` (boundary hardening, nested fail-closed wrapper promotion, bounded runtime/JIT gates, signal-handle rollback cleanup, lazy Tensor cleanup, structured-error payload cleanup, checked-hashmap rollback cleanup, and transactional destination materialization are all currently validated)
-As of: 2026-04-25
+Status: `green` (boundary hardening, nested fail-closed wrapper promotion, bounded runtime/JIT gates, signal-handle rollback cleanup, lazy Tensor cleanup, structured-error payload cleanup, checked-hashmap rollback cleanup, transactional destination materialization, memory workload coverage, and scope allocator sequence telemetry are all currently validated)
+As of: 2026-04-26
 
 ## Canonical Sources
 
@@ -30,6 +30,13 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
 - The stable-escape graph work is implemented through interpreter-owned stable
   store metadata, prepared publication, destination materialization, and
   bounded memory-lifetime smoke coverage.
+- The memory-model improvement lane is closed. `MEM-MODEL-IMPROVE-006` is
+  closed with product, closure-iterator, tensor-metadata, and nested-module
+  return workloads. `MEM-MODEL-IMPROVE-002` added allocator histograms,
+  per-scope sequence evidence, request/unused buckets, and source/site
+  attribution; it closed without a chunk-policy change because the remaining
+  ESCAPE no-follow-up bucket is synthetic direct benchmark traffic rather than
+  runtime boundary/promotion pressure.
 - The active next architecture roadmap is
   `docs/plans/memory-boundary-proof-planner-roadmap-2026-04-24.md`: centralize
   route choice in a proof-driven `BoundaryPlanner`, then expand stable graph

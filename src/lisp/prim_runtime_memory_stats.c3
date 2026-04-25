@@ -31,7 +31,7 @@ fn Value* runtime_memory_dict_set_symbol(Value* dict, Interp* interp, char[] key
 }
 
 fn Value* runtime_memory_scope_stats(Interp* interp) {
-    Value* out = runtime_memory_make_dict(interp, 64);
+    Value* out = runtime_memory_make_dict(interp, 112);
     if (out == null || out.tag == ERROR) return out;
     main::ScopeMemoryTelemetryStats stats = main::g_scope_memory_telemetry_stats;
     if (Value* err = runtime_memory_dict_set_usz(out, interp, "temp-bytes-allocated", stats.total_temp_bytes_allocated)) return err;
@@ -46,6 +46,55 @@ fn Value* runtime_memory_scope_stats(Interp* interp) {
     if (Value* err = runtime_memory_dict_set_usz(out, interp, "escape-slow-requested-bytes", stats.escape_slow_requested_bytes)) return err;
     if (Value* err = runtime_memory_dict_set_usz(out, interp, "temp-slow-selected-chunk-bytes", stats.temp_slow_selected_chunk_bytes)) return err;
     if (Value* err = runtime_memory_dict_set_usz(out, interp, "escape-slow-selected-chunk-bytes", stats.escape_slow_selected_chunk_bytes)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "temp-slow-slack-exact-count", stats.temp_slow_slack_exact_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "temp-slow-slack-le-512-count", stats.temp_slow_slack_le_512_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "temp-slow-slack-le-4096-count", stats.temp_slow_slack_le_4096_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "temp-slow-slack-gt-4096-count", stats.temp_slow_slack_gt_4096_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "escape-slow-slack-exact-count", stats.escape_slow_slack_exact_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "escape-slow-slack-le-512-count", stats.escape_slow_slack_le_512_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "escape-slow-slack-le-4096-count", stats.escape_slow_slack_le_4096_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "escape-slow-slack-gt-4096-count", stats.escape_slow_slack_gt_4096_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "temp-slow-sequence-closed-count", stats.temp_slow_sequence_closed_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "escape-slow-sequence-closed-count", stats.escape_slow_sequence_closed_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "temp-slow-sequence-followup-alloc-count", stats.temp_slow_sequence_followup_alloc_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "escape-slow-sequence-followup-alloc-count", stats.escape_slow_sequence_followup_alloc_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "temp-slow-sequence-followup-bytes", stats.temp_slow_sequence_followup_bytes)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "escape-slow-sequence-followup-bytes", stats.escape_slow_sequence_followup_bytes)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "temp-slow-sequence-unused-at-close-bytes", stats.temp_slow_sequence_unused_at_close_bytes)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "escape-slow-sequence-unused-at-close-bytes", stats.escape_slow_sequence_unused_at_close_bytes)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "temp-slow-sequence-no-followup-count", stats.temp_slow_sequence_no_followup_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "escape-slow-sequence-no-followup-count", stats.escape_slow_sequence_no_followup_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "temp-slow-sequence-no-followup-request-le-512-count", stats.temp_slow_sequence_no_followup_request_le_512_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "temp-slow-sequence-no-followup-request-le-4096-count", stats.temp_slow_sequence_no_followup_request_le_4096_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "temp-slow-sequence-no-followup-request-gt-4096-count", stats.temp_slow_sequence_no_followup_request_gt_4096_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "escape-slow-sequence-no-followup-request-le-512-count", stats.escape_slow_sequence_no_followup_request_le_512_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "escape-slow-sequence-no-followup-request-le-4096-count", stats.escape_slow_sequence_no_followup_request_le_4096_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "escape-slow-sequence-no-followup-request-gt-4096-count", stats.escape_slow_sequence_no_followup_request_gt_4096_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "temp-slow-sequence-no-followup-unused-exact-count", stats.temp_slow_sequence_no_followup_unused_exact_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "temp-slow-sequence-no-followup-unused-le-512-count", stats.temp_slow_sequence_no_followup_unused_le_512_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "temp-slow-sequence-no-followup-unused-le-4096-count", stats.temp_slow_sequence_no_followup_unused_le_4096_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "temp-slow-sequence-no-followup-unused-gt-4096-count", stats.temp_slow_sequence_no_followup_unused_gt_4096_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "escape-slow-sequence-no-followup-unused-exact-count", stats.escape_slow_sequence_no_followup_unused_exact_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "escape-slow-sequence-no-followup-unused-le-512-count", stats.escape_slow_sequence_no_followup_unused_le_512_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "escape-slow-sequence-no-followup-unused-le-4096-count", stats.escape_slow_sequence_no_followup_unused_le_4096_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "escape-slow-sequence-no-followup-unused-gt-4096-count", stats.escape_slow_sequence_no_followup_unused_gt_4096_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "escape-slow-sequence-no-followup-source-unknown-count", stats.escape_slow_sequence_no_followup_source_unknown_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "escape-slow-sequence-no-followup-source-direct-count", stats.escape_slow_sequence_no_followup_source_direct_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "escape-slow-sequence-no-followup-source-dtor-count", stats.escape_slow_sequence_no_followup_source_dtor_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "escape-slow-sequence-no-followup-source-interp-value-count", stats.escape_slow_sequence_no_followup_source_interp_value_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "escape-slow-sequence-no-followup-source-interp-env-count", stats.escape_slow_sequence_no_followup_source_interp_env_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "escape-slow-sequence-no-followup-source-boundary-payload-count", stats.escape_slow_sequence_no_followup_source_boundary_payload_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "escape-slow-sequence-no-followup-source-promotion-signature-count", stats.escape_slow_sequence_no_followup_source_promotion_signature_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "escape-slow-sequence-no-followup-source-promotion-closure-count", stats.escape_slow_sequence_no_followup_source_promotion_closure_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "escape-slow-sequence-no-followup-source-jit-args-count", stats.escape_slow_sequence_no_followup_source_jit_args_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "temp-slow-sequence-large-slack-count", stats.temp_slow_sequence_large_slack_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "escape-slow-sequence-large-slack-count", stats.escape_slow_sequence_large_slack_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "temp-slow-sequence-large-slack-followup-bytes", stats.temp_slow_sequence_large_slack_followup_bytes)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "escape-slow-sequence-large-slack-followup-bytes", stats.escape_slow_sequence_large_slack_followup_bytes)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "temp-slow-sequence-large-slack-unused-at-close-bytes", stats.temp_slow_sequence_large_slack_unused_at_close_bytes)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "escape-slow-sequence-large-slack-unused-at-close-bytes", stats.escape_slow_sequence_large_slack_unused_at_close_bytes)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "temp-slow-sequence-large-slack-no-followup-count", stats.temp_slow_sequence_large_slack_no_followup_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "escape-slow-sequence-large-slack-no-followup-count", stats.escape_slow_sequence_large_slack_no_followup_count)) return err;
     if (Value* err = runtime_memory_dict_set_usz(out, interp, "temp-live-chunk-count", stats.temp_live_chunk_count)) return err;
     if (Value* err = runtime_memory_dict_set_usz(out, interp, "escape-live-chunk-count", stats.escape_live_chunk_count)) return err;
     if (Value* err = runtime_memory_dict_set_usz(out, interp, "temp-peak-live-chunk-count", stats.temp_peak_live_chunk_count)) return err;
@@ -310,7 +359,7 @@ fn void runtime_memory_print_telemetry() {
     BoundaryValueShapeStats value_stats = boundary_value_shape_stats_snapshot();
 
     io::printn("{\"kind\":\"runtime-memory-stats\",\"status\":\"ok\",");
-    io::printfn("\"scope\":{\"temp_bytes_allocated\":%d,\"escape_bytes_allocated\":%d,\"temp_chunk_bytes_allocated\":%d,\"escape_chunk_bytes_allocated\":%d,\"temp_bytes_freed\":%d,\"escape_bytes_freed\":%d,\"temp_slow_alloc_count\":%d,\"escape_slow_alloc_count\":%d,\"temp_peak_live_chunk_count\":%d,\"escape_peak_live_chunk_count\":%d,\"temp_unused_bytes_at_reset\":%d,\"escape_unused_bytes_at_reset\":%d,\"temp_unused_bytes_at_destroy\":%d,\"escape_unused_bytes_at_destroy\":%d,\"scope_create_count\":%d,\"scope_release_count\":%d,\"scope_destroy_count\":%d,\"scope_recycle_count\":%d,\"scope_fresh_alloc_count\":%d,\"scope_recycle_hit_count\":%d},",
+    io::printfn("\"scope\":{\"temp_bytes_allocated\":%d,\"escape_bytes_allocated\":%d,\"temp_chunk_bytes_allocated\":%d,\"escape_chunk_bytes_allocated\":%d,\"temp_bytes_freed\":%d,\"escape_bytes_freed\":%d,\"temp_slow_alloc_count\":%d,\"escape_slow_alloc_count\":%d,\"temp_slow_slack_exact_count\":%d,\"temp_slow_slack_le_512_count\":%d,\"temp_slow_slack_le_4096_count\":%d,\"temp_slow_slack_gt_4096_count\":%d,\"escape_slow_slack_exact_count\":%d,\"escape_slow_slack_le_512_count\":%d,\"escape_slow_slack_le_4096_count\":%d,\"escape_slow_slack_gt_4096_count\":%d,\"temp_slow_sequence_closed_count\":%d,\"escape_slow_sequence_closed_count\":%d,\"temp_slow_sequence_followup_bytes\":%d,\"escape_slow_sequence_followup_bytes\":%d,\"temp_slow_sequence_unused_at_close_bytes\":%d,\"escape_slow_sequence_unused_at_close_bytes\":%d,\"temp_slow_sequence_no_followup_count\":%d,\"escape_slow_sequence_no_followup_count\":%d,\"temp_slow_sequence_no_followup_request_le_512_count\":%d,\"temp_slow_sequence_no_followup_request_le_4096_count\":%d,\"temp_slow_sequence_no_followup_request_gt_4096_count\":%d,\"escape_slow_sequence_no_followup_request_le_512_count\":%d,\"escape_slow_sequence_no_followup_request_le_4096_count\":%d,\"escape_slow_sequence_no_followup_request_gt_4096_count\":%d,\"temp_slow_sequence_no_followup_unused_exact_count\":%d,\"temp_slow_sequence_no_followup_unused_le_512_count\":%d,\"temp_slow_sequence_no_followup_unused_le_4096_count\":%d,\"temp_slow_sequence_no_followup_unused_gt_4096_count\":%d,\"escape_slow_sequence_no_followup_unused_exact_count\":%d,\"escape_slow_sequence_no_followup_unused_le_512_count\":%d,\"escape_slow_sequence_no_followup_unused_le_4096_count\":%d,\"escape_slow_sequence_no_followup_unused_gt_4096_count\":%d,\"escape_slow_sequence_no_followup_source_unknown_count\":%d,\"escape_slow_sequence_no_followup_source_direct_count\":%d,\"escape_slow_sequence_no_followup_source_dtor_count\":%d,\"escape_slow_sequence_no_followup_source_interp_value_count\":%d,\"escape_slow_sequence_no_followup_source_interp_env_count\":%d,\"escape_slow_sequence_no_followup_source_boundary_payload_count\":%d,\"escape_slow_sequence_no_followup_source_promotion_signature_count\":%d,\"escape_slow_sequence_no_followup_source_promotion_closure_count\":%d,\"escape_slow_sequence_no_followup_source_jit_args_count\":%d,\"temp_slow_sequence_large_slack_count\":%d,\"escape_slow_sequence_large_slack_count\":%d,\"temp_slow_sequence_large_slack_followup_bytes\":%d,\"escape_slow_sequence_large_slack_followup_bytes\":%d,\"temp_slow_sequence_large_slack_unused_at_close_bytes\":%d,\"escape_slow_sequence_large_slack_unused_at_close_bytes\":%d,\"temp_slow_sequence_large_slack_no_followup_count\":%d,\"escape_slow_sequence_large_slack_no_followup_count\":%d,\"temp_peak_live_chunk_count\":%d,\"escape_peak_live_chunk_count\":%d,\"temp_unused_bytes_at_reset\":%d,\"escape_unused_bytes_at_reset\":%d,\"temp_unused_bytes_at_destroy\":%d,\"escape_unused_bytes_at_destroy\":%d,\"scope_create_count\":%d,\"scope_release_count\":%d,\"scope_destroy_count\":%d,\"scope_recycle_count\":%d,\"scope_fresh_alloc_count\":%d,\"scope_recycle_hit_count\":%d},",
         scope_stats.total_temp_bytes_allocated,
         scope_stats.total_escape_bytes_allocated,
         scope_stats.temp_chunk_bytes_allocated,
@@ -319,6 +368,53 @@ fn void runtime_memory_print_telemetry() {
         scope_stats.escape_bytes_freed,
         scope_stats.temp_slow_alloc_count,
         scope_stats.escape_slow_alloc_count,
+        scope_stats.temp_slow_slack_exact_count,
+        scope_stats.temp_slow_slack_le_512_count,
+        scope_stats.temp_slow_slack_le_4096_count,
+        scope_stats.temp_slow_slack_gt_4096_count,
+        scope_stats.escape_slow_slack_exact_count,
+        scope_stats.escape_slow_slack_le_512_count,
+        scope_stats.escape_slow_slack_le_4096_count,
+        scope_stats.escape_slow_slack_gt_4096_count,
+        scope_stats.temp_slow_sequence_closed_count,
+        scope_stats.escape_slow_sequence_closed_count,
+        scope_stats.temp_slow_sequence_followup_bytes,
+        scope_stats.escape_slow_sequence_followup_bytes,
+        scope_stats.temp_slow_sequence_unused_at_close_bytes,
+        scope_stats.escape_slow_sequence_unused_at_close_bytes,
+        scope_stats.temp_slow_sequence_no_followup_count,
+        scope_stats.escape_slow_sequence_no_followup_count,
+        scope_stats.temp_slow_sequence_no_followup_request_le_512_count,
+        scope_stats.temp_slow_sequence_no_followup_request_le_4096_count,
+        scope_stats.temp_slow_sequence_no_followup_request_gt_4096_count,
+        scope_stats.escape_slow_sequence_no_followup_request_le_512_count,
+        scope_stats.escape_slow_sequence_no_followup_request_le_4096_count,
+        scope_stats.escape_slow_sequence_no_followup_request_gt_4096_count,
+        scope_stats.temp_slow_sequence_no_followup_unused_exact_count,
+        scope_stats.temp_slow_sequence_no_followup_unused_le_512_count,
+        scope_stats.temp_slow_sequence_no_followup_unused_le_4096_count,
+        scope_stats.temp_slow_sequence_no_followup_unused_gt_4096_count,
+        scope_stats.escape_slow_sequence_no_followup_unused_exact_count,
+        scope_stats.escape_slow_sequence_no_followup_unused_le_512_count,
+        scope_stats.escape_slow_sequence_no_followup_unused_le_4096_count,
+        scope_stats.escape_slow_sequence_no_followup_unused_gt_4096_count,
+        scope_stats.escape_slow_sequence_no_followup_source_unknown_count,
+        scope_stats.escape_slow_sequence_no_followup_source_direct_count,
+        scope_stats.escape_slow_sequence_no_followup_source_dtor_count,
+        scope_stats.escape_slow_sequence_no_followup_source_interp_value_count,
+        scope_stats.escape_slow_sequence_no_followup_source_interp_env_count,
+        scope_stats.escape_slow_sequence_no_followup_source_boundary_payload_count,
+        scope_stats.escape_slow_sequence_no_followup_source_promotion_signature_count,
+        scope_stats.escape_slow_sequence_no_followup_source_promotion_closure_count,
+        scope_stats.escape_slow_sequence_no_followup_source_jit_args_count,
+        scope_stats.temp_slow_sequence_large_slack_count,
+        scope_stats.escape_slow_sequence_large_slack_count,
+        scope_stats.temp_slow_sequence_large_slack_followup_bytes,
+        scope_stats.escape_slow_sequence_large_slack_followup_bytes,
+        scope_stats.temp_slow_sequence_large_slack_unused_at_close_bytes,
+        scope_stats.escape_slow_sequence_large_slack_unused_at_close_bytes,
+        scope_stats.temp_slow_sequence_large_slack_no_followup_count,
+        scope_stats.escape_slow_sequence_large_slack_no_followup_count,
         scope_stats.temp_peak_live_chunk_count,
         scope_stats.escape_peak_live_chunk_count,
         scope_stats.temp_unused_bytes_at_reset,

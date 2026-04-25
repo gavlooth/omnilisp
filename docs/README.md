@@ -24,6 +24,8 @@ If two docs disagree, use the authority model below.
 - `memory/CHANGELOG.md`
 - `docs/RELEASE_STATUS.md`
 - `docs/areas/README.md` and `docs/areas/*.md`
+- `docs/VALIDATION_TOOLS.md` for regression/debugging tool selection and
+  platform install notes
 
 ### User Reference / Cookbook
 

@@ -18,6 +18,7 @@ struct ResetState {
     bool    shifted;      // Set true by shift before suspending
     Expr*   shift_body;   // Shift's body expression (to be eval'd in parent)
     Env*    shift_env;    // Environment for shift body (includes k binding)
+    Continuation* shift_k; // Captured continuation backing the suspended ctx
 }
 
 fn void reset_entry(void* arg) {
@@ -48,6 +49,7 @@ fn EvalResult jit_reset_impl(Expr* expr, Env* env, Interp* interp) {
     state.shifted = false;
     state.shift_body = null;
     state.shift_env = null;
+    state.shift_k = null;
 
     main::stack_ctx_init(ctx, &reset_entry, &state);
 
@@ -74,10 +76,16 @@ fn EvalResult jit_reset_impl(Expr* expr, Env* env, Interp* interp) {
     if (state.shifted) {
         // Shift occurred — evaluate shift body in parent context
         Value* shift_result = jit_eval(state.shift_body, state.shift_env, interp);
-        main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
         if (shift_result != null && shift_result.tag == ERROR) {
+            interp_discard_lisp_continuation(interp, state.shift_k);
+            main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
             return eval_error(shift_result.str_chars[:shift_result.str_len]);
         }
+        if (continuation_result_references_target(shift_result, state.shift_k)) {
+            return eval_ok(shift_result);
+        }
+        interp_discard_lisp_continuation(interp, state.shift_k);
+        main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
         return eval_ok(shift_result);
     }
 
@@ -149,6 +157,7 @@ fn Value* jit_shift_impl(Expr* expr, Env* env, Interp* interp) {
     rstate.shifted = true;
     rstate.shift_body = expr.shift.body;
     rstate.shift_env = shift_env;
+    rstate.shift_k = k;
 
     // Save interpreter state that the parent's evaluation will corrupt.
     SavedInterpState saved;
@@ -172,6 +181,7 @@ fn Value* jit_shift_impl(Expr* expr, Env* env, Interp* interp) {
         rstate.shifted = false;
         rstate.shift_body = null;
         rstate.shift_env = null;
+        rstate.shift_k = null;
         interp_discard_lisp_continuation(interp, k);
         restore_interp_state_preserve_raise(interp, &saved);
         return raise_error_with_payload_names(interp, "runtime", "runtime/suspend-scope-guard", "stack engine: failed to register suspend scope guard");

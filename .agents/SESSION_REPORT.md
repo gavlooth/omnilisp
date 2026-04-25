@@ -5952,6 +5952,1084 @@ Re-audit notes:
 
 Signature: GPT-5 Codex
 
+## 2026-04-26 Memory Model Proof Matrix Plan
+
+Objective:
+- Record a general proof/measurement/hardening plan for the whole memory model,
+  not only the FFI yellow area.
+
+Changes made:
+- Added `docs/plans/memory-model-proof-matrix-2026-04-26.md`.
+- Added general Memory Proof Matrix instructions to `AGENTS.md`.
+- Opened TODO Part 18 lanes `MEM-PROOF-001` through `MEM-PROOF-010`.
+- Updated `TODO.md`, `docs/plans/README.md`, and
+  `memory/changelog_parts/changelog_part_37.md`.
+
+Key result:
+- The core memory migration remains green, but proof completeness is now a
+  first-class tracked workstream covering inventory, ScopeRegion core, value
+  constructors, env/closure, boundary routes, stable escape/transplant,
+  collections, native tensor/device paths, async/scheduler/callbacks, and FFI.
+
+Unresolved issues:
+- The new proof lanes are open and intentionally make the TODO actionable count
+  nonzero again.
+
+Signature: GPT-5 Codex
+
+## 2026-04-26 Stable Materialized Closure Destructor Registration Audit Closure
+
+Objective:
+- Continue audit remediation by hardening the next unchecked ESCAPE destructor
+  registration path in stable destination materialization.
+
+Changes made:
+- `stable_escape_materialize_init_closure` now checks the closure-specific
+  `scope_register_dtor_escape(..., scope_dtor_closure)` result and returns
+  `false` if registration fails.
+- Added a focused regression that allocates the destination wrapper first and
+  then forces ESCAPE destructor-record OOM for the closure-specific
+  registration seam.
+- Recorded closed `AUDIT-241` and the corresponding closed TODO Part 18 item.
+
+Commands run:
+- C3 LSP diagnostics for `eval_boundary_commit_destination.c3` and
+  `tests_memory_lifetime_boundary_commit_escape_destination_fault.c3`.
+- `OMNI_VALIDATION_TIMEOUT_SEC=300 scripts/run_validation_container.sh c3c --threads 1 build --obj-out obj_container`
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+
+Key results:
+- C3 diagnostics passed.
+- Bounded container build passed and linked `build/main`.
+- Bounded container `memory-lifetime-smoke` passed with `274 passed, 0 failed`.
+
+Unresolved issues:
+- No open issue remains for this slice.
+
+Signature: GPT-5 Codex
+
+## 2026-04-26 Destination Error Escape Destructor Registration Audit Closure
+
+Objective:
+- Continue audit remediation by hardening the next unchecked destructor
+  registration path in boundary destination builders.
+
+Changes made:
+- `boundary_build_destination_error_escape` now checks
+  `scope_register_dtor_escape` and fails closed by manually destroying the
+  partial error payload before returning the original error.
+- Added a forced ESCAPE destructor-record OOM regression for destination error
+  escape building.
+- Recorded closed `AUDIT-240` and the corresponding closed TODO Part 18 item.
+
+Commands run:
+- C3 LSP diagnostics for `eval_boundary_commit_escape_builders.c3` and
+  `tests_memory_lifetime_boundary_commit_escape_rollback_error.c3`.
+- `OMNI_VALIDATION_TIMEOUT_SEC=300 scripts/run_validation_container.sh c3c --threads 1 build --obj-out obj_container`
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+
+Key results:
+- C3 diagnostics passed.
+- Bounded container build passed and linked `build/main`.
+- Bounded container `memory-lifetime-smoke` passed with `273 passed, 0 failed`.
+
+Invalidated or failed attempt:
+- A first test attempt used `g_scope_force_dtor_alloc_oom`, which targets
+  TEMP-lane destructor records and did not exercise
+  `scope_register_dtor_escape`. The regression now uses
+  `g_scope_force_escape_dtor_alloc_oom`.
+
+Unresolved issues:
+- No open issue remains for this slice.
+
+Signature: GPT-5 Codex
+
+## 2026-04-26 Env-Copy Destructor Registration Audit Closure
+
+Objective:
+- Continue the audit remediation queue after all open TODO items were closed,
+  focusing on unchecked memory/lifetime registration paths.
+
+Changes made:
+- Added `BOUNDARY_ENV_COPY_FAULT_DTOR_REGISTRATION` as a typed env-copy fault.
+- Changed env-frame materialization so `scope_register_dtor` failure rolls back
+  copied binding payloads, invalidates the active promotion context, cleans the
+  partial frame, and returns failure.
+- Added a forced destructor-registration OOM regression for env-copy.
+- Recorded closed `AUDIT-239` and the corresponding closed TODO Part 18 item.
+
+Commands run:
+- C3 LSP diagnostics for `eval_env_copy_helpers.c3`,
+  `eval_boundary_api_types.c3`, `jit_closure_runtime.c3`, and
+  `tests_memory_lifetime_env_copy_groups_faults.c3`.
+- `c3c --threads 1 build --obj-out obj`
+- `OMNI_VALIDATION_TIMEOUT_SEC=300 scripts/run_validation_container.sh c3c --threads 1 build --obj-out obj_container`
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+- `scripts/check_status_consistency.sh`
+- `git diff --check`
+
+Key results:
+- Host build reached link and failed only because the host lacks
+  `liblightning` and `libreplxx`, matching the known local limitation.
+- Bounded container build passed and linked `build/main`.
+- Bounded container `memory-lifetime-smoke` passed with `272 passed, 0 failed`.
+- Status consistency and whitespace checks passed.
+
+Unresolved issues:
+- No open issue remains for this slice.
+
+Signature: GPT-5 Codex
+
+## 2026-04-26 01:24 CEST - MEM-MODEL-IMPROVE-002 Source Attribution Closure
+
+Objective:
+- Continue `MEM-MODEL-IMPROVE-002` by adding source/site attribution for the
+  remaining ESCAPE no-follow-up slow-allocation sequences and close the item
+  if no runtime allocator policy is justified.
+
+Changes made:
+- Added telemetry-only `ScopeEscapeAllocSource` state for ESCAPE slow
+  sequences.
+- Classified no-follow-up ESCAPE slow sequences by direct/manual allocation,
+  ESCAPE destructor records, interpreter Value/Env escape allocation, boundary
+  payload materialization, promotion signature copy, promotion closure copy,
+  and JIT staged arguments.
+- Exposed source buckets through `runtime-memory-stats`,
+  `OMNI_MEM_TELEMETRY`, `boundary_value_shape_counters`, and the benchmark
+  envelope.
+- Closed `MEM-MODEL-IMPROVE-002` in `TODO.md`,
+  `docs/todo_parts/todo_part_18.md`, and
+  `docs/plans/memory-model-improvement-plan-2026-04-25.md`.
+- Updated `memory/changelog_parts/changelog_part_37.md`,
+  `docs/plans/README.md`, `docs/areas/memory-runtime_parts/memory-runtime_part_01.md`,
+  and `.agents/PLAN.md`.
+
+Commands run:
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh c3c --threads 1 build --obj-out obj_mem_model_escape_source -D OMNI_BOUNDARY_INSTR_COUNTERS`
+- `OMNI_VALIDATION_TIMEOUT_SEC=900 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_BOUNDARY_BENCH=1 OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-bench ./build/main --test-suite lisp`
+- `OMNI_MEM_TELEM_REQUIRE_SLOW_SLACK_HISTOGRAM=1 OMNI_MEM_TELEM_REQUIRE_COLLECTION_GROWTH_ZERO=1 OMNI_MEM_TELEM_REQUIRE_SCOPE_SEQUENCE=1 scripts/check_memory_telemetry_benchmark_envelope.sh .agents/memory-model-improve-002-escape-source.log`
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh c3c --threads 1 build --obj-out obj_mem_model_escape_source_normal`
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- `OMNI_VALIDATION_TIMEOUT_SEC=900 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+- `OMNI_VALIDATION_TIMEOUT_SEC=1800 scripts/run_validation_container.sh valgrind --leak-check=full --error-exitcode=99 env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+- `scripts/check_status_consistency.sh`
+- `rg -n '^[[:space:]]*-[[:space:]]+\[[[:space:]]\]' TODO.md docs/todo_parts`
+- `rg -n 'Status: (Open|In Progress|Partial)' AUDIT.md AUDIT_2.md`
+- `git diff --check`
+
+Key results:
+- Counters-enabled and normal bounded builds passed.
+- `memory-lifetime-bench` passed and attributed all remaining ESCAPE
+  no-follow-up sequences to direct benchmark allocations:
+  `escape_slow_sequence_no_followup_source_direct_delta=256`.
+- Dtor, interpreter value/env, boundary payload, promotion signature,
+  promotion closure, JIT staged-arg, and unknown source buckets were all zero.
+- The envelope passed with request, unused, and source bucket-sum checks.
+- Default lisp slice passed with `pass=173 fail=0`.
+- `memory-lifetime-smoke` passed with `pass=271 fail=0`.
+- Bounded Valgrind `memory-lifetime-smoke` passed with `pass=271 fail=0` and
+  no Valgrind error exit.
+- Status consistency passed with `TODO actionable count: 0`.
+- Re-audit found no unchecked TODO markers and no open/in-progress/partial
+  status markers in `AUDIT.md` or `AUDIT_2.md`.
+- Whitespace diff check passed.
+
+Invalidated assumptions or failed approaches:
+- `[INVALIDATED]` Do not tune allocator chunk policy from the current remaining
+  ESCAPE no-follow-up bucket. It is synthetic direct allocator-probe traffic,
+  not runtime boundary/promotion allocation pressure.
+
+Current best recommendation:
+- Treat the memory-model improvement queue as closed. Reopen allocator policy
+  only with non-synthetic source evidence from a real workload or repeated
+  bounded benchmark.
+
+Unresolved issues:
+- The graph-audit violation lines seen during memory-lifetime smoke/Valgrind
+  remain pre-existing output in a passing slice and were not introduced by this
+  telemetry-only change.
+
+Dependencies, blockers, or restart requirements:
+- Rebuild `build/main` after further C3 changes before relying on runtime
+  tests. Broad/high-memory validation remains container-bound.
+
+Signature: GPT-5 Codex
+
+## 2026-04-26 00:58 CEST - MEM-MODEL-IMPROVE-002 ESCAPE Sequence Classification
+
+Objective:
+- Continue `MEM-MODEL-IMPROVE-002` by classifying ESCAPE no-follow-up
+  slow-allocation sequences before another allocator chunk policy change.
+
+Changes made:
+- Added request-size and unused-at-close size-class state for TEMP/ESCAPE
+  no-follow-up slow-allocation sequences.
+- Exposed the new buckets through `runtime-memory-stats`,
+  `OMNI_MEM_TELEMETRY`, `boundary_value_shape_counters`, and the memory
+  telemetry envelope under `OMNI_MEM_TELEM_REQUIRE_SCOPE_SEQUENCE=1`.
+- Extended runtime stats coverage and the benchmark envelope so ESCAPE
+  no-follow-up request and unused bucket sums must match the total.
+- Updated `TODO.md`, `docs/todo_parts/todo_part_18.md`,
+  `docs/plans/memory-model-improvement-plan-2026-04-25.md`,
+  `memory/changelog_parts/changelog_part_37.md`, and `.agents/PLAN.md`.
+
+Commands run:
+- C3 diagnostics for touched C3 files.
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh c3c --threads 1 build --obj-out obj_mem_model_escape_sequence_classes -D OMNI_BOUNDARY_INSTR_COUNTERS`
+- `OMNI_VALIDATION_TIMEOUT_SEC=900 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_BOUNDARY_BENCH=1 OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-bench ./build/main --test-suite lisp`
+- `OMNI_MEM_TELEM_REQUIRE_SLOW_SLACK_HISTOGRAM=1 OMNI_MEM_TELEM_REQUIRE_COLLECTION_GROWTH_ZERO=1 OMNI_MEM_TELEM_REQUIRE_SCOPE_SEQUENCE=1 scripts/check_memory_telemetry_benchmark_envelope.sh .agents/memory-model-improve-002-escape-sequence-classes.log`
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh c3c --threads 1 build --obj-out obj_mem_model_escape_sequence_classes_normal`
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- `OMNI_VALIDATION_TIMEOUT_SEC=900 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+- `OMNI_VALIDATION_TIMEOUT_SEC=1800 scripts/run_validation_container.sh valgrind --leak-check=full --error-exitcode=99 env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+- `scripts/check_status_consistency.sh`
+- `git diff --check`
+
+Key results:
+- Counters-enabled build passed.
+- `memory-lifetime-bench` passed and classified
+  `escape_slow_sequence_no_followup_delta=256` as request buckets
+  `le512=128`, `le4096=1`, `gt4096=127`.
+- The same run classified unused-at-close buckets as `exact=1`,
+  `le512=0`, `le4096=255`, and `gt4096=0`.
+- The benchmark envelope passed with the new bucket-sum checks enabled; it
+  still warns that nested-module stable materialization intentionally produces
+  `materialization_copy_bytes_optimizer=220160`.
+- Normal bounded build passed.
+- Default lisp slice passed with `pass=173 fail=0`.
+- `memory-lifetime-smoke` passed with `pass=271 fail=0`.
+- Bounded Valgrind `memory-lifetime-smoke` passed with `pass=271 fail=0` and
+  no Valgrind error exit.
+
+Invalidated assumptions or failed approaches:
+- `[INVALIDATED]` Do not apply a broad ESCAPE size-class chunk reduction from
+  this evidence. ESCAPE no-follow-up requests split between tiny and large
+  requests, while unused-at-close is not large.
+
+Current best recommendation:
+- Keep `MEM-MODEL-IMPROVE-002` open and add source/site attribution for
+  ESCAPE no-follow-up slow sequences before changing allocator policy.
+
+Unresolved issues:
+- The graph-audit violation lines seen during memory-lifetime smoke/Valgrind
+  remain pre-existing output in a passing slice and were not introduced by this
+  telemetry-only change.
+
+Dependencies, blockers, or restart requirements:
+- Rebuild `build/main` after further C3 changes before relying on runtime
+  tests. Broad/high-memory validation remains container-bound.
+
+Signature: GPT-5 Codex
+
+## 2026-04-26 00:32 CEST - MEM-MODEL-IMPROVE-002 Scope Sequence Telemetry
+
+Objective:
+- Continue `MEM-MODEL-IMPROVE-002` by adding the per-scope
+  allocation-sequence telemetry required before another allocator policy
+  change.
+
+Changes made:
+- Added telemetry-only TEMP/ESCAPE slow-sequence state to `ScopeRegion`.
+- Slow allocation sequences now start when a slow allocation opens a new chunk
+  and close at the next slow allocation, reset, destroy, or splice/adoption
+  boundary.
+- Added aggregate counters for closed sequence count, follow-up allocation
+  count/bytes, unused bytes at close, no-follow-up count, and large-slack
+  follow-up/no-follow-up evidence.
+- Exposed the counters through `runtime-memory-stats`, `OMNI_MEM_TELEMETRY`,
+  `boundary_value_shape_counters`, and the memory telemetry envelope under
+  `OMNI_MEM_TELEM_REQUIRE_SCOPE_SEQUENCE=1`.
+- Updated `TODO.md`, `docs/todo_parts/todo_part_18.md`,
+  `docs/plans/memory-model-improvement-plan-2026-04-25.md`,
+  `memory/changelog_parts/changelog_part_37.md`, and `.agents/PLAN.md`.
+
+Commands run:
+- C3 diagnostics for touched C3 files.
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh c3c --threads 1 build --obj-out obj_mem_model_scope_sequence -D OMNI_BOUNDARY_INSTR_COUNTERS`
+- `OMNI_VALIDATION_TIMEOUT_SEC=900 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_BOUNDARY_BENCH=1 OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-bench ./build/main --test-suite lisp`
+- `OMNI_MEM_TELEM_REQUIRE_SLOW_SLACK_HISTOGRAM=1 OMNI_MEM_TELEM_REQUIRE_COLLECTION_GROWTH_ZERO=1 OMNI_MEM_TELEM_REQUIRE_SCOPE_SEQUENCE=1 scripts/check_memory_telemetry_benchmark_envelope.sh .agents/memory-model-improve-002-scope-sequence.log`
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh c3c --threads 1 build --obj-out obj_mem_model_scope_sequence_normal`
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- `OMNI_VALIDATION_TIMEOUT_SEC=900 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+- `scripts/check_status_consistency.sh`
+- `git diff --check`
+
+Key results:
+- Counters-enabled build passed.
+- Normal bounded build passed.
+- `memory-lifetime-bench` passed and emitted sequence evidence:
+  `temp_slow_sequence_closed_delta=177`,
+  `escape_slow_sequence_closed_delta=416`,
+  `temp_slow_sequence_followup_bytes_delta=2006032`,
+  `escape_slow_sequence_followup_bytes_delta=34696`,
+  `temp_slow_sequence_unused_close_delta=120184`,
+  `escape_slow_sequence_unused_close_delta=752664`,
+  `temp_slow_sequence_no_followup_delta=1`,
+  `escape_slow_sequence_no_followup_delta=256`,
+  `temp_slow_sequence_large_delta=144`,
+  `temp_slow_sequence_large_followup_bytes_delta=2002192`, and
+  `temp_slow_sequence_large_no_followup_delta=0`.
+- Envelope passed with the new sequence gate enabled.
+- Default lisp slice passed with `pass=173 fail=0`.
+- `memory-lifetime-smoke` passed with `pass=271 fail=0`.
+- Status consistency and whitespace gates passed.
+
+Invalidated assumptions or failed approaches:
+- `[INVALIDATED]` Do not treat TEMP large slow-allocation slack as obvious
+  waste in the current workload. Every large-slack TEMP sequence had follow-up
+  allocations, with about two megabytes of follow-up allocation after those
+  slow chunks.
+
+Current best recommendation:
+- Keep `MEM-MODEL-IMPROVE-002` open. Next, split ESCAPE no-follow-up slow
+  sequences by request and unused size class before changing chunk selection.
+
+Unresolved issues:
+- The broad all-slice failures recorded in the prior entry remain unrelated to
+  this telemetry slice.
+
+Dependencies, blockers, or restart requirements:
+- Rebuild `build/main` after further C3 changes before relying on runtime
+  tests. Broad/high-memory validation remains container-bound.
+
+Signature: GPT-5 Codex
+
+## 2026-04-26 00:03 CEST - MEM-MODEL-IMPROVE-006 Nested Module Closure
+
+Objective:
+- Close the remaining `MEM-MODEL-IMPROVE-006` workload slice by adding nested
+  module return coverage, fixing any boundary issue it exposes, and updating
+  the memory-model plan/TODO/changelog state.
+
+Changes made:
+- Added stable-destination materialization fallback after a rejected
+  region-transplant splice proof when the boundary planner already marked the
+  result as a stable materialization candidate.
+- Added `nested_module_return_memory` to `memory-lifetime-bench`; the workload
+  returns nested list/array graphs built inside nested module `(with ...)`
+  bodies across the boundary.
+- Added an advanced module regression for nested module heap-graph returns.
+- Updated the memory telemetry envelope to require nested-module correctness,
+  stable-materialization route selection, and copy-debt evidence.
+- Closed `MEM-MODEL-IMPROVE-006` in `TODO.md`,
+  `docs/todo_parts/todo_part_18.md`, and
+  `docs/plans/memory-model-improvement-plan-2026-04-25.md`; recorded the
+  implementation truth in `memory/changelog_parts/changelog_part_37.md`.
+
+Commands run:
+- C3 diagnostics for touched C3 files.
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh c3c --threads 1 build --obj-out obj_mem_model_nested_module -D OMNI_BOUNDARY_INSTR_COUNTERS`
+- `OMNI_VALIDATION_TIMEOUT_SEC=120 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(module module-return-outer ...)'`
+- `OMNI_VALIDATION_TIMEOUT_SEC=900 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_BOUNDARY_BENCH=1 OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-bench ./build/main --test-suite lisp`
+- `OMNI_MEM_TELEM_REQUIRE_SLOW_SLACK_HISTOGRAM=1 OMNI_MEM_TELEM_REQUIRE_COLLECTION_GROWTH_ZERO=1 scripts/check_memory_telemetry_benchmark_envelope.sh .agents/memory-model-improve-006-product-workload.log`
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh c3c --threads 1 build --obj-out obj_mem_model_nested_module_normal`
+- `OMNI_VALIDATION_TIMEOUT_SEC=900 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp`
+- `OMNI_VALIDATION_TIMEOUT_SEC=1200 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_ALLOW_ALL_LISP_SLICE=1 OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp` (stopped after several minutes of silence following unrelated failures)
+- `scripts/check_status_consistency.sh`
+- `git diff --check`
+
+Key results:
+- Counters-enabled build passed.
+- Direct nested-module repro returned `[[5 18 [5 6]] [6 19 [6 7]]]` after
+  explicit module import instead of a boundary `splice-rejected` error.
+- `memory-lifetime-bench` passed the nested module workload with `setup_ok=1`,
+  `batch_ok=64`, `array_construct_delta=384`,
+  `selected_transplant_delta=128`, `selected_stable_materialize_delta=320`,
+  and `materialization_copy_bytes_delta=220160`.
+- The envelope passed. It warned that
+  `boundary.materialization_copy_bytes_optimizer` is now `220160`, which is the
+  intentional nested-module copy-debt signal from this slice.
+- Normal bounded build passed.
+- Default lisp slice passed with `pass=173 fail=0`.
+- Focused `advanced-collections-module` passed with `pass=2102 fail=0`.
+- Status consistency and whitespace gates passed.
+
+Invalidated assumptions or failed approaches:
+- `[INVALIDATED]` Do not assume module identifiers can be returned as ordinary
+  module values from nested module bodies. The workload now exercises heap
+  graph returns rather than module-value returns.
+- `[INVALIDATED]` Do not assume a rejected transplant proof is always terminal
+  for stable graph candidates. Nested module return graphs can reject splicing
+  but still commit correctly through stable destination materialization.
+
+Unresolved issues:
+- Broad all-slice validation was started after the targeted checks and exposed
+  pre-existing unrelated failures in JIT policy, iterator/list/range, pipe,
+  signal, and escape-scope areas. It was stopped after several minutes of no
+  additional output, so this broad check is recorded as failed/interrupted and
+  is not treated as acceptance for this slice.
+- `MEM-MODEL-IMPROVE-002` remains open for per-scope allocation-sequence
+  telemetry before further allocator policy changes.
+
+Next actions:
+- Continue memory optimization work from `MEM-MODEL-IMPROVE-002`, using the
+  now-complete workload coverage as the benchmark envelope.
+- Rebuild `build/main` after further C3 changes before relying on runtime
+  tests. Broad/high-memory validation remains container-bound.
+
+Signature: GPT-5 Codex
+
+## 2026-04-25 23:54 CEST - MEM-MODEL-IMPROVE-006 Product Workload Slice
+
+Objective:
+- Start `MEM-MODEL-IMPROVE-006` by adding one product-style memory benchmark
+  workload before returning to allocator policy.
+
+Changes made:
+- Added `finwatch_product_memory` to `memory-lifetime-bench` in
+  `src/lisp/tests_memory_lifetime_boundary_decision_bench_groups.c3`.
+- The fixture is derived from `examples/finwatch`: it builds quote arrays,
+  holding arrays, watchlist sets, request dictionaries, response dictionaries,
+  strings, symbols, and a releasable FFI wrapper, then crosses a
+  `boundary_commit_escape` return boundary.
+- Updated `scripts/check_memory_telemetry_benchmark_envelope.sh` to require the
+  new `OMNI_BENCH_SUMMARY` line and check fixture/commit success plus
+  nonnegative counter fields.
+- Updated `TODO.md`, `docs/todo_parts/todo_part_18.md`,
+  `docs/plans/memory-model-improvement-plan-2026-04-25.md`,
+  `docs/plans/README.md`, `.agents/PLAN.md`, and
+  `memory/changelog_parts/changelog_part_37.md`.
+
+Commands run:
+- C3 diagnostics for the touched benchmark file.
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh c3c --threads 1 build --obj-out obj_mem_model_workload`
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh c3c --threads 1 build --obj-out obj_mem_model_workload_counters -D OMNI_BOUNDARY_INSTR_COUNTERS`
+- `OMNI_VALIDATION_TIMEOUT_SEC=900 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_BOUNDARY_BENCH=1 OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-bench ./build/main --test-suite lisp | tee .agents/memory-model-improve-006-product-workload.log`
+- `OMNI_MEM_TELEM_REQUIRE_SLOW_SLACK_HISTOGRAM=1 OMNI_MEM_TELEM_REQUIRE_COLLECTION_GROWTH_ZERO=1 scripts/check_memory_telemetry_benchmark_envelope.sh .agents/memory-model-improve-006-product-workload.log`
+
+Key results:
+- Counters-enabled bounded `memory-lifetime-bench` emitted
+  `finwatch_product_memory` with `product_ok=64`, `commit_ok=64`,
+  `hashmap_construct_delta=1472`, `set_construct_delta=64`,
+  `array_construct_delta=128`, `string_payload_bytes_delta=48512`,
+  `ffi_wrappers_delta=64`, and `ffi_releasable_delta=64`.
+- The updated benchmark envelope passed.
+
+Current checkpoint:
+- `MEM-MODEL-IMPROVE-006` is in progress. The product-style Finwatch workload
+  slice is landed and measured; nested module returns, closure-heavy iterator
+  pipelines, and tensor-metadata crossings remain open as separate slices.
+
+Next actions:
+- Add the next MEM-006 workload slice, preferably nested module returns or
+  closure-heavy iterator pipelines.
+- Do not add strict timing gates until repeated bounded runs prove stable
+  timing ranges.
+
+Signature: GPT-5 Codex
+
+## 2026-04-25 23:11 CEST - MEM-MODEL-IMPROVE-006 Closure Iterator Slice
+
+Objective:
+- Continue `MEM-MODEL-IMPROVE-006` by adding the closure-heavy iterator
+  workload slice and keeping benchmark gates counter-based.
+
+Changes made:
+- Added `closure_iterator_pipeline_memory` to `memory-lifetime-bench` in
+  `src/lisp/tests_memory_lifetime_boundary_decision_bench_groups.c3`.
+- The fixture builds captured mapping/filter closures over `range-from`,
+  returns the lazy iterator across the top-level boundary, then materializes it
+  through `List` and checks the realized count and sum.
+- Extended benchmark snapshots with `BoundaryEscapeShapeStats` so the summary
+  reports iterator, partial, and closure root deltas.
+- Updated `scripts/check_memory_telemetry_benchmark_envelope.sh` to require the
+  new summary line and check correctness/counter fields without adding strict
+  timing gates.
+- Updated `TODO.md`, `docs/todo_parts/todo_part_18.md`,
+  `docs/plans/memory-model-improvement-plan-2026-04-25.md`,
+  `docs/plans/README.md`, `.agents/PLAN.md`, and
+  `memory/changelog_parts/changelog_part_37.md`.
+
+Commands run:
+- C3 LSP diagnostics for
+  `src/lisp/tests_memory_lifetime_boundary_decision_bench_groups.c3`.
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh c3c --threads 1 build --obj-out obj_mem_model_closure_iter -D OMNI_BOUNDARY_INSTR_COUNTERS`
+- `OMNI_VALIDATION_TIMEOUT_SEC=900 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_BOUNDARY_BENCH=1 OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-bench ./build/main --test-suite lisp | tee .agents/memory-model-improve-006-product-workload.log`
+- `OMNI_MEM_TELEM_REQUIRE_SLOW_SLACK_HISTOGRAM=1 OMNI_MEM_TELEM_REQUIRE_COLLECTION_GROWTH_ZERO=1 scripts/check_memory_telemetry_benchmark_envelope.sh .agents/memory-model-improve-006-product-workload.log`
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh c3c --threads 1 build --obj-out obj_mem_model_closure_iter_normal`
+- `scripts/check_status_consistency.sh`
+- `git diff --check`
+
+Key results:
+- Counters-enabled bounded `memory-lifetime-bench` emitted
+  `closure_iterator_pipeline_memory` with `pipeline_ok=64`,
+  `count_total=640`, `sum_total=22720`, `iterator_roots_delta=512`,
+  `partial_roots_delta=640`, `closure_roots_delta=448`,
+  `closure_env_frame_delta=512`, `closure_env_binding_delta=512`, and
+  `materialization_copy_bytes_delta=0`.
+- The benchmark envelope, normal build, counters-enabled build, status
+  consistency, and whitespace gates passed.
+
+Current checkpoint:
+- `MEM-MODEL-IMPROVE-006` remains in progress. Product-style Finwatch and
+  closure-heavy iterator workload slices are landed and measured; nested module
+  returns and tensor-metadata crossings remain open as separate slices.
+
+Next actions:
+- Add the next MEM-006 workload slice for nested module returns or
+  tensor-metadata crossings.
+- Keep timing gates advisory until repeated bounded runs prove stable timing
+  ranges.
+
+Signature: GPT-5 Codex
+
+## 2026-04-25 23:33 CEST - MEM-MODEL-IMPROVE-006 Tensor Metadata Slice
+
+Objective:
+- Continue `MEM-MODEL-IMPROVE-006` by adding the tensor-metadata crossing
+  workload slice and keeping benchmark gates counter-based.
+
+Changes made:
+- Added `tensor_metadata_crossing_memory` to `memory-lifetime-bench` in
+  `src/lisp/tests_memory_lifetime_boundary_decision_bench_groups.c3`.
+- The fixture builds TEMP cons records containing CPU `Float64` tensors, shape
+  arrays, element counts, and per-record indices, commits the graph through
+  `boundary_commit_escape`, and validates the committed graph.
+- Avoided Dictionary storage for the tensor graph because current Dictionary
+  insertion promotes entries toward root; the cons-rooted graph keeps
+  `tensor_roots_delta` a real boundary-crossing signal.
+- Updated `scripts/check_memory_telemetry_benchmark_envelope.sh` to require the
+  new summary line and check correctness/counter fields without adding strict
+  timing gates.
+- Updated `TODO.md`, `docs/todo_parts/todo_part_18.md`,
+  `docs/plans/memory-model-improvement-plan-2026-04-25.md`,
+  `docs/plans/README.md`, `.agents/PLAN.md`, and
+  `memory/changelog_parts/changelog_part_37.md`.
+
+Commands run:
+- C3 LSP diagnostics for
+  `src/lisp/tests_memory_lifetime_boundary_decision_bench_groups.c3`.
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh c3c --threads 1 build --obj-out obj_mem_model_tensor_crossing -D OMNI_BOUNDARY_INSTR_COUNTERS`
+- `OMNI_VALIDATION_TIMEOUT_SEC=900 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_BOUNDARY_BENCH=1 OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-bench ./build/main --test-suite lisp | tee .agents/memory-model-improve-006-product-workload.log`
+- `OMNI_MEM_TELEM_REQUIRE_SLOW_SLACK_HISTOGRAM=1 OMNI_MEM_TELEM_REQUIRE_COLLECTION_GROWTH_ZERO=1 scripts/check_memory_telemetry_benchmark_envelope.sh .agents/memory-model-improve-006-product-workload.log`
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh c3c --threads 1 build --obj-out obj_mem_model_tensor_crossing_normal`
+- `scripts/check_status_consistency.sh`
+- `git diff --check`
+
+Key results:
+- Counters-enabled bounded `memory-lifetime-bench` emitted
+  `tensor_metadata_crossing_memory` with `tensor_ok=64`, `commit_ok=64`,
+  `tensor_roots_delta=256`, `tensor_payload_bytes_delta=12288`,
+  `array_construct_delta=256`, `selected_transplant_delta=64`, and
+  `materialization_copy_bytes_delta=0`.
+- The benchmark envelope, normal build, counters-enabled build, status
+  consistency, and whitespace gates passed.
+
+Current checkpoint:
+- `MEM-MODEL-IMPROVE-006` remains in progress. Product-style Finwatch,
+  closure-heavy iterator, and tensor-metadata crossing workload slices are
+  landed and measured; nested module returns remains open as the next slice.
+
+Next actions:
+- Add the nested module return workload slice for `MEM-MODEL-IMPROVE-006`.
+- Keep timing gates advisory until repeated bounded runs prove stable timing
+  ranges.
+
+Signature: GPT-5 Codex
+
+## 2026-04-25 23:18 CEST - MEM-MODEL-IMPROVE-005 FFI Bridge Keepalive Closure
+
+Objective:
+- Close `MEM-MODEL-IMPROVE-005` by selecting one narrow FFI bridge hook family,
+  preserving opaque defaults, and proving undeclared traversal modes still fail
+  closed.
+
+Changes made:
+- Selected `atomic-ref` as the first explicit FFI bridge keepalive family.
+- Threaded `FfiBridgeBoundaryMode` through `make_ffi_handle_ex` and
+  `make_ffi_handle_ex_with_descriptor`.
+- Added `ffi_bridge_boundary_value_can_share_across_boundary` and made FFI
+  wrapper copy shallow-share only opaque/keepalive handles; copy-hook,
+  trace-hook, and unsafe modes now fail closed at `copy_ffi_handle_to_parent`.
+- Added direct boundary tests for keepalive declarations, trace-hook copy
+  rejection, constructor propagation, and the real `(atomic ...)` path.
+- Fixed a stale advanced FFI metadata expression that used unbound `nil?`.
+- Fixed the traced Valgrind leak found during closeout by adding missing
+  prepared-graph scratch cleanup in
+  `boundary_commit_pre_materialize_transplant_budget_available`.
+- Added `stable_escape_store_destroy` and wired interpreter teardown to reset
+  entries, destroy the stable-store mutex, clear the store, and free it before
+  root-scope teardown.
+- Updated `TODO.md`, `docs/todo_parts/todo_part_18.md`,
+  `docs/plans/memory-model-improvement-plan-2026-04-25.md`,
+  `docs/plans/README.md`, `AUDIT.md`, `.agents/PLAN.md`, and
+  `memory/changelog_parts/changelog_part_37.md`.
+
+Commands run:
+- C3 diagnostics for touched C3 files.
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh c3c --threads 1 build --obj-out obj_mem_model_ffi_bridge`
+- `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+- `scripts/run_validation_container.sh valgrind --trace-children=yes --leak-check=full --show-leak-kinds=definite,indirect,possible --error-exitcode=99 env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+- `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=atomic ./build/main --test-suite lisp`
+- `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system ./build/main --test-suite lisp`
+- `scripts/check_boundary_value_policy_coverage.py`
+- `OMNI_BOUNDARY_POLICY_RANGE=HEAD..HEAD scripts/check_boundary_change_policy.sh`
+- `scripts/check_status_consistency.sh`
+- `git diff --check`
+
+Key results:
+- Bounded build passed.
+- Bounded `memory-lifetime-smoke` passed with `271 passed, 0 failed`.
+- Traced-child Valgrind `memory-lifetime-smoke` passed with `271 passed,
+  0 failed`, zero Memcheck errors, and zero definite/indirect/possible leaks.
+- Bounded `atomic` passed with `11 passed, 0 failed`.
+- Bounded `advanced-ffi-system` passed with `185 passed, 0 failed`.
+- Boundary policy, status consistency, and whitespace gates passed.
+
+Invalidated assumptions or failed approaches:
+- A stack-backed synthetic `FfiHandle` copy regression was invalid because
+  wrapper-copy dtors expect heap-owned `FfiHandle` boxes; the test was replaced
+  with constructor-backed coverage.
+- The first traced Valgrind run falsified the idea that the stable-store mutex
+  teardown issue was the only stable escape leak; the actual definite-leak
+  signature came from missing cleanup in the pre-materialization budget probe.
+
+Current checkpoint:
+- `MEM-MODEL-IMPROVE-005` is closed as a keepalive/shareability bridge slice.
+  True native graph traversal hooks remain intentionally fail-closed.
+- `AUDIT-046` has concrete teardown coverage through traced-child Valgrind.
+
+Next actions:
+- Continue with `MEM-MODEL-IMPROVE-006`, or add per-scope allocation-sequence
+  telemetry before returning to allocator policy under `MEM-MODEL-IMPROVE-002`.
+- If a true FFI trace/copy hook is needed, `ffi-callback` is the likely future
+  family because it owns Omni callback state in native context.
+
+Signature: GPT-5 Codex
+
+## 2026-04-25 21:10 CEST - AUDIT-238 Ignore-K Continuation Closure
+
+Objective:
+- Close `AUDIT-238` after `memory-lifetime-smoke` exposed a handler
+  ignore-continuation path that left suspended handle contexts retained.
+
+Changes made:
+- Added shared handler-result continuation finalization that keeps handle
+  continuation retention only when the returned result graph reaches `k`.
+- Wired both handle dispatch paths through the shared finalization helper.
+- Added generic reset/capture ownership state so `checkpoint` keeps a suspended
+  context alive when the shift result graph carries `k`.
+- Added stable destination materialization support for continuation leaves in
+  returned cons graphs.
+- Corrected the regression fixture from stale unsupported `(ask k x body)` to
+  canonical hidden-continuation `(ask x body)`.
+- Closed the AUDIT/TODO entries and recorded the changelog checkpoint.
+
+Commands run:
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh c3c --threads 1 build --obj-out obj_audit238`
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+- `OMNI_VALIDATION_TIMEOUT_SEC=120 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_BOUNDARY_GRAPH_AUDIT=1 ./build/main --eval '(handle (signal ask 1) (ask x 99))'`
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-effect-continuation ./build/main --test-suite lisp`
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=basic ./build/main --test-suite lisp`
+- `git diff --check`
+- `scripts/check_status_consistency.sh`
+
+Key results:
+- Build passed.
+- Bounded `memory-lifetime-smoke` passed with `269 passed, 0 failed`.
+- Direct graph-audit-enabled ignore-k evaluation returned `99` with no
+  continuation-path graph-audit diagnostic.
+- Bounded `advanced-effect-continuation` passed with `56 passed, 0 failed`.
+- Bounded `basic` passed with `173 passed, 0 failed`.
+- Whitespace and status-consistency gates passed.
+
+Unresolved issues:
+- Full `memory-lifetime-smoke` still prints expected TEMP-edge graph-audit
+  diagnostics from passing negative graph-audit tests; those are separate from
+  `AUDIT-238`.
+
+Signature: GPT-5 Codex
+
+## 2026-04-25 22:26 CEST - MEM-MODEL-IMPROVE-003 Collection Sizing Closure
+
+Objective:
+- Continue the memory-model improvement queue after `AUDIT-238` by testing the
+  allocator/slack hypothesis, recording the failed policy attempts, then
+  closing the measured collection-growth slice.
+
+Workspace:
+- `/home/christos/Omni`
+
+Changes made:
+- Tried direct TEMP large slow-allocation exact-fit and exact-plus-4096
+  headroom policies, then reverted them after benchmark counters regressed.
+- Recorded negative memory: allocator aggregate slack is not enough evidence
+  for direct chunk-size tuning; per-scope allocation-sequence telemetry is
+  required before retrying allocator policy.
+- Normalized `hashmap_capacity_hint_for_entry_count` and routed Dictionary/Set
+  constructor sizing through the shared known-entry hint path.
+- Added checked known-entry hashmap/set constructors for internal benchmark
+  paths.
+- Pre-sized `boundary_value_shape_counters` dictionary/set workloads from the
+  known insert count.
+- Updated the telemetry envelope so hashmap/set growth counters are required
+  fields and can optionally be required to stay zero with
+  `OMNI_MEM_TELEM_REQUIRE_COLLECTION_GROWTH_ZERO=1`.
+- Closed `MEM-MODEL-IMPROVE-003`; left `MEM-MODEL-IMPROVE-002` open for
+  per-scope allocator sequence evidence before any further policy change.
+
+Commands run:
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh c3c --threads 1 build --obj-out obj_mem_model_policy -D OMNI_BOUNDARY_INSTR_COUNTERS`
+- `OMNI_VALIDATION_TIMEOUT_SEC=300 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 ./build/main --test-suite scope`
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_BOUNDARY_BENCH=1 OMNI_BOUNDARY_INSTR_COUNTERS=1 OMNI_LISP_TEST_SLICE=memory-lifetime-bench ./build/main --test-suite lisp`
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh c3c --threads 1 build --obj-out obj_mem_model_collections -D OMNI_BOUNDARY_INSTR_COUNTERS`
+- `OMNI_VALIDATION_TIMEOUT_SEC=300 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=data-format ./build/main --test-suite lisp`
+- `OMNI_VALIDATION_TIMEOUT_SEC=300 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=basic ./build/main --test-suite lisp`
+- `OMNI_MEM_TELEM_REQUIRE_SLOW_SLACK_HISTOGRAM=1 OMNI_MEM_TELEM_REQUIRE_COLLECTION_GROWTH_ZERO=1 scripts/check_memory_telemetry_benchmark_envelope.sh .agents/memory-model-improve-003-collection-sizing.log`
+- `OMNI_MEM_TELEM_REQUIRE_SLOW_SLACK_HISTOGRAM=1 scripts/check_memory_telemetry_benchmark_envelope.sh .agents/memory-model-improve-002-histogram.log`
+
+Key results:
+- Correctness stayed green throughout the reverted allocator experiments, but
+  exact-fit and bounded-headroom TEMP policies worsened the benchmark signal:
+  `temp_slow_delta` `209 -> 336`,
+  `temp_selected_chunk_delta` `3219456 -> 4285568/5858432`, and
+  `temp_destroy_slack_delta` `209536 -> 1275648/2847488`.
+- Collection sizing passed the intended benchmark contract:
+  `hashmap_growth_delta=0`, `set_growth_delta=0`, and
+  `materialization_copy_bytes_delta=0`.
+- Bounded validation passed: `scope` `64/0`, `memory-lifetime-smoke` `269/0`,
+  `data-format` `92/0`, `basic` `173/0`, and the counters-enabled
+  `memory-lifetime-bench` correctness counters.
+
+Current best recommendation:
+- Continue with `MEM-MODEL-IMPROVE-004` boundary policy coverage enforcement.
+- If returning to `MEM-MODEL-IMPROVE-002`, first add per-scope
+  allocation-sequence telemetry; do not retry direct TEMP/ESCAPE chunk-size
+  policy from aggregate slack counters alone.
+
+Unresolved issues:
+- `MEM-MODEL-IMPROVE-002` remains open for allocator evidence/policy, but the
+  direct chunk-size policy family is demoted by negative memory.
+- `MEM-MODEL-IMPROVE-004` through `MEM-MODEL-IMPROVE-006` remain open.
+
+Signature: GPT-5 Codex
+
+## 2026-04-25 22:45 CEST - MEM-MODEL-IMPROVE-004 Boundary Policy Guard
+
+Objective:
+- Close the static boundary policy coverage item so future `ValueTag`
+  additions cannot skip ownership, edge, copy, graph-audit, materialization, or
+  FFI/native policy declarations.
+
+Workspace:
+- `/home/christos/Omni`
+
+Changes made:
+- Added `scripts/boundary_value_policy_manifest.tsv`, one row per current
+  `ValueTag`.
+- Added `scripts/check_boundary_value_policy_coverage.py` to compare the
+  manifest with the enum and runtime ownership/edge/copy-route switch tables.
+- Wired the guard into `scripts/check_boundary_change_policy.sh`.
+- Expanded `scripts/boundary_sensitive_files.txt` to include boundary policy,
+  graph-audit, stable store/materialization, and the new manifest/guard files.
+- Closed `MEM-MODEL-IMPROVE-004` in TODO/plan/changelog artifacts.
+
+Commands run:
+- `scripts/check_boundary_value_policy_coverage.py`
+- `OMNI_BOUNDARY_POLICY_RANGE=HEAD..HEAD scripts/check_boundary_change_policy.sh`
+
+Key results:
+- Direct guard passed for all `30` current `ValueTag` entries.
+- Boundary change policy now invokes the guard before its log-evidence checks;
+  the HEAD..HEAD no-sensitive-change path passed.
+
+Current best recommendation:
+- Continue with `MEM-MODEL-IMPROVE-005` by selecting one FFI bridge hook family
+  with explicit release authority, or return to `MEM-MODEL-IMPROVE-002` only
+  after adding per-scope allocator sequence telemetry.
+
+Unresolved issues:
+- `MEM-MODEL-IMPROVE-002`, `MEM-MODEL-IMPROVE-005`, and
+  `MEM-MODEL-IMPROVE-006` remain open.
+
+Signature: GPT-5 Codex
+
+## 2026-04-25 20:28 CEST - AUDIT-048 Inline Module Leak Closure
+
+Objective:
+- Close the remaining `AUDIT-048` / `SCOPED-MODULE-AOT-002` residual after the
+  previous scoped-module AOT pass left inline module exports as generated
+  public globals.
+
+Changes made:
+- Extended inline compiled-module metadata with module-local names and generated
+  private backing symbols.
+- Stopped module-body definitions from being collected or assigned under
+  user-facing export globals.
+- Rewired inline scoped-open aliases, inline import all/selective/alias, and
+  inline `export-from` lowering to use private backing symbols.
+- Re-audit fix: recursive module-body definitions now receive private backing
+  targets, and the module-private backing table grows for multi-export
+  `export-from 'all`.
+- Second re-audit fix: nested module-body FFI and effect forms now assign
+  through private backing targets in block/type-form lowering.
+- Third re-audit fix: nested inline module private backing globals are
+  collected before lowering, and missed module-local assignment backings fail
+  closed instead of falling back to public symbols.
+- Added/updated compiler regressions so the audit probe rejects leaked
+  `leak_value` generated globals while preserving explicit import behavior.
+- Closed `AUDIT-048` and `SCOPED-MODULE-AOT-002`; the live TODO queue now
+  advances to the memory-model improvement items.
+
+Commands run:
+- `c3c -C --threads 1 build --obj-out obj_check`
+- `OMNI_VALIDATION_TIMEOUT_SEC=300 scripts/run_validation_container.sh c3c --threads 1 build --obj-out obj_container`
+- `OMNI_VALIDATION_TIMEOUT_SEC=300 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+- Direct `--compile` audit probe for `(module scoped-aot-leak (export leak-value) (define leak-value 41)) (block (with scoped-aot-leak leak-value) leak-value)`
+
+Key results:
+- C3 check passed.
+- Bounded container build linked `build/main`.
+- Bounded container compiler slice passed.
+- Direct audit probe generated `_aot_mod_...` private backing and `_aot_with_...`
+  scoped aliases, retained runtime lookup for the post-`with` unimported public
+  name, and did not emit `lisp::Value* leak_value;`, `leak_value =`, or
+  ` = leak_value;`.
+- Direct nested-module and multi-export `export-from 'all` probes compiled
+  successfully, rejected leaked nested public globals, and generated private
+  backing assignments for the final re-exported symbol.
+- Direct nested-FFI and nested-effect module probes compiled successfully and
+  rejected leaked public `strlen` / `opened` generated globals while assigning
+  through `_aot_mod_...` private backings.
+- Direct nested-inline-module probe compiled successfully with both inner and
+  outer `_aot_mod_...` declarations present, `y` imported from the outer private
+  backing, and no leaked public `x` assignment.
+
+Unresolved issues:
+- No `Status: Open` entries remain in `AUDIT.md` after this closure.
+- Host `c3c --threads 1 build --obj-out obj` still cannot link because this
+  host image lacks `liblightning` and `libreplxx`; the bounded validation
+  container build is the verified build path for this checkpoint.
+
+Signature: GPT-5 Codex
+
+## 2026-04-25 21:35 CEST - MEM-MODEL-IMPROVE-002 Histogram Slice
+
+Objective:
+- Continue the memory-model improvement queue after closing
+  `MEM-MODEL-IMPROVE-001`, without weakening region ownership or committing an
+  unproven allocator policy.
+
+Workspace:
+- `/home/christos/Omni`
+
+Changes made:
+- Added TEMP/ESCAPE slow-allocation slack histogram counters to
+  `ScopeMemoryTelemetryStats`.
+- Exposed the histogram through `runtime-memory-stats`, `OMNI_MEM_TELEMETRY`,
+  and `OMNI_BENCH_SUMMARY suite=boundary_value_shape_counters`.
+- Added optional histogram-field enforcement to
+  `scripts/check_memory_telemetry_benchmark_envelope.sh` via
+  `OMNI_MEM_TELEM_REQUIRE_SLOW_SLACK_HISTOGRAM=1`.
+- Recorded `AUDIT-238` for the current `memory-lifetime-smoke` ignore-k
+  continuation retention failure.
+
+Commands run:
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh c3c --threads 1 build --obj-out obj_mem_model -D OMNI_BOUNDARY_INSTR_COUNTERS`
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_BOUNDARY_BENCH=1 OMNI_BOUNDARY_INSTR_COUNTERS=1 OMNI_LISP_TEST_SLICE=memory-lifetime-bench ./build/main --test-suite lisp`
+- `OMNI_MEM_TELEM_REQUIRE_SLOW_SLACK_HISTOGRAM=1 scripts/check_memory_telemetry_benchmark_envelope.sh .agents/memory-model-improve-002-histogram.log`
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=basic ./build/main --test-suite lisp`
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+
+Key results:
+- Counters-enabled build passed.
+- Benchmark envelope passed with histogram enforcement.
+- Bounded `basic` passed with `173 passed, 0 failed`.
+- Histogram result:
+  - TEMP exact `1`, `<=512` `0`, `<=4096` `64`, `>4096` `144`.
+  - ESCAPE exact `1`, `<=512` `0`, `<=4096` `415`, `>4096` `0`.
+- Direct ESCAPE chunk size-class policy attempts were reverted before commit.
+- `memory-lifetime-smoke` still fails after reverting allocator behavior with
+  `handle ignore-k does not retain suspended context`; this is tracked as
+  `AUDIT-238`.
+
+Invalidated assumptions:
+- `[INVALIDATED]` The first post-baseline policy target should not be direct
+  ESCAPE chunk-size reduction. The new histogram shows ESCAPE slow slack is not
+  in the `>4096` bucket, and the smoke blocker is a separate continuation
+  retention bug.
+
+Current best recommendation:
+- `AUDIT-238` has since been fixed. Continue allocator work only after adding
+  per-scope allocation-sequence telemetry; direct TEMP/ESCAPE chunk-size
+  policies from aggregate slack counters are demoted.
+
+Unresolved issues:
+- `MEM-MODEL-IMPROVE-002` remains open for an actual allocator/slack policy
+  delta.
+- `AUDIT-238-CONTINUATION-IGNORE-K-TEMP-EDGE` has since closed.
+
+Signature: GPT-5 Codex
+
+## 2026-04-25 21:05 CEST - MEM-MODEL-IMPROVE-001 Evidence Refresh Closure
+
+Objective:
+- Continue the audit/TODO remediation queue by closing the first live memory
+  model improvement item, `MEM-MODEL-IMPROVE-001`.
+
+Workspace:
+- `/home/christos/Omni`
+
+Changes made:
+- Added three fresh bounded benchmark logs under
+  `.agents/memory-model-improve-001-runs/`.
+- Updated `TODO.md`, `docs/todo_parts/todo_part_18.md`,
+  `docs/plans/README.md`, `.agents/PLAN.md`,
+  `docs/plans/memory-model-improvement-plan-2026-04-25.md`,
+  `docs/plans/memory-boundary-telemetry-benchmark-baseline-2026-04-24.md`,
+  and `memory/changelog_parts/changelog_part_37.md`.
+- Closed `MEM-MODEL-IMPROVE-001` and moved the live queue to
+  `MEM-MODEL-IMPROVE-002`.
+
+Commands run:
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh c3c --threads 1 build --obj-out obj_mem_model -D OMNI_BOUNDARY_INSTR_COUNTERS`
+- Three runs of
+  `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_BOUNDARY_BENCH=1 OMNI_BOUNDARY_INSTR_COUNTERS=1 OMNI_LISP_TEST_SLICE=memory-lifetime-bench ./build/main --test-suite lisp`
+- `scripts/check_memory_telemetry_benchmark_envelope.sh` for each run log.
+
+Key results:
+- Build passed in the bounded validation container.
+- Each benchmark log passed the memory telemetry benchmark envelope.
+- Correctness counters were stable across all three runs:
+  `splice_ok=2048`, `disallowed_ok=2048`, `reuse_ok=2048`,
+  `partial_ok=2048`, `shape_ok=128`, `closure_env_ok=32`,
+  `stable_passport_ok=1`, and `splice_fail_total=0`.
+- Copy debt stayed zero:
+  `materialization_copy_bytes_delta=0`,
+  `materialization_copy_bytes_optimizer=0`, and
+  `materialization_copy_bytes_forced_no_splice=0`.
+- Dominant repeatable non-copy signals remain:
+  `escape_destroy_slack_delta=603776`, `temp_destroy_slack_delta=209536`,
+  `escape_slow_delta=416`, `temp_slow_delta=209`,
+  `hashmap_growth_delta=1024`, `set_growth_delta=512`, and
+  `array_growth_delta=128`.
+
+Current best recommendation:
+- Continue with `MEM-MODEL-IMPROVE-002` and inspect the escape-lane slow
+  allocation / destroy slack path in `src/scope_region_allocators.c3` and
+  `src/scope_region_temp_pool_stats.c3`.
+- If allocator policy is blocked, continue to `MEM-MODEL-IMPROVE-003` on the
+  shared hashmap/set sizing path.
+
+Unresolved issues:
+- `MEM-MODEL-IMPROVE-002` through `MEM-MODEL-IMPROVE-006` remain open.
+
+Signature: GPT-5 Codex
+
+## 2026-04-25 20:28 CEST - AUDIT-048 Inline Module Leak Closure
+
+Objective:
+- Close the remaining `AUDIT-048` / `SCOPED-MODULE-AOT-002` residual after the
+  previous scoped-module AOT pass left inline module exports as generated
+  public globals.
+
+Changes made:
+- Extended inline compiled-module metadata with module-local names and generated
+  private backing symbols.
+- Stopped module-body definitions from being collected or assigned under
+  user-facing export globals.
+- Rewired inline scoped-open aliases, inline import all/selective/alias, and
+  inline `export-from` lowering to use private backing symbols.
+- Added/updated compiler regressions so the audit probe rejects leaked
+  `leak_value` generated globals while preserving explicit import behavior.
+- Closed `AUDIT-048` and `SCOPED-MODULE-AOT-002`; the live TODO queue now
+  advances to the memory-model improvement items.
+
+Commands run:
+- `c3c -C --threads 1 build --obj-out obj_check`
+- `OMNI_VALIDATION_TIMEOUT_SEC=300 scripts/run_validation_container.sh c3c --threads 1 build --obj-out obj_container`
+- `OMNI_VALIDATION_TIMEOUT_SEC=300 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+- Direct `--compile` audit probe for `(module scoped-aot-leak (export leak-value) (define leak-value 41)) (block (with scoped-aot-leak leak-value) leak-value)`
+
+Key results:
+- C3 check passed.
+- Bounded container build linked `build/main`.
+- Bounded container compiler slice passed.
+- Direct audit probe generated `_aot_mod_...` private backing and `_aot_with_...`
+  scoped aliases, retained runtime lookup for the post-`with` unimported public
+  name, and did not emit `lisp::Value* leak_value;`, `leak_value =`, or
+  ` = leak_value;`.
+
+Unresolved issues:
+- No `Status: Open` entries remain in `AUDIT.md` after this closure.
+- Host `c3c --threads 1 build --obj-out obj` still cannot link because this
+  host image lacks `liblightning` and `libreplxx`; the bounded validation
+  container build is the verified build path for this checkpoint.
+
+Signature: GPT-5 Codex
+
+## 2026-04-25 13:28 CEST - Audit Follow-Up Wave
+
+Objective:
+- Continue audit remediation, update the canonical audit/TODO state, and push
+  non-artifact work.
+
+Changes made:
+- Closed `AUDIT-232` through `AUDIT-237`.
+- Reopened `AUDIT-048` for the remaining inline-module AOT scoped-open leak.
+- Added `SCOPED-MODULE-AOT-002` to Part 17 and the TODO live queue.
+- Hardened Deduce integrity/metadata restore, async and NN path NUL handling,
+  async read-file offload worker failure reporting, JIT/AOT error propagation,
+  validation memory cap handling, and tensor native result destructor
+  registration.
+
+Validation:
+- `c3c --threads 1 build --obj-out obj` passed.
+- Deduce `core-surface,integrity` passed with `41 passed, 0 failed`.
+- JIT policy focused filter passed with `6 passed, 0 failed`.
+- Compiler slice passed with `345 passed, 0 failed`.
+- Status/build-config/file-size/e2e-baseline gates and `git diff --check`
+  passed.
+
+Superseded unresolved issues:
+- `AUDIT-048` / `SCOPED-MODULE-AOT-002` was still open at this checkpoint; it
+  is closed by the later 20:28 CEST entry in this report.
+- Broad async and advanced groups still had unrelated pre-existing failures at
+  this checkpoint.
+
+Signature: GPT-5 Codex
+
+## 2026-04-25 memory model improvement plan
+
+Objective:
+- Create a detailed, durable plan for improving Omni's memory model after the
+  proof-planner, stable passport, transplant, and copy-debt closure work.
+
+Changes made:
+- Added `docs/plans/memory-model-improvement-plan-2026-04-25.md`.
+- Added open TODO Part 18 items `MEM-MODEL-IMPROVE-001` through
+  `MEM-MODEL-IMPROVE-006`.
+- Updated `TODO.md` live queue to make `MEM-MODEL-IMPROVE-001` the next
+  checkpoint.
+- Updated `docs/plans/README.md` to list the new active memory-model plan.
+
+Key results:
+- The plan keeps `ScopeRegion` as ordinary Omni value ownership authority.
+- The next checkpoint is evidence refresh, not architecture churn:
+  repeated bounded counters-enabled `memory-lifetime-bench` plus benchmark
+  envelope checks.
+- Follow-on lanes are allocator/slack tuning, collection-growth reduction,
+  boundary policy guardrails, one narrow FFI bridge hook family, and broader
+  workload coverage.
+
+Commands run:
+- Read current memory runtime docs, proof-planner roadmap, benchmark baseline,
+  TODO Part 18, and relevant Serena memories.
+- `scripts/check_status_consistency.sh`
+- `git diff --check`
+
+Key validation results:
+- Status consistency passed with TODO actionable count `6`.
+- `git diff --check` passed.
+
+Unresolved issues:
+- No code/runtime validation was run because this was a documentation and
+  planning-only change.
+
+Signature: GPT-5 Codex
+
 ## 2026-04-25 09:00 CEST - Commit And Push Attempt
 
 Objective:
@@ -8801,5 +9879,47 @@ Current checkpoint:
 Unresolved issues:
 - The TODO Part 18 proof-planner queue is closed; next memory-boundary work
   should be chosen from route/copy-debt telemetry.
+
+Signature: GPT-5 Codex
+
+## 2026-04-25 20:28 CEST - AUDIT-048 Inline Module Leak Closure
+
+Objective:
+- Close the remaining `AUDIT-048` / `SCOPED-MODULE-AOT-002` residual after the
+  previous scoped-module AOT pass left inline module exports as generated
+  public globals.
+
+Changes made:
+- Extended inline compiled-module metadata with module-local names and generated
+  private backing symbols.
+- Stopped module-body definitions from being collected or assigned under
+  user-facing export globals.
+- Rewired inline scoped-open aliases, inline import all/selective/alias, and
+  inline `export-from` lowering to use private backing symbols.
+- Added/updated compiler regressions so the audit probe rejects leaked
+  `leak_value` generated globals while preserving explicit import behavior.
+- Closed `AUDIT-048` and `SCOPED-MODULE-AOT-002`; the live TODO queue now
+  advances to the memory-model improvement items.
+
+Commands run:
+- `c3c -C --threads 1 build --obj-out obj_check`
+- `OMNI_VALIDATION_TIMEOUT_SEC=300 scripts/run_validation_container.sh c3c --threads 1 build --obj-out obj_container`
+- `OMNI_VALIDATION_TIMEOUT_SEC=300 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+- Direct `--compile` audit probe for `(module scoped-aot-leak (export leak-value) (define leak-value 41)) (block (with scoped-aot-leak leak-value) leak-value)`
+
+Key results:
+- C3 check passed.
+- Bounded container build linked `build/main`.
+- Bounded container compiler slice passed.
+- Direct audit probe generated `_aot_mod_...` private backing and `_aot_with_...`
+  scoped aliases, retained runtime lookup for the post-`with` unimported public
+  name, and did not emit `lisp::Value* leak_value;`, `leak_value =`, or
+  ` = leak_value;`.
+
+Unresolved issues:
+- No `Status: Open` entries remain in `AUDIT.md` after this closure.
+- Host `c3c --threads 1 build --obj-out obj` still cannot link because this
+  host image lacks `liblightning` and `libreplxx`; the bounded validation
+  container build is the verified build path for this checkpoint.
 
 Signature: GPT-5 Codex

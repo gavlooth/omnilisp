@@ -15,14 +15,14 @@ fn void Compiler.compile_statement(Compiler* self, Expr* expr) {
             // (define name value) => name = <compile value>;
             usz init_r = self.compile_to_temp(expr.define.value);
             self.emit_indent();
-            self.emit_symbol_name(expr.define.name);
+            self.emit_symbol_assignment_target(expr.define.name);
             self.emit(" = ");
             self.emit_temp_ref(init_r);
             self.emit(";\n");
         case E_FFI_LIB:
             usz ffi_lib_r = self.compile_to_temp(expr);
             self.emit_indent();
-            self.emit_symbol_name(expr.ffi_lib.name);
+            self.emit_symbol_assignment_target(expr.ffi_lib.name);
             self.emit(" = ");
             self.emit_temp_ref(ffi_lib_r);
             self.emit(";\n");
@@ -30,7 +30,7 @@ fn void Compiler.compile_statement(Compiler* self, Expr* expr) {
             if (expr.ffi_fn != null) {
                 usz ffi_fn_r = self.compile_to_temp(expr);
                 self.emit_indent();
-                self.emit_symbol_name(expr.ffi_fn.fn_name);
+                self.emit_symbol_assignment_target(expr.ffi_fn.fn_name);
                 self.emit(" = ");
                 self.emit_temp_ref(ffi_fn_r);
                 self.emit(";\n");

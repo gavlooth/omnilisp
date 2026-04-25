@@ -1,8 +1,5 @@
 module main;
 
-/**
- * Slow path: allocate a new chunk when the current one is full.
- */
 fn void* ScopeRegion.alloc_slow(ScopeRegion* self, usz aligned_size) {
     scope_guard_owner(self, "scope_alloc_slow");
     // Determine new chunk capacity: double the previous, or at least fit the request
@@ -32,7 +29,9 @@ fn void* ScopeRegion.alloc_slow(ScopeRegion* self, usz aligned_size) {
         ? scope_chunk_alloc_temp(new_cap)
         : scope_chunk_alloc_raw(new_cap);
     if (chunk == null) return null;
+    scope_telemetry_note_temp_slow_sequence_close(self);
     scope_telemetry_note_temp_slow_alloc_request(aligned_size, chunk.capacity);
+    scope_telemetry_note_temp_slow_sequence_start(self, aligned_size, chunk.capacity);
     scope_telemetry_note_temp_chunk_alloc(chunk);
     chunk.next = self.chunks;
     self.chunks = chunk;
@@ -63,7 +62,12 @@ fn void* ScopeRegion.alloc_escape_slow(ScopeRegion* self, usz aligned_size) {
 
     ScopeChunk* chunk = scope_chunk_alloc_raw(new_cap);
     if (chunk == null) return null;
+    ScopeEscapeAllocSource source = self.escape_alloc_source == SCOPE_ESCAPE_ALLOC_UNKNOWN
+        ? SCOPE_ESCAPE_ALLOC_DIRECT
+        : self.escape_alloc_source;
+    scope_telemetry_note_escape_slow_sequence_close(self);
     scope_telemetry_note_escape_slow_alloc_request(aligned_size, chunk.capacity);
+    scope_telemetry_note_escape_slow_sequence_start(self, aligned_size, chunk.capacity, source);
     scope_telemetry_note_escape_chunk_alloc(chunk);
     ScopeChunk* previous_head = self.escape_chunks;
     chunk.next = previous_head;
@@ -97,10 +101,11 @@ fn void* ScopeRegion.alloc(ScopeRegion* self, usz size) @inline {
     if (result != null && result_addr <= limit_addr && aligned <= limit_addr - result_addr) {
         char* new_bump = result + aligned;
         self.bump = new_bump;
-        self.alloc_bytes += aligned;
-        self.alloc_count++;
-        scope_telemetry_note_temp_alloc(aligned);
-        return (void*)result;
+            self.alloc_bytes += aligned;
+            self.alloc_count++;
+            scope_telemetry_note_temp_sequence_followup(self, aligned);
+            scope_telemetry_note_temp_alloc(aligned);
+            return (void*)result;
     }
     return self.alloc_slow(aligned);
 }
@@ -122,9 +127,19 @@ fn void* ScopeRegion.alloc_escape(ScopeRegion* self, usz size) @inline {
             self.escape_bump = new_bump;
             self.alloc_bytes += aligned;
             self.alloc_count++;
+            scope_telemetry_note_escape_sequence_followup(self, aligned);
             scope_telemetry_note_escape_alloc(aligned);
             return (void*)result;
         }
     }
     return self.alloc_escape_slow(aligned);
+}
+
+fn void* ScopeRegion.alloc_escape_attributed(ScopeRegion* self, usz size, ScopeEscapeAllocSource source) @inline {
+    scope_guard_owner(self, "scope_alloc_escape_attributed");
+    ScopeEscapeAllocSource previous = self.escape_alloc_source;
+    self.escape_alloc_source = source;
+    void* result = self.alloc_escape(size);
+    self.escape_alloc_source = previous;
+    return result;
 }

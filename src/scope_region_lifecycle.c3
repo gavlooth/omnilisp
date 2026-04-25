@@ -75,6 +75,9 @@ fn ScopeRegion* scope_create(ScopeRegion* parent = null) {
     scope.escape_bump = null;
     scope.escape_limit = null;
     scope.escape_chunks_tail = null;
+    scope.escape_alloc_source = SCOPE_ESCAPE_ALLOC_UNKNOWN;
+    scope_telemetry_reset_temp_sequence_state(scope);
+    scope_telemetry_reset_escape_sequence_state(scope);
     scope.dtors = null;
     scope.escape_dtors = null;
     scope.escape_dtors_tail = null;

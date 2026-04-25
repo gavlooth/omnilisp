@@ -33,7 +33,7 @@ fn bool hashmap_capacity_hint_for_entry_count(usz count, uint* out) @inline {
     uint requested_u = (uint)requested;
     uint normalized = 0;
     if (!hashmap_normalize_capacity(requested_u, &normalized)) return false;
-    *out = requested_u;
+    *out = normalized;
     return true;
 }
 
@@ -421,6 +421,14 @@ fn Value* make_hashmap(Interp* interp, uint capacity) {
     return make_hashmap_checked(interp, capacity, "Dictionary: out of memory");
 }
 
+fn Value* make_hashmap_for_entry_count_checked(Interp* interp, usz entry_count, char[] oom_message) {
+    uint capacity = 0;
+    if (!hashmap_capacity_hint_for_entry_count(entry_count, &capacity)) {
+        return dict_ctor_runtime_raise(interp, oom_message);
+    }
+    return make_hashmap_checked(interp, capacity, oom_message);
+}
+
 fn Value* make_set_checked(Interp* interp, uint capacity, char[] oom_message) {
     Value* v = make_hashmap_checked(interp, capacity, oom_message);
     if (v != null && v.tag == HASHMAP) {
@@ -430,21 +438,18 @@ fn Value* make_set_checked(Interp* interp, uint capacity, char[] oom_message) {
     return v;
 }
 
+fn Value* make_set_for_entry_count_checked(Interp* interp, usz entry_count, char[] oom_message) {
+    uint capacity = 0;
+    if (!hashmap_capacity_hint_for_entry_count(entry_count, &capacity)) {
+        return dict_ctor_runtime_raise(interp, oom_message);
+    }
+    return make_set_checked(interp, capacity, oom_message);
+}
+
 // Dictionary primitives
 fn bool dict_initial_capacity_for_arg_count(usz arg_count, uint* out) {
     if (out == null) return false;
-    if (arg_count > usz.max / (usz)2) return false;
-    usz required = arg_count * (usz)2;
-    if (required < (usz)16) required = (usz)16;
-    if (required > (usz)uint.max) return false;
-
-    uint cap = 16;
-    while ((usz)cap < required) {
-        if (cap > uint.max / (uint)2) return false;
-        cap *= 2;
-    }
-    *out = cap;
-    return true;
+    return hashmap_capacity_hint_for_entry_count(arg_count / (usz)2, out);
 }
 
 <*

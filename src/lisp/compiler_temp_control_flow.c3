@@ -28,13 +28,19 @@ fn usz Compiler.compile_block_child_to_temp(Compiler* self, Expr* expr) {
 
     if (expr.tag == E_FFI_LIB) {
         self.emit_indent();
-        self.emit_symbol_name(expr.ffi_lib.name);
+        self.emit_symbol_assignment_target(expr.ffi_lib.name);
         self.emit(" = ");
         self.emit_temp_ref(result);
         self.emit(";\n");
     } else if (expr.tag == E_FFI_FN && expr.ffi_fn != null) {
         self.emit_indent();
-        self.emit_symbol_name(expr.ffi_fn.fn_name);
+        self.emit_symbol_assignment_target(expr.ffi_fn.fn_name);
+        self.emit(" = ");
+        self.emit_temp_ref(result);
+        self.emit(";\n");
+    } else if (expr.tag == E_DEFEFFECT) {
+        self.emit_indent();
+        self.emit_symbol_assignment_target(expr.defeffect.name);
         self.emit(" = ");
         self.emit_temp_ref(result);
         self.emit(";\n");
@@ -48,12 +54,56 @@ fn void Compiler.compile_block_prefix(Compiler* self, Expr** exprs, usz count) {
     }
 }
 
+fn usz Compiler.compile_sequence_common(Compiler* self, Expr** exprs, usz count, bool tail) {
+    if (count == 0) return self.emit_nil_temp();
+
+    usz id = self.next_result();
+    self.emit_temp_decl(id);
+    self.emit(";\n");
+
+    usz open_guards = 0;
+    for (usz i = 0; i + 1 < count; i++) {
+        usz child_r = self.compile_block_child_to_temp(exprs[i]);
+        self.emit_indent();
+        self.emit("if (aot::is_error(");
+        self.emit_temp_ref(child_r);
+        self.emit(")) {\n");
+        self.indent++;
+        self.emit_temp_assign(id, child_r);
+        self.indent--;
+        self.emit_indent();
+        self.emit("} else {\n");
+        self.indent++;
+        open_guards++;
+    }
+
+    usz last_r = tail
+        ? self.compile_to_temp_tail(exprs[count - 1])
+        : self.compile_block_child_to_temp(exprs[count - 1]);
+    self.emit_temp_assign(id, last_r);
+
+    for (usz i = 0; i < open_guards; i++) {
+        self.indent--;
+        self.emit_indent();
+        self.emit("}\n");
+    }
+
+    return id;
+}
+
 fn usz Compiler.compile_short_circuit(Compiler* self, usz left_r, Expr* right_expr, bool left_when_truthy, bool tail) {
     usz id = self.next_result();
     self.emit_temp_decl(id);
     self.emit(";\n");
     self.emit_indent();
-    self.emit("if (aot::is_truthy(");
+    self.emit("if (aot::is_error(");
+    self.emit_temp_ref(left_r);
+    self.emit(")) {\n");
+    self.indent++;
+    self.emit_temp_assign(id, left_r);
+    self.indent--;
+    self.emit_indent();
+    self.emit("} else if (aot::is_truthy(");
     self.emit_temp_ref(left_r);
     self.emit(")) {\n");
     self.indent++;
@@ -87,7 +137,14 @@ fn usz Compiler.compile_if_common(Compiler* self, Expr* expr, bool tail) {
     self.emit_temp_decl(id);
     self.emit(";\n");
     self.emit_indent();
-    self.emit("if (aot::is_truthy(");
+    self.emit("if (aot::is_error(");
+    self.emit_temp_ref(condition_tmp);
+    self.emit(")) {\n");
+    self.indent++;
+    self.emit_temp_assign(id, condition_tmp);
+    self.indent--;
+    self.emit_indent();
+    self.emit("} else if (aot::is_truthy(");
     self.emit_temp_ref(condition_tmp);
     self.emit(")) {\n");
     self.indent++;
@@ -105,10 +162,7 @@ fn usz Compiler.compile_if_common(Compiler* self, Expr* expr, bool tail) {
 
 fn usz Compiler.compile_block_common(Compiler* self, Expr* expr, bool tail) {
     usz count = expr.block.expr_count;
-    if (count == 0) return self.emit_nil_temp();
-    self.compile_block_prefix(expr.block.exprs, count - 1);
-    if (tail) return self.compile_to_temp_tail(expr.block.exprs[count - 1]);
-    return self.compile_block_child_to_temp(expr.block.exprs[count - 1]);
+    return self.compile_sequence_common(expr.block.exprs, count, tail);
 }
 
 fn usz Compiler.compile_tail_if_flat(Compiler* self, Expr* expr) {

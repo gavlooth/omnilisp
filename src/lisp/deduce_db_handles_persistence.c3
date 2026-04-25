@@ -4,6 +4,7 @@ fn Value* deduce_db_ensure_restored_rule_predicate_schema(
     DeduceDb* db,
     SymbolId predicate,
     usz arity,
+    MdbTxn* restore_txn,
     Interp* interp
 ) {
     if (db == null || predicate == (SymbolId)0 || interp == null) return null;
@@ -23,8 +24,9 @@ fn Value* deduce_db_ensure_restored_rule_predicate_schema(
     ulong materialized_last_refresh_mutation_epoch = 0;
     ulong materialized_last_stale_mutation_epoch = 0;
     DeduceMaterializedStaleReason materialized_last_stale_reason = DEDUCE_MATERIALIZED_STALE_NONE;
-    Value* meta_err = deduce_relation_meta_apply_persisted_state(
+    Value* meta_err = deduce_relation_meta_apply_persisted_state_in_txn(
         db,
+        restore_txn,
         predicate,
         &materialized_view,
         &materialized_refresh_policy,
@@ -60,6 +62,7 @@ fn Value* deduce_db_ensure_restored_rule_predicate_schema(
 fn Value* deduce_db_ensure_restored_rule_signature_schemas(
     DeduceDb* db,
     DeduceRuleSignature* sig,
+    MdbTxn* restore_txn,
     Interp* interp
 ) {
     if (db == null || sig == null || interp == null) return null;
@@ -68,6 +71,7 @@ fn Value* deduce_db_ensure_restored_rule_signature_schemas(
         db,
         sig.head_predicate,
         sig.head_term_count,
+        restore_txn,
         interp
     );
     if (head_err != null) return head_err;
@@ -78,6 +82,7 @@ fn Value* deduce_db_ensure_restored_rule_signature_schemas(
             db,
             sig.body_predicates[i],
             sig.body_term_counts[i],
+            restore_txn,
             interp
         );
         if (body_err != null) return body_err;

@@ -13,7 +13,7 @@
 ## Current Status
 
 Status: `yellow`
-As of: 2026-04-25
+As of: 2026-04-26
 
 Yellow is intentional for this area: the C ABI / `ForeignHandle` runtime path
 is shipped and validated, while optional non-C runtime adapter families and

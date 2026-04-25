@@ -93,3 +93,123 @@ Implemented by `scripts/check_memory_telemetry_benchmark_envelope.sh`:
     no-splice rollback coverage is tracked separately and is not optimizer
     copy debt.
   - Timing fields should warn only.
+
+## Repeated Evidence Refresh - 2026-04-25
+
+Purpose: close `MEM-MODEL-IMPROVE-001` by confirming the baseline with repeated
+bounded counters-enabled runs before changing allocator or collection policy.
+
+Run profile:
+
+- Build command:
+  - `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh c3c --threads 1 build --obj-out obj_mem_model -D OMNI_BOUNDARY_INSTR_COUNTERS`
+- Runtime command for each run:
+  - `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_BOUNDARY_BENCH=1 OMNI_BOUNDARY_INSTR_COUNTERS=1 OMNI_LISP_TEST_SLICE=memory-lifetime-bench ./build/main --test-suite lisp`
+- Envelope command for each log:
+  - `scripts/check_memory_telemetry_benchmark_envelope.sh <log>`
+- Raw logs:
+  - `.agents/memory-model-improve-001-runs/run-1.log`
+  - `.agents/memory-model-improve-001-runs/run-2.log`
+  - `.agents/memory-model-improve-001-runs/run-3.log`
+
+Per-run advisory timings:
+
+| Run | splice_ms | disallowed_ms | reuse_ms | partial_ms | tail_splice_ms | shape_ms |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 26 | 19 | 5 | 3 | 3 | 45 |
+| 2 | 39 | 21 | 5 | 4 | 3 | 45 |
+| 3 | 28 | 19 | 5 | 4 | 3 | 45 |
+| Median | 28 | 19 | 5 | 4 | 3 | 45 |
+| Range | 26-39 | 19-21 | 5-5 | 3-4 | 3-3 | 45-45 |
+
+Stable counters across all three runs:
+
+| Signal | Median | Range |
+| --- | ---: | ---: |
+| temp_slow_delta | 209 | 209-209 |
+| escape_slow_delta | 416 | 416-416 |
+| temp_slow_requested_delta | 1064760 | 1064760-1064760 |
+| escape_slow_requested_delta | 555136 | 555136-555136 |
+| temp_selected_chunk_delta | 3219456 | 3219456-3219456 |
+| escape_selected_chunk_delta | 1339392 | 1339392-1339392 |
+| temp_reset_slack_delta | 53248 | 53248-53248 |
+| escape_reset_slack_delta | 118784 | 118784-118784 |
+| temp_destroy_slack_delta | 209536 | 209536-209536 |
+| escape_destroy_slack_delta | 603776 | 603776-603776 |
+| array_growth_delta | 128 | 128-128 |
+| hashmap_growth_delta | 1024 | 1024-1024 |
+| set_growth_delta | 512 | 512-512 |
+| copy_fallback_total | 187 | 187-187 |
+| selected_stable_publish | 2220 | 2220-2220 |
+| selected_stable_materialize | 0 | 0-0 |
+| selected_transplant | 2080 | 2080-2080 |
+| selected_fail_closed | 2048 | 2048-2048 |
+| materialization_copy_bytes_delta | 0 | 0-0 |
+| materialization_copy_bytes_optimizer | 0 | 0-0 |
+| materialization_copy_bytes_forced_no_splice | 0 | 0-0 |
+
+Interpretation:
+
+- `MEM-MODEL-IMPROVE-001` is closed: the correctness envelope passed on all
+  three bounded runs.
+- The optimization target remains non-copy pressure. The refreshed evidence
+  does not justify reopening closed stable-materialization copy-debt work.
+- The next measured runtime target is `MEM-MODEL-IMPROVE-002`, focused on
+  escape-lane slow allocation / destroy slack policy. The largest follow-up
+  collection target for `MEM-MODEL-IMPROVE-003` is the shared hashmap/set
+  sizing path.
+
+## Slow-Path Slack Histogram - 2026-04-25
+
+Purpose: progress `MEM-MODEL-IMPROVE-002` without changing allocator semantics
+before the slow-path distribution is known.
+
+Validation:
+
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh c3c --threads 1 build --obj-out obj_mem_model -D OMNI_BOUNDARY_INSTR_COUNTERS`
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_BOUNDARY_BENCH=1 OMNI_BOUNDARY_INSTR_COUNTERS=1 OMNI_LISP_TEST_SLICE=memory-lifetime-bench ./build/main --test-suite lisp`
+- `OMNI_MEM_TELEM_REQUIRE_SLOW_SLACK_HISTOGRAM=1 scripts/check_memory_telemetry_benchmark_envelope.sh .agents/memory-model-improve-002-histogram.log`
+
+Captured histogram fields:
+
+```text
+temp_slow_slack_exact_delta=1 temp_slow_slack_le512_delta=0 temp_slow_slack_le4096_delta=64 temp_slow_slack_gt4096_delta=144
+escape_slow_slack_exact_delta=1 escape_slow_slack_le512_delta=0 escape_slow_slack_le4096_delta=415 escape_slow_slack_gt4096_delta=0
+```
+
+Interpretation:
+
+- ESCAPE slow allocations in this workload are not the large-slack bucket:
+  almost all observed ESCAPE slow slack is `<=4096`.
+- TEMP slow allocations own the large-slack bucket, so the next allocator
+  policy should not start with direct ESCAPE size-class changes.
+- `AUDIT-238` is now closed, so `memory-lifetime-smoke` is again available as
+  the post-policy ownership gate.
+- Direct TEMP large slow-allocation exact-fit and exact-plus-4096-headroom
+  policies were tried and reverted because they worsened aggregate counters;
+  collect per-scope allocation-sequence evidence before another allocator
+  policy change.
+
+## Collection-Sizing Closure
+
+Purpose: close `MEM-MODEL-IMPROVE-003` by converting the shared hashmap/set
+growth signal into a known-entry capacity contract.
+
+Validation:
+
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh c3c --threads 1 build --obj-out obj_mem_model_collections -D OMNI_BOUNDARY_INSTR_COUNTERS`
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_BOUNDARY_BENCH=1 OMNI_BOUNDARY_INSTR_COUNTERS=1 OMNI_LISP_TEST_SLICE=memory-lifetime-bench ./build/main --test-suite lisp`
+- `OMNI_MEM_TELEM_REQUIRE_SLOW_SLACK_HISTOGRAM=1 OMNI_MEM_TELEM_REQUIRE_COLLECTION_GROWTH_ZERO=1 scripts/check_memory_telemetry_benchmark_envelope.sh .agents/memory-model-improve-003-collection-sizing.log`
+
+Captured collection fields:
+
+```text
+array_growth_delta=128 hashmap_growth_delta=0 set_growth_delta=0
+```
+
+Interpretation:
+
+- Dictionary/Set builders with a known entry count should use the shared
+  normalized capacity hint instead of depending on grow-after-insert behavior.
+- The optimized benchmark contract keeps array growth visible but expects
+  hashmap/set growth to stay at zero for the known-count workload.

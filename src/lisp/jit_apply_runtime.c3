@@ -66,7 +66,10 @@ fn Value* jit_eval_call_cont_safe_common(Interp* interp, Expr* expr, Env* env, b
     }
 
     Value** argv = interp.current_scope != null
-        ? (Value**)interp.current_scope.alloc_escape(Value*.sizeof * argc)
+        ? (Value**)interp.current_scope.alloc_escape_attributed(
+            Value*.sizeof * argc,
+            main::ScopeEscapeAllocSource.SCOPE_ESCAPE_ALLOC_JIT_ARGS
+        )
         : null;
     if (argv == null) return jit_raise(interp, "runtime/out-of-memory", "jit: out of memory while staging continuation-sensitive call args");
     for (usz i = 0; i < argc; i++) {

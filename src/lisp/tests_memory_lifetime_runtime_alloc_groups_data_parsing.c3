@@ -12,6 +12,7 @@ fn void run_memory_lifetime_runtime_alloc_groups_data_parsing_tests(Interp* inte
             hashmap_capacity_hint_for_entry_count(0, &capacity) && capacity == 8 &&
             hashmap_capacity_hint_for_entry_count(4, &capacity) && capacity == 8 &&
             hashmap_capacity_hint_for_entry_count(8, &capacity) && capacity == 16 &&
+            hashmap_capacity_hint_for_entry_count(9, &capacity) && capacity == 32 &&
             hashmap_capacity_hint_for_entry_count(largest_double_hint_count, &capacity) &&
             capacity == (uint)(largest_double_hint_count * (usz)2) &&
             !hashmap_capacity_hint_for_entry_count(largest_double_hint_count + (usz)1, &capacity) &&

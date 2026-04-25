@@ -14,29 +14,50 @@ The historical content was split mechanically to keep individual files below the
 
 ## Current Checkpoint
 
-Date: 2026-04-24 17:47 CEST
+Date: 2026-04-26 01:22 CEST
 
 - Active hypothesis:
-  - The memory model migration and memory-boundary telemetry evidence lanes are
-    closed. No active memory-boundary TODO remains.
+  - The memory model migration, proof-planner, and first telemetry evidence
+    lanes are closed. The active memory-model improvement queue is now measured
+    refinement, not architecture replacement.
+  - Three fresh bounded counters-enabled `memory-lifetime-bench` runs confirm
+    zero optimizer-addressable copy debt and stable allocator/slack plus
+    collection-growth pressure.
+  - `AUDIT-238` is closed: handler ignore-k return flow no longer retains the
+    suspended continuation, and `memory-lifetime-smoke` is green again.
+  - Direct allocator chunk-size policy tuning from aggregate slack is now
+    invalidated for both ESCAPE and TEMP in the measured workload.
+  - Per-scope sequence telemetry now shows TEMP large slow-allocation slack is
+    mostly useful headroom in the benchmark, not obvious waste.
+  - `MEM-MODEL-IMPROVE-002` is closed: ESCAPE no-follow-up source attribution
+    shows the remaining bucket is the synthetic direct allocator probe, not a
+    runtime boundary/promotion allocation family.
+  - `MEM-MODEL-IMPROVE-003` is closed: known-entry Dictionary/Set sizing
+    eliminated hashmap/set growth in `boundary_value_shape_counters`.
+  - `MEM-MODEL-IMPROVE-004` is closed: boundary value policy coverage is now
+    manifest-backed and wired into the boundary change policy gate.
 - Current approach:
-  - The memory-boundary telemetry/benchmark evidence lane in `TODO.md` Part 18
-    is closed through `MEM-BENCH-OBSERVE-005`.
-  - Treat `docs/plans/memory-boundary-telemetry-benchmark-plan-2026-04-24.md`
-    as a closure record and benchmark entrypoint, not an active plan.
-  - `MEM-BENCH-OBSERVE-001` is closed with the current signal inventory in
-    `docs/plans/memory-boundary-telemetry-signal-inventory-2026-04-24.md`.
-  - `MEM-BENCH-OBSERVE-002` is closed with runtime counter coverage exposed
-    through `runtime-memory-stats` and `OMNI_MEM_TELEMETRY`.
-  - `MEM-BENCH-OBSERVE-003` is closed with `memory-lifetime-bench`
-    `boundary_value_shape_counters` summary coverage.
-  - `MEM-BENCH-OBSERVE-004` is closed with the first bounded baseline in
+  - Keep `ScopeRegion` as ordinary Omni value ownership authority.
+  - Do not reopen stable-materialization copy-debt work while
+    `materialization_copy_bytes_optimizer=0`.
+  - `MEM-MODEL-IMPROVE-001` is closed with raw logs under
+    `.agents/memory-model-improve-001-runs/` and the repeated evidence block in
     `docs/plans/memory-boundary-telemetry-benchmark-baseline-2026-04-24.md`.
-  - `MEM-BENCH-OBSERVE-005` is closed with
-    `scripts/check_memory_telemetry_benchmark_envelope.sh`.
-  - The Part 18 memory-boundary proof-planner queue is closed through
-    planner-owned commit migration, tag attribution, `CONS`/closure/array/
-    BigInteger copy-debt reduction, and closure residual classification.
+  - `MEM-MODEL-IMPROVE-002` is closed. It added TEMP/ESCAPE slow-allocation
+    slack histograms, per-scope sequence telemetry, request/unused buckets,
+    and source/site attribution without changing allocator semantics.
+  - The histogram run shows ESCAPE slow slack is concentrated in the `<=4096`
+    bucket while TEMP owns the `>4096` bucket. Direct ESCAPE chunk size-class
+    changes should not be the next default policy target.
+  - Direct TEMP exact-fit and exact-plus-4096-headroom large slow-allocation
+    policies were also tried and reverted because they worsened the governing
+    counters despite passing correctness gates.
+  - `MEM-MODEL-IMPROVE-005` and `MEM-MODEL-IMPROVE-006` are closed.
+  - The final source attribution run reports
+    `escape_slow_sequence_no_followup_source_direct_delta=256` and zero for
+    dtor, interpreter value/env, boundary payload, promotion signature,
+    promotion closure, and JIT staged-arg sources. No allocator policy change
+    is justified by the current profile.
 - Validation path:
   - Use `c3c build --obj-out obj` for runtime instrumentation changes.
   - Use bounded `memory-lifetime-bench` with `OMNI_BOUNDARY_BENCH=1` and
@@ -46,9 +67,19 @@ Date: 2026-04-24 17:47 CEST
   - Keep `scripts/check_status_consistency.sh` green after any planning or
     backlog change.
 - Next checkpoint:
-  - No active memory-boundary telemetry TODO remains. Future memory
-    optimization work should open a new measured item after running the bounded
-    benchmark plus `scripts/check_memory_telemetry_benchmark_envelope.sh`.
+  - No active memory-model TODO remains. Reopen allocator policy only when a
+    non-synthetic workload or repeated bounded benchmark shows runtime
+    boundary/promotion source pressure.
+  - `MEM-MODEL-IMPROVE-005` is closed: `atomic-ref` now declares an explicit
+    FFI bridge keepalive mode, FFI wrapper copy fails closed for traversal and
+    unsafe modes, and public FFI metadata validation is green.
+  - `MEM-MODEL-IMPROVE-006` is closed: the product-style
+    `finwatch_product_memory` workload, closure-heavy
+    `closure_iterator_pipeline_memory` workload, tensor-heavy
+    `tensor_metadata_crossing_memory` workload, and nested-module
+    `nested_module_return_memory` workload are landed and envelope-checked.
+    The nested-module slice fixed stable materialization fallback after a
+    rejected region-transplant proof for stable graph return candidates.
 - Negative-memory constraints:
   - Do not reopen closed memory-boundary copy-debt work to chase the expected
     no-splice closure rollback coverage bucket.
@@ -56,8 +87,28 @@ Date: 2026-04-24 17:47 CEST
     fail-closed planner behavior to improve benchmark numbers.
   - Do not add strict wall-clock gates until repeated bounded-container runs
     prove a stable timing envelope.
+  - Do not treat the reverted exact-fit/bounded-headroom ESCAPE chunk sizing
+    attempts as proof that all ESCAPE policy work is unsafe; treat them only
+    as evidence that direct ESCAPE size-class changes are not the next default
+    target for the current histogram.
+  - Do not retry direct TEMP exact-fit or exact-plus-4096-headroom slow chunk
+    sizing from aggregate slack counters; it increased `temp_slow_delta` and
+    `temp_destroy_slack_delta`.
+  - Do not reduce broad TEMP large-slack slow chunks from the current
+    workload: sequence telemetry shows `temp_slow_sequence_large_delta=144`,
+    `temp_slow_sequence_large_followup_bytes_delta=2002192`, and
+    `temp_slow_sequence_large_no_followup_delta=0`.
+  - Do not apply a broad ESCAPE size-class reduction: no-follow-up requests
+    split across `<=512=128`, `<=4096=1`, and `>4096=127`, while
+    unused-at-close is `exact=1`, `<=4096=255`, `>4096=0`.
+  - Do not tune allocator chunk policy from the current remaining ESCAPE
+    no-follow-up bucket; source attribution shows it is entirely direct
+    synthetic allocator-probe traffic.
 - Agent assignments:
-  - Integration owner: GPT-5 Codex in this session; no active subagents.
+  - Integration owner: GPT-5 Codex in this session.
+  - Read-only subagents identified the escape-lane slow allocation / destroy
+    slack target, then recommended histogram evidence before any allocator
+    policy rewrite.
 
 ## Previous Closure Checkpoint
 
@@ -2256,6 +2307,13 @@ Date: 2026-04-21 - Adds non-executing schedule metadata to captured Tensor graph
 - Latest checkpoint: `MEM-LIFETIME-TEARDOWN-001` is implemented and validated.
   Valgrind reports zero definite/indirect/possible leaks and zero Memcheck
   errors for bounded `memory-lifetime-smoke`.
+- 2026-04-25 checkpoint: `AUDIT-238-CONTINUATION-IGNORE-K-TEMP-EDGE` is closed.
+  Handler result finalization releases transient clause-env continuation
+  retention when the returned result graph does not reach `k`; bounded
+  `memory-lifetime-smoke` is green again at `269 passed, 0 failed`. The same
+  slice also fixed generic `checkpoint`/`capture` result-carried continuation
+  ownership and continuation leaves in stable destination cons materialization;
+  bounded `advanced-effect-continuation` is green at `56 passed, 0 failed`.
 - Negative-memory constraints: do not treat Valgrind through `env` as valid
   without `--trace-children=yes`; do not restore the speculative
   `boundary_release_descendant_owner_scopes` family because it can decrement

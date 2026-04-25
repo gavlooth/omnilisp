@@ -240,6 +240,12 @@ fn void run_advanced_module_all_dependency_tests(Interp* interp, int* pass, int*
     test_truthy(interp, "with core math module opens exported primitives", "(with math (< (abs (- (+ (sin 0.0) (cos 0.0)) 1.0)) 0.000001))", pass, fail);
     test_error(interp, "with module does not leak export", "(block (with scoped-open-mod (scoped-add 3)) scoped-add)", pass, fail);
     test_error(interp, "with module keeps unexported hidden", "(with scoped-open-mod hidden-scoped)", pass, fail);
+    setup(interp, "(module module-return-outer (export make-batch) (module module-return-inner (export seed make-row) (define seed 13) (define make-row (lambda (n) (Array n (+ n seed) (Array n (+ n 1)))))) (define make-batch (lambda (n) (with module-return-inner (Array (make-row n) (make-row (+ n 1)))))))");
+    setup(interp, "(import module-return-outer)");
+    test_truthy(interp, "nested module returns heap graph",
+        "(let (batch (module-return-outer.make-batch 5) row0 (ref batch 0) row1 (ref batch 1) nested0 (ref row0 2) nested1 (ref row1 2)) (and (= (ref row0 0) 5) (= (ref row0 1) 18) (= (ref nested0 1) 6) (= (ref row1 0) 6) (= (ref row1 1) 19) (= (ref nested1 1) 7)))",
+        pass,
+        fail);
     setup(interp, "(module closure-mod (export make-counter) (define make-counter (lambda () (let (n 0) (lambda () (block (set! n (+ n 1)) n))))))");
     setup(interp, "(import closure-mod (make-counter))");
     setup(interp, "(define my-counter (make-counter))");

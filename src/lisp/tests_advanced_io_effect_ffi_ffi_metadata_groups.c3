@@ -38,7 +38,7 @@ fn void run_advanced_ffi_system_foreign_handle_metadata_dict_tests(Interp* inter
         "(foreign-release h) "
         "(define after (foreign-describe h)) "
         "(and (ref before 'live) "
-        "     (nil? (ref after 'live)) "
+        "     (not (ref after 'live)) "
         "     (not (= (ref after 'ownership) 'owned)) "
         "     (= (length (ref after 'capabilities)) 0)))",
         pass, fail);

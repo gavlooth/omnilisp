@@ -41,10 +41,7 @@ OMNI_VALIDATION_CPUS="$(
   '
 )"
 
-validation_mem_mb="${OMNI_VALIDATION_MEM_MB:-}"
-if [[ -z "$validation_mem_mb" ]]; then
-  validation_mem_mb="$(omni_hard_cap_mb 2>/dev/null || true)"
-fi
+validation_mem_mb="$(omni_clamped_mem_cap_mb "${OMNI_VALIDATION_MEM_MB:-}" 2>/dev/null || true)"
 if [[ -z "$validation_mem_mb" ]]; then
   echo "failed to resolve validation memory cap; set OMNI_VALIDATION_MEM_MB" >&2
   exit 2

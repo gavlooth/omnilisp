@@ -14,10 +14,10 @@ fn bool method_signature_copy_to_escape(MethodSignature* dst, MethodSignature* s
             src.param_count > usz.max / bool.sizeof) {
             return false;
         }
-        dst.param_types = (TypeId*)scope.alloc_escape(TypeId.sizeof * src.param_count);
-        dst.param_type_vars = (SymbolId*)scope.alloc_escape(SymbolId.sizeof * src.param_count);
-        dst.val_literals = (ValueLiteralKey*)scope.alloc_escape(ValueLiteralKey.sizeof * src.param_count);
-        dst.has_val_literal = (bool*)scope.alloc_escape(bool.sizeof * src.param_count);
+        dst.param_types = (TypeId*)scope.alloc_escape_attributed(TypeId.sizeof * src.param_count, main::ScopeEscapeAllocSource.SCOPE_ESCAPE_ALLOC_PROMOTION_SIGNATURE);
+        dst.param_type_vars = (SymbolId*)scope.alloc_escape_attributed(SymbolId.sizeof * src.param_count, main::ScopeEscapeAllocSource.SCOPE_ESCAPE_ALLOC_PROMOTION_SIGNATURE);
+        dst.val_literals = (ValueLiteralKey*)scope.alloc_escape_attributed(ValueLiteralKey.sizeof * src.param_count, main::ScopeEscapeAllocSource.SCOPE_ESCAPE_ALLOC_PROMOTION_SIGNATURE);
+        dst.has_val_literal = (bool*)scope.alloc_escape_attributed(bool.sizeof * src.param_count, main::ScopeEscapeAllocSource.SCOPE_ESCAPE_ALLOC_PROMOTION_SIGNATURE);
         if (dst.param_types == null || dst.param_type_vars == null || dst.val_literals == null || dst.has_val_literal == null) {
             method_signature_init_empty(dst);
             return false;
@@ -35,7 +35,7 @@ fn bool method_signature_copy_to_escape(MethodSignature* dst, MethodSignature* s
             method_signature_init_empty(dst);
             return false;
         }
-        dst.constraints = (MethodConstraint*)scope.alloc_escape(MethodConstraint.sizeof * src.constraint_count);
+        dst.constraints = (MethodConstraint*)scope.alloc_escape_attributed(MethodConstraint.sizeof * src.constraint_count, main::ScopeEscapeAllocSource.SCOPE_ESCAPE_ALLOC_PROMOTION_SIGNATURE);
         if (dst.constraints == null) {
             method_signature_init_empty(dst);
             return false;
@@ -391,7 +391,10 @@ fn Value* promote_escape_cons(Value* v, Interp* interp, PromotionContext* ctx) {
 
 fn Value* promote_escape_closure(Value* v, Interp* interp, PromotionContext* ctx) {
     if (!promote_escape_can_mutate(v, ctx)) return v;
-    Closure* cloned = (Closure*)interp.current_scope.alloc_escape(Closure.sizeof);
+    Closure* cloned = (Closure*)interp.current_scope.alloc_escape_attributed(
+        Closure.sizeof,
+        main::ScopeEscapeAllocSource.SCOPE_ESCAPE_ALLOC_PROMOTION_CLOSURE
+    );
     if (cloned == null) {
         promote_escape_abort_budget(ctx);
         return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate closure escape copy");
@@ -408,7 +411,10 @@ fn Value* promote_escape_closure(Value* v, Interp* interp, PromotionContext* ctx
             promote_escape_cleanup_partial_closure(cloned);
             return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate closure params during escape promotion");
         }
-        cloned.params = (SymbolId*)interp.current_scope.alloc_escape(SymbolId.sizeof * v.closure_val.param_count);
+        cloned.params = (SymbolId*)interp.current_scope.alloc_escape_attributed(
+            SymbolId.sizeof * v.closure_val.param_count,
+            main::ScopeEscapeAllocSource.SCOPE_ESCAPE_ALLOC_PROMOTION_CLOSURE
+        );
         if (cloned.params == null) {
             promote_escape_abort_budget(ctx);
             promote_escape_cleanup_partial_closure(cloned);
@@ -420,7 +426,10 @@ fn Value* promote_escape_closure(Value* v, Interp* interp, PromotionContext* ctx
     }
 
     if (v.closure_val.type_sig != null) {
-        MethodSignature* cloned_sig = (MethodSignature*)interp.current_scope.alloc_escape(MethodSignature.sizeof);
+        MethodSignature* cloned_sig = (MethodSignature*)interp.current_scope.alloc_escape_attributed(
+            MethodSignature.sizeof,
+            main::ScopeEscapeAllocSource.SCOPE_ESCAPE_ALLOC_PROMOTION_CLOSURE
+        );
         if (cloned_sig == null ||
             !method_signature_copy_to_escape(cloned_sig, v.closure_val.type_sig, interp.current_scope)) {
             promote_escape_abort_budget(ctx);

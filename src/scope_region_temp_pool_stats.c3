@@ -25,6 +25,55 @@ struct ScopeMemoryTelemetryStats {
     usz escape_slow_requested_bytes;
     usz temp_slow_selected_chunk_bytes;
     usz escape_slow_selected_chunk_bytes;
+    usz temp_slow_slack_exact_count;
+    usz temp_slow_slack_le_512_count;
+    usz temp_slow_slack_le_4096_count;
+    usz temp_slow_slack_gt_4096_count;
+    usz escape_slow_slack_exact_count;
+    usz escape_slow_slack_le_512_count;
+    usz escape_slow_slack_le_4096_count;
+    usz escape_slow_slack_gt_4096_count;
+    usz temp_slow_sequence_closed_count;
+    usz escape_slow_sequence_closed_count;
+    usz temp_slow_sequence_followup_alloc_count;
+    usz escape_slow_sequence_followup_alloc_count;
+    usz temp_slow_sequence_followup_bytes;
+    usz escape_slow_sequence_followup_bytes;
+    usz temp_slow_sequence_unused_at_close_bytes;
+    usz escape_slow_sequence_unused_at_close_bytes;
+    usz temp_slow_sequence_no_followup_count;
+    usz escape_slow_sequence_no_followup_count;
+    usz temp_slow_sequence_no_followup_request_le_512_count;
+    usz temp_slow_sequence_no_followup_request_le_4096_count;
+    usz temp_slow_sequence_no_followup_request_gt_4096_count;
+    usz escape_slow_sequence_no_followup_request_le_512_count;
+    usz escape_slow_sequence_no_followup_request_le_4096_count;
+    usz escape_slow_sequence_no_followup_request_gt_4096_count;
+    usz temp_slow_sequence_no_followup_unused_exact_count;
+    usz temp_slow_sequence_no_followup_unused_le_512_count;
+    usz temp_slow_sequence_no_followup_unused_le_4096_count;
+    usz temp_slow_sequence_no_followup_unused_gt_4096_count;
+    usz escape_slow_sequence_no_followup_unused_exact_count;
+    usz escape_slow_sequence_no_followup_unused_le_512_count;
+    usz escape_slow_sequence_no_followup_unused_le_4096_count;
+    usz escape_slow_sequence_no_followup_unused_gt_4096_count;
+    usz escape_slow_sequence_no_followup_source_unknown_count;
+    usz escape_slow_sequence_no_followup_source_direct_count;
+    usz escape_slow_sequence_no_followup_source_dtor_count;
+    usz escape_slow_sequence_no_followup_source_interp_value_count;
+    usz escape_slow_sequence_no_followup_source_interp_env_count;
+    usz escape_slow_sequence_no_followup_source_boundary_payload_count;
+    usz escape_slow_sequence_no_followup_source_promotion_signature_count;
+    usz escape_slow_sequence_no_followup_source_promotion_closure_count;
+    usz escape_slow_sequence_no_followup_source_jit_args_count;
+    usz temp_slow_sequence_large_slack_count;
+    usz escape_slow_sequence_large_slack_count;
+    usz temp_slow_sequence_large_slack_followup_bytes;
+    usz escape_slow_sequence_large_slack_followup_bytes;
+    usz temp_slow_sequence_large_slack_unused_at_close_bytes;
+    usz escape_slow_sequence_large_slack_unused_at_close_bytes;
+    usz temp_slow_sequence_large_slack_no_followup_count;
+    usz escape_slow_sequence_large_slack_no_followup_count;
     usz temp_live_chunk_count;
     usz escape_live_chunk_count;
     usz temp_peak_live_chunk_count;
@@ -192,6 +241,16 @@ fn void scope_telemetry_note_temp_slow_alloc_request(usz requested, usz selected
     g_scope_memory_telemetry_stats.temp_slow_alloc_count++;
     g_scope_memory_telemetry_stats.temp_slow_requested_bytes += requested;
     g_scope_memory_telemetry_stats.temp_slow_selected_chunk_bytes += selected_capacity;
+    usz slack = selected_capacity > requested ? selected_capacity - requested : 0;
+    if (slack == 0) {
+        g_scope_memory_telemetry_stats.temp_slow_slack_exact_count++;
+    } else if (slack <= 512) {
+        g_scope_memory_telemetry_stats.temp_slow_slack_le_512_count++;
+    } else if (slack <= 4096) {
+        g_scope_memory_telemetry_stats.temp_slow_slack_le_4096_count++;
+    } else {
+        g_scope_memory_telemetry_stats.temp_slow_slack_gt_4096_count++;
+    }
 }
 
 fn void scope_telemetry_note_escape_slow_alloc_request(usz requested, usz selected_capacity) @inline {
@@ -199,6 +258,213 @@ fn void scope_telemetry_note_escape_slow_alloc_request(usz requested, usz select
     g_scope_memory_telemetry_stats.escape_slow_alloc_count++;
     g_scope_memory_telemetry_stats.escape_slow_requested_bytes += requested;
     g_scope_memory_telemetry_stats.escape_slow_selected_chunk_bytes += selected_capacity;
+    usz slack = selected_capacity > requested ? selected_capacity - requested : 0;
+    if (slack == 0) {
+        g_scope_memory_telemetry_stats.escape_slow_slack_exact_count++;
+    } else if (slack <= 512) {
+        g_scope_memory_telemetry_stats.escape_slow_slack_le_512_count++;
+    } else if (slack <= 4096) {
+        g_scope_memory_telemetry_stats.escape_slow_slack_le_4096_count++;
+    } else {
+        g_scope_memory_telemetry_stats.escape_slow_slack_gt_4096_count++;
+    }
+}
+
+fn bool scope_slow_sequence_large_slack(usz requested, usz selected_capacity) @inline {
+    if (selected_capacity <= requested) return false;
+    return selected_capacity - requested > 4096;
+}
+
+fn void scope_telemetry_note_temp_no_followup_classes(usz requested, usz unused) @inline {
+    if (requested <= 512) {
+        g_scope_memory_telemetry_stats.temp_slow_sequence_no_followup_request_le_512_count++;
+    } else if (requested <= 4096) {
+        g_scope_memory_telemetry_stats.temp_slow_sequence_no_followup_request_le_4096_count++;
+    } else {
+        g_scope_memory_telemetry_stats.temp_slow_sequence_no_followup_request_gt_4096_count++;
+    }
+
+    if (unused == 0) {
+        g_scope_memory_telemetry_stats.temp_slow_sequence_no_followup_unused_exact_count++;
+    } else if (unused <= 512) {
+        g_scope_memory_telemetry_stats.temp_slow_sequence_no_followup_unused_le_512_count++;
+    } else if (unused <= 4096) {
+        g_scope_memory_telemetry_stats.temp_slow_sequence_no_followup_unused_le_4096_count++;
+    } else {
+        g_scope_memory_telemetry_stats.temp_slow_sequence_no_followup_unused_gt_4096_count++;
+    }
+}
+
+fn void scope_telemetry_note_escape_no_followup_classes(usz requested, usz unused) @inline {
+    if (requested <= 512) {
+        g_scope_memory_telemetry_stats.escape_slow_sequence_no_followup_request_le_512_count++;
+    } else if (requested <= 4096) {
+        g_scope_memory_telemetry_stats.escape_slow_sequence_no_followup_request_le_4096_count++;
+    } else {
+        g_scope_memory_telemetry_stats.escape_slow_sequence_no_followup_request_gt_4096_count++;
+    }
+
+    if (unused == 0) {
+        g_scope_memory_telemetry_stats.escape_slow_sequence_no_followup_unused_exact_count++;
+    } else if (unused <= 512) {
+        g_scope_memory_telemetry_stats.escape_slow_sequence_no_followup_unused_le_512_count++;
+    } else if (unused <= 4096) {
+        g_scope_memory_telemetry_stats.escape_slow_sequence_no_followup_unused_le_4096_count++;
+    } else {
+        g_scope_memory_telemetry_stats.escape_slow_sequence_no_followup_unused_gt_4096_count++;
+    }
+}
+
+fn void scope_telemetry_note_escape_no_followup_source(ScopeEscapeAllocSource source) @inline {
+    switch (source) {
+        case SCOPE_ESCAPE_ALLOC_DIRECT:
+            g_scope_memory_telemetry_stats.escape_slow_sequence_no_followup_source_direct_count++;
+            break;
+        case SCOPE_ESCAPE_ALLOC_DTOR:
+            g_scope_memory_telemetry_stats.escape_slow_sequence_no_followup_source_dtor_count++;
+            break;
+        case SCOPE_ESCAPE_ALLOC_INTERP_VALUE:
+            g_scope_memory_telemetry_stats.escape_slow_sequence_no_followup_source_interp_value_count++;
+            break;
+        case SCOPE_ESCAPE_ALLOC_INTERP_ENV:
+            g_scope_memory_telemetry_stats.escape_slow_sequence_no_followup_source_interp_env_count++;
+            break;
+        case SCOPE_ESCAPE_ALLOC_BOUNDARY_PAYLOAD:
+            g_scope_memory_telemetry_stats.escape_slow_sequence_no_followup_source_boundary_payload_count++;
+            break;
+        case SCOPE_ESCAPE_ALLOC_PROMOTION_SIGNATURE:
+            g_scope_memory_telemetry_stats.escape_slow_sequence_no_followup_source_promotion_signature_count++;
+            break;
+        case SCOPE_ESCAPE_ALLOC_PROMOTION_CLOSURE:
+            g_scope_memory_telemetry_stats.escape_slow_sequence_no_followup_source_promotion_closure_count++;
+            break;
+        case SCOPE_ESCAPE_ALLOC_JIT_ARGS:
+            g_scope_memory_telemetry_stats.escape_slow_sequence_no_followup_source_jit_args_count++;
+            break;
+        default:
+            g_scope_memory_telemetry_stats.escape_slow_sequence_no_followup_source_unknown_count++;
+            break;
+    }
+}
+
+fn void scope_telemetry_reset_temp_sequence_state(ScopeRegion* scope) @inline {
+    if (scope == null) return;
+    scope.temp_slow_sequence_active = false;
+    scope.temp_slow_sequence_large_slack = false;
+    scope.temp_slow_sequence_requested_bytes = 0;
+    scope.temp_slow_sequence_followup_count = 0;
+    scope.temp_slow_sequence_followup_bytes = 0;
+}
+
+fn void scope_telemetry_reset_escape_sequence_state(ScopeRegion* scope) @inline {
+    if (scope == null) return;
+    scope.escape_slow_sequence_active = false;
+    scope.escape_slow_sequence_large_slack = false;
+    scope.escape_slow_sequence_source = SCOPE_ESCAPE_ALLOC_UNKNOWN;
+    scope.escape_slow_sequence_requested_bytes = 0;
+    scope.escape_slow_sequence_followup_count = 0;
+    scope.escape_slow_sequence_followup_bytes = 0;
+}
+
+fn void scope_telemetry_note_temp_slow_sequence_close(ScopeRegion* scope) @inline {
+    if (scope == null || !scope.temp_slow_sequence_active) return;
+    if (scope_memory_shape_telemetry_enabled()) {
+        usz unused = scope_temp_current_unused_bytes(scope);
+        g_scope_memory_telemetry_stats.temp_slow_sequence_closed_count++;
+        g_scope_memory_telemetry_stats.temp_slow_sequence_followup_alloc_count += scope.temp_slow_sequence_followup_count;
+        g_scope_memory_telemetry_stats.temp_slow_sequence_followup_bytes += scope.temp_slow_sequence_followup_bytes;
+        g_scope_memory_telemetry_stats.temp_slow_sequence_unused_at_close_bytes += unused;
+        if (scope.temp_slow_sequence_followup_count == 0) {
+            g_scope_memory_telemetry_stats.temp_slow_sequence_no_followup_count++;
+            scope_telemetry_note_temp_no_followup_classes(scope.temp_slow_sequence_requested_bytes, unused);
+        }
+        if (scope.temp_slow_sequence_large_slack) {
+            g_scope_memory_telemetry_stats.temp_slow_sequence_large_slack_followup_bytes += scope.temp_slow_sequence_followup_bytes;
+            g_scope_memory_telemetry_stats.temp_slow_sequence_large_slack_unused_at_close_bytes += unused;
+            if (scope.temp_slow_sequence_followup_count == 0) {
+                g_scope_memory_telemetry_stats.temp_slow_sequence_large_slack_no_followup_count++;
+            }
+        }
+    }
+    scope_telemetry_reset_temp_sequence_state(scope);
+}
+
+fn void scope_telemetry_note_escape_slow_sequence_close(ScopeRegion* scope) @inline {
+    if (scope == null || !scope.escape_slow_sequence_active) return;
+    if (scope_memory_shape_telemetry_enabled()) {
+        usz unused = scope_escape_current_unused_bytes(scope);
+        g_scope_memory_telemetry_stats.escape_slow_sequence_closed_count++;
+        g_scope_memory_telemetry_stats.escape_slow_sequence_followup_alloc_count += scope.escape_slow_sequence_followup_count;
+        g_scope_memory_telemetry_stats.escape_slow_sequence_followup_bytes += scope.escape_slow_sequence_followup_bytes;
+        g_scope_memory_telemetry_stats.escape_slow_sequence_unused_at_close_bytes += unused;
+        if (scope.escape_slow_sequence_followup_count == 0) {
+            g_scope_memory_telemetry_stats.escape_slow_sequence_no_followup_count++;
+            scope_telemetry_note_escape_no_followup_classes(scope.escape_slow_sequence_requested_bytes, unused);
+            scope_telemetry_note_escape_no_followup_source(scope.escape_slow_sequence_source);
+        }
+        if (scope.escape_slow_sequence_large_slack) {
+            g_scope_memory_telemetry_stats.escape_slow_sequence_large_slack_followup_bytes += scope.escape_slow_sequence_followup_bytes;
+            g_scope_memory_telemetry_stats.escape_slow_sequence_large_slack_unused_at_close_bytes += unused;
+            if (scope.escape_slow_sequence_followup_count == 0) {
+                g_scope_memory_telemetry_stats.escape_slow_sequence_large_slack_no_followup_count++;
+            }
+        }
+    }
+    scope_telemetry_reset_escape_sequence_state(scope);
+}
+
+fn void scope_telemetry_note_temp_slow_sequence_start(ScopeRegion* scope, usz requested, usz selected_capacity) @inline {
+    if (scope == null) return;
+    scope_telemetry_reset_temp_sequence_state(scope);
+    if (!scope_memory_shape_telemetry_enabled()) return;
+    scope.temp_slow_sequence_active = true;
+    scope.temp_slow_sequence_requested_bytes = requested;
+    scope.temp_slow_sequence_large_slack = scope_slow_sequence_large_slack(requested, selected_capacity);
+    if (scope.temp_slow_sequence_large_slack) {
+        g_scope_memory_telemetry_stats.temp_slow_sequence_large_slack_count++;
+    }
+}
+
+fn void scope_telemetry_note_escape_slow_sequence_start(
+    ScopeRegion* scope,
+    usz requested,
+    usz selected_capacity,
+    ScopeEscapeAllocSource source
+) @inline {
+    if (scope == null) return;
+    scope_telemetry_reset_escape_sequence_state(scope);
+    if (!scope_memory_shape_telemetry_enabled()) return;
+    scope.escape_slow_sequence_active = true;
+    scope.escape_slow_sequence_source = source;
+    scope.escape_slow_sequence_requested_bytes = requested;
+    scope.escape_slow_sequence_large_slack = scope_slow_sequence_large_slack(requested, selected_capacity);
+    if (scope.escape_slow_sequence_large_slack) {
+        g_scope_memory_telemetry_stats.escape_slow_sequence_large_slack_count++;
+    }
+}
+
+fn void scope_telemetry_note_temp_sequence_followup(ScopeRegion* scope, usz aligned_size) @inline {
+    if (scope == null || !scope.temp_slow_sequence_active || !scope_memory_shape_telemetry_enabled()) return;
+    scope.temp_slow_sequence_followup_count++;
+    scope.temp_slow_sequence_followup_bytes += aligned_size;
+}
+
+fn void scope_telemetry_note_escape_sequence_followup(ScopeRegion* scope, usz aligned_size) @inline {
+    if (scope == null || !scope.escape_slow_sequence_active || !scope_memory_shape_telemetry_enabled()) return;
+    scope.escape_slow_sequence_followup_count++;
+    scope.escape_slow_sequence_followup_bytes += aligned_size;
+}
+
+fn void scope_telemetry_adopt_escape_slow_sequence(ScopeRegion* parent, ScopeRegion* child) @inline {
+    if (parent == null || child == null) return;
+    scope_telemetry_note_escape_slow_sequence_close(parent);
+    parent.escape_slow_sequence_active = child.escape_slow_sequence_active;
+    parent.escape_slow_sequence_large_slack = child.escape_slow_sequence_large_slack;
+    parent.escape_slow_sequence_source = child.escape_slow_sequence_source;
+    parent.escape_slow_sequence_requested_bytes = child.escape_slow_sequence_requested_bytes;
+    parent.escape_slow_sequence_followup_count = child.escape_slow_sequence_followup_count;
+    parent.escape_slow_sequence_followup_bytes = child.escape_slow_sequence_followup_bytes;
+    scope_telemetry_reset_escape_sequence_state(child);
 }
 
 fn usz scope_temp_current_unused_bytes(ScopeRegion* scope) @inline {

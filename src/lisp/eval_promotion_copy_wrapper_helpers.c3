@@ -238,6 +238,7 @@ fn Value* copy_instance_to_parent(Value* v, Interp* interp) {
 }
 
 fn Value* copy_ffi_handle_to_parent(Value* v, Interp* interp) {
+    if (!ffi_bridge_boundary_value_can_share_across_boundary(v)) return null;
     if (!needs_wrapper_copy(v, interp)) return v;
     Value* result = g_boundary_force_copy_ffi_handle_wrapper_alloc_fail
         ? null

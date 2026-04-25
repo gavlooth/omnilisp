@@ -53,9 +53,17 @@ fn void Compiler.free(Compiler* self) {
     self.referenced_prims.free();
     self.module_open_exports.free();
     self.module_open_aliases.free();
+    self.module_private_symbols.free();
+    self.module_private_backings.free();
     for (usz i = 0; i < self.compiled_module_count; i++) {
         if (self.compiled_modules[i].exports != null) {
             mem::free(self.compiled_modules[i].exports);
+        }
+        if (self.compiled_modules[i].locals != null) {
+            mem::free(self.compiled_modules[i].locals);
+        }
+        if (self.compiled_modules[i].local_backings != null) {
+            mem::free(self.compiled_modules[i].local_backings);
         }
     }
     if (self.compiled_modules != null) {

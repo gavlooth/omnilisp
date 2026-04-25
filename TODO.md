@@ -24,12 +24,58 @@ split gate applies to code files only.
 - Part 14: [docs/todo_parts/todo_part_14.md](docs/todo_parts/todo_part_14.md) (1915 lines)
 - Part 15: [docs/todo_parts/todo_part_15.md](docs/todo_parts/todo_part_15.md) (951 lines)
 - Part 16: [docs/todo_parts/todo_part_16.md](docs/todo_parts/todo_part_16.md) (261 lines)
-- Part 17: [docs/todo_parts/todo_part_17.md](docs/todo_parts/todo_part_17.md) (107 lines)
-- Part 18: [docs/todo_parts/todo_part_18.md](docs/todo_parts/todo_part_18.md) (339 lines)
+- Part 17: [docs/todo_parts/todo_part_17.md](docs/todo_parts/todo_part_17.md) (149 lines)
+- Part 18: [docs/todo_parts/todo_part_18.md](docs/todo_parts/todo_part_18.md) (798 lines)
 
 ## Live Queue
 
-- None currently;
+- Current actionable count: 10.
+- `MEM-PROOF-001` through `MEM-PROOF-010` in Part 18 are open under
+  `docs/plans/memory-model-proof-matrix-2026-04-26.md`. This lane applies the
+  same proof/measurement/hardening treatment to the entire memory model:
+  inventory/manifest coverage, ScopeRegion core, value constructors,
+  env/closure, boundary commit routes, stable escape/transplant,
+  collections/mutation, native tensor/device paths, async/scheduler/callbacks,
+  and FFI ScopeRegion migration closure.
+- `MEM-MODEL-IMPROVE-002` in Part 18 is closed under
+  `docs/plans/memory-model-improvement-plan-2026-04-25.md`.
+  The slice added slow-path slack histograms, per-scope slow-allocation
+  sequence telemetry, request/unused buckets, and source/site attribution.
+  Direct ESCAPE and direct TEMP chunk-size policy attempts are invalidated by
+  measured counters; broad TEMP large-slack reduction is also invalidated.
+  The final attribution run shows all remaining ESCAPE no-follow-up sequences
+  come from the synthetic direct allocator probe
+  (`escape_slow_sequence_no_followup_source_direct_delta=256`), not runtime
+  boundary/promotion sources, so no allocator policy change is justified by
+  the current profile.
+- `MEM-MODEL-IMPROVE-003` in Part 18 is closed. Shared Dictionary/Set
+  known-entry capacity sizing now eliminates the benchmark hashmap/set growth
+  counters (`hashmap_growth_delta=0`, `set_growth_delta=0`) while keeping
+  checked constructors and insertion paths.
+- `MEM-MODEL-IMPROVE-004` in Part 18 is closed. Boundary value policy coverage
+  now has a manifest-backed guard wired into `check_boundary_change_policy.sh`
+  so every `ValueTag` must declare ownership, edge, copy-route,
+  materialization, graph-audit, destructor, native/FFI, and rollback policy.
+- `MEM-MODEL-IMPROVE-005` in Part 18 is closed. `atomic-ref` is the first
+  explicit FFI bridge keepalive family, FFI wrapper copy now fails closed for
+  declared traversal/unsafe modes, and public FFI metadata validation is green.
+- `MEM-MODEL-IMPROVE-006` in Part 18 is closed. Product-style Finwatch,
+  closure-heavy iterator pipeline, tensor-metadata crossing, and nested-module
+  return benchmark slices are landed and envelope-checked. The nested-module
+  slice also fixed stable materialization fallback after transplant proof
+  rejection for stable graph returns.
+- `AUDIT-238-CONTINUATION-IGNORE-K-TEMP-EDGE` in Part 18 is closed; the
+  ignore-k continuation retention failure is fixed and `memory-lifetime-smoke`
+  is green again.
+- `AUDIT-239-ENV-COPY-DTOR-REGISTRATION` in Part 18 is closed; env-copy frame
+  destructor-registration OOM now fails closed with a typed boundary fault
+  instead of returning an unmanaged copied frame.
+- `AUDIT-240-DESTINATION-ERROR-ESCAPE-DTOR` in Part 18 is closed; destination
+  error escape building now fails closed if ESCAPE destructor registration
+  cannot be recorded after allocating the copied error string.
+- `AUDIT-241-STABLE-MATERIALIZED-CLOSURE-DTOR` in Part 18 is closed; stable
+  destination materialized closures now fail closed if their closure-specific
+  env-scope destructor cannot be recorded.
 - The `MEM-BENCH-OBSERVE-001` through `MEM-BENCH-OBSERVE-005` memory-boundary
   telemetry evidence lane in Part 18 is closed. The lane produced a signal
   inventory, runtime counter coverage, benchmark workload coverage, first

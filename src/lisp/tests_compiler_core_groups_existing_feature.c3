@@ -117,15 +117,28 @@ fn void run_compiler_group_existing_feature_tests(Interp* interp, usz* pass, usz
         );
     }
     {
-        char[] code = compile_to_c3("(with math (define with-global-value 1) with-global-value)", interp);
+        char[] code = compile_to_c3(
+            "(module scoped-aot-leak (export leak-value) (define leak-value 41)) "
+            "(block (with scoped-aot-leak leak-value) leak-value)",
+            interp
+        );
         bool ok = code.len > 0
-            && str_contains(code, "lisp::Value* with_global_value;")
-            && str_contains(code, "with_global_value =")
-            && !str_contains(code, "not supported by AOT lowering");
+            && compiler_code_contains_all(code, {
+                "aot::make_void()",
+                "lisp::Value* _aot_with_",
+                "aot::lookup_var(\"leak-value\")"
+            })
+            && compiler_code_contains_none(code, {
+                "lisp::Value* leak_value;",
+                "leak_value =",
+                " = leak_value;",
+                "unsupported expr type",
+                "not supported by AOT lowering"
+            });
         compiler_test_finish_bool(
             ok,
-            "Compiler: scoped module open body definitions declare AOT globals",
-            "[FAIL] Compiler: scoped module open body definitions declare AOT globals",
+            "Compiler: inline scoped module open does not leak public AOT globals",
+            "[FAIL] Compiler: inline scoped module open does not leak public AOT globals",
             pass,
             fail
         );

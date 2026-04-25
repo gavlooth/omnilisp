@@ -65,6 +65,49 @@ fn bool nn_checkpoint_decode_rejects_oversized_entries(Interp* interp) {
     return decoded != null && decoded.tag == ERROR;
 }
 
+fn Value* nn_checkpoint_nul_string(Interp* interp, char[] prefix, char[] suffix) {
+    char[256] bytes;
+    if (prefix.len + suffix.len + 1 > bytes.len) return null;
+    usz n = 0;
+    for (usz i = 0; i < prefix.len; i++) bytes[n++] = prefix[i];
+    bytes[n++] = (char)0;
+    for (usz i = 0; i < suffix.len; i++) bytes[n++] = suffix[i];
+    return make_string(interp, bytes[0:n]);
+}
+
+fn bool nn_checkpoint_primitives_reject_nul_paths(Interp* interp) {
+    Value* bad_path = nn_checkpoint_nul_string(interp, "/tmp/omni-nn-ckpt-nul-", "suffix");
+    if (bad_path == null || bad_path.tag == ERROR) return false;
+
+    Value*[1] load_args = { bad_path };
+    bool load_spec_ok = compiler_error_value_contains(
+        prim_nn_load_spec(load_args[..], null, interp),
+        "embedded NUL byte"
+    );
+    bool load_ok = compiler_error_value_contains(
+        prim_nn_load(load_args[..], null, interp),
+        "embedded NUL byte"
+    );
+
+    EvalResult spec_result = run("(nn/dense 1 1)", interp);
+    if (spec_result.error.has_error || spec_result.value == null || spec_result.value.tag == ERROR) return false;
+    Value*[2] save_spec_args = { spec_result.value, bad_path };
+    bool save_spec_ok = compiler_error_value_contains(
+        prim_nn_save_spec(save_spec_args[..], null, interp),
+        "embedded NUL byte"
+    );
+
+    EvalResult model_result = run("(nn/init (nn/dense 1 1) (Dictionary 'dtype 'Float32 'device 'cpu 'seed 1))", interp);
+    if (model_result.error.has_error || model_result.value == null || model_result.value.tag == ERROR) return false;
+    Value*[2] save_args = { model_result.value, bad_path };
+    bool save_ok = compiler_error_value_contains(
+        prim_nn_save(save_args[..], null, interp),
+        "embedded NUL byte"
+    );
+
+    return load_spec_ok && load_ok && save_spec_ok && save_ok;
+}
+
 fn void run_advanced_collections_generic_ops_part8(Interp* interp, int* pass, int* fail) {
     test_truthy(interp, "tensor-backends reports ML capability contract",
         "(let (rest-off (lambda (b) (and (= (ref b 'ml-neural-map) false) (= (ref b 'ml-autograd) false) (= (ref b 'ml-optimizer) false) (= (ref b 'ml-graph-execution) false))) neural-f64-off (lambda (b) (and (= (ref b 'ml-neural-sigmoid-float64) false) (= (ref b 'ml-neural-tanh-float64) false) (= (ref b 'ml-neural-gelu-float64) false))) neural-f32-on (lambda (b) (and (= (ref b 'ml-neural-sigmoid-float32) true) (= (ref b 'ml-neural-tanh-float32) true) (= (ref b 'ml-neural-gelu-float32) true))) neural-f32-off (lambda (b) (and (= (ref b 'ml-neural-sigmoid-float32) false) (= (ref b 'ml-neural-tanh-float32) false) (= (ref b 'ml-neural-gelu-float32) false))) reduction-on (lambda (b) (and (= (ref b 'ml-reduction-float64) true) (= (ref b 'ml-reduction-float32) true))) reduction-off (lambda (b) (and (= (ref b 'ml-reduction-float64) false) (= (ref b 'ml-reduction-float32) false))) backends (tensor-backends) cpu (ref backends 0) cuda (ref backends 1) cublas (ref backends 2) vulkan (ref backends 3)) (and (= (ref cpu 'ml-linear) true) (= (ref cpu 'ml-linear-direct-float64) true) (= (ref cpu 'ml-linear-direct-float32) true) (= (ref cpu 'ml-neural-relu-float64) true) (= (ref cpu 'ml-neural-relu-float32) true) (neural-f64-off cpu) (neural-f32-on cpu) (reduction-on cpu) (= (ref cpu 'ml-normalization) true) (= (ref cpu 'ml-layer-normalization-float64) true) (= (ref cpu 'ml-layer-normalization-float32) true) (= (ref cuda 'ml-linear) false) (= (ref cuda 'ml-linear-direct-float64) false) (= (ref cuda 'ml-linear-direct-float32) false) (or (= (ref cuda 'ml-neural-relu-float64) true) (= (ref cuda 'ml-neural-relu-float64) false)) (or (= (ref cuda 'ml-neural-relu-float32) true) (= (ref cuda 'ml-neural-relu-float32) false)) (neural-f64-off cuda) (or (neural-f32-on cuda) (neural-f32-off cuda)) (reduction-off cuda) (= (ref cuda 'ml-normalization) false) (= (ref cuda 'ml-layer-normalization-float64) false) (= (ref cuda 'ml-layer-normalization-float32) false) (= (ref cublas 'ml-linear) false) (= (ref cublas 'ml-linear-direct-float64) false) (= (ref cublas 'ml-linear-direct-float32) false) (= (ref cublas 'ml-neural-relu-float64) false) (= (ref cublas 'ml-neural-relu-float32) false) (neural-f64-off cublas) (neural-f32-off cublas) (reduction-off cublas) (= (ref cublas 'ml-normalization) false) (= (ref cublas 'ml-layer-normalization-float64) false) (= (ref cublas 'ml-layer-normalization-float32) false) (= (ref vulkan 'ml-linear) false) (= (ref vulkan 'ml-linear-direct-float64) (ref vulkan 'float64)) (= (ref vulkan 'ml-linear-direct-float32) (ref vulkan 'float32)) (= (ref vulkan 'ml-neural-relu-float64) (ref vulkan 'float64)) (= (ref vulkan 'ml-neural-relu-float32) (ref vulkan 'float32)) (neural-f64-off vulkan) (= (ref vulkan 'ml-neural-sigmoid-float32) (ref vulkan 'float32)) (= (ref vulkan 'ml-neural-tanh-float32) (ref vulkan 'float32)) (= (ref vulkan 'ml-neural-gelu-float32) (ref vulkan 'float32)) (= (ref vulkan 'ml-reduction-float64) (ref vulkan 'float64)) (= (ref vulkan 'ml-reduction-float32) (ref vulkan 'float32)) (= (ref vulkan 'ml-normalization) (or (ref vulkan 'float64) (ref vulkan 'float32))) (= (ref vulkan 'ml-layer-normalization-float64) (ref vulkan 'float64)) (= (ref vulkan 'ml-layer-normalization-float32) (ref vulkan 'float32)) (rest-off cpu) (rest-off cuda) (rest-off cublas) (rest-off vulkan)))", pass, fail);
@@ -168,6 +211,13 @@ fn void run_advanced_collections_generic_ops_part8(Interp* interp, int* pass, in
     test_error_contains(interp, "nn/load source type diagnostic names caller", "(nn/load 42)", "nn/load", pass, fail);
     test_error_contains(interp, "nn/load-spec missing path diagnostic names caller", "(nn/load-spec \"/tmp/omni-worker-k-missing-checkpoint-dir/load-spec.json\")", "nn/load-spec", pass, fail);
     test_error_contains(interp, "nn/load missing path diagnostic names caller", "(nn/load \"/tmp/omni-worker-k-missing-checkpoint-dir/load.json\")", "nn/load", pass, fail);
+    if (nn_checkpoint_primitives_reject_nul_paths(interp)) {
+        emit_pass("nn checkpoint primitives reject embedded NUL paths before native file calls");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] nn checkpoint primitives reject embedded NUL paths before native file calls");
+        (*fail)++;
+    }
     if (nn_checkpoint_encode_dict_uses_count_capacity(interp)) {
         emit_pass("nn checkpoint dictionary encode sizes staging by count");
         (*pass)++;

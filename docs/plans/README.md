@@ -11,6 +11,28 @@ The live backlog has been consolidated into `TODO.md` at the repo root.
 
 ## TODO-Linked Plan Status
 
+- `memory-model-proof-matrix-2026-04-26.md`: active proof plan for applying the
+  same proof/measurement/hardening treatment to the entire memory model after
+  the core migration closed. It opens TODO Part 18 lanes `MEM-PROOF-001`
+  through `MEM-PROOF-010`, covering inventory/manifest coverage, ScopeRegion
+  core, value constructors, env/closure, boundary commit routes, stable
+  escape/transplant, collections/mutation, native tensor/device paths,
+  async/scheduler/callbacks, and FFI ScopeRegion migration closure.
+- `memory-model-improvement-plan-2026-04-25.md`: completed memory-model
+  improvement plan. It keeps `ScopeRegion` as ordinary Omni value ownership
+  authority and treats the planner/passport/transplant work as current
+  foundation, not a work item to reopen. The TODO Part 18 memory-model
+  improvement queue is closed: `MEM-MODEL-IMPROVE-002` added allocator
+  histograms, per-scope sequence evidence, request/unused buckets, and
+  source/site attribution, then closed without a policy change because the
+  remaining ESCAPE no-follow-up bucket is synthetic direct benchmark traffic.
+  `MEM-MODEL-IMPROVE-003` closed the shared Dictionary/Set known-entry sizing
+  slice by reducing hashmap/set growth counters to zero. `MEM-MODEL-IMPROVE-004`
+  closed the boundary value policy coverage guard with a manifest-backed check
+  wired into the boundary change policy script, `MEM-MODEL-IMPROVE-005` closed
+  the `atomic-ref` FFI bridge keepalive slice, and `MEM-MODEL-IMPROVE-006`
+  landed product-style Finwatch, closure-heavy iterator, tensor-metadata, and
+  nested-module return workload slices.
 - Current live queue status: memory-boundary telemetry/benchmark evidence work
   in `TODO.md` Part 18 is closed through `MEM-BENCH-OBSERVE-005`. The lane
   produced the signal inventory, runtime counter coverage, benchmark workload

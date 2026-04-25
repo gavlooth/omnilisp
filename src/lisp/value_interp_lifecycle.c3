@@ -419,7 +419,9 @@ fn void Interp.destroy(Interp* self) {
         self.tco_scope_defer_active = false;
         self.active_promotion_ctx = null;
         if (self.stable_escape_store != null) {
-            stable_escape_store_reset(self);
+            stable_escape_store_destroy(self);
+            mem::free(self.stable_escape_store);
+            self.stable_escape_store = null;
         }
         main::scope_destroy_owned_root(self.root_scope);
         self.root_scope = null;

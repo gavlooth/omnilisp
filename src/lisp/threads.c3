@@ -46,7 +46,16 @@ fn Value* prim_atomic(Value*[] args, Env* env, Interp* interp) {
     if (ref == null) return runtime_raise(interp, "runtime/out-of-memory", "atomic: out of memory");
     ref.value.store(args[0].int_val);
 
-    Value* v = make_ffi_handle_ex(interp, (void*)ref, "atomic-ref", null, true, false);
+    Value* v = make_ffi_handle_ex(
+        interp,
+        (void*)ref,
+        "atomic-ref",
+        null,
+        true,
+        false,
+        null,
+        null,
+        FFI_BRIDGE_BOUNDARY_KEEPALIVE);
     if (v == null) {
         return runtime_raise(interp, "runtime/out-of-memory", "atomic: out of memory");
     }

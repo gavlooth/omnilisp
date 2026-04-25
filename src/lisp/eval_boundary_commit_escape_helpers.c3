@@ -76,6 +76,7 @@ fn bool boundary_commit_pre_materialize_transplant_budget_available(
     if (result == null || interp == null) return false;
     if (!boundary_commit_pre_materialize_transplant_tag_supported(result.tag)) return false;
     StableEscapePreparedGraphScratch scratch = {};
+    defer stable_escape_prepare_graph_scratch_free(&scratch);
     scratch.global_env = interp.global_env;
     usz root_index = STABLE_ESCAPE_PREPARED_INVALID_INDEX;
     if (!stable_escape_prepare_graph_node(&scratch, result, &root_index)) return false;
@@ -357,6 +358,36 @@ fn void boundary_commit_escape_handle_releasing_scope(
                 );
                 boundary_txn_commit(txn);
                 if (commit_succeeded != null) *commit_succeeded = true;
+                return;
+            }
+        }
+        if (plan.stable_materialization_candidate) {
+            BoundaryCommitDestinationPromotion destination_promotion =
+                boundary_commit_try_destination_promotion(
+                    result,
+                    interp,
+                    target_scope,
+                    releasing_scope,
+                    active_ctx,
+                    BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION,
+                    false
+                );
+            if (destination_promotion.committed) {
+                committed.value = destination_promotion.value;
+                committed.outcome = destination_promotion.outcome;
+                committed.stable_materialization_used = destination_promotion.stable_materialization_used;
+                committed.compatibility_path_used = false;
+                boundary_commit_set_selected_plan(
+                    committed,
+                    BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION,
+                    BOUNDARY_PLAN_REASON_DESTINATION_COMMITTED_STABLE
+                );
+                boundary_txn_commit(txn);
+                if (commit_succeeded != null) *commit_succeeded = true;
+                return;
+            }
+            if (destination_promotion.fault_code != BOUNDARY_COMMIT_FAULT_NONE) {
+                boundary_commit_escape_fail_closed(committed, interp, txn, destination_promotion.fault_code);
                 return;
             }
         }

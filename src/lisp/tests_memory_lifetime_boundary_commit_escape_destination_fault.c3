@@ -357,4 +357,52 @@ fn void run_memory_lifetime_boundary_commit_escape_destination_fault_tests(Inter
         }
     }
 
+    // Invariant: stable destination materialization must fail closed when a
+    // closure shell cannot register the closure-specific ESCAPE destructor.
+    {
+        main::ScopeRegion* root_scope = interp.current_scope;
+        main::ScopeRegion* target_scope = main::scope_create(root_scope);
+        if (target_scope == null) {
+            io::printn("[FAIL] lifetime: stable materialized closure dtor OOM fails closed");
+            (*fail)++;
+        } else {
+            Value* source_closure = make_closure_no_param(interp, null, interp.global_env);
+            interp.current_scope = target_scope;
+            Value* dst = interp.alloc_value_escape();
+            StableEscapePreparedNode node = {
+                .tag = CLOSURE,
+                .source = source_closure,
+                .child_offset = STABLE_ESCAPE_PREPARED_INVALID_INDEX,
+                .child_count = 0,
+            };
+
+            bool setup_ok = source_closure != null &&
+                            source_closure.tag == CLOSURE &&
+                            dst != null;
+            bool saved_escape_dtor_oom = main::g_scope_force_escape_dtor_alloc_oom;
+            main::g_scope_force_escape_dtor_alloc_oom = true;
+            bool init_ok = setup_ok
+                ? stable_escape_materialize_init_closure(interp, dst, &node)
+                : false;
+            main::g_scope_force_escape_dtor_alloc_oom = saved_escape_dtor_oom;
+
+            bool ok = setup_ok && !init_ok;
+
+            interp.current_scope = root_scope;
+            main::scope_release(target_scope);
+
+            if (ok) {
+                emit_pass_literal("[PASS] lifetime: stable materialized closure dtor OOM fails closed");
+                (*pass)++;
+            } else {
+                io::printfn(
+                    "[FAIL] lifetime: stable materialized closure dtor OOM fails closed (setup_ok=%s init_ok=%s)",
+                    setup_ok ? "yes" : "no",
+                    init_ok ? "yes" : "no"
+                );
+                (*fail)++;
+            }
+        }
+    }
+
 }

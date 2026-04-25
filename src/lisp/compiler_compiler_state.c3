@@ -49,6 +49,10 @@ struct Compiler {
     List{SymbolId} module_open_exports;
     List{SymbolId} module_open_aliases;
 
+    // Module-private bindings active while lowering an inline module body.
+    List{SymbolId} module_private_symbols;
+    List{SymbolId} module_private_backings;
+
     // When true, emit aot::print_value for the last non-define expression
     bool print_last;
 
@@ -59,7 +63,7 @@ struct Compiler {
     // (for delegation contexts where user globals need injection into interpreter env)
     bool for_delegation;
 
-    // Compiled modules: track module name → exported symbols
+// Compiled modules: track module name, exported symbols, and private AOT storage.
     usz compiled_module_count;
     usz compiled_module_capacity;
     CompiledModule* compiled_modules;
@@ -67,12 +71,18 @@ struct Compiler {
 
 /**
  * CompiledModule — Tracks a module compiled inline for import resolution.
+ * `locals` are the module-facing names and `local_backings` are generated
+ * C3 globals that hold their values without publishing user-facing globals.
  */
 struct CompiledModule {
     SymbolId     name;
     SymbolId*    exports;       // heap-allocated
     usz          export_count;
     usz          export_capacity;
+    SymbolId*    locals;        // heap-allocated, module-local names
+    SymbolId*    local_backings;// heap-allocated, parallel to locals
+    usz          local_count;
+    usz          local_capacity;
     bool         loaded;
 }
 

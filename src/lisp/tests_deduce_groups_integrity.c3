@@ -219,6 +219,36 @@ fn void run_deduce_key_integrity_fact_tests(Interp* interp, int* pass, int* fail
         fail
     );
 
+    {
+        EvalResult setup = run(
+            "(block "
+            "  (define db-key-scan-end-fail (deduce 'open 'memory)) "
+            "  (define [relation db-key-scan-end-fail] rel-key-scan-end-fail (key id) (name)) "
+            "  (deduce 'fact! rel-key-scan-end-fail 1 \"Alice\") "
+            "  true)",
+            interp
+        );
+        bool saved_force = g_deduce_force_immediate_integrity_scan_end_fail;
+        g_deduce_force_immediate_integrity_scan_end_fail = true;
+        EvalResult r = run(
+            "(handle (deduce 'fact! rel-key-scan-end-fail 2 \"Bob\") (raise payload payload))",
+            interp
+        );
+        g_deduce_force_immediate_integrity_scan_end_fail = saved_force;
+
+        bool ok = !setup.error.has_error &&
+                  !r.error.has_error &&
+                  deduce_test_payload_code_equals(interp, r.value, "deduce/fact-key-integrity-scan-failed");
+        run_clear_stale_raise_state(interp);
+        if (ok) {
+            emit_pass_literal("[PASS] deduce keyed fact! fails closed when immediate key scan termination fails");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] deduce keyed fact! fails closed when immediate key scan termination fails");
+            (*fail)++;
+        }
+    }
+
     deduce_test_expect_true_symbol(
         interp,
         "(block "
@@ -241,6 +271,36 @@ fn void run_deduce_key_integrity_fact_tests(Interp* interp, int* pass, int* fail
         pass,
         fail
     );
+
+    {
+        EvalResult setup = run(
+            "(block "
+            "  (define db-unique-scan-end-fail (deduce 'open 'memory)) "
+            "  (define [relation db-unique-scan-end-fail] rel-unique-scan-end-fail (id) (unique email)) "
+            "  (deduce 'fact! rel-unique-scan-end-fail 1 \"alice@x\") "
+            "  true)",
+            interp
+        );
+        bool saved_force = g_deduce_force_immediate_integrity_scan_end_fail;
+        g_deduce_force_immediate_integrity_scan_end_fail = true;
+        EvalResult r = run(
+            "(handle (deduce 'fact! rel-unique-scan-end-fail 2 \"bob@x\") (raise payload payload))",
+            interp
+        );
+        g_deduce_force_immediate_integrity_scan_end_fail = saved_force;
+
+        bool ok = !setup.error.has_error &&
+                  !r.error.has_error &&
+                  deduce_test_payload_code_equals(interp, r.value, "deduce/fact-unique-integrity-scan-failed");
+        run_clear_stale_raise_state(interp);
+        if (ok) {
+            emit_pass_literal("[PASS] deduce unique fact! fails closed when immediate unique scan termination fails");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] deduce unique fact! fails closed when immediate unique scan termination fails");
+            (*fail)++;
+        }
+    }
 
     deduce_test_expect_true_symbol(
         interp,

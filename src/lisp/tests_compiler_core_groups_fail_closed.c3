@@ -191,7 +191,7 @@ fn void run_compiler_group_allocation_failure_seam_tests(Interp* interp, usz* pa
             "  imported_value)",
             interp
         );
-        bool ok = str_contains(code, " = aot::define_var(\"imported_value\", aot::lookup_var(\"value\"));")
+        bool ok = str_contains(code, " = aot::define_var(\"imported_value\", _aot_mod_")
             && str_contains(code, "tag == lisp::ValueTag.ERROR");
         if (ok) { (*pass)++; compiler_print_pass("Compiler: import AOT define_var result is observed"); }
         else    { (*fail)++; io::printn("[FAIL] Compiler: import AOT define_var result is observed"); }
