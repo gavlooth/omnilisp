@@ -133,6 +133,50 @@ fn Value* ffi_unsigned_range_error(Interp* interp, usz arg_index, char[] type_na
     return ffi_raise(interp, "ffi/range-error", "ffi: unsigned argument out of range");
 }
 
+fn bool ffi_abi_type_tag_int_supported(int tag) @inline {
+    switch (tag) {
+        case (int)FfiTypeTag.FFI_TYPE_VOID:
+        case (int)FfiTypeTag.FFI_TYPE_INT:
+        case (int)FfiTypeTag.FFI_TYPE_DOUBLE:
+        case (int)FfiTypeTag.FFI_TYPE_PTR:
+        case (int)FfiTypeTag.FFI_TYPE_BOOL:
+        case (int)FfiTypeTag.FFI_TYPE_STRING:
+        case (int)FfiTypeTag.FFI_TYPE_FLOAT32:
+        case (int)FfiTypeTag.FFI_TYPE_INT32:
+        case (int)FfiTypeTag.FFI_TYPE_INT64:
+        case (int)FfiTypeTag.FFI_TYPE_UINT32:
+        case (int)FfiTypeTag.FFI_TYPE_UINT64:
+        case (int)FfiTypeTag.FFI_TYPE_BUFFER:
+        case (int)FfiTypeTag.FFI_TYPE_STRUCT:
+            return true;
+        default:
+            return false;
+    }
+}
+
+fn bool ffi_abi_type_tag_supported(FfiTypeTag tag) @inline {
+    return ffi_abi_type_tag_int_supported((int)tag);
+}
+
+fn bool ffi_abi_arg_type_tag_int_supported(int tag) @inline {
+    switch (tag) {
+        case (int)FfiTypeTag.FFI_TYPE_INT:
+        case (int)FfiTypeTag.FFI_TYPE_DOUBLE:
+        case (int)FfiTypeTag.FFI_TYPE_PTR:
+        case (int)FfiTypeTag.FFI_TYPE_BOOL:
+        case (int)FfiTypeTag.FFI_TYPE_STRING:
+        case (int)FfiTypeTag.FFI_TYPE_FLOAT32:
+        case (int)FfiTypeTag.FFI_TYPE_INT32:
+        case (int)FfiTypeTag.FFI_TYPE_INT64:
+        case (int)FfiTypeTag.FFI_TYPE_UINT32:
+        case (int)FfiTypeTag.FFI_TYPE_UINT64:
+        case (int)FfiTypeTag.FFI_TYPE_BUFFER:
+            return true;
+        default:
+            return false;
+    }
+}
+
 fn Value* ffi_non_null_handle_error(Interp* interp, usz arg_index) {
     char[256] ebuf;
     if (try char[] msg = io::bprintf(&ebuf, "ffi: argument %d expected non-null ForeignHandle",
@@ -374,11 +418,12 @@ fn void* ffi_return_storage_for(FfiTypeTag return_type, long* ret_int, uint* ret
         case FFI_TYPE_PTR:
         case FFI_TYPE_STRING:
         case FFI_TYPE_BUFFER:
+        case FFI_TYPE_STRUCT:
             return (void*)ret_ptr;
         case FFI_TYPE_VOID:
             return (void*)ret_int;  // unused but must be valid
         default:
-            return (void*)ret_int;
+            return null;
     }
 }
 
@@ -458,7 +503,7 @@ fn Value* ffi_return_value_for(FfiBoundFn* bound, FfiTypeTag return_type, FfiHan
         case FFI_TYPE_VOID:
             return make_void(interp);
         default:
-            return make_nil(interp);
+            return ffi_raise(interp, "ffi/invalid-state", "ffi: internal error — unsupported return ABI type");
     }
 }
 
@@ -550,6 +595,10 @@ fn Value* foreign_runtime_call_c_abi_bound(FfiBoundFn* bound, Value*[] args, Env
         }
     }
 
+    if (!ffi_abi_type_tag_supported(bound.return_type)) {
+        return ffi_raise(interp, "ffi/invalid-state", "ffi: internal error — unsupported return ABI type");
+    }
+
     // Call via libffi
     int ret_type = (int)bound.return_type;
     long ret_int = 0;
@@ -559,6 +608,9 @@ fn Value* foreign_runtime_call_c_abi_bound(FfiBoundFn* bound, Value*[] args, Env
     double ret_dbl = 0.0;
     void* ret_ptr = null;
     void* ret_storage = ffi_return_storage_for(bound.return_type, &ret_int, &ret_u32, &ret_u64, &ret_f32, &ret_dbl, &ret_ptr);
+    if (ret_storage == null) {
+        return ffi_raise(interp, "ffi/invalid-state", "ffi: internal error — unsupported return ABI type");
+    }
 
     int rc;
     if (bound.is_variadic) {

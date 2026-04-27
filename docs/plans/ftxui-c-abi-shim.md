@@ -66,7 +66,7 @@ fragile one-to-one C++ mirror.
 
 Implemented declaration artifact:
 
-- [src/lisp/ftxui_ffi.c3](/home/heefoo/Documents/code/Omni/src/lisp/ftxui_ffi.c3)
+- [src/lisp/ftxui_ffi.c3](../../src/lisp/ftxui_ffi.c3)
 
 Implemented native shim artifacts:
 
@@ -75,11 +75,11 @@ Implemented native shim artifacts:
 
 Reserved example path for this integration:
 
-- [examples/libraries/ftxui/README.md](/home/heefoo/Documents/code/Omni/examples/libraries/ftxui/README.md)
+- [examples/libraries/ftxui/README.md](../../examples/libraries/ftxui/README.md)
 
 Naming decision for the future high-level wrapper:
 
-- [docs/plans/ui-effects-module-naming-decision-2026-03-27.md](/home/heefoo/Documents/code/Omni/docs/plans/ui-effects-module-naming-decision-2026-03-27.md)
+- [docs/plans/ui-effects-module-naming-decision-2026-03-27.md](ui-effects-module-naming-decision-2026-03-27.md)
 
 Public wrapper direction:
 

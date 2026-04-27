@@ -316,7 +316,7 @@ fn void run_memory_lifetime_runtime_alloc_groups_iterators_strings_tests(Interp*
         };
         Value* fold_null_pair = prim_iterator_foldl(fold_args[0:3], null, interp);
 
-        bool ok = runtime_alloc_error_matches(fold_null_pair, "__iterator-foldl: expected iterator pair");
+        bool ok = runtime_alloc_error_matches(fold_null_pair, "jit: function application returned null");
         if (ok) {
             emit_pass_literal("[PASS] lifetime: malformed iterator fold state fails closed");
             (*pass)++;

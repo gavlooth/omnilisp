@@ -21,6 +21,16 @@ fn void runtime_backend_warn_spill_alloc_failed() {
     runtime_backend_mark_pool_warned();
 }
 
+fn void runtime_backend_warn_spill_limit_reached() {
+    if (runtime_backend_pool_warned()) return;
+    io::printfn(
+        "WARNING: JIT state pool full (%d states), spill limit reached (%d states); JIT compile will fail for this expression",
+        JIT_STATE_POOL_SIZE,
+        JIT_STATE_SPILL_MAX
+    );
+    runtime_backend_mark_pool_warned();
+}
+
 fn void runtime_backend_warn_spill_tracking() {
     if (runtime_backend_pool_warned()) return;
     io::printfn(
@@ -51,6 +61,12 @@ fn bool jit_track_compiled_state(void* s, void* code_ptr, Interp* owner_interp, 
             runtime_backend_schedule_gc_for_pool_pressure();
         }
         return true;
+    }
+
+    if (g_jit_spill_count >= JIT_STATE_SPILL_MAX) {
+        runtime_backend_warn_spill_limit_reached();
+        runtime_backend_mark_gc_needed();
+        return false;
     }
 
     JitStateSpillNode* spill = (JitStateSpillNode*)mem::malloc(JitStateSpillNode.sizeof);

@@ -1,6 +1,9 @@
 # Math and Stats Scientific Module Plan - 2026-04-23
 
-Status: Accepted direction; implementation pending.
+Status: Closed as module facade migration reference; implementation shipped
+where tracked in TODO. Future work is limited to explicitly opened residuals
+such as backend-specific fail-closed policies or harder special-function
+coverage.
 
 This plan closes the naming decision from `SURFACE-NAMING-005` and opens the
 implementation roadmap for moving Omni's scientific numeric surface from

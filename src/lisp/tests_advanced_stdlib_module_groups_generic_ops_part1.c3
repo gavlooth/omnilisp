@@ -4,8 +4,114 @@ import std::io;
 
 import main;
 
+fn bool advanced_collections_error_contains(Value* value, char[] expected) {
+    return value != null && value.tag == ERROR && str_contains(value.str_chars[:value.str_len], expected);
+}
+
+fn bool advanced_collections_malformed_hashmap_regression(Interp* interp) {
+    HashMap malformed = {};
+    malformed.capacity = 8;
+    malformed.mask = 7;
+    malformed.count = 1;
+    malformed.entries = null;
+
+    Value malformed_dict = {};
+    malformed_dict.tag = HASHMAP;
+    malformed_dict.hashmap_val = &malformed;
+    Value malformed_set = {};
+    malformed_set.tag = SET;
+    malformed_set.hashmap_val = &malformed;
+    Value* key = make_int(interp, 1);
+    Value* value = make_int(interp, 2);
+
+    Value*[2] lookup_args = { &malformed_dict, key };
+    Value*[3] set_args = { &malformed_dict, key, value };
+    Value*[2] set_lookup_args = { &malformed_set, key };
+    Value* ref_result = prim_ref(lookup_args[..], null, interp);
+    Value* has_result = prim_has(lookup_args[..], null, interp);
+    Value* remove_result = prim_remove(lookup_args[..], null, interp);
+    Value* keys_result = prim_keys(lookup_args[0:1], null, interp);
+    Value* values_result = prim_values(lookup_args[0:1], null, interp);
+    Value* length_result = prim_length(lookup_args[0:1], null, interp);
+    Value* set_result = prim_dict_set(set_args[..], null, interp);
+    Value* set_contains_result = prim_set_contains(set_lookup_args[..], null, interp);
+    Value* set_remove_result = prim_set_remove(set_lookup_args[..], null, interp);
+    Value* set_size_result = prim_set_size(set_lookup_args[0:1], null, interp);
+    Value* set_list_result = prim_set_to_list(set_lookup_args[0:1], null, interp);
+
+    char[64] dict_print = {};
+    char[64] set_print = {};
+    usz dict_print_len = print_value_to_buf(&malformed_dict, &interp.symbols, &dict_print[0], dict_print.len);
+    usz set_print_len = print_value_to_buf(&malformed_set, &interp.symbols, &set_print[0], set_print.len);
+
+    return
+        hashmap_get(null, key) == null &&
+        hashmap_get(&malformed, key) == null &&
+        !hashmap_remove(null, key) &&
+        !hashmap_remove(&malformed, key) &&
+        advanced_collections_error_contains(ref_result, "ref: dict backing entries are missing") &&
+        advanced_collections_error_contains(has_result, "has?: dict backing entries are missing") &&
+        advanced_collections_error_contains(remove_result, "remove!: dict backing entries are missing") &&
+        advanced_collections_error_contains(keys_result, "keys: dict backing entries are missing") &&
+        advanced_collections_error_contains(values_result, "values: dict backing entries are missing") &&
+        advanced_collections_error_contains(length_result, "length: dict/set backing entries are missing") &&
+        advanced_collections_error_contains(set_result, "set!: dict backing entries are missing") &&
+        advanced_collections_error_contains(set_contains_result, "set-contains?: set backing entries are missing") &&
+        advanced_collections_error_contains(set_remove_result, "set-remove: set backing entries are missing") &&
+        advanced_collections_error_contains(set_size_result, "length: set backing entries are missing") &&
+        advanced_collections_error_contains(set_list_result, "List: set backing entries are missing") &&
+        str_contains(dict_print[0:dict_print_len], "#<dict:invalid>") &&
+        str_contains(set_print[0:set_print_len], "#<set:invalid>");
+}
+
+fn bool advanced_collections_hashmap_grow_rollback_regression(Interp* interp) {
+    Value* dict = make_hashmap_checked(interp, 2, "test: hashmap grow rollback allocation failed");
+    if (dict == null || dict.tag != HASHMAP || dict.hashmap_val == null) return false;
+    HashMap* map = dict.hashmap_val;
+    Value* key1 = make_int(interp, 1);
+    Value* key2 = make_int(interp, 2);
+    if (!hashmap_set_checked(map, key1, make_int(interp, 10), interp)) return false;
+    if (!hashmap_set_checked(map, key2, make_int(interp, 20), interp)) return false;
+
+    HashEntry* entries_before = map.entries;
+    uint capacity_before = map.capacity;
+    uint mask_before = map.mask;
+    uint count_before = map.count;
+
+    bool saved_force = g_hashmap_force_rehash_insert_fail;
+    g_hashmap_force_rehash_insert_fail = true;
+    bool grow_result = hashmap_grow_checked(map, interp);
+    g_hashmap_force_rehash_insert_fail = saved_force;
+
+    Value* found1 = hashmap_get(map, key1);
+    Value* found2 = hashmap_get(map, key2);
+    return
+        !grow_result &&
+        map.entries == entries_before &&
+        map.capacity == capacity_before &&
+        map.mask == mask_before &&
+        map.count == count_before &&
+        found1 != null && found1.tag == INT && found1.int_val == 10 &&
+        found2 != null && found2.tag == INT && found2.int_val == 20;
+}
+
 fn void run_advanced_collections_generic_ops_part1(Interp* interp, int* pass, int* fail) {
     // === GENERIC OPERATIONS TESTS ===
+    if (advanced_collections_malformed_hashmap_regression(interp)) {
+        emit_pass_literal("[PASS] malformed dictionary/set backing entries fail closed");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] malformed dictionary/set backing entries fail closed");
+        (*fail)++;
+    }
+    if (advanced_collections_hashmap_grow_rollback_regression(interp)) {
+        emit_pass_literal("[PASS] hashmap grow rehash failure preserves original table");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] hashmap grow rehash failure preserves original table");
+        (*fail)++;
+    }
+
     // ref - array
     test_eq(interp, "ref array", "(ref [10 20 30] 1)", 20, pass, fail);
     test_error(interp, "ref array oob", "(ref [1] 5)", pass, fail);

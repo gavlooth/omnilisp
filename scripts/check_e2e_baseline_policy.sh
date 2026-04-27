@@ -4,6 +4,9 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 runner="scripts/run_e2e.sh"
+generator="src/lisp/tests_e2e_generation.c3"
+core_cases="src/lisp/tests_e2e_generation_cases_core.c3"
+extended_cases="src/lisp/tests_e2e_generation_cases_extended.c3"
 manifest="scripts/baselines/e2e_expected_diff.txt"
 metadata="scripts/baselines/e2e_expected_diff.tsv"
 entry_backend="src/entry_build_backend_compile.c3"
@@ -141,6 +144,200 @@ check_stage3_source_parity() {
   check_lisp_runtime_manifest_parity
 }
 
+check_generated_case_table_policy() {
+  local expected_count=431
+  local cases_tsv="$tmp_dir/generated_cases.tsv"
+  local parser_issues="$tmp_dir/generated_case_parser_issues.txt"
+  local duplicate_names="$tmp_dir/generated_case_duplicate_names.txt"
+  local duplicate_exprs="$tmp_dir/generated_case_duplicate_exprs.txt"
+  local stale_comments="$tmp_dir/generated_case_stale_comments.txt"
+  local comment_scan_files=(src/lisp/tests_e2e_generation*.c3)
+
+  awk '
+    /^[[:space:]]*\/\// {
+      lowered = tolower($0)
+      if (lowered ~ /skip-count|skip_count|generated .*skipped|[0-9]+[[:space:]]+skipped/) {
+        print FILENAME ":" FNR ":" $0
+      }
+    }
+  ' "${comment_scan_files[@]}" > "$stale_comments"
+
+  awk -v out="$cases_tsv" -v issues="$parser_issues" '
+    function trim(s) {
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", s)
+      return s
+    }
+
+    function parse_quoted(s, pos, quote,    i, ch, escaped, val) {
+      parsed_value = ""
+      parsed_next = 0
+      while (pos <= length(s) && substr(s, pos, 1) ~ /[[:space:]]/) pos++
+      if (substr(s, pos, 1) != quote) return 0
+      pos++
+      escaped = 0
+      val = ""
+      for (i = pos; i <= length(s); i++) {
+        ch = substr(s, i, 1)
+        if (escaped) {
+          val = val "\\" ch
+          escaped = 0
+        } else if (ch == "\\") {
+          escaped = 1
+        } else if (ch == quote) {
+          parsed_value = val
+          parsed_next = i + 1
+          return 1
+        } else {
+          val = val ch
+        }
+      }
+      return 0
+    }
+
+    function parse_case(buf, file, line_no,    pos, comma_pos, quote, name, expr, rest) {
+      pos = index(buf, "{")
+      if (pos == 0) {
+        print file ":" line_no ": generated case row missing opening brace" >> issues
+        return
+      }
+      pos++
+      if (!parse_quoted(buf, pos, "\"")) {
+        print file ":" line_no ": generated case row missing quoted name" >> issues
+        return
+      }
+      name = parsed_value
+      pos = parsed_next
+      comma_pos = index(substr(buf, pos), ",")
+      if (comma_pos == 0) {
+        print file ":" line_no ": generated case row missing comma" >> issues
+        return
+      }
+      pos += comma_pos
+      while (pos <= length(buf) && substr(buf, pos, 1) ~ /[[:space:]]/) pos++
+      quote = substr(buf, pos, 1)
+      if (quote != "\"" && quote != "`") {
+        print file ":" line_no ": generated case row expression must be a string/backtick literal" >> issues
+        return
+      }
+      if (!parse_quoted(buf, pos, quote)) {
+        print file ":" line_no ": generated case row has unterminated expression literal" >> issues
+        return
+      }
+      expr = parsed_value
+      rest = trim(substr(buf, parsed_next))
+      if (rest !~ /^},?$/) {
+        print file ":" line_no ": generated case row has unexpected trailing text: " rest >> issues
+        return
+      }
+      print file ":" line_no "\t" name "\t" expr >> out
+    }
+
+    BEGIN {
+      row_open = 0
+      buf = ""
+      start_line = 0
+    }
+
+    !row_open && /^[[:space:]]*\{[[:space:]]*"/ {
+      row_open = 1
+      buf = $0
+      start_line = FNR
+      start_file = FILENAME
+      if ($0 ~ /\}[[:space:]]*,?[[:space:]]*$/) {
+        parse_case(buf, start_file, start_line)
+        row_open = 0
+        buf = ""
+      }
+      next
+    }
+
+    row_open {
+      buf = buf " " $0
+      if ($0 ~ /\}[[:space:]]*,?[[:space:]]*$/) {
+        parse_case(buf, start_file, start_line)
+        row_open = 0
+        buf = ""
+      }
+      next
+    }
+
+    END {
+      if (row_open) {
+        print start_file ":" start_line ": generated case row was not closed" >> issues
+      }
+    }
+  ' "$core_cases" "$extended_cases"
+
+  [[ ! -s "$parser_issues" ]] || {
+    sed 's/^/  /' "$parser_issues" >&2
+    fail "generated e2e case table parser found malformed rows"
+  }
+  [[ ! -s "$stale_comments" ]] || {
+    sed 's/^/  /' "$stale_comments" >&2
+    fail "generated e2e case comments contain stale skip-count reporting language"
+  }
+
+  local actual_count
+  actual_count=$(wc -l < "$cases_tsv")
+  [[ "$actual_count" -eq "$expected_count" ]] \
+    || fail "generated e2e case table must contain exactly ${expected_count} rows; found ${actual_count}"
+
+  cut -f2 "$cases_tsv" | sort | uniq -d > "$duplicate_names"
+  [[ ! -s "$duplicate_names" ]] || {
+    echo "Duplicate generated e2e case names:" >&2
+    while IFS= read -r duplicate; do
+      awk -F '\t' -v key="$duplicate" '$2 == key { print "  " $1 ": " $2 }' "$cases_tsv" >&2
+    done < "$duplicate_names"
+    fail "generated e2e case names must be unique"
+  }
+
+  cut -f3 "$cases_tsv" | sort | uniq -d > "$duplicate_exprs"
+  [[ ! -s "$duplicate_exprs" ]] || {
+    echo "Duplicate generated e2e case expressions:" >&2
+    while IFS= read -r duplicate; do
+      awk -F '\t' -v key="$duplicate" '$3 == key { print "  " $1 ": " $2 " -> " $3 }' "$cases_tsv" >&2
+    done < "$duplicate_exprs"
+    fail "generated e2e case expressions must be unique"
+  }
+
+  awk -F '\t' '$2 == "block boolean shadowing if" && $3 == "(block (if true 10 20) (let (false true) (if false 30 40)))" { found = 1 } END { exit found ? 0 : 1 }' "$cases_tsv" \
+    || fail "generated e2e corpus lost the boolean-shadowing if regression row"
+  awk -F '\t' '$2 == "match sibling var declarations" && $3 == "(match 2 (x x) (x x))" { found = 1 } END { exit found ? 0 : 1 }' "$cases_tsv" \
+    || fail "generated e2e corpus lost the match sibling declaration regression row"
+  awk -F '\t' '$2 == "if boolean shadowing branches" && $3 == "(if (= 1 2) (let (false 1) false) (let (false 2) false))" { found = 1 } END { exit found ? 0 : 1 }' "$cases_tsv" \
+    || fail "generated e2e corpus lost the branch-local boolean-shadowing regression row"
+  awk -F '\t' '$2 == "closure boolean shadow capture" && $3 == "(((lambda (false) (lambda () false)) 9))" { found = 1 } END { exit found ? 0 : 1 }' "$cases_tsv" \
+    || fail "generated e2e corpus lost the closure boolean-shadowing capture regression row"
+  awk -F '\t' '$2 == "closure callable shadow capture" && $3 == "(((lambda (+) (lambda (x) (+ x 2))) (lambda (a b) 88)) 1)" { found = 1 } END { exit found ? 0 : 1 }' "$cases_tsv" \
+    || fail "generated e2e corpus lost the closure callable-shadowing capture regression row"
+  awk -F '\t' '$2 == "same-name let shadow" && $3 == "(let (x 1) (block (let (x 2) x) x))" { found = 1 } END { exit found ? 0 : 1 }' "$cases_tsv" \
+    || fail "generated e2e corpus lost the same-name let shadow regression row"
+  awk -F '\t' '$2 == "same-name let closure capture" && $3 == "(let (x 1) (let (f (let (x 2) (lambda () x))) (+ (f) x)))" { found = 1 } END { exit found ? 0 : 1 }' "$cases_tsv" \
+    || fail "generated e2e corpus lost the same-name let closure-capture regression row"
+  awk -F '\t' '$2 == "same-name mutable let capture" && $3 == "(let (x 1) (block (let (x 0) (let (inc (lambda () (set! x (+ x 1)))) (inc) x)) x))" { found = 1 } END { exit found ? 0 : 1 }' "$cases_tsv" \
+    || fail "generated e2e corpus lost the same-name mutable let regression row"
+  awk -F '\t' '$2 == "same-name let rec shadow" && $3 == "(let (loop 99) (block (let ^rec (loop (lambda (n) (if (= n 0) 0 (loop (- n 1))))) (loop 3)) loop))" { found = 1 } END { exit found ? 0 : 1 }' "$cases_tsv" \
+    || fail "generated e2e corpus lost the same-name recursive let regression row"
+  awk -F '\t' '$2 == "mutable capture through checkpoint" && $3 == "(let (x 0) (block (checkpoint (let (f (lambda () (set! x 1))) (f))) x))" { found = 1 } END { exit found ? 0 : 1 }' "$cases_tsv" \
+    || fail "generated e2e corpus lost the checkpoint mutable-capture regression row"
+  awk -F '\t' '$2 == "mutable capture through capture" && $3 == "(let (x 0) (block (checkpoint (capture k (block (let (f (lambda () (set! x 1))) (f)) (k 0)))) x))" { found = 1 } END { exit found ? 0 : 1 }' "$cases_tsv" \
+    || fail "generated e2e corpus lost the capture mutable-capture regression row"
+  awk -F '\t' '$2 == "checkpoint local mutable capture" && $3 == "(checkpoint (let (x 0) (block (let (f (lambda () (set! x 1))) (f)) x)))" { found = 1 } END { exit found ? 0 : 1 }' "$cases_tsv" \
+    || fail "generated e2e corpus lost the checkpoint-local mutable-capture regression row"
+  awk -F '\t' '$2 == "checkpoint boxed outer restore" && $3 == "(let (x 0) (block (let (g (lambda () x)) (block (set! x 2) (checkpoint (let (f (lambda () (set! x 3))) (f))) x))))" { found = 1 } END { exit found ? 0 : 1 }' "$cases_tsv" \
+    || fail "generated e2e corpus lost the checkpoint boxed-outer restore regression row"
+  awk -F '\t' '$2 == "module define shadows outer let collision" && $3 == "(let (auditx 0) (block (module auditmod (export auditx) (block (define auditx 1))) (with auditmod auditx)))" { found = 1 } END { exit found ? 0 : 1 }' "$cases_tsv" \
+    || fail "generated e2e corpus lost the module define/outer-let collision regression row"
+  awk -F '\t' '$2 == "module set shadows outer let collision" && $3 == "(let (auditx 0) (block (module auditmodset (export auditx) (block (define auditx 1) (set! auditx 2))) (with auditmodset auditx)))" { found = 1 } END { exit found ? 0 : 1 }' "$cases_tsv" \
+    || fail "generated e2e corpus lost the module set/outer-let collision regression row"
+  awk -F '\t' '$2 == "with inner let shadows module alias" && $3 == "(let (auditx 0) (block (module auditmodinner (export auditx) (define auditx 1)) (with auditmodinner (let (auditx 3) auditx))))" { found = 1 } END { exit found ? 0 : 1 }' "$cases_tsv" \
+    || fail "generated e2e corpus lost the inner-let/module-alias collision regression row"
+  awk -F '\t' '$2 == "outer let restored after with module collision" && $3 == "(let (auditx 7) (block (module auditmod2 (export auditx) (define auditx 1)) (with auditmod2 auditx) auditx))" { found = 1 } END { exit found ? 0 : 1 }' "$cases_tsv" \
+    || fail "generated e2e corpus lost the module/outer-let restore regression row"
+  awk -F '\t' '$2 == "module type shadows outer let collision" && $3 == "(let (AuditShadowType 0) (block (module audittypemod (export AuditShadowType) (define [abstract] AuditShadowType)) (with audittypemod AuditShadowType)))" { found = 1 } END { exit found ? 0 : 1 }' "$cases_tsv" \
+    || fail "generated e2e corpus lost the module type/outer-let collision regression row"
+}
+
 if [[ "${1:-}" == "--stage3-source-parity" ]]; then
   check_stage3_source_parity
   echo "OK: Stage 3 e2e compile source parity checks passed."
@@ -156,6 +353,9 @@ fi
 for file in "$runner" "$manifest" "$metadata"; do
   [[ -f "$file" ]] || fail "missing required file: $file"
 done
+[[ -f "$generator" ]] || fail "missing required file: $generator"
+[[ -f "$core_cases" ]] || fail "missing required file: $core_cases"
+[[ -f "$extended_cases" ]] || fail "missing required file: $extended_cases"
 
 check_stage3_source_parity
 
@@ -165,15 +365,25 @@ grep -q -F 'e2e_expected_diff_metadata="scripts/baselines/e2e_expected_diff.tsv"
   || fail "${runner} does not point at ${metadata}"
 grep -q -F 'cmp -s build/e2e_diff.txt "${e2e_expected_diff_manifest}"' "$runner" \
   || fail "${runner} no longer matches diff output against the tracked manifest"
+grep -q -F '=== Generated 431 e2e tests ===' "$runner" \
+  || fail "${runner} no longer enforces the generated e2e case count"
+if grep -q -E 'skip_count|Generated .*skipped' "$generator"; then
+  fail "${generator} reintroduced unmeasured e2e skip-count reporting"
+fi
+if grep -q -E '"(Integer|Boolean) shorthand' "$core_cases" "$extended_cases"; then
+  fail "generated e2e cases contain noncanonical shorthand-labelled constructor rows"
+fi
+
+tmp_dir="$(mktemp -d)"
+trap 'rm -rf "$tmp_dir"' EXIT
+
+check_generated_case_table_policy
 
 metadata_header="$(head -n 1 "$metadata")"
 [[ "$metadata_header" == $'diff_key\towner_area\treview_rule\tnote' ]] \
   || fail "${metadata} has an unexpected header: ${metadata_header}"
 
 mapfile -t manifest_keys < <(awk '/^[0-9][0-9,]*[acd][0-9][0-9,]*$/ { print $0 }' "$manifest")
-
-tmp_dir="$(mktemp -d)"
-trap 'rm -rf "$tmp_dir"' EXIT
 
 if (( ${#manifest_keys[@]} > 0 )); then
   printf '%s\n' "${manifest_keys[@]}" | sort > "$tmp_dir/manifest_keys.txt"

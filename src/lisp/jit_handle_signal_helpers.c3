@@ -122,6 +122,39 @@ fn void handle_effect_state_release(HandleEffectState* state) {
     mem::free(state);
 }
 
+fn bool handle_effect_copied_closure_seen_before(Value** copied_closures, usz upto, Value* candidate) @inline {
+    if (candidate == null) return true;
+    for (usz j = 0; j < upto; j++) {
+        if (copied_closures[j] == candidate) return true;
+    }
+    return false;
+}
+
+fn void handle_effect_cleanup_copied_closure(
+    Value* original,
+    Value* copied,
+    Interp* interp
+) @inline {
+    if (interp == null || copied == null) return;
+    bool escape_lane = copied.tag == PRIMITIVE;
+    boundary_cleanup_materialized_value(original, copied, interp.root_scope, escape_lane);
+}
+
+fn void handle_effect_cleanup_partial_handler_closures(
+    EffectHandler* src,
+    Value** copied_closures,
+    usz copied_count,
+    Interp* interp
+) {
+    if (src == null || copied_closures == null || src.closures == null || interp == null) return;
+    for (usz j = 0; j < copied_count; j++) {
+        Value* copied = copied_closures[j];
+        if (handle_effect_copied_closure_seen_before(copied_closures, j, copied)) continue;
+        handle_effect_cleanup_copied_closure(src.closures[j], copied, interp);
+        copied_closures[j] = null;
+    }
+}
+
 fn bool handle_effect_state_capture_handler_copy(HandleEffectState* state, EffectHandler* src) {
     assert(state != null, "handle_effect_state_capture_handler_copy: state must not be null");
     assert(src != null, "handle_effect_state_capture_handler_copy: src must not be null");
@@ -182,6 +215,8 @@ fn bool handle_effect_state_capture_handler_copy(HandleEffectState* state, Effec
                 bool promoted_callable = promoted != null
                     && (promoted.tag == CLOSURE || promoted.tag == PRIMITIVE || promoted.tag == PARTIAL_PRIM);
                 if (promoted == null || promoted.tag == ERROR || !promoted_callable) {
+                    handle_effect_cleanup_partial_handler_closures(src, copied_closures, i, state.interp);
+                    handle_effect_cleanup_copied_closure(closure, promoted, state.interp);
                     mem::free(copied_closures);
                     if (copied_clauses != null) mem::free(copied_clauses);
                     if (copied_tags != null) mem::free(copied_tags);

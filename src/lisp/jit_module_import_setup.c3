@@ -36,7 +36,8 @@ fn Module* reacquire_file_module(SymbolId name, char[] path, usz expected_idx, I
 fn EvalResult jit_eval_declared_module_file(List{Expr*}* expr_list, usz expr_count, char[] path, Interp* interp) {
     SymbolId declared_name = (*expr_list)[0].module_expr.name;
     Module* already = find_module(declared_name, interp);
-    if (already != null && already.loaded) {
+    if (already != null) {
+        if (!already.loaded) return eval_error("circular import detected");
         return eval_ok(make_void(interp));
     }
 
@@ -71,6 +72,12 @@ fn EvalResult jit_eval_declared_module_file(List{Expr*}* expr_list, usz expr_cou
 }
 
 fn EvalResult jit_eval_implicit_module_file(SymbolId name, char[] path, List{Expr*}* expr_list, usz expr_count, Interp* interp) {
+    Module* existing = find_module_by_path_any(path, interp);
+    if (existing != null) {
+        if (!existing.loaded) return eval_error("circular import detected");
+        return eval_ok(make_void(interp));
+    }
+
     usz mod_idx = usz.max;
     if (!jit_create_file_module_index(name, path, interp, &mod_idx)) {
         return eval_error("module path allocation failed");
@@ -123,11 +130,19 @@ fn EvalResult jit_eval_implicit_module_file(SymbolId name, char[] path, List{Exp
 
 fn bool module_path_matches(Module* mod, char[] path, bool require_loaded) {
     if (mod == null) return false;
-    if (mod.path_len != path.len) return false;
     if (require_loaded && !mod.loaded) return false;
     if (mod.path == null) return false;
-    for (usz i = 0; i < path.len; i++) {
-        if (mod.path[i] != path[i]) return false;
+    if (path.len == usz.max) return false;
+
+    char* normalized = (char*)mem::malloc(path.len + 1);
+    if (normalized == null) return false;
+    defer mem::free(normalized);
+
+    usz normalized_len = 0;
+    if (!module_normalize_path_into(path, normalized, path.len + 1, &normalized_len)) return false;
+    if (mod.path_len != normalized_len) return false;
+    for (usz i = 0; i < normalized_len; i++) {
+        if (mod.path[i] != normalized[i]) return false;
     }
     return true;
 }
@@ -146,16 +161,20 @@ fn Module* find_loaded_module_by_path(char[] path, Interp* interp) {
 }
 
 fn Module* resolve_loaded_module(SymbolId name, char[] path, Interp* interp) {
-    Module* mod = find_module(name, interp);
-    if (mod == null) {
-        mod = find_loaded_module_by_path(path, interp);
-    }
+    Module* mod = path.len > 0 ? find_loaded_module_by_path(path, interp) : null;
+    if (mod == null) mod = find_module(name, interp);
     return mod;
 }
 
-fn bool build_default_module_rel_path(SymbolId name, Interp* interp, char* rel_buf, usz* len_out) {
+fn bool build_default_module_rel_path(SymbolId name, Interp* interp, char* rel_buf, usz rel_buf_cap, usz* len_out) {
+    if (len_out != null) *len_out = 0;
+    if (interp == null || rel_buf == null || len_out == null) return false;
     char[] sym_name = interp.symbols.get_name(name);
-    if (4 + sym_name.len + 5 > 255) return false;
+    usz rel_len = 0;
+    if (sym_name.len > usz.max - (usz)9 || !lisp_checked_add_usz(sym_name.len, (usz)9, &rel_len)) {
+        return false;
+    }
+    if (rel_len >= rel_buf_cap) return false;
     rel_buf[0] = 'l';
     rel_buf[1] = 'i';
     rel_buf[2] = 'b';

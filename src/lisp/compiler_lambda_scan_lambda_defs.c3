@@ -23,24 +23,45 @@ fn void Compiler.collect_lambda_own_bound(Compiler* self, ExprLambda* lambda, Li
     }
 }
 
-fn void Compiler.collect_lambda_nested_bound(Compiler* self, ExprLambda* lambda, List{SymbolId}* enclosing_bound, List{SymbolId}* out) {
+fn void Compiler.collect_lambda_nested_bound(Compiler* self, LambdaDef* def, List{SymbolId}* enclosing_bound, List{bool}* enclosing_mutable, List{SymbolId}* out, List{bool}* out_mutable) {
     foreach (b : *enclosing_bound) {
         out.push(b);
     }
-    if (lambda.param_count > 1) {
-        for (usz pi = 0; pi < lambda.param_count; pi++) {
-            out.push(lambda.params[pi]);
+    foreach (m : *enclosing_mutable) {
+        out_mutable.push(m);
+    }
+    if (def.param_count > 0) {
+        for (usz pi = 0; pi < def.param_count; pi++) {
+            out.push(def.params[pi]);
+            out_mutable.push(false);
         }
-    } else if (lambda.param != INVALID_SYMBOL_ID) {
-        out.push(lambda.param);
+    } else if (def.param != INVALID_SYMBOL_ID) {
+        out.push(def.param);
+        out_mutable.push(false);
     }
-    if (lambda.has_rest && (uint)lambda.rest_param != 0) {
-        out.push(lambda.rest_param);
+    if (def.has_rest && (uint)def.rest_param != 0) {
+        out.push(def.rest_param);
+        out_mutable.push(false);
     }
+}
+
+fn bool Compiler.find_enclosing_capture_mutability(Compiler* self, SymbolId capture, List{SymbolId}* enclosing_bound, List{bool}* enclosing_mutable) {
+    usz count = enclosing_bound.len();
+    if (count != enclosing_mutable.len()) {
+        self.set_compile_error("compiler: lambda scan scope mutability invariant failed");
+        return false;
+    }
+    for (usz i = count; i > 0; i--) {
+        if ((uint)enclosing_bound.entries[i - 1] == (uint)capture) {
+            return enclosing_mutable.entries[i - 1];
+        }
+    }
+    return false;
 }
 
 fn bool Compiler.init_lambda_def_from_expr(Compiler* self, LambdaDef* def, Expr* expr) {
     def.captures = null;
+    def.capture_is_mutable = null;
     def.capture_count = 0;
     def.capture_capacity = 0;
     def.params = null;
@@ -65,6 +86,23 @@ fn bool Compiler.init_lambda_def_from_expr(Compiler* self, LambdaDef* def, Expr*
         : (SymbolId*)mem::malloc(capture_bytes);
     if (def.captures == null) {
         self.set_compile_error("compiler: out of memory while allocating lambda capture table");
+        return false;
+    }
+
+    usz capture_mutable_bytes = 0;
+    bool capture_mutable_size_ok = !g_compiler_force_lambda_capture_size_overflow
+        && compiler_checked_mul_usz(bool.sizeof, def.capture_capacity, &capture_mutable_bytes);
+    if (!capture_mutable_size_ok) {
+        self.set_compile_error("compiler: lambda capture mutability table size overflow");
+        self.free_lambda_def(def);
+        return false;
+    }
+    def.capture_is_mutable = g_compiler_force_lambda_capture_alloc_fail
+        ? null
+        : (bool*)mem::malloc(capture_mutable_bytes);
+    if (def.capture_is_mutable == null) {
+        self.set_compile_error("compiler: out of memory while allocating lambda capture mutability table");
+        self.free_lambda_def(def);
         return false;
     }
 
@@ -101,6 +139,10 @@ fn void Compiler.free_lambda_def(Compiler* self, LambdaDef* def) {
         mem::free(def.captures);
         def.captures = null;
     }
+    if (def.capture_is_mutable != null) {
+        mem::free(def.capture_is_mutable);
+        def.capture_is_mutable = null;
+    }
     def.capture_count = 0;
     def.capture_capacity = 0;
 
@@ -112,8 +154,8 @@ fn void Compiler.free_lambda_def(Compiler* self, LambdaDef* def) {
     def.param_capacity = 0;
 }
 
-fn bool Compiler.lambda_def_push_capture(Compiler* self, LambdaDef* def, SymbolId capture) {
-    if (def.captures == null) {
+fn bool Compiler.lambda_def_push_capture(Compiler* self, LambdaDef* def, SymbolId capture, bool is_mutable_capture) {
+    if (def.captures == null || def.capture_is_mutable == null) {
         self.set_compile_error("compiler: invalid lambda capture table state");
         return false;
     }
@@ -131,6 +173,11 @@ fn bool Compiler.lambda_def_push_capture(Compiler* self, LambdaDef* def, SymbolI
             self.set_compile_error("compiler: lambda capture table size overflow");
             return false;
         }
+        usz mutable_grow_bytes = 0;
+        if (!compiler_checked_mul_usz(bool.sizeof, new_cap, &mutable_grow_bytes)) {
+            self.set_compile_error("compiler: lambda capture mutability table size overflow");
+            return false;
+        }
 
         SymbolId* new_caps = g_compiler_force_lambda_capture_growth_alloc_fail
             ? null
@@ -139,16 +186,29 @@ fn bool Compiler.lambda_def_push_capture(Compiler* self, LambdaDef* def, SymbolI
             self.set_compile_error("compiler: out of memory while growing lambda capture table");
             return false;
         }
+        bool* new_mutable = g_compiler_force_lambda_capture_growth_alloc_fail
+            ? null
+            : (bool*)mem::malloc(mutable_grow_bytes);
+        if (new_mutable == null) {
+            mem::free(new_caps);
+            self.set_compile_error("compiler: out of memory while growing lambda capture mutability table");
+            return false;
+        }
         for (usz ci = 0; ci < def.capture_count; ci++) new_caps[ci] = def.captures[ci];
+        for (usz ci = 0; ci < def.capture_count; ci++) new_mutable[ci] = def.capture_is_mutable[ci];
         mem::free(def.captures);
+        mem::free(def.capture_is_mutable);
         def.captures = new_caps;
+        def.capture_is_mutable = new_mutable;
         def.capture_capacity = new_cap;
     }
-    def.captures[def.capture_count++] = capture;
+    def.captures[def.capture_count] = capture;
+    def.capture_is_mutable[def.capture_count] = is_mutable_capture;
+    def.capture_count++;
     return true;
 }
 
-fn bool Compiler.scan_lambdas_lambda(Compiler* self, Expr* expr, List{SymbolId}* enclosing_bound) {
+fn bool Compiler.scan_lambdas_lambda(Compiler* self, Expr* expr, List{SymbolId}* enclosing_bound, List{bool}* enclosing_mutable) {
     if (self.has_error) return false;
 
     List{SymbolId} own_bound;
@@ -164,7 +224,14 @@ fn bool Compiler.scan_lambdas_lambda(Compiler* self, Expr* expr, List{SymbolId}*
     }
 
     foreach (f : free) {
-        if (!self.lambda_def_push_capture(&def, f)) {
+        bool capture_is_mutable = self.find_enclosing_capture_mutability(f, enclosing_bound, enclosing_mutable);
+        if (self.has_error) {
+            self.free_lambda_def(&def);
+            own_bound.free();
+            free.free();
+            return false;
+        }
+        if (!self.lambda_def_push_capture(&def, f, capture_is_mutable)) {
             self.free_lambda_def(&def);
             own_bound.free();
             free.free();
@@ -173,11 +240,13 @@ fn bool Compiler.scan_lambdas_lambda(Compiler* self, Expr* expr, List{SymbolId}*
     }
 
     List{SymbolId} new_enclosing;
-    self.collect_lambda_nested_bound(expr.lambda, enclosing_bound, &new_enclosing);
-    bool body_has_lambda = self.scan_lambdas_with_scope(expr.lambda.body, &new_enclosing);
+    List{bool} new_enclosing_mutable;
+    self.collect_lambda_nested_bound(&def, enclosing_bound, enclosing_mutable, &new_enclosing, &new_enclosing_mutable);
+    bool body_has_lambda = self.scan_lambdas_with_scope(expr.lambda.body, &new_enclosing, &new_enclosing_mutable);
     if (self.has_error) {
         self.free_lambda_def(&def);
         new_enclosing.free();
+        new_enclosing_mutable.free();
         own_bound.free();
         free.free();
         return false;
@@ -191,6 +260,7 @@ fn bool Compiler.scan_lambdas_lambda(Compiler* self, Expr* expr, List{SymbolId}*
     self.lambda_defs.push(def);
 
     new_enclosing.free();
+    new_enclosing_mutable.free();
     own_bound.free();
     free.free();
     return true;

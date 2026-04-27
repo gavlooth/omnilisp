@@ -68,12 +68,12 @@ fn bool promotion_context_lookup_scope_chain_cache(
     PromotionContext* ctx,
     void* ptr,
     main::ScopeRegion* target_scope,
-    uint pinned_generation,
+    ulong pinned_generation,
     bool* out_result
 ) @inline {
     if (ctx == null || ctx.aborted || ptr == null || target_scope == null || out_result == null) return false;
-    uint target_generation = target_scope.generation;
-    uint target_escape_generation = target_scope.escape_generation;
+    ulong target_generation = target_scope.generation;
+    ulong target_escape_generation = target_scope.escape_generation;
     foreach (PromotionContextScopeChainCacheEntry e : ctx.scope_chain_cache) {
         if (!e.used) continue;
         if (e.ptr != ptr) continue;
@@ -91,7 +91,7 @@ fn void promotion_context_remember_scope_chain_cache(
     PromotionContext* ctx,
     void* ptr,
     main::ScopeRegion* target_scope,
-    uint pinned_generation,
+    ulong pinned_generation,
     bool in_scope_chain
 ) @inline {
     if (ctx == null || ptr == null || target_scope == null) return;

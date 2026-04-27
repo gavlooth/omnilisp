@@ -36,8 +36,9 @@ keeping visible:
   benchmark shows runtime boundary/promotion pressure. Do not reopen from the
   old aggregate slack counters alone.
 
-Everything else inspected is historical, closed, superseded, or already covered
-by the current green status docs.
+Everything else inspected is historical, closed, superseded, or covered by the
+current area-status docs. Validation is green after the bounded TLS-enabled
+all-slice pass closed `VALIDATION-002-ALL-SLICE-BOUNDARY-JIT-BLOCKER`.
 
 ## TODO-Linked Plan Status
 
@@ -65,8 +66,10 @@ by the current green status docs.
   `MEM-PROOF-007` is closed with collection copy/materialization, rollback,
   known-capacity constructor OOM, benchmark, and Valgrind evidence.
   `MEM-PROOF-008` is closed with native tensor/device cleanup proof and leak
-  validation. `MEM-PROOF-010` is closed with native wrapper-family metadata
-  coverage and isolated Valgrind on the foreign-handle metadata group.
+  validation. `MEM-PROOF-009` is closed with async, scheduler, thread, and
+  callback lifetime validation. `MEM-PROOF-010` is closed with native
+  wrapper-family metadata coverage and isolated Valgrind on the foreign-handle
+  metadata group.
 - `memory-model-improvement-plan-2026-04-25.md`: completed memory-model
   improvement plan. It keeps `ScopeRegion` as ordinary Omni value ownership
   authority and treats the planner/passport/transplant work as current

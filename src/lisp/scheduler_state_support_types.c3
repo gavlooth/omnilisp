@@ -133,7 +133,10 @@ alias OffloadCustomFreeFn = fn void(void*);
 
 enum OffloadResultKind : char {
     OFFLOAD_RES_NIL,
+    OFFLOAD_RES_VOID,
     OFFLOAD_RES_INT,
+    OFFLOAD_RES_BOOL,
+    OFFLOAD_RES_FLOAT32,
     OFFLOAD_RES_DOUBLE,
     OFFLOAD_RES_BYTES,
     OFFLOAD_RES_ERROR

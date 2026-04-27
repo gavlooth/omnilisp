@@ -129,7 +129,8 @@ fn Expr* Parser.parse_block(Parser* self) {
     if (items.len() == 0) {
         items.free();
         e.tag = E_LIT;
-        e.lit.value = self.interp.alloc_value_root();
+        e.lit.value = self.alloc_root_value_or_error("out of memory while parsing block literal");
+        if (e.lit.value == null) return null;
         e.lit.value.tag = NIL;
     } else {
         e.tag = E_BLOCK;

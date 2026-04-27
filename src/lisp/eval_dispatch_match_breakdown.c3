@@ -5,7 +5,8 @@ enum DispatchMatchFailureReason : char {
     DISPATCH_MATCH_FAIL_ARITY,
     DISPATCH_MATCH_FAIL_VALUE_LITERAL,
     DISPATCH_MATCH_FAIL_TYPE,
-    DISPATCH_MATCH_FAIL_CONSTRAINT
+    DISPATCH_MATCH_FAIL_CONSTRAINT,
+    DISPATCH_MATCH_FAIL_INVALID_LITERAL
 }
 
 struct DispatchMatchBreakdown {
@@ -28,7 +29,20 @@ fn bool dispatch_text_equals(char[] a, char[] b) @inline {
     return true;
 }
 
+fn bool dispatch_value_literal_tag_supported(ValueTag tag) @inline {
+    switch (tag) {
+        case NIL:
+        case INT:
+        case SYMBOL:
+        case STRING:
+            return true;
+        default:
+            return false;
+    }
+}
+
 fn bool dispatch_value_literal_matches(ValueLiteralKey* literal, Value* arg, Interp* interp) @inline {
+    if (literal == null || !dispatch_value_literal_tag_supported(literal.tag)) return false;
     switch (literal.tag) {
         case NIL:
             return arg != null && arg.tag == NIL;
@@ -171,6 +185,11 @@ fn DispatchMatchBreakdown dispatch_match_breakdown(
     for (usz j = 0; j < limit; j++) {
         TypeId expected = entry.sig.param_types[j];
         if (entry.sig.has_val_literal[j]) {
+            if (!dispatch_value_literal_tag_supported(entry.sig.val_literals[j].tag)) {
+                out.failure_reason = DISPATCH_MATCH_FAIL_INVALID_LITERAL;
+                out.failure_arg_index = j;
+                return out;
+            }
             if (dispatch_value_literal_matches(&entry.sig.val_literals[j], args[j], interp)) {
                 out.score_value_literal++;
                 out.score_total += 1000;

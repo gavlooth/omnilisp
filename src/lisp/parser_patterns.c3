@@ -34,7 +34,8 @@ fn Pattern* Parser.parse_pattern(Parser* self) {
             Pattern* p = self.alloc_pattern();
             if (p == null) return null;
             p.tag = PAT_LIT;
-            p.lit_value = self.interp.alloc_value_root();
+            p.lit_value = self.alloc_root_value_or_error("out of memory while parsing pattern literal");
+            if (p.lit_value == null) return null;
             p.lit_value.tag = INT;
             p.lit_value.int_val = self.lexer.current.int_value;
             self.lexer.advance();

@@ -4,11 +4,9 @@ module lisp;
  * Register standard library functions defined in Pika itself.
  * Called after register_primitives().
  */
-fn void register_stdlib(Interp* interp) {
-    // Standard library loaded from embedded stdlib/stdlib.lisp at compile time.
-    // Edit that file (with syntax highlighting) instead of inline strings here.
-    // Supports multi-line forms — tracks paren/bracket/brace depth.
-    char[] src = $embed("../../stdlib/stdlib.lisp");
+fn bool register_stdlib_source(Interp* interp, char[] src) {
+    if (interp == null) return false;
+
     usz pos = 0;
     while (pos < src.len) {
         // Skip whitespace and comments
@@ -47,14 +45,24 @@ fn void register_stdlib(Interp* interp) {
             }
         }
         if (pos > start) {
-            run(src[start..pos - 1], interp);
+            EvalResult result = run(src[start..pos - 1], interp);
+            if (result.error.has_error ||
+                (result.value != null && result.value.tag == ERROR)) return false;
         }
     }
+    return true;
+}
+
+fn bool register_stdlib(Interp* interp) {
+    // Standard library loaded from embedded stdlib/stdlib.lisp at compile time.
+    // Edit that file (with syntax highlighting) instead of inline strings here.
+    // Supports multi-line forms — tracks paren/bracket/brace depth.
+    char[] src = $embed("../../stdlib/stdlib.lisp");
+    return register_stdlib_source(interp, src);
 }
 
 fn bool bootstrap_runtime_interp(Interp* interp) {
     if (interp == null) return false;
     if (!register_primitives(interp)) return false;
-    register_stdlib(interp);
-    return true;
+    return register_stdlib(interp);
 }

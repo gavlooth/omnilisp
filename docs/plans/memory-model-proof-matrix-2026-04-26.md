@@ -271,6 +271,44 @@ Closure evidence:
 - ASAN was attempted with `c3c --threads 1 build --sanitize=address` and the
   current C3 toolchain rejected it as unsupported for this target; Valgrind is
   the memory-safety evidence for this lane.
+- Addendum 2026-04-28: `AUDIT-244` closed the mutable-cell portion of AOT
+  closure lifetime hardening by promoting `AotMutableCell` initial and assigned
+  values through root-store promotion before root retention. Immutable AOT
+  closure payload captures remain a separate open policy item
+  (`AUDIT-245-AOT-CLOSURE-CAPTURE-ROOT-LIFETIME`) because blind clone-on-capture
+  was invalidated by existing capture identity/shadowing behavior.
+- Addendum 2026-04-28: `AUDIT-245` closed the immediate immutable AOT closure
+  capture UAF risk with scope retention rather than clone-on-capture. Generated
+  closures retain temp source scopes when immutable captures reach the current
+  scope chain, release retention from generated closure-data teardown, guard
+  mixed-capture failure paths, and skip retention allocation for all-mutable
+  captures. Residual closure-value lifetime pressure is split into
+  `AUDIT-246-AOT-CLOSURE-PRIMITIVE-LIFETIME`: root-owned AOT closure primitives
+  can still pin retained temp scopes until `aot_shutdown`, so the next proof
+  slice needs a bounded closure-value teardown model.
+- Addendum 2026-04-28: the first `AUDIT-246` sub-slice closed the
+  capture-retention graph-audit failure seam. Reachable temp audit results still
+  retain captured scopes, but audit infrastructure failures now produce an AOT
+  capture error instead of silently continuing.
+- Addendum 2026-04-28: the second `AUDIT-246` sub-slice made generated-owned
+  AOT closure construction explicit through `make_generated_*_with_retention`
+  APIs. This does not change lifetime placement yet, but it separates generated
+  payload ownership from manual caller-owned `make_closure` payloads before the
+  primitive finalizer/copy-promotion rewrite.
+- Addendum 2026-04-28: `AUDIT-246` closed the generated AOT closure primitive
+  lifetime lane. Generated AOT closure primitives now use scoped primitive
+  `user_data` copy/finalizer hooks, refcounted generated sidecars, and
+  bounded retained-scope activation. Manual AOT closure helpers remain
+  caller-owned/opaque. Validation passed with compiler `402/0`, bounded
+  `memory-lifetime-smoke` `288/0`, bounded generated e2e `423/0`, status
+  consistency, and whitespace checks.
+- Addendum 2026-04-28: `AUDIT-247` closed the primitive copy-hook publication
+  hardening slice. Parent-boundary copy, escape promotion, and root-store clone
+  now prepare and destructor-register the destination primitive wrapper before
+  invoking `user_data_copy`; null-`prim_val` primitive copy branches fail closed
+  on destructor-registration failure. Validation passed with `c3c build`,
+  bounded `memory-lifetime-smoke` `291/0`, status consistency, and whitespace
+  checks.
 
 ### `MEM-PROOF-005` Boundary Commit Routes
 
@@ -312,6 +350,11 @@ Closure evidence, 2026-04-26:
   forced-no-splice stable materialization, mixed-route fail-closed behavior,
   destination error OOM/dtor OOM, wrapper allocation OOM, and nested child fault
   rollback.
+- Addendum 2026-04-28: AOT mutable-cell root retention now uses
+  `boundary_promote_to_root_site(..., COPY_SITE_PROMOTE_TO_ROOT)` for
+  constructor seeding and updates. The checked setter separates success from
+  error payloads so missing runtime/provenance cannot be collapsed into the
+  success sentinel.
 - Measurement evidence: bounded counters `memory-lifetime-bench` reported
   planned/selected route counters, `selected_fail_closed=2048`, stable
   materialization node/byte counts, copy fallback counters, and zero transplant
@@ -400,6 +443,10 @@ Closure evidence, 2026-04-26:
 - The checked-collections regression now proves known-capacity dictionary and
   set constructors fail closed when the shared hash-map struct allocation is
   forced to OOM.
+- Addendum 2026-04-28: mutation-style AOT cell storage now has bounded
+  `memory-lifetime-smoke` coverage proving a child-scope cons/string graph
+  retained by a root-owned mutable cell is root-owned before child release and
+  survives after release.
 - Validation evidence: bounded `memory-lifetime-smoke` passed with
   `unified pass=281 fail=0`; bounded `memory-lifetime-bench` passed with all
   benchmark suites reporting `*_ok` completion; bounded Valgrind
@@ -476,9 +523,11 @@ Closure:
   bridge declaration.
 - Callback-after-source-release now fails closed with an invalid-handle error
   once the wrapper scope is released.
-- The broader advanced-ffi-system-surface Valgrind run still reports unrelated
-  leak contexts in ffi_callback/libffi paths; treat that noise as separate
-  from this callback finalizer regression.
+- A historical broader advanced-ffi-system-surface Valgrind note mentioned
+  ffi_callback/libffi leak contexts, but that run is not the closure authority
+  for this async/callback proof. FFI leak evidence is owned by
+  `MEM-PROOF-010`, which closed on targeted wrapper-family metadata and
+  Valgrind validation.
 
 Status: closed.
 

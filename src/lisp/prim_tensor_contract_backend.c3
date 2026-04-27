@@ -86,7 +86,9 @@ fn Value* tensor_contract_try_vulkan_value(
             }
             result.tag = TENSOR;
             result.tensor_val = tensor;
-            main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
+            if (!scope_register_value_dtor_or_cleanup(interp.current_scope, result)) {
+                return make_runtime_out_of_memory_error(interp, "Tensor: failed to register result destructor");
+            }
             return result;
         }
     }
@@ -189,7 +191,9 @@ fn Value* tensor_contract_try_vulkan_value(
     }
     result.tag = TENSOR;
     result.tensor_val = tensor;
-    main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
+    if (!scope_register_value_dtor_or_cleanup(interp.current_scope, result)) {
+        return make_runtime_out_of_memory_error(interp, "Tensor: failed to register result destructor");
+    }
     return result;
 }
 
@@ -446,6 +450,8 @@ fn Value* tensor_contract_try_cuda_value(
     }
     result.tag = TENSOR;
     result.tensor_val = tensor;
-    main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
+    if (!scope_register_value_dtor_or_cleanup(interp.current_scope, result)) {
+        return make_runtime_out_of_memory_error(interp, "Tensor: failed to register result destructor");
+    }
     return result;
 }

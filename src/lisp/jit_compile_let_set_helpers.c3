@@ -18,7 +18,9 @@ fn bool has_mutating_call_on_name(Expr* expr, SymbolId name, Interp* interp) {
     if (expr == null) return false;
     switch (expr.tag) {
         case E_LET:
-            if (expr.let_expr.name == name) return false;
+            if (expr.let_expr.name == name) {
+                return has_mutating_call_on_name(expr.let_expr.init, name, interp);
+            }
             return has_mutating_call_on_name(expr.let_expr.init, name, interp) ||
                 has_mutating_call_on_name(expr.let_expr.body, name, interp);
         case E_IF:
@@ -60,7 +62,9 @@ fn bool has_set_on_name(Expr* expr, SymbolId name) {
             if (expr.set_expr.name == name) return true;
             return has_set_on_name(expr.set_expr.value, name);
         case E_LET:
-            if (expr.let_expr.name == name) return false;  // shadowed
+            if (expr.let_expr.name == name) {
+                return has_set_on_name(expr.let_expr.init, name);
+            }
             return has_set_on_name(expr.let_expr.init, name) ||
                    has_set_on_name(expr.let_expr.body, name);
         case E_IF:
@@ -101,7 +105,9 @@ fn bool has_closure_set_on_local(Expr* body, SymbolId name, Interp* interp) {
             return has_set_on_name(body.lambda.body, name) ||
                 has_mutating_call_on_name(body.lambda.body, name, interp);
         case E_LET:
-            if (body.let_expr.name == name) return false;  // shadowed
+            if (body.let_expr.name == name) {
+                return has_closure_set_on_local(body.let_expr.init, name, interp);
+            }
             return has_closure_set_on_local(body.let_expr.init, name, interp) ||
                    has_closure_set_on_local(body.let_expr.body, name, interp);
         case E_IF:
@@ -174,6 +180,7 @@ fn bool jit_set_is_path_assign(Expr* expr) @inline {
 
 fn void? jit_compile_set_path_assign(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
     jit_compile_expr(s, expr.set_expr.value, interp, locals)!;
+    jit_compile_return_if_sequence_should_stop(s, locals);
     _jit_new_node_ww(s, CODE_MOVR, JIT_V1, JIT_R0);
 
     bool has_env = emit_build_locals_env(s, interp, locals);
@@ -191,6 +198,7 @@ fn isz jit_find_local_binding(JitLocals* locals, SymbolId name) {
 
 fn void? jit_compile_set_mutable_local(void* s, Expr* expr, Interp* interp, JitLocals* locals, usz local_idx) {
     jit_compile_expr(s, expr.set_expr.value, interp, locals)!;
+    jit_compile_return_if_sequence_should_stop(s, locals);
     _jit_new_node_ww(s, CODE_MOVR, JIT_V1, JIT_R0);
 
     _jit_new_node_www(s, CODE_LDXI_L, (long)JIT_V2, (long)JIT_FP,
@@ -201,6 +209,7 @@ fn void? jit_compile_set_mutable_local(void* s, Expr* expr, Interp* interp, JitL
 
 fn void? jit_compile_set_immutable_local(void* s, Expr* expr, Interp* interp, JitLocals* locals, usz local_idx) {
     jit_compile_expr(s, expr.set_expr.value, interp, locals)!;
+    jit_compile_return_if_sequence_should_stop(s, locals);
     _jit_new_node_www(s, CODE_STXI_L, (long)locals.locals[local_idx].stack_offset,
                      (long)JIT_FP, (long)JIT_R0);
     emit_call_1(s, locals, (void*)&jit_make_void);
@@ -208,6 +217,7 @@ fn void? jit_compile_set_immutable_local(void* s, Expr* expr, Interp* interp, Ji
 
 fn void? jit_compile_set_env_assign(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
     jit_compile_expr(s, expr.set_expr.value, interp, locals)!;
+    jit_compile_return_if_sequence_should_stop(s, locals);
     _jit_new_node_ww(s, CODE_MOVR, JIT_V1, JIT_R0);
 
     bool has_env = emit_build_locals_env(s, interp, locals);

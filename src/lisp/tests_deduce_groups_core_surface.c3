@@ -498,7 +498,7 @@ fn void run_deduce_non_transaction_mutation_post_commit_atomic_surface_test(Inte
     EvalResult r = run(
         "(block "
         "  (define mutation-result (handle (deduce 'fact! rel-post-commit-atomic 7) (raise payload (String (ref payload 'code))))) "
-        "  (and (void? mutation-result) (= (deduce 'count rel-post-commit-atomic) 1)))",
+        "  (and (= (type-of mutation-result) 'Void) (= (deduce 'count rel-post-commit-atomic) 1)))",
         interp
     );
     g_deduce_force_materialized_meta_persist_fail = saved_force_meta_fail;
@@ -530,7 +530,7 @@ fn void run_deduce_transaction_mutation_log_failure_bookkeeping_test(Interp* int
         "  (deduce 'fact! tx-txn-log-fail rel-txn-log-fail 1) "
         "  (define commit-result (handle (deduce 'commit tx-txn-log-fail) (raise payload (String (ref payload 'code))))) "
         "  (define analyzed (deduce 'analyze db-txn-log-fail)) "
-        "  (and (void? commit-result) "
+        "  (and (= (type-of commit-result) 'Void) "
         "       (= (deduce 'count rel-txn-log-fail) 1) "
         "       (= analyzed.incremental-invalidation-mode 'full-recompute)))",
         interp
@@ -659,10 +659,10 @@ fn void run_deduce_crud_example_flow_test(Interp* interp, int* pass, int* fail) 
         "        create2 (pipeline/result->response (repo/create {'id 101 'name \"paper-dup\" 'qty 3})) "
         "        existing (repo/get-by-id 101) "
         "        missing (repo/get-by-id 9999)) "
-        "    (and (= create1.status \"ok\") "
-        "         (and (= create2.status \"error\") "
-        "              (and (= create2.error \"item already exists\") "
-        "                   (and (= existing.name \"paper\") "
+        "    (and (= (ref create1 'status) \"ok\") "
+        "         (and (= (ref create2 'status) \"error\") "
+        "              (and (= (ref create2 'error) \"item already exists\") "
+        "                   (and (= (ref (to-json existing) 'name) \"paper\") "
         "                        (null? missing)))))))",
         interp
     );

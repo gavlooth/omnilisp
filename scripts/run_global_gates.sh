@@ -187,7 +187,7 @@ fi
 
 echo ""
 echo "=== Stage 3: ASAN build ==="
-asan_build_log="$(mktemp)"
+asan_build_log="$(mktemp -t omni_asan_build.XXXXXX)"
 asan_build_status=0
 if omni_c3 build --sanitize=address >"$asan_build_log" 2>&1; then
   asan_build_status=0

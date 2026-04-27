@@ -117,13 +117,6 @@ fn Value* jit_handle_copy_clauses(EffectHandler* h, Expr* expr, Env* env, Interp
     return null;
 }
 
-fn bool jit_handle_body_needs_fiber_yield() @inline {
-    if (!g_scheduler.running) return false;
-    usz fid = g_scheduler.current_fiber_id;
-    if (fid >= g_scheduler.fiber_count) return false;
-    return g_scheduler.fibers[fid].state == FIBER_BLOCKED;
-}
-
 fn EvalResult jit_handle_switch_to_body(main::StackCtx* ctx, Interp* interp) {
     SavedInterpState saved;
     save_interp_state(interp, &saved);
@@ -138,21 +131,17 @@ fn EvalResult jit_handle_switch_to_body(main::StackCtx* ctx, Interp* interp) {
 
     // Async I/O yield propagation: handle body suspended due to async I/O inside a fiber.
     // Yield the outer context (fiber or enclosing handle) until I/O completes.
-    while (ctx.status == main::StackCtxStatus.CTX_SUSPENDED &&
-           jit_handle_body_needs_fiber_yield()) {
-        main::StackCtx* outer_ctx = main::g_current_stack_ctx;
-        if (outer_ctx == null) break;
-        if (!prim_yield_suspend_and_restore(outer_ctx, interp)) {
-            return eval_error("handle: async yield propagation failed");
-        }
-        // Outer context resumed (I/O complete) — resume handle body.
-        SavedInterpState saved2;
-        save_interp_state(interp, &saved2);
-        main::stack_ctx_resume(ctx, &parent_ctx);
-        restore_interp_state_preserve_raise(interp, &saved2);
-        if (ctx.status == main::StackCtxStatus.CTX_DEAD) {
-            return eval_error("stack overflow in handle body");
-        }
+    JitBlockedFiberDriveStatus drive_status = jit_continuation_drive_blocked_fiber(ctx, interp, &parent_ctx);
+    if (jit_blocked_fiber_drive_failed(drive_status)) {
+        return jit_blocked_fiber_drive_eval_error(
+            drive_status,
+            "handle: async yield propagation failed",
+            "handle: async yield propagation limit exceeded"
+        );
+    }
+
+    if (ctx.status == main::StackCtxStatus.CTX_DEAD) {
+        return eval_error("stack overflow in handle body");
     }
 
     return eval_ok(null);
@@ -167,6 +156,12 @@ fn bool jit_handle_dispatch_signals(
     EvalResult* out_result
 ) {
     while (state.signaled) {
+        Value* interrupt = runtime_eval_backedge_poll(interp);
+        if (interrupt != null) {
+            *out_result = value_to_eval_result(interrupt);
+            return true;
+        }
+
         Value* handler_v = jit_handle_dispatch_signal(state, expr, env, interp, ctx);
 
         // resolve was called, body completed
@@ -253,6 +248,9 @@ fn EvalResult jit_handle_impl(Expr* expr, Env* env, Interp* interp) {
 // =============================================================================
 
 fn EvalResult jit_apply_continuation(Value* k_val, Value* arg, Interp* interp) {
+    if (k_val == null || k_val.tag != CONTINUATION) {
+        return eval_error("cannot resume continuation: invalid continuation");
+    }
     if (k_val.cont_val == null) {
         return eval_error("cannot resume continuation: null continuation");
     }

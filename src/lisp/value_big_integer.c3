@@ -78,7 +78,7 @@ fn Value* copy_big_integer_to_parent(Value* v, Interp* interp, BoundaryCopyFault
     result.tag = BIG_INTEGER;
     result.big_integer_val = cloned;
     if (!scope_register_value_dtor_or_cleanup(interp.current_scope, result)) {
-        if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
+        if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_DTOR_REGISTRATION;
         return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to register BigInteger copy destructor");
     }
     return result;
@@ -188,14 +188,18 @@ fn bool exact_integer_value_to_i64(Value* v, long* out) @inline {
 }
 
 fn void* big_integer_binary_handle(Value* lhs, Value* rhs, int op) {
+    if (lhs == null || rhs == null) return null;
     void* result = null;
     if (lhs.tag == INT && rhs.tag == INT) {
         result = omni_big_integer_binary_i64(lhs.int_val, rhs.int_val, op);
     } else if (lhs.tag == INT && rhs.tag == BIG_INTEGER) {
+        if (rhs.big_integer_val == null) return null;
         result = omni_big_integer_binary_left_i64(lhs.int_val, rhs.big_integer_val, op);
     } else if (lhs.tag == BIG_INTEGER && rhs.tag == INT) {
+        if (lhs.big_integer_val == null) return null;
         result = omni_big_integer_binary_right_i64(lhs.big_integer_val, rhs.int_val, op);
     } else if (lhs.tag == BIG_INTEGER && rhs.tag == BIG_INTEGER) {
+        if (lhs.big_integer_val == null || rhs.big_integer_val == null) return null;
         result = omni_big_integer_binary(lhs.big_integer_val, rhs.big_integer_val, op);
     }
     return result;
@@ -302,32 +306,41 @@ fn bool numeric_values_compare(Value* lhs, Value* rhs, int* out) {
 }
 
 fn Value* big_integer_neg_value(Interp* interp, Value* v, char[] message) {
+    if (v == null) return big_integer_raise(interp, "big-integer/invalid-argument", message);
     void* result = null;
     if (v.tag == INT) {
         result = omni_big_integer_neg_i64(v.int_val);
     } else if (v.tag == BIG_INTEGER) {
+        if (v.big_integer_val == null) return big_integer_raise(interp, "big-integer/invalid-argument", message);
         result = omni_big_integer_neg(v.big_integer_val);
     }
     return make_big_integer_from_owned_handle(interp, result, message);
 }
 
 fn Value* big_integer_bitwise_not_value(Interp* interp, Value* v, bool prefer_integer, char[] message) {
+    if (v == null) return big_integer_raise(interp, "big-integer/invalid-argument", message);
     void* result = null;
     if (v.tag == INT) {
         result = omni_big_integer_bitwise_not_i64(v.int_val);
     } else if (v.tag == BIG_INTEGER) {
+        if (v.big_integer_val == null) return big_integer_raise(interp, "big-integer/invalid-argument", message);
         result = omni_big_integer_bitwise_not(v.big_integer_val);
     }
     return make_integer_or_big_integer_from_owned_handle(interp, result, prefer_integer, message);
 }
 
 fn Value* big_integer_shift_value(Interp* interp, Value* v, ulong shift, bool left, bool prefer_integer, char[] message) {
+    if (v == null) return big_integer_raise(interp, "big-integer/invalid-argument", message);
+    if (shift > (ulong)BIG_INTEGER_MAX_SHIFT_BITS) {
+        return big_integer_raise(interp, "big-integer/invalid-argument", "BigInteger shift count out of range");
+    }
     void* result = null;
     if (v.tag == INT) {
         result = left ?
             omni_big_integer_shift_left_i64(v.int_val, shift) :
             omni_big_integer_shift_right_i64(v.int_val, shift);
     } else if (v.tag == BIG_INTEGER) {
+        if (v.big_integer_val == null) return big_integer_raise(interp, "big-integer/invalid-argument", message);
         result = left ?
             omni_big_integer_shift_left(v.big_integer_val, shift) :
             omni_big_integer_shift_right(v.big_integer_val, shift);

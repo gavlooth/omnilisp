@@ -34,45 +34,53 @@ fn void run_advanced_dispatch_constructor_basic_tests(Interp* interp, int* pass,
     test_truthy_interp(interp, "dispatch string", "(= (describe \"hi\") \"string\")", pass, fail);
     test_truthy_interp(interp, "dispatch fallback", "(= (describe '(1 2)) \"other\")", pass, fail);
 
-    // Value dispatch (Fibonacci)
-    setup(interp, "(define (fib (^(Value 0) n)) 0)");
-    setup(interp, "(define (fib (^(Value 1) n)) 1)");
+    // Literal singleton dispatch (Fibonacci)
+    setup(interp, "(define (fib (^#0 n)) 0)");
+    setup(interp, "(define (fib (^#1 n)) 1)");
     setup(interp, "(define (fib (^Integer n)) (+ (fib (- n 1)) (fib (- n 2))))");
     test_eq_interp(interp, "dispatch fib 0", "(fib 0)", 0, pass, fail);
     test_eq_interp(interp, "dispatch fib 1", "(fib 1)", 1, pass, fail);
     test_eq_interp(interp, "dispatch fib 10", "(fib 10)", 55, pass, fail);
 
-    // Value literal dispatch coverage (symbol + string)
-    setup(interp, "(define (udp-cmd (^(Value open) op)) 1)");
-    setup(interp, "(define (udp-cmd (^(Value bind) op) h host port) 2)");
+    // Literal singleton dispatch coverage (symbol + string)
+    setup(interp, "(define (udp-cmd (^#'open op)) 1)");
+    setup(interp, "(define (udp-cmd (^#'bind op) h host port) 2)");
     setup(interp, "(define (udp-cmd op .. rest) 99)");
-    test_eq_interp(interp, "dispatch Value symbol literal open", "(udp-cmd 'open)", 1, pass, fail);
-    test_eq_interp(interp, "dispatch Value symbol literal bind", "(udp-cmd 'bind 1 \"127.0.0.1\" 9000)", 2, pass, fail);
+    test_eq_interp(interp, "dispatch Literal symbol singleton open", "(udp-cmd 'open)", 1, pass, fail);
+    test_eq_interp(interp, "dispatch Literal symbol singleton bind", "(udp-cmd 'bind 1 \"127.0.0.1\" 9000)", 2, pass, fail);
 
-    setup(interp, "(define (fmt (^(Value \"csv\") x)) 10)");
-    setup(interp, "(define (fmt (^(Value \"toml\") x)) 20)");
+    setup(interp, "(define (fmt (^#\"csv\" x)) 10)");
+    setup(interp, "(define (fmt (^(Literal \"toml\") x)) 20)");
     setup(interp, "(define (fmt x) 99)");
-    test_eq_interp(interp, "dispatch Value string literal csv", "(fmt \"csv\")", 10, pass, fail);
-    test_eq_interp(interp, "dispatch Value string literal toml", "(fmt \"toml\")", 20, pass, fail);
+    test_eq_interp(interp, "dispatch Literal string singleton csv", "(fmt \"csv\")", 10, pass, fail);
+    test_eq_interp(interp, "dispatch Literal string singleton toml", "(fmt \"toml\")", 20, pass, fail);
 
-    setup(interp, "(define (flag (^(Value true) x)) 11)");
-    setup(interp, "(define (flag (^(Value false) x)) 22)");
+    setup(interp, "(define (flag (^#true x)) 11)");
+    setup(interp, "(define (flag (^#false x)) 22)");
     setup(interp, "(define (flag x) 99)");
-    test_eq_interp(interp, "dispatch Value bool true literal", "(flag true)", 11, pass, fail);
-    test_eq_interp(interp, "dispatch Value bool false literal", "(flag false)", 22, pass, fail);
+    test_eq_interp(interp, "dispatch Literal bool true literal", "(flag true)", 11, pass, fail);
+    test_eq_interp(interp, "dispatch Literal bool false literal", "(flag false)", 22, pass, fail);
 
-    setup(interp, "(define (nil-lit (^(Value nil) x)) 33)");
+    setup(interp, "(define (nil-lit (^#nil x)) 33)");
     setup(interp, "(define (nil-lit x) 99)");
-    test_eq_interp(interp, "dispatch Value nil literal", "(nil-lit nil)", 33, pass, fail);
-    test_eq_interp(interp, "dispatch Value nil literal does not match symbol", "(nil-lit 'nil)", 99, pass, fail);
+    test_eq_interp(interp, "dispatch Literal nil singleton", "(nil-lit nil)", 33, pass, fail);
+    test_eq_interp(interp, "dispatch Literal nil singleton does not match symbol", "(nil-lit 'nil)", 99, pass, fail);
+    test_truthy_interp(interp, "Literal constructor returns singleton type descriptor",
+        "(= (format \"%s\" (Literal 3)) \"#<type (Literal 3)>\")", pass, fail);
+    test_truthy_interp(interp, "Literal constructor accepts long string descriptor",
+        "(string-contains? (format \"%s\" (Literal (string-append \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\" \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\" \"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\" \"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\" \"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\"))) \"eeeeeeeeeeeeeeee\")",
+        pass, fail);
+    test_error_contains(interp, "removed Value literal dispatch spelling",
+        "(block (define (removed-value (^(Value 0) x)) x) (removed-value 0))",
+        "removed", pass, fail);
 
-    setup(interp, "(define (ambv (^(Value open) cmd) x) 1)");
-    setup(interp, "(define (ambv x (^(Value open) cmd)) 2)");
-    test_error(interp, "dispatch ambiguous equal-specificity Value literal", "(ambv 'open 'open)", pass, fail);
-    test_error_contains(interp, "dispatch ambiguous Value literal message",
+    setup(interp, "(define (ambv (^#'open cmd) x) 1)");
+    setup(interp, "(define (ambv x (^#'open cmd)) 2)");
+    test_error(interp, "dispatch ambiguous equal-specificity Literal singleton", "(ambv 'open 'open)", pass, fail);
+    test_error_contains(interp, "dispatch ambiguous Literal singleton message",
         "(ambv 'open 'open)",
         "ambiguous method call", pass, fail);
-    test_error_contains(interp, "dispatch ambiguous Value literal equal-specificity detail",
+    test_error_contains(interp, "dispatch ambiguous Literal singleton equal-specificity detail",
         "(ambv 'open 'open)",
         "equal specificity", pass, fail);
 
@@ -137,14 +145,34 @@ fn void run_advanced_dispatch_constructor_basic_tests(Interp* interp, int* pass,
             (*fail)++;
         }
     }
+    {
+        int saved_force = g_value_force_make_cons_or_error_alloc_fail_nth;
+        g_value_force_make_cons_or_error_alloc_fail_nth = 2;
+        EvalResult ri = run("(ambi-int 1 1)", interp);
+        g_value_force_make_cons_or_error_alloc_fail_nth = saved_force;
+
+        bool ok = ri.error.has_error &&
+            dispatch_error_contains(ri.error.message[:256], "method dispatch: out of memory");
+        if (ok) {
+            compiler_print_pass("Compiler: ambiguous dispatch candidate list allocation failure after partial materialization");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] Compiler: ambiguous dispatch candidate list allocation failure after partial materialization (has_error=%s msg=%s)",
+                ri.error.has_error ? "yes" : "no",
+                (ZString)ri.error.message[:256]
+            );
+            (*fail)++;
+        }
+    }
 
     // Unified command-style facade over canonical io/udp-* operations.
     setup(interp, "(define (io/udp-open) 'opened)");
     setup(interp, "(define (io/udp-bind h host port) (list 'bound h host port))");
     setup(interp, "(define (io/udp-send h host port payload) (list 'sent h host port payload))");
-    setup(interp, "(define (udp (^(Value open) op)) (io/udp-open))");
-    setup(interp, "(define (udp (^(Value bind) op) h host port) (io/udp-bind h host port))");
-    setup(interp, "(define (udp (^(Value send) op) h host port payload) (io/udp-send h host port payload))");
+    setup(interp, "(define (udp (^#'open op)) (io/udp-open))");
+    setup(interp, "(define (udp (^#'bind op) h host port) (io/udp-bind h host port))");
+    setup(interp, "(define (udp (^#'send op) h host port payload) (io/udp-send h host port payload))");
     test_truthy_interp(interp, "dispatch udp open command facade", "(= (udp 'open) 'opened)", pass, fail);
     test_truthy_interp(interp, "dispatch udp bind command facade",
         "(= (udp 'bind 7 \"127.0.0.1\" 9001) '(bound 7 \"127.0.0.1\" 9001))", pass, fail);
@@ -368,11 +396,108 @@ fn void run_advanced_dispatch_hot_path_benchmarks(Interp* interp) {
     );
 }
 
+fn void run_advanced_dispatch_invalid_literal_signature_tests(Interp* interp, int* pass, int* fail) {
+    MethodSignature sig = {};
+    TypeId[1] param_types = { INVALID_TYPE_ID };
+    SymbolId[1] param_type_vars = { (SymbolId)0 };
+    ValueLiteralKey[1] val_literals = { { .tag = NIL, .int_value = 0, .sym_value = (SymbolId)0 } };
+    bool[1] has_val_literal = { true };
+    char* raw_tag = (char*)&val_literals[0].tag;
+    raw_tag[0] = (char)127;
+
+    sig.param_types = &param_types[0];
+    sig.param_type_vars = &param_type_vars[0];
+    sig.val_literals = &val_literals[0];
+    sig.has_val_literal = &has_val_literal[0];
+    sig.param_count = 1;
+    sig.constraints = null;
+    sig.constraint_count = 0;
+
+    MethodEntry[1] entries = {
+        {
+            .sig = sig,
+            .implementation = make_int(interp, 42),
+        }
+    };
+    MethodTable mt = {
+        .name = interp.symbols.intern("invalid-literal-signature"),
+        .entries = &entries[0],
+        .entry_count = 1,
+        .capacity = 1,
+        .fallback = make_int(interp, 7),
+    };
+    Value*[1] args = { make_nil(interp) };
+
+    Value* resolved = find_best_method(&mt, args[:1], interp);
+    bool ok = resolved != null &&
+        resolved.tag == ERROR &&
+        str_contains(resolved.str_chars[:resolved.str_len], "invalid literal signature");
+
+    if (ok) {
+        compiler_print_pass("Dispatch: invalid literal signature fails closed before fallback");
+        (*pass)++;
+    } else {
+        ZString tag_text = "non-error";
+        ZString msg_text = "<none>";
+        if (resolved != null && resolved.tag == ERROR) {
+            tag_text = "error";
+            msg_text = (ZString)resolved.str_chars[:resolved.str_len];
+        }
+        io::printfn(
+            "[FAIL] Dispatch: invalid literal signature fails closed before fallback (tag=%s msg=%s)",
+            tag_text,
+            msg_text
+        );
+        (*fail)++;
+    }
+}
+
+fn void run_advanced_dispatch_large_arity_diagnostic_tests(Interp* interp, int* pass, int* fail) {
+    MethodSignature sig = {};
+    sig.param_count = 12345;
+    MethodEntry[1] entries = {
+        {
+            .sig = sig,
+            .implementation = make_int(interp, 42),
+        }
+    };
+    MethodTable mt = {
+        .name = interp.symbols.intern("large-arity-dispatch"),
+        .entries = &entries[0],
+        .entry_count = 1,
+        .capacity = 1,
+        .fallback = null,
+    };
+    Value*[1] args = { make_nil(interp) };
+
+    Value* err = format_dispatch_error(&mt, args[:1], interp);
+    bool ok = err != null &&
+        err.tag == ERROR &&
+        str_contains(err.str_chars[:err.str_len], "12345");
+
+    if (ok) {
+        compiler_print_pass("Dispatch: large arity diagnostic preserves full expected count");
+        (*pass)++;
+    } else {
+        ZString msg_text = "<none>";
+        if (err != null && err.tag == ERROR) {
+            msg_text = (ZString)err.str_chars[:err.str_len];
+        }
+        io::printfn(
+            "[FAIL] Dispatch: large arity diagnostic preserves full expected count (msg=%s)",
+            msg_text
+        );
+        (*fail)++;
+    }
+}
+
 fn void run_advanced_dispatch_constructor_tests(Interp* interp, int* pass, int* fail) {
     run_advanced_dispatch_constructor_basic_tests(interp, pass, fail);
     run_advanced_dispatch_constructor_constraint_tests(interp, pass, fail);
     run_advanced_dispatch_constructor_unification_union_tests(interp, pass, fail);
     run_advanced_dispatch_constructor_validation_tests(interp, pass, fail);
     run_advanced_dispatch_constructor_ambiguity_parametric_tests(interp, pass, fail);
+    run_advanced_dispatch_invalid_literal_signature_tests(interp, pass, fail);
+    run_advanced_dispatch_large_arity_diagnostic_tests(interp, pass, fail);
     run_advanced_dispatch_hot_path_benchmarks(interp);
 }

@@ -1,5 +1,6 @@
 module lisp;
 
+import std::core::mem;
 import std::io;
 import main;
 // =============================================================================
@@ -135,7 +136,53 @@ fn void Compiler.compile_literal(Compiler* self, Value* v) {
             self.emit(")");
             break;
 
+        case HASHMAP:
+            self.compile_hashmap_literal(v.hashmap_val);
+            break;
+
+        case SET:
+            self.compile_set_literal(v.hashmap_val);
+            break;
+
+        case ARRAY:
+            self.compile_array_literal(v.array_val);
+            break;
+
+        case PRIMITIVE:
+            self.compile_primitive_literal(v.prim_val);
+            break;
+
+        case CLOSURE:
+            if (self.compile_global_value_literal(v)) break;
+            self.set_compile_error("compiler: cannot lower callable literal value");
+            self.emit("aot::make_nil()");
+            break;
+
+        case CONTINUATION:
+        case PARTIAL_PRIM:
+            self.set_compile_error("compiler: cannot lower callable literal value");
+            self.emit("aot::make_nil()");
+            break;
+
+        case ERROR:
+            self.set_compile_error("compiler: cannot lower error literal value");
+            self.emit("aot::make_nil()");
+            break;
+
+        case FFI_HANDLE:
+        case TYPE_INFO:
+        case INSTANCE:
+        case METHOD_TABLE:
+        case MODULE:
+        case ITERATOR:
+        case COROUTINE:
+        case TENSOR:
+            self.set_compile_error("compiler: cannot lower runtime object literal value");
+            self.emit("aot::make_nil()");
+            break;
+
         default:
+            self.set_compile_error("compiler: cannot lower unsupported literal value");
             self.emit("aot::make_nil()");
             break;
     }
@@ -144,4 +191,119 @@ fn void Compiler.compile_literal(Compiler* self, Value* v) {
 fn void Compiler.compile_quote(Compiler* self, Value* datum) {
     // Quote compiles to literal value construction
     self.compile_literal(datum);
+}
+
+fn void Compiler.compile_hashmap_literal(Compiler* self, HashMap* map) {
+    if (map == null || !hashmap_storage_valid(map)) {
+        self.set_compile_error("compiler: dictionary backing entries are missing");
+        self.emit("aot::make_nil()");
+        return;
+    }
+
+    uint[] slots = hashmap_sorted_slots(map, self.interp);
+    if (slots.ptr == null && map.count > 0) {
+        self.set_compile_error("compiler: failed to allocate dictionary literal order");
+        self.emit("aot::make_nil()");
+        return;
+    }
+    defer if (slots.ptr != null) mem::free(slots.ptr);
+
+    self.emit("aot::dict_from_args(");
+    for (usz i = 0; i < slots.len; i++) {
+        uint slot = slots[i];
+        self.emit("aot::cons(");
+        self.compile_literal(map.entries[slot].key);
+        self.emit(", aot::cons(");
+        self.compile_literal(map.entries[slot].value);
+        self.emit(", ");
+    }
+    self.emit("aot::make_nil()");
+    for (usz i = 0; i < slots.len; i++) {
+        self.emit("))");
+    }
+    self.emit(")");
+}
+
+fn void Compiler.compile_set_literal(Compiler* self, HashMap* map) {
+    if (map == null || !hashmap_storage_valid(map)) {
+        self.set_compile_error("compiler: set backing entries are missing");
+        self.emit("aot::make_nil()");
+        return;
+    }
+
+    uint[] slots = hashmap_sorted_slots(map, self.interp);
+    if (slots.ptr == null && map.count > 0) {
+        self.set_compile_error("compiler: failed to allocate set literal order");
+        self.emit("aot::make_nil()");
+        return;
+    }
+    defer if (slots.ptr != null) mem::free(slots.ptr);
+
+    self.emit("aot::set_from_args(");
+    for (usz i = 0; i < slots.len; i++) {
+        uint slot = slots[i];
+        self.emit("aot::cons(");
+        self.compile_literal(map.entries[slot].key);
+        self.emit(", ");
+    }
+    self.emit("aot::make_nil()");
+    for (usz i = 0; i < slots.len; i++) {
+        self.emit(")");
+    }
+    self.emit(")");
+}
+
+fn void Compiler.compile_array_literal(Compiler* self, Array* array) {
+    if (array == null || array.items == null) {
+        self.set_compile_error("compiler: array backing items are missing");
+        self.emit("aot::make_nil()");
+        return;
+    }
+
+    self.emit("aot::array_from_args(");
+    for (usz i = 0; i < array.length; i++) {
+        self.emit("aot::cons(");
+        self.compile_literal(array.items[i]);
+        self.emit(", ");
+    }
+    self.emit("aot::make_nil()");
+    for (usz i = 0; i < array.length; i++) {
+        self.emit(")");
+    }
+    self.emit(")");
+}
+
+fn void Compiler.compile_primitive_literal(Compiler* self, Primitive* prim) {
+    if (prim == null || prim.func == null) {
+        self.set_compile_error("compiler: primitive literal payload is missing");
+        self.emit("aot::make_nil()");
+        return;
+    }
+    if (prim.user_data != null || prim.user_data_copy != null || prim.user_data_finalizer != null) {
+        self.set_compile_error("compiler: cannot lower opaque primitive literal value");
+        self.emit("aot::make_nil()");
+        return;
+    }
+
+    usz name_len = 0;
+    while (name_len < prim.name.len && prim.name[name_len] != 0) {
+        name_len++;
+    }
+    if (name_len == 0 || name_len >= prim.name.len) {
+        self.set_compile_error("compiler: primitive literal name is invalid");
+        self.emit("aot::make_nil()");
+        return;
+    }
+
+    self.emit("aot::lookup_prim(\"");
+    self.emit_escaped(prim.name[:name_len]);
+    self.emit("\")");
+}
+
+fn bool Compiler.compile_global_value_literal(Compiler* self, Value* value) {
+    SymbolId global_name = INVALID_SYMBOL_ID;
+    if (!compiler_find_global_value_symbol(self.interp, value, &global_name)) return false;
+
+    self.emit_symbol_name(global_name);
+    return true;
 }

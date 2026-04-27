@@ -11,6 +11,9 @@ If two docs disagree, use the authority model below.
 4. `docs/PROJECT_TOOLING.md`
 5. `memory/CHANGELOG.md`
 
+For compact LLM-facing syntax guidance, read `docs/LLM_LANGUAGE_DIGEST.md`
+after the normative sources above. It is a digest, not an authority.
+
 ## Authority Model
 
 ### Normative Contract (language/runtime rules)
@@ -30,6 +33,7 @@ If two docs disagree, use the authority model below.
 ### User Reference / Cookbook
 
 - `docs/OMNI_REFERENCE.md`
+- `docs/LLM_LANGUAGE_DIGEST.md`
 - `docs/reference/*`
 - `examples/README.md`
 

@@ -13,8 +13,8 @@
   (try
     (lambda (x)
       (let (resp (http-get (format "https://%s%s" host path)))
-        (match ('status resp)
-          (200  (Ok ('body resp)))
+        (match (ref resp 'status)
+          (200  (Ok (ref resp 'body)))
           (code (Err (format "HTTP %d" code))))))
     (lambda (msg)
       (Err msg))))

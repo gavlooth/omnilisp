@@ -92,7 +92,7 @@ fn Value* copy_big_complex_to_parent(Value* v, Interp* interp, BoundaryCopyFault
     result.tag = BIG_COMPLEX;
     result.big_complex_val = cloned;
     if (!scope_register_value_dtor_or_cleanup(interp.current_scope, result)) {
-        if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
+        if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_DTOR_REGISTRATION;
         return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to register BigComplex copy destructor");
     }
     return result;
@@ -165,6 +165,7 @@ fn void* big_complex_handle_from_value(Value* v) {
     if (v == null) return null;
     switch (v.tag) {
         case BIG_COMPLEX:
+            if (v.big_complex_val == null) return null;
             return omni_big_complex_clone(v.big_complex_val);
         case INT:
             return omni_big_complex_from_i64(v.int_val);
@@ -261,6 +262,7 @@ fn Value* big_complex_abs_value(Interp* interp, Value* v, char[] message) {
 fn Value* big_complex_real_part_value(Interp* interp, Value* v, char[] message) {
     if (v == null) return big_complex_raise(interp, "big-complex/invalid-argument", message);
     if (v.tag != BIG_COMPLEX) return v;
+    if (v.big_complex_val == null) return big_complex_raise(interp, "big-complex/invalid-argument", message);
 
     void* result = omni_big_complex_real_part(v.big_complex_val);
     return make_big_float_from_owned_handle(interp, result, message);
@@ -269,6 +271,7 @@ fn Value* big_complex_real_part_value(Interp* interp, Value* v, char[] message) 
 fn Value* big_complex_imag_part_value(Interp* interp, Value* v, char[] message) {
     if (v == null) return big_complex_raise(interp, "big-complex/invalid-argument", message);
     if (v.tag != BIG_COMPLEX) return make_int(interp, 0);
+    if (v.big_complex_val == null) return big_complex_raise(interp, "big-complex/invalid-argument", message);
 
     void* result = omni_big_complex_imag_part(v.big_complex_val);
     return make_big_float_from_owned_handle(interp, result, message);
@@ -277,6 +280,7 @@ fn Value* big_complex_imag_part_value(Interp* interp, Value* v, char[] message) 
 fn Value* big_complex_conjugate_value(Interp* interp, Value* v, char[] message) {
     if (v == null) return big_complex_raise(interp, "big-complex/invalid-argument", message);
     if (v.tag != BIG_COMPLEX) return v;
+    if (v.big_complex_val == null) return big_complex_raise(interp, "big-complex/invalid-argument", message);
 
     void* result = omni_big_complex_conjugate(v.big_complex_val);
     return make_big_complex_from_owned_handle(interp, result, message);

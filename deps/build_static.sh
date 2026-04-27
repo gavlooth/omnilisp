@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build static libraries for Omni Lisp
 # Creates .a files in deps/lib/
-set -eu
+set -euo pipefail
 
 DEPS_DIR="$(cd "$(dirname "$0")" && pwd)"
 SRC_DIR="$DEPS_DIR/src"

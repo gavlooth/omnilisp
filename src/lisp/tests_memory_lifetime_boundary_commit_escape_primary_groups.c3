@@ -230,6 +230,7 @@ fn void run_memory_lifetime_boundary_commit_escape_primary_tests(Interp* interp,
                   escape_cons_plan.route == BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION &&
                   escape_cons_plan.reason == BOUNDARY_PLAN_REASON_RELEASING_ESCAPE_DESTINATION &&
                   escape_cons_plan.stable_materialization_candidate &&
+                  escape_cons_plan.compatibility_candidate &&
                   mixed_plan.route == BOUNDARY_PLAN_ROUTE_MIXED_DESTINATION &&
                   mixed_plan.reason == BOUNDARY_PLAN_REASON_MIXED_UNCERTAIN &&
                   mixed_plan.compatibility_candidate;

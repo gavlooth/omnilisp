@@ -52,10 +52,13 @@ fn Value* check_lambda_call_boundary(Closure* closure, Value*[] args, usz provid
 
 
 fn Value* find_best_method(MethodTable* mt, Value*[] args, Interp* interp) {
+    if (mt == null) {
+        return runtime_raise(interp, "runtime/evaluation-error", "invalid method table state");
+    }
+
     long best_score = -1;
     Value* best_method = null;
     usz best_count = 0;
-    Value* best_match_indices_rev = make_nil(interp);
 
     TypeId[] arg_types = {};
     TypeId[DISPATCH_INLINE_ARG_CAPACITY] arg_types_inline;
@@ -76,31 +79,57 @@ fn Value* find_best_method(MethodTable* mt, Value*[] args, Interp* interp) {
     }
     defer if (arg_types_storage != null) mem::free(arg_types_storage);
 
+    usz[] best_match_indices = {};
+    usz[DISPATCH_INLINE_BINDING_CAPACITY] best_match_indices_inline;
+    usz* best_match_indices_storage = null;
+    if (mt.entry_count > 0) {
+        if (mt.entry_count <= DISPATCH_INLINE_BINDING_CAPACITY) {
+            best_match_indices = best_match_indices_inline[:mt.entry_count];
+        } else {
+            if (mt.entry_count > usz.max / usz.sizeof) {
+                return runtime_raise(interp, "runtime/out-of-memory", "method dispatch: out of memory");
+            }
+            best_match_indices_storage = (usz*)mem::malloc(usz.sizeof * mt.entry_count);
+            if (best_match_indices_storage == null) {
+                return runtime_raise(interp, "runtime/out-of-memory", "method dispatch: out of memory");
+            }
+            best_match_indices = best_match_indices_storage[:mt.entry_count];
+        }
+    }
+    defer if (best_match_indices_storage != null) mem::free(best_match_indices_storage);
+
     for (usz a = 0; a < args.len; a++) {
         arg_types[a] = infer_value_type(args[a], interp);
     }
 
     for (usz i = 0; i < mt.entry_count; i++) {
         MethodEntry* entry = &mt.entries[i];
-        long score = 0;
-        if (!method_match_score(entry, args, arg_types, interp, &score)) continue;
+        DispatchMatchBreakdown breakdown = dispatch_match_breakdown(entry, args, arg_types, interp);
+        if (breakdown.failure_reason == DISPATCH_MATCH_FAIL_INVALID_LITERAL) {
+            return runtime_raise(interp, "runtime/invalid-state", "method dispatch: invalid literal signature");
+        }
+        if (!breakdown.matched) continue;
+
+        long score = breakdown.score_total;
 
         if (score > best_score) {
             best_score = score;
             best_method = entry.implementation;
             best_count = 1;
-            Value* idx = make_int(interp, (long)i);
-            if (idx == null || idx.tag == ERROR) return idx;
-            best_match_indices_rev = make_cons_or_error(
-                interp,
-                idx,
-                make_nil(interp),
-                "method dispatch: out of memory"
-            );
-            if (best_match_indices_rev == null || best_match_indices_rev.tag == ERROR) return best_match_indices_rev;
+            best_match_indices[0] = i;
         } else if (score == best_score) {
+            if (best_count >= best_match_indices.len) {
+                return runtime_raise(interp, "runtime/out-of-memory", "method dispatch: out of memory");
+            }
+            best_match_indices[best_count] = i;
             best_count++;
-            Value* idx = make_int(interp, (long)i);
+        }
+    }
+
+    if (best_count > 1) {
+        Value* best_match_indices_rev = make_nil(interp);
+        for (usz i = 0; i < best_count; i++) {
+            Value* idx = make_int(interp, (long)best_match_indices[i]);
             if (idx == null || idx.tag == ERROR) return idx;
             best_match_indices_rev = make_cons_or_error(
                 interp,
@@ -110,9 +139,6 @@ fn Value* find_best_method(MethodTable* mt, Value*[] args, Interp* interp) {
             );
             if (best_match_indices_rev == null || best_match_indices_rev.tag == ERROR) return best_match_indices_rev;
         }
-    }
-
-    if (best_count > 1) {
         return dispatch_ambiguous_error(mt, args, best_score, best_count, best_match_indices_rev, interp);
     }
 

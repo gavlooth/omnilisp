@@ -20,6 +20,7 @@ bitstruct InterpFlags : ushort {
     bool jit_tco_bounce        : 1;  // True = return sentinel, jit_eval loop continues
     bool raise_pending         : 2;  // raise_error found handler, pending dispatch
     bool console_to_stderr     : 3;  // reserve stdout for structured transports
+    bool resolve_terminal_pending : 4;  // resolve exits the active handler clause
 }
 
 struct InterpInputState {
@@ -123,7 +124,7 @@ struct Interp {
     SymbolId sym_Dictionary;
     SymbolId sym_Set;
     SymbolId sym_Any;
-    SymbolId sym_Value;
+    SymbolId sym_Literal;
     SymbolId sym_Number;
     SymbolId sym_Collection;
     SymbolId sym_Iterator;
@@ -157,6 +158,7 @@ struct Interp {
     TypeId tid_BigComplex;
     TypeId tid_Complex128;
     TypeId tid_Complex64;
+    TypeId tid_Float;
     TypeId tid_Double;
     TypeId tid_Float32;
     TypeId tid_String;
@@ -170,6 +172,7 @@ struct Interp {
     TypeId tid_Dictionary;
     TypeId tid_Set;
     TypeId tid_Any;
+    TypeId tid_Literal;
     TypeId tid_Number;
     TypeId tid_Collection;
     TypeId tid_Iterator;
@@ -259,7 +262,7 @@ struct Interp {
 
 // ABI/interop guard: interpreter state is allocated and inspected by entry,
 // JIT, and runtime bridge code. Update bindings and this assertion together.
-$assert(Interp.sizeof == 2296);
+$assert(Interp.sizeof == 2304);
 
 fn void Interp.init(Interp* self) {
     runtime_attach_interp(self);

@@ -43,6 +43,16 @@ fn void scheduler_test_expect_error(
         (*pass)++;
         return;
     }
+    if (r.value != null && r.value.tag == INT) {
+        io::printfn("%s (value=%d)", (ZString)fail_msg, (int)r.value.int_val);
+        (*fail)++;
+        return;
+    }
+    if (r.value != null && r.value.tag != NIL) {
+        io::printfn("%s (value-tag=%d)", (ZString)fail_msg, (int)r.value.tag);
+        (*fail)++;
+        return;
+    }
     io::printn((ZString)fail_msg);
     (*fail)++;
 }
@@ -78,6 +88,16 @@ fn void scheduler_test_expect_int_exact(
     if (!r.error.has_error && is_int(r.value) && r.value.int_val == expected) {
         emit_pass_literal(pass_msg);
         (*pass)++;
+        return;
+    }
+    if (r.error.has_error) {
+        io::printfn("%s (error=%s)", (ZString)fail_fmt, (ZString)r.error.message[:256]);
+        (*fail)++;
+        return;
+    }
+    if (r.value != null && r.value.tag == ERROR) {
+        io::printfn("%s (value-error=%s)", (ZString)fail_fmt, (ZString)r.value.str_chars[:r.value.str_len]);
+        (*fail)++;
         return;
     }
     io::printfn((String)fail_fmt, is_int(r.value) ? (int)r.value.int_val : -1);

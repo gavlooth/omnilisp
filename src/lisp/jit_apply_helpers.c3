@@ -4,6 +4,12 @@ fn Value* jit_raise(Interp* interp, String code, char[] message) @inline {
     return raise_error_with_payload_names(interp, "runtime", code, (String)message, null);
 }
 
+fn Value* jit_apply_normalize_result(Value* result, Interp* interp) @inline {
+    if (result != null) return result;
+    if (interp == null) return null;
+    return jit_raise(interp, "runtime/evaluation-error", "jit: function application returned null");
+}
+
 
 import std::core::mem;
 import std::io;
@@ -216,7 +222,30 @@ fn Value* jit_apply_eval_result_or_error(EvalResult r, Interp* interp) @inline {
     return r.value;
 }
 
+fn Value* jit_apply_type_descriptor_error(Value* func, Interp* interp) {
+    SymbolId descriptor_name = INVALID_SYMBOL_ID;
+    if (func != null && func.tag == TYPE_INFO && func.type_info_val != null) {
+        descriptor_name = func.type_info_val.name;
+    } else if ((uint)interp.last_call_name != 0) {
+        descriptor_name = interp.last_call_name;
+    }
+
+    DString msg;
+    msg.init(mem);
+    defer msg.free();
+    if (descriptor_name != INVALID_SYMBOL_ID) {
+        msg.append_char('\'');
+        msg.append_string((String)interp.symbols.get_name(descriptor_name));
+        msg.append_string("' is a type descriptor, not a function");
+    } else {
+        msg.append_string("called value is a type descriptor, not a function");
+    }
+    return jit_raise(interp, "runtime/evaluation-error", msg.str_view());
+}
+
 fn Value* jit_apply_non_callable_error(Value* func, Interp* interp) {
+    if (func != null && func.tag == TYPE_INFO) return jit_apply_type_descriptor_error(func, interp);
+
     char[256] ebuf;
     char[] type_name = interp.symbols.get_name(value_type_name(func, interp));
     if ((uint)interp.last_call_name != 0) {
@@ -235,7 +264,9 @@ fn Value* jit_apply_non_callable_error(Value* func, Interp* interp) {
 }
 
 fn Value* jit_apply_value_closure(Value* func, Value* arg, Interp* interp) {
-    assert(func.closure_val != null, "jit_apply_value_closure: func.closure_val is null");
+    if (!jit_value_has_closure_payload_and_body(func)) {
+        return jit_invalid_closure_state_error(interp);
+    }
     Closure* closure = func.closure_val;
     if (zeroarg_closure_trace_enabled()) {
         io::printfn(
@@ -312,6 +343,9 @@ fn Value* jit_apply_value_closure(Value* func, Value* arg, Interp* interp) {
 }
 
 fn Value* jit_apply_value_method_table(Value* func, Value* arg, Interp* interp) {
+    if (!jit_value_has_method_table_payload(func)) {
+        return jit_raise(interp, "runtime/evaluation-error", "jit: invalid method table state");
+    }
     Value*[1] args = { arg };
     MethodTable* mt = func.method_table_val;
     Value* resolved = find_best_method(mt, args[:1], interp);

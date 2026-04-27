@@ -82,12 +82,12 @@ fn void value_print_emit_hex_escape(char c) {
         value_print_hex_digit((b >> 4) & 0xF),
         value_print_hex_digit(b & 0xF)
     };
-    io::print(escaped[..]);
+    io::print((String)escaped[..]);
 }
 
 fn void value_print_emit_raw_byte(char c) {
     char[1] out = { c };
-    io::print(out[..]);
+    io::print((String)out[..]);
 }
 
 fn void value_print_emit_escaped_string_content(char[] bytes) {
@@ -146,11 +146,15 @@ fn void print_closure_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
 }
 
 fn void print_hashmap_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
-    pb.append_char('{');
     if (v.hashmap_val == null) {
-        pb.append_char('}');
+        pb.append_str("{}");
         return;
     }
+    if (!hashmap_storage_valid(v.hashmap_val)) {
+        pb.append_str("#<dict:invalid>");
+        return;
+    }
+    pb.append_char('{');
     uint hprinted = 0;
     foreach (entry : v.hashmap_val.entries[0:v.hashmap_val.capacity]) {
         if (entry.key != null) {
@@ -165,11 +169,15 @@ fn void print_hashmap_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
 }
 
 fn void print_set_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
-    pb.append_str("(Set");
     if (v.hashmap_val == null) {
-        pb.append_char(')');
+        pb.append_str("(Set)");
         return;
     }
+    if (!hashmap_storage_valid(v.hashmap_val)) {
+        pb.append_str("#<set:invalid>");
+        return;
+    }
+    pb.append_str("(Set");
     foreach (entry : v.hashmap_val.entries[0:v.hashmap_val.capacity]) {
         if (entry.key != null) {
             pb.append_char(' ');

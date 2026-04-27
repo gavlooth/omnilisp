@@ -260,7 +260,7 @@ fn Value* prim_sub(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_mul(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return primitive_arity_raise(interp, "*", "2 arguments", args.len);
+    if (args.len != 2) return primitive_arity_raise(interp, "*", "2 arguments", args.len);
     return numeric_mul2(interp, args[0], args[1]);
 }
 
@@ -268,7 +268,7 @@ fn Value* prim_mul(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_div(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return primitive_arity_raise(interp, "/", "2 arguments", args.len);
+    if (args.len != 2) return primitive_arity_raise(interp, "/", "2 arguments", args.len);
     if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "/", 0, "number", args[0]);
     if (!is_numeric_value(args[1])) return primitive_arg_type_raise(interp, "/", 1, "number", args[1]);
     if (is_fixed_complex(args[0]) || is_fixed_complex(args[1])) {
@@ -305,7 +305,7 @@ fn Value* prim_div(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_mod(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return primitive_arity_raise(interp, "%", "2 arguments", args.len);
+    if (args.len != 2) return primitive_arity_raise(interp, "%", "2 arguments", args.len);
     if (!(is_int(args[0]) || is_big_integer(args[0]))) return primitive_arg_type_raise(interp, "%", 0, "integer", args[0]);
     if (!(is_int(args[1]) || is_big_integer(args[1]))) return primitive_arg_type_raise(interp, "%", 1, "integer", args[1]);
     if (exact_integer_value_is_zero(args[1])) return math_raise(interp, "type/div-by-zero", "%: division by zero");

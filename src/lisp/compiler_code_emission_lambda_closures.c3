@@ -17,10 +17,26 @@ fn bool Compiler.needs_arg_list(Compiler* self, usz lambda_id) {
 
 fn void Compiler.emit_make_closure_call(Compiler* self, usz lambda_id) {
     if (self.needs_arg_list(lambda_id)) {
-        self.emit("make_variadic_closure");
+        self.emit("make_generated_variadic_closure_with_retention");
     } else {
-        self.emit("make_closure");
+        self.emit("make_generated_closure_with_retention");
     }
+}
+
+fn void Compiler.emit_make_closure_with_retention_call(Compiler* self, usz lambda_id) {
+    if (self.needs_arg_list(lambda_id)) {
+        self.emit("make_generated_variadic_closure_with_retention");
+    } else {
+        self.emit("make_generated_closure_with_retention");
+    }
+}
+
+fn bool Compiler.lambda_needs_capture_retention(Compiler* self, LambdaDef* def) {
+    if (def == null) return false;
+    for (usz i = 0; i < def.capture_count; i++) {
+        if (!def.capture_is_mutable[i]) return true;
+    }
+    return false;
 }
 
 fn LambdaDef* Compiler.find_lambda_def_by_expr(Compiler* self, Expr* expr, usz* lambda_id) {
@@ -34,7 +50,22 @@ fn LambdaDef* Compiler.find_lambda_def_by_expr(Compiler* self, Expr* expr, usz* 
     return null;
 }
 
-fn void Compiler.emit_closure_capture_data(Compiler* self, LambdaDef* def, usz lambda_id) {
+fn void Compiler.emit_lambda_capture_source(Compiler* self, LambdaDef* def, usz capture_index) {
+    SymbolId capture = def.captures[capture_index];
+    if (def.capture_is_mutable[capture_index]) {
+        SymbolId cell_name = INVALID_SYMBOL_ID;
+        if (!self.find_active_mutable_cell(capture, &cell_name)) {
+            self.set_compile_error("compiler: mutable lambda capture missing active cell");
+            self.emit("null");
+            return;
+        }
+        self.emit_symbol_name(cell_name);
+        return;
+    }
+    self.emit_symbol_value_reference(capture);
+}
+
+fn void Compiler.emit_closure_capture_data(Compiler* self, LambdaDef* def, usz lambda_id, bool needs_retention) {
     self.emit_indent();
     self.emit("Lambda_");
     self.emit_usz(lambda_id);
@@ -45,25 +76,82 @@ fn void Compiler.emit_closure_capture_data(Compiler* self, LambdaDef* def, usz l
     self.emit(".sizeof);\n");
     self.emit_indent();
     self.emit("if (_closure_data == null) return aot::make_error(\"compiler: out of memory while allocating closure capture data\");\n");
+    if (needs_retention) {
+        self.emit_indent();
+        self.emit("aot::AotCaptureRetention* _closure_retention = aot::capture_retention_begin();\n");
+        self.emit_indent();
+        self.emit("if (_closure_retention == null) { mem::free(_closure_data); return aot::make_error(\"compiler: out of memory while allocating closure capture retention\"); }\n");
+    } else {
+        self.emit_indent();
+        self.emit("aot::AotCaptureRetention* _closure_retention = null;\n");
+    }
     for (usz i = 0; i < def.capture_count; i++) {
+        if (def.capture_is_mutable[i]) {
+            self.emit_indent();
+            self.emit("_closure_data.captured_");
+            self.emit_symbol_name(def.captures[i]);
+            self.emit(" = ");
+            self.emit_lambda_capture_source(def, i);
+            self.emit(";\n");
+            continue;
+        }
+        self.emit_indent();
+        self.emit("lisp::Value* _capture_source_");
+        self.emit_usz(lambda_id);
+        self.emit("_");
+        self.emit_usz(i);
+        self.emit(" = ");
+        self.emit_lambda_capture_source(def, i);
+        self.emit(";\n");
+        self.emit_indent();
+        self.emit("lisp::Value* _capture_retain_error_");
+        self.emit_usz(lambda_id);
+        self.emit("_");
+        self.emit_usz(i);
+        self.emit(" = aot::capture_retention_retain_value(_closure_retention, _capture_source_");
+        self.emit_usz(lambda_id);
+        self.emit("_");
+        self.emit_usz(i);
+        self.emit(");\n");
+        self.emit_indent();
+        self.emit("if (_capture_retain_error_");
+        self.emit_usz(lambda_id);
+        self.emit("_");
+        self.emit_usz(i);
+        self.emit(" != null) { aot::capture_retention_release(_closure_retention); mem::free(_closure_data); return _capture_retain_error_");
+        self.emit_usz(lambda_id);
+        self.emit("_");
+        self.emit_usz(i);
+        self.emit("; }\n");
         self.emit_indent();
         self.emit("_closure_data.captured_");
         self.emit_symbol_name(def.captures[i]);
-        self.emit(" = ");
-        self.emit_symbol_value_reference(def.captures[i]);
+        self.emit(" = _capture_source_");
+        self.emit_usz(lambda_id);
+        self.emit("_");
+        self.emit_usz(i);
         self.emit(";\n");
     }
 }
 
 fn void Compiler.emit_closure_expr(Compiler* self, usz lambda_id, bool with_capture_data) {
     self.emit("aot::");
-    self.emit_make_closure_call(lambda_id);
+    if (with_capture_data) {
+        self.emit_make_closure_with_retention_call(lambda_id);
+    } else {
+        self.emit_make_closure_call(lambda_id);
+    }
     if (with_capture_data) {
         self.emit("((void*)_closure_data, &invoke_lambda_");
     } else {
         self.emit("(null, &invoke_lambda_");
     }
     self.emit_usz(lambda_id);
+    if (with_capture_data) {
+        self.emit(", _closure_retention");
+    } else {
+        self.emit(", null");
+    }
     self.emit(")");
 }
 
@@ -79,17 +167,14 @@ fn void Compiler.emit_lambda_return_common(Compiler* self, Expr* expr, bool bind
         return;
     }
     bool has_captures = found_def != null && found_def.capture_count > 0;
+    bool needs_retention = self.lambda_needs_capture_retention(found_def);
     if (has_captures) {
-        self.emit_closure_capture_data(found_def, lambda_id);
+        self.emit_closure_capture_data(found_def, lambda_id, needs_retention);
     }
     self.emit_indent();
     self.emit("lisp::Value* _result = ");
     self.emit_closure_expr(lambda_id, has_captures);
     self.emit(";\n");
-    if (has_captures) {
-        self.emit_indent();
-        self.emit("if (_result != null && _result.tag == lisp::ValueTag.ERROR) mem::free(_closure_data);\n");
-    }
     self.emit_indent();
     self.emit("return _result;\n");
 }

@@ -179,7 +179,7 @@ fn void run_async_tests(Interp* interp, int* pass, int* fail) {
         "    (tcp-close client) "
         "    (tcp-close server) "
         "    (tcp-close listener) "
-        "    (fs-unlink p) "
+        "    (handle (fs-unlink p) (raise msg nil)) "
         "    (= got \"pipe-ok\")))) "
         "  (await pf))",
         pass, fail);
@@ -216,12 +216,17 @@ fn void run_async_tests(Interp* interp, int* pass, int* fail) {
         "  (define p (+ 35000 (% (time-ms) 20000))) "
         "  (define recv (udp-socket)) "
         "  (udp-bind recv \"127.0.0.1\" p) "
-        "  (define rf (spawn (lambda () (udp-recv recv)))) "
-        "  (async-sleep 5) "
-        "  (define snd (udp-socket)) "
-        "  (udp-send snd \"127.0.0.1\" p \"pong\") "
-        "  (define got (await rf)) "
-        "  (udp-close snd) "
+        "  (define wf (spawn (lambda () "
+        "    (define rf (spawn (lambda () (udp-recv recv)))) "
+        "    (define sf (spawn (lambda () "
+        "      (async-sleep 5) "
+        "      (define snd (udp-socket)) "
+        "      (udp-send snd \"127.0.0.1\" p \"pong\") "
+        "      (udp-close snd)))) "
+        "    (define got (await rf)) "
+        "    (await sf) "
+        "    got))) "
+        "  (define got (await wf)) "
         "  (udp-close recv) "
         "  (= got \"pong\"))",
         pass, fail);

@@ -64,6 +64,57 @@ fn lisp::Value* dict_from_args(lisp::Value* arg_list) {
     return dict;
 }
 
+fn lisp::Value* array_from_args(lisp::Value* arg_list) {
+    lisp::Interp* interp = aot_bridge_interp();
+    if (interp == null) return aot_make_error_best_effort(null, "aot array-from-args: runtime interpreter unavailable");
+
+    usz count = 0;
+    lisp::Value* curr = arg_list;
+    while (curr != null && curr.tag == lisp::ValueTag.CONS) {
+        count++;
+        curr = curr.cons_val.cdr;
+    }
+
+    lisp::Value* arr_value = lisp::make_array_checked(interp, count, "aot array-from-args: out of memory");
+    if (arr_value == null || arr_value.tag != lisp::ValueTag.ARRAY || arr_value.array_val == null) {
+        return arr_value == null ? aot_make_error_best_effort(interp, "aot array-from-args: out of memory") : arr_value;
+    }
+
+    curr = arg_list;
+    while (curr != null && curr.tag == lisp::ValueTag.CONS) {
+        arr_value.array_val.items[arr_value.array_val.length++] = curr.cons_val.car;
+        curr = curr.cons_val.cdr;
+    }
+    return arr_value;
+}
+
+fn lisp::Value* set_from_args(lisp::Value* arg_list) {
+    lisp::Interp* interp = aot_bridge_interp();
+    if (interp == null) return aot_make_error_best_effort(null, "aot set-from-args: runtime interpreter unavailable");
+
+    usz count = 0;
+    lisp::Value* curr = arg_list;
+    while (curr != null && curr.tag == lisp::ValueTag.CONS) {
+        count++;
+        curr = curr.cons_val.cdr;
+    }
+
+    lisp::Value* set_value = lisp::make_set_for_entry_count_checked(interp, count, "aot set-from-args: out of memory");
+    if (set_value == null || set_value.tag != lisp::ValueTag.SET || set_value.hashmap_val == null) {
+        return set_value == null ? aot_make_error_best_effort(interp, "aot set-from-args: out of memory") : set_value;
+    }
+
+    lisp::Value* true_val = lisp::make_symbol(interp, interp.sym_true);
+    curr = arg_list;
+    while (curr != null && curr.tag == lisp::ValueTag.CONS) {
+        if (!lisp::hashmap_set_checked(set_value.hashmap_val, curr.cons_val.car, true_val, interp)) {
+            return aot_make_error_best_effort(interp, "aot set-from-args: out of memory");
+        }
+        curr = curr.cons_val.cdr;
+    }
+    return set_value;
+}
+
 fn lisp::Value* index(lisp::Value* collection, lisp::Value* idx) {
     lisp::Interp* interp = aot_bridge_interp();
     if (interp == null) return aot_make_error_best_effort(null, "aot index: runtime interpreter unavailable");
@@ -104,7 +155,21 @@ fn lisp::Value* compiled_signal(lisp::Value* tag, lisp::Value* arg) {
 fn lisp::Value* compiled_reset(lisp::Value* body) {
     lisp::Interp* interp = aot_bridge_interp();
     if (interp == null) return aot_make_error_best_effort(null, "aot compiled-reset: runtime interpreter unavailable");
-    return lisp::jit_reset_value(interp, body);
+    AotMutableCellSnapshot* snapshot = null;
+    usz snapshot_count = 0;
+    lisp::Value* snapshot_error = null;
+    if (!mutable_cell_snapshot_begin(&snapshot, &snapshot_count, &snapshot_error)) {
+        return snapshot_error != null ? snapshot_error : aot_make_error_best_effort(interp, "aot compiled-reset: failed to snapshot mutable cells");
+    }
+    AotMutableCellSnapshotFrame snapshot_frame = { snapshot, snapshot_count, snapshot_count, null };
+    mutable_cell_snapshot_frame_push(&snapshot_frame);
+    lisp::Value* result = lisp::jit_reset_value(interp, body);
+    mutable_cell_snapshot_frame_pop(&snapshot_frame);
+    mutable_cell_snapshot_restore(snapshot_frame.snapshot, snapshot_frame.count);
+    snapshot_frame.snapshot = null;
+    snapshot_frame.count = 0;
+    snapshot_frame.capacity = 0;
+    return result;
 }
 
 /**
@@ -122,5 +187,6 @@ fn lisp::Value* compiled_shift(lisp::Value* body) {
 fn lisp::Value* compiled_resolve(lisp::Value* k_val, lisp::Value* val) {
     lisp::Interp* interp = aot_bridge_interp();
     if (interp == null) return aot_make_error_best_effort(null, "aot compiled-resolve: runtime interpreter unavailable");
-    return lisp::jit_resolve_value(interp, k_val, val);
+    mutable_cell_snapshot_restore_active();
+    return lisp::jit_resolve_terminal_value(interp, k_val, val);
 }

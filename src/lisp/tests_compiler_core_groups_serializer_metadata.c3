@@ -25,6 +25,137 @@ fn void run_compiler_group_serializer_roundtrip_tests(Interp* interp, usz* pass,
         else    { (*fail)++; io::printn("[FAIL] Compiler: integer serializer preserves long.min"); }
     }
     {
+        Compiler compiler;
+        compiler.init(interp);
+        defer compiler.free();
+
+        Value* arr = make_array(interp, 2);
+        bool setup_ok = arr != null && arr.tag == ARRAY && arr.array_val != null;
+        if (setup_ok) {
+            arr.array_val.items[0] = make_int(interp, 1);
+            arr.array_val.items[1] = make_int(interp, 2);
+            arr.array_val.length = 2;
+        }
+
+        List{char} buf;
+        defer buf.free();
+        if (setup_ok) compiler.serialize_value_to_buf(arr, &buf);
+        char[] actual = buf.len() > 0 ? buf.entries[:buf.len()] : "";
+        bool ok = setup_ok && !compiler.has_error && compiler_str_eq(actual, "[1 2]");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: value serializer preserves array literals"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: value serializer preserves array literals"); }
+    }
+    {
+        Compiler compiler;
+        compiler.init(interp);
+        defer compiler.free();
+
+        Value* dict = make_hashmap(interp, 2);
+        SymbolId name_sym = interp.symbols.intern("name");
+        bool setup_ok = dict != null && dict.tag == HASHMAP && dict.hashmap_val != null &&
+            name_sym != INVALID_SYMBOL_ID &&
+            hashmap_set_checked(dict.hashmap_val, make_symbol(interp, name_sym), make_int(interp, 7), interp);
+
+        List{char} buf;
+        defer buf.free();
+        if (setup_ok) compiler.serialize_value_to_buf(dict, &buf);
+        char[] actual = buf.len() > 0 ? buf.entries[:buf.len()] : "";
+        bool ok = setup_ok && !compiler.has_error && compiler_str_eq(actual, "{name 7}");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: value serializer preserves dictionary literals"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: value serializer preserves dictionary literals"); }
+    }
+    {
+        Compiler compiler;
+        compiler.init(interp);
+        defer compiler.free();
+
+        HashMap malformed = {};
+        malformed.count = 1;
+        malformed.capacity = 2;
+        malformed.entries = null;
+        Value malformed_dict = {};
+        malformed_dict.tag = HASHMAP;
+        malformed_dict.hashmap_val = &malformed;
+
+        uint[] slots = hashmap_sorted_slots(&malformed, interp);
+        bool slots_empty = slots.ptr == null && slots.len == 0;
+        if (slots.ptr != null) mem::free(slots.ptr);
+
+        List{char} buf;
+        defer buf.free();
+        if (slots_empty) compiler.serialize_value_to_buf(&malformed_dict, &buf);
+        bool ok = slots_empty &&
+            compiler.has_error &&
+            str_contains(compiler.error_message, "dictionary backing entries are missing");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: dictionary serializer rejects malformed backing storage"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: dictionary serializer rejects malformed backing storage"); }
+    }
+    {
+        Compiler compiler;
+        compiler.init(interp);
+        defer compiler.free();
+
+        Value* set_value = make_set_checked(interp, 4, "serializer set test: out of memory");
+        bool setup_ok = set_value != null && set_value.tag == SET && set_value.hashmap_val != null &&
+            hashmap_set_checked(set_value.hashmap_val, make_int(interp, 1), make_symbol(interp, interp.sym_true), interp) &&
+            hashmap_set_checked(set_value.hashmap_val, make_int(interp, 2), make_symbol(interp, interp.sym_true), interp);
+
+        List{char} buf;
+        defer buf.free();
+        if (setup_ok) compiler.serialize_value_to_buf(set_value, &buf);
+        char[] actual = buf.len() > 0 ? buf.entries[:buf.len()] : "";
+        bool ok = setup_ok && !compiler.has_error && compiler_str_eq(actual, "(Set 1 2)");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: value serializer preserves set values"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: value serializer preserves set values"); }
+    }
+    {
+        Compiler compiler;
+        compiler.init(interp);
+        defer compiler.free();
+
+        Value* big = make_big_integer_from_string(interp, "9223372036854775808");
+        List{char} buf;
+        defer buf.free();
+        if (big != null && big.tag == BIG_INTEGER) compiler.serialize_value_to_buf(big, &buf);
+        char[] actual = buf.len() > 0 ? buf.entries[:buf.len()] : "";
+        bool ok = big != null && big.tag == BIG_INTEGER && !compiler.has_error &&
+            compiler_str_eq(actual, "(BigInteger \"9223372036854775808\")");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: value serializer preserves BigInteger literals"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: value serializer preserves BigInteger literals"); }
+    }
+    {
+        Compiler compiler;
+        compiler.init(interp);
+        defer compiler.free();
+
+        Value* time_value = make_time_point(interp, TIME_POINT_DATETIMETZ, 2026, 3, 7, 8, 15, 30, 123456, -420);
+        List{char} buf;
+        defer buf.free();
+        if (time_value != null && time_value.tag == TIME_POINT) compiler.serialize_value_to_buf(time_value, &buf);
+        char[] actual = buf.len() > 0 ? buf.entries[:buf.len()] : "";
+        bool ok = time_value != null && time_value.tag == TIME_POINT && !compiler.has_error &&
+            compiler_str_eq(actual, "(TimePoint 'datetime-tz 2026 3 7 8 15 30 123456 -420)");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: value serializer preserves TimePoint literals"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: value serializer preserves TimePoint literals"); }
+    }
+    {
+        Compiler compiler;
+        compiler.init(interp);
+        defer compiler.free();
+
+        Value unsupported = {};
+        unsupported.tag = CLOSURE;
+        List{char} buf;
+        defer buf.free();
+        compiler.serialize_value_to_buf(&unsupported, &buf);
+        char[] actual = buf.len() > 0 ? buf.entries[:buf.len()] : "";
+        bool ok = compiler.has_error &&
+            str_contains(compiler.error_message, "cannot serialize closure value") &&
+            !compiler_str_eq(actual, "nil");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: value serializer fails closed on opaque values"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: value serializer fails closed on opaque values"); }
+    }
+    {
         bool ok = compiler_serializes_to_roundtrip(
             interp,
             "(lambda (x) x)",
@@ -59,6 +190,361 @@ fn void run_compiler_group_serializer_roundtrip_tests(Interp* interp, usz* pass,
         );
         if (ok) { (*pass)++; compiler_print_pass("Compiler: match serializer preserves clause parens"); }
         else    { (*fail)++; io::printn("[FAIL] Compiler: match serializer preserves clause parens"); }
+    }
+    {
+        Compiler compiler;
+        compiler.init(interp);
+        defer compiler.free();
+
+        Expr invalid = {};
+        char* raw = (char*)&invalid;
+        raw[0] = (char)127;
+
+        List{char} buf;
+        defer buf.free();
+        compiler.serialize_expr_to_buf(&invalid, &buf);
+        char[] actual = buf.len() > 0 ? buf.entries[:buf.len()] : "";
+        bool ok = compiler.has_error &&
+            str_contains(compiler.error_message, "cannot serialize unknown expression tag") &&
+            !compiler_str_eq(actual, "nil");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: expression serializer rejects unknown tags"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: expression serializer rejects unknown tags"); }
+    }
+    {
+        Compiler compiler;
+        compiler.init(interp);
+        defer compiler.free();
+
+        Pattern invalid = {};
+        char* raw = (char*)&invalid;
+        raw[0] = (char)127;
+
+        List{char} buf;
+        defer buf.free();
+        compiler.serialize_pattern_to_buf(&invalid, &buf);
+        char[] actual = buf.len() > 0 ? buf.entries[:buf.len()] : "";
+        bool ok = compiler.has_error &&
+            str_contains(compiler.error_message, "cannot serialize unknown pattern tag") &&
+            !compiler_str_eq(actual, "_");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: pattern serializer rejects unknown tags"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: pattern serializer rejects unknown tags"); }
+    }
+    {
+        Compiler compiler;
+        compiler.init(interp);
+        defer compiler.free();
+
+        TypeAnnotation ann = {};
+        ann.has_annotation = true;
+        ann.is_compound = true;
+        ann.base_type = interp.symbols.intern("Literal");
+        ann.has_val_literal = true;
+        ann.val_literal.tag = TENSOR;
+
+        List{char} buf;
+        defer buf.free();
+        compiler.serialize_type_annotation_to_buf(&ann, &buf);
+        char[] actual = buf.len() > 0 ? buf.entries[:buf.len()] : "";
+        bool ok = compiler.has_error &&
+            str_contains(compiler.error_message, "cannot serialize unsupported type literal annotation") &&
+            !compiler_str_eq(actual, "^(Literal nil)");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: type literal serializer rejects unsupported tags"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: type literal serializer rejects unsupported tags"); }
+    }
+    {
+        Compiler compiler;
+        compiler.init(interp);
+        defer compiler.free();
+
+        Expr invalid = {};
+        char* raw = (char*)&invalid;
+        raw[0] = (char)127;
+
+        compiler.collect_expr_generated_globals(&invalid);
+        bool ok = compiler.has_error &&
+            str_contains(compiler.error_message, "unknown expression tag in generated global collection");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: generated global collector rejects unknown expression tags"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: generated global collector rejects unknown expression tags"); }
+    }
+    {
+        Compiler compiler;
+        compiler.init(interp);
+        defer compiler.free();
+
+        Expr invalid = {};
+        char* raw = (char*)&invalid;
+        raw[0] = (char)127;
+
+        compiler.collect_inline_module_backing_globals_in_expr(&invalid);
+        bool ok = compiler.has_error &&
+            str_contains(compiler.error_message, "unknown expression tag in inline module backing global collection");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: inline module backing collector rejects unknown expression tags"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: inline module backing collector rejects unknown expression tags"); }
+    }
+    {
+        Compiler compiler;
+        compiler.init(interp);
+        defer compiler.free();
+
+        Value invalid = {};
+        char* raw = (char*)&invalid;
+        raw[0] = (char)127;
+
+        compiler.collect_literal_generated_globals(&invalid);
+        bool ok = compiler.has_error &&
+            str_contains(compiler.error_message, "unknown value tag in generated global collection");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: generated global collector rejects unknown literal value tags"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: generated global collector rejects unknown literal value tags"); }
+    }
+    {
+        Compiler compiler;
+        compiler.init(interp);
+        defer compiler.free();
+
+        Pattern invalid = {};
+        char* raw = (char*)&invalid;
+        raw[0] = (char)127;
+
+        compiler.collect_pattern_generated_globals(&invalid);
+        bool ok = compiler.has_error &&
+            str_contains(compiler.error_message, "unknown pattern tag in generated global collection");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: generated global collector rejects unknown pattern tags"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: generated global collector rejects unknown pattern tags"); }
+    }
+    {
+        Compiler compiler;
+        compiler.init(interp);
+        defer compiler.free();
+
+        Expr invalid = {};
+        char* raw = (char*)&invalid;
+        raw[0] = (char)127;
+
+        List{SymbolId} bound;
+        List{bool} mutable_flags;
+        defer mutable_flags.free();
+        defer bound.free();
+        bool found = compiler.scan_lambdas_with_scope(&invalid, &bound, &mutable_flags);
+        bool ok = !found &&
+            compiler.has_error &&
+            str_contains(compiler.error_message, "unknown expression tag in lambda scan");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: lambda scan rejects unknown expression tags"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: lambda scan rejects unknown expression tags"); }
+    }
+    {
+        Compiler compiler;
+        compiler.init(interp);
+        defer compiler.free();
+
+        Pattern invalid = {};
+        char* raw = (char*)&invalid;
+        raw[0] = (char)127;
+
+        List{SymbolId} bound;
+        List{bool} mutable_flags;
+        defer mutable_flags.free();
+        defer bound.free();
+        bool found = compiler.scan_lambdas_pattern(&invalid, &bound, &mutable_flags);
+        bool ok = !found &&
+            compiler.has_error &&
+            str_contains(compiler.error_message, "unknown pattern tag in lambda scan");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: lambda scan rejects unknown pattern tags"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: lambda scan rejects unknown pattern tags"); }
+    }
+    {
+        Compiler compiler;
+        compiler.init(interp);
+        defer compiler.free();
+
+        Expr invalid = {};
+        char* raw = (char*)&invalid;
+        raw[0] = (char)127;
+
+        List{SymbolId} bound;
+        List{SymbolId} free_vars;
+        List{SymbolId} enclosing;
+        defer enclosing.free();
+        defer free_vars.free();
+        defer bound.free();
+        compiler.find_free_vars(&invalid, &bound, &free_vars, &enclosing);
+        bool ok = compiler.has_error &&
+            str_contains(compiler.error_message, "unknown expression tag in free-variable analysis");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: free-variable analysis rejects unknown expression tags"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: free-variable analysis rejects unknown expression tags"); }
+    }
+    {
+        Compiler compiler;
+        compiler.init(interp);
+        defer compiler.free();
+
+        Pattern invalid = {};
+        char* raw = (char*)&invalid;
+        raw[0] = (char)127;
+
+        List{SymbolId} bindings;
+        defer bindings.free();
+        compiler.collect_pattern_bindings(&invalid, &bindings);
+        bool ok = compiler.has_error &&
+            str_contains(compiler.error_message, "unknown pattern tag in free-variable binding collection") &&
+            bindings.len() == 0;
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: free-variable binding collection rejects unknown pattern tags"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: free-variable binding collection rejects unknown pattern tags"); }
+    }
+    {
+        Compiler compiler;
+        compiler.init(interp);
+        defer compiler.free();
+
+        Expr invalid = {};
+        char* raw = (char*)&invalid;
+        raw[0] = (char)127;
+
+        compiler.prescan_mutable_captures(&invalid);
+        bool ok = compiler.has_error &&
+            str_contains(compiler.error_message, "unknown expression tag in mutable-capture prescan");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: mutable-capture prescan rejects unknown expression tags"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: mutable-capture prescan rejects unknown expression tags"); }
+    }
+    {
+        Compiler compiler;
+        compiler.init(interp);
+        defer compiler.free();
+
+        Pattern invalid = {};
+        char* raw = (char*)&invalid;
+        raw[0] = (char)127;
+
+        compiler.prescan_match_pattern(&invalid);
+        bool ok = compiler.has_error &&
+            str_contains(compiler.error_message, "unknown pattern tag in mutable-capture prescan");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: mutable-capture prescan rejects unknown pattern tags"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: mutable-capture prescan rejects unknown pattern tags"); }
+    }
+    {
+        Compiler compiler;
+        compiler.init(interp);
+        defer compiler.free();
+
+        Expr invalid = {};
+        char* raw = (char*)&invalid;
+        raw[0] = (char)127;
+
+        List{SymbolId} bound;
+        List{SymbolId} free_vars;
+        List{SymbolId} enclosing;
+        defer enclosing.free();
+        defer free_vars.free();
+        defer bound.free();
+        compiler.find_free_vars_in_qq(&invalid, &bound, &free_vars, &enclosing);
+        bool ok = compiler.has_error &&
+            str_contains(compiler.error_message, "unknown expression tag in quasiquote free-variable analysis");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: quasiquote free-variable analysis rejects unknown expression tags"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: quasiquote free-variable analysis rejects unknown expression tags"); }
+    }
+    {
+        CompiledModule mod = {};
+
+        Expr invalid_expr = {};
+        char* expr_raw = (char*)&invalid_expr;
+        expr_raw[0] = (char)127;
+
+        Pattern invalid_pat = {};
+        char* pat_raw = (char*)&invalid_pat;
+        pat_raw[0] = (char)127;
+
+        Compiler expr_classifier;
+        expr_classifier.init(interp);
+        defer expr_classifier.free();
+        bool expr_binds = expr_classifier.compiled_module_expr_binds_export(&mod, &invalid_expr);
+        bool expr_class_ok = expr_classifier.has_error &&
+            !expr_binds &&
+            str_contains(expr_classifier.error_message, "unknown expression tag in inline module export classification");
+
+        Compiler pat_classifier;
+        pat_classifier.init(interp);
+        defer pat_classifier.free();
+        bool pat_binds = pat_classifier.compiled_module_pattern_binds_export(&mod, &invalid_pat);
+        bool pat_class_ok = pat_classifier.has_error &&
+            !pat_binds &&
+            str_contains(pat_classifier.error_message, "unknown pattern tag in inline module export classification");
+
+        Compiler expr_collector;
+        expr_collector.init(interp);
+        defer expr_collector.free();
+        bool expr_collect_ok = !expr_collector.add_compiled_module_locals_from_expr(&mod, 0, &invalid_expr) &&
+            expr_collector.has_error &&
+            str_contains(expr_collector.error_message, "unknown expression tag in inline module local collection");
+
+        Compiler pat_collector;
+        pat_collector.init(interp);
+        defer pat_collector.free();
+        bool pat_collect_ok = !pat_collector.add_compiled_module_locals_from_pattern(&mod, 0, &invalid_pat) &&
+            pat_collector.has_error &&
+            str_contains(pat_collector.error_message, "unknown pattern tag in inline module local collection");
+
+        bool ok = expr_class_ok && pat_class_ok && expr_collect_ok && pat_collect_ok;
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: inline module collectors reject unknown AST tags"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: inline module collectors reject unknown AST tags"); }
+    }
+    {
+        Compiler compiler;
+        compiler.init(interp);
+        defer compiler.free();
+
+        int[1] param_tags = { 127 };
+        compiler.emit_ffi_manifest_signature_json(&param_tags[0], 1, true, (int)FfiTypeTag.FFI_TYPE_INT);
+        char[] code = compiler.get_output();
+        bool ok = compiler.has_error &&
+            str_contains(compiler.error_message, "invalid FFI type tag in contract manifest") &&
+            str_contains(code, "\"Invalid\"") &&
+            !str_contains(code, "\"Void\"");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: FFI manifest rejects invalid parameter type tags"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: FFI manifest rejects invalid parameter type tags"); }
+    }
+    {
+        Expr invalid = {};
+        char* raw = (char*)&invalid;
+        raw[0] = (char)127;
+
+        Compiler discovery;
+        discovery.init(interp);
+        defer discovery.free();
+        bool has_preload = discovery.has_ffi_preload_expr(&invalid);
+        bool discovery_ok = discovery.has_error &&
+            !has_preload &&
+            str_contains(discovery.error_message, "unknown expression tag in FFI preload discovery");
+
+        Compiler preload;
+        preload.init(interp);
+        defer preload.free();
+        preload.emit_ffi_preload_expr_phase(&invalid, true);
+        bool preload_ok = preload.has_error &&
+            preload.get_output().len == 0 &&
+            str_contains(preload.error_message, "unknown expression tag in FFI preload emission");
+
+        bool first_lib = true;
+        Compiler lib_manifest;
+        lib_manifest.init(interp);
+        defer lib_manifest.free();
+        lib_manifest.emit_ffi_manifest_lib_entries(&invalid, &first_lib);
+        bool lib_ok = lib_manifest.has_error &&
+            first_lib &&
+            lib_manifest.get_output().len == 0 &&
+            str_contains(lib_manifest.error_message, "unknown expression tag in FFI manifest library discovery");
+
+        bool first_fn = true;
+        Compiler fn_manifest;
+        fn_manifest.init(interp);
+        defer fn_manifest.free();
+        fn_manifest.emit_ffi_manifest_fn_entries(&invalid, &first_fn);
+        bool fn_ok = fn_manifest.has_error &&
+            first_fn &&
+            fn_manifest.get_output().len == 0 &&
+            str_contains(fn_manifest.error_message, "unknown expression tag in FFI manifest function discovery");
+
+        bool ok = discovery_ok && preload_ok && lib_ok && fn_ok;
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: FFI preload and manifest collectors reject unknown expression tags"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: FFI preload and manifest collectors reject unknown expression tags"); }
     }
     {
         bool ok = compiler_serializes_to_roundtrip(

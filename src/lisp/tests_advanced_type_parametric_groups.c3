@@ -37,7 +37,8 @@ fn void run_advanced_type_parametric_core_hierarchy_tests(Interp* interp, int* p
 
     // define [abstract] — abstract type
     setup(interp, "(define [abstract] Shape)");
-    test_truthy(interp, "abstract type defined", "(= 'Shape 'Shape)", pass, fail);
+    test_str_val(interp, "abstract type descriptor rendering", "(format \"%s\" Shape)", "#<type Shape>", pass, fail);
+    test_error_contains(interp, "abstract type descriptor is non-callable", "(Shape 1)", "type descriptor", pass, fail);
 
     // define [type] with parent
     setup(interp, "(define [type] (Circle Shape) (^Integer radius))");
@@ -54,6 +55,7 @@ fn void run_advanced_type_parametric_core_hierarchy_tests(Interp* interp, int* p
 
     // define [union] — union types
     setup(interp, "(define [union] (Option T) None (Some T))");
+    test_str_val(interp, "union head type descriptor rendering", "(format \"%s\" Option)", "#<type Option>", pass, fail);
     test_truthy_interp(interp, "union nullary", "(instance? None)", pass, fail);
     test_truthy_interp(interp, "union constructor", "(instance? (Some 42))", pass, fail);
     test_truthy_interp(interp, "is? union variant", "(is? None 'Option)", pass, fail);
@@ -90,7 +92,7 @@ fn void run_advanced_type_parametric_core_hierarchy_tests(Interp* interp, int* p
 
     // define [alias]
     setup(interp, "(define [alias] Num Integer)");
-    test_truthy(interp, "alias defined", "(= 'Num 'Num)", pass, fail);
+    test_str_val(interp, "alias type descriptor rendering", "(format \"%s\" Num)", "#<type Num>", pass, fail);
 
     // instance? primitive
     test_nil(interp, "instance? non-instance", "(instance? 42)", pass, fail);
@@ -359,61 +361,103 @@ fn void run_advanced_parser_type_def_edge_tests(Interp* interp, int* pass, int* 
 }
 
 fn void run_advanced_type_value_alias_deprecation_matrix_tests(Interp* interp, int* pass, int* fail) {
-    // Canonical constructor form should remain accepted.
+    // Canonical literal singleton forms should remain accepted.
     test_eq_interp(interp,
-        "parser matrix accepts Value int constructor",
-        "((lambda ((^(Value 0) n)) n) 0)",
+        "parser matrix accepts Literal int shorthand",
+        "((lambda ((^#0 n)) n) 0)",
         0,
         pass,
         fail);
 
     test_eq_interp(interp,
-        "parser matrix accepts Value symbol constructor",
-        "((lambda ((^(Value open) cmd)) 88) 'open)",
+        "parser matrix accepts Literal symbol shorthand",
+        "((lambda ((^#'open cmd)) 88) 'open)",
         88,
         pass,
         fail);
 
     test_str_val(interp,
-        "parser matrix accepts Value string constructor",
-        "((lambda ((^(Value \"x\") x)) x) \"x\")",
+        "parser matrix accepts Literal string shorthand",
+        "((lambda ((^#\"x\" x)) x) \"x\")",
         "x",
         pass,
         fail);
 
     test_eq_interp(interp,
-        "parser matrix accepts Value bool constructor",
-        "((lambda ((^(Value true) ok)) 99) true)",
+        "parser matrix accepts Literal bool shorthand",
+        "((lambda ((^#true ok)) 99) true)",
         99,
         pass,
         fail);
 
     test_eq_interp(interp,
-        "parser matrix accepts Value nil constructor",
-        "((lambda ((^(Value nil) x)) 77) nil)",
+        "parser matrix accepts Literal nil shorthand",
+        "((lambda ((^#nil x)) 77) nil)",
         77,
         pass,
         fail);
 
-    // Legacy alias should be rejected at parse time with explicit canonical message.
+    test_eq_interp(interp,
+        "parser matrix accepts Literal long form",
+        "((lambda ((^(Literal 0) n)) n) 0)",
+        0,
+        pass,
+        fail);
+
+    test_error_contains(interp,
+        "parser matrix rejects Literal nil prefix shorthand",
+        "((lambda ((^#nilx x)) 77) nil)",
+        "Literal shorthand",
+        pass,
+        fail);
+
+    test_error_contains(interp,
+        "parser matrix rejects Literal true prefix shorthand",
+        "((lambda ((^#truex x)) 77) true)",
+        "Literal shorthand",
+        pass,
+        fail);
+
+    test_error_contains(interp,
+        "parser matrix rejects Literal false prefix shorthand",
+        "((lambda ((^#falsex x)) 77) false)",
+        "Literal shorthand",
+        pass,
+        fail);
+
+    test_error_contains(interp,
+        "parser matrix rejects Literal negative sign without digits",
+        "((lambda ((^#- x)) x) 0)",
+        "expects digits",
+        pass,
+        fail);
+
+    // Legacy aliases should be rejected at parse time with explicit canonical message.
+    test_error_contains(interp,
+        "parser matrix rejects Value int constructor",
+        "((lambda ((^(Value 0) n)) n) 0)",
+        "removed",
+        pass,
+        fail);
+
     test_error_contains(interp,
         "parser matrix rejects Val int constructor",
         "((lambda ((^(Val 0) n)) n) 0)",
-        "Val constructor was removed; use Value",
+        "removed",
         pass,
         fail);
 
     test_error_contains(interp,
         "parser matrix rejects Val symbol constructor",
         "((lambda ((^(Val open) n)) n) 'open)",
-        "Val constructor was removed; use Value",
+        "removed",
         pass,
         fail);
 
     test_error_contains(interp,
         "parser matrix rejects Val string constructor",
         "((lambda ((^(Val \"x\") n)) n) \"x\")",
-        "Val constructor was removed; use Value",
+        "removed",
         pass,
         fail);
 }

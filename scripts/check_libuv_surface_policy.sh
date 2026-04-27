@@ -4,10 +4,11 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 prims_file="src/lisp/eval_init_primitives.c3"
+prim_tables_file="src/lisp/eval_init_primitive_tables.c3"
 stdlib_file="stdlib/stdlib.lisp"
 diff_range="${OMNI_EFFECTS_POLICY_RANGE:-${OMNI_BOUNDARY_POLICY_RANGE:-}}"
 
-for required in "$prims_file" "$stdlib_file"; do
+for required in "$prims_file" "$prim_tables_file" "$stdlib_file"; do
   if [[ ! -f "$required" ]]; then
     echo "FAIL: libuv surface policy missing required file: $required"
     exit 1
@@ -105,7 +106,7 @@ while IFS= read -r wrapper; do
   [[ -z "$wrapper" ]] && continue
   raw_name="__raw-${wrapper}"
 
-  if ! search_fixed_quiet "{ \"${raw_name}\"," "$prims_file"; then
+  if ! search_fixed_quiet "{ \"${raw_name}\"," "$prims_file" "$prim_tables_file"; then
     echo "FAIL: libuv surface policy missing raw primitive registration for io/${wrapper} (${raw_name})."
     violations=1
   fi

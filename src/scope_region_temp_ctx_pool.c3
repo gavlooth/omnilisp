@@ -3,16 +3,16 @@ module main;
 fn void fiber_temp_ctx_pool_on_clone(void* arg) {
     FiberTempCtxPool* pool = (FiberTempCtxPool*)arg;
     if (pool == null) return;
-    g_fiber_temp_pool_stats.lifecycle_clone_callbacks++;
+    scope_telemetry_inc(&g_fiber_temp_pool_stats.lifecycle_clone_callbacks);
     pool.refcount++;
 }
 
 fn void fiber_temp_ctx_pool_on_destroy(void* arg) {
     FiberTempCtxPool* pool = (FiberTempCtxPool*)arg;
     if (pool == null) return;
-    g_fiber_temp_pool_stats.lifecycle_destroy_callbacks++;
+    scope_telemetry_inc(&g_fiber_temp_pool_stats.lifecycle_destroy_callbacks);
     if (pool.refcount > 1) {
-        g_fiber_temp_pool_stats.lifecycle_destroy_deferred++;
+        scope_telemetry_inc(&g_fiber_temp_pool_stats.lifecycle_destroy_deferred);
         pool.refcount--;
         return;
     }
@@ -22,7 +22,7 @@ fn void fiber_temp_ctx_pool_on_destroy(void* arg) {
     pool.count = 0;
     while (chunk != null) {
         ScopeChunk* next = chunk.next;
-        g_fiber_temp_pool_stats.lifecycle_destroy_flush_chunks++;
+        scope_telemetry_inc(&g_fiber_temp_pool_stats.lifecycle_destroy_flush_chunks);
         scope_chunk_reclaim_temp_global(chunk);
         chunk = next;
     }
@@ -56,7 +56,7 @@ fn FiberTempCtxPool* fiber_temp_ctx_pool_get_or_create() {
         mem::free(pool);
         return null;
     }
-    g_fiber_temp_pool_stats.ctx_pool_created++;
+    scope_telemetry_inc(&g_fiber_temp_pool_stats.ctx_pool_created);
     return pool;
 }
 

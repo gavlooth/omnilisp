@@ -261,9 +261,11 @@ Omni can create C-callable callbacks from lambdas using `ffi-callback`:
 3. A return type symbol
 
 Supported parameter type symbols: `'Integer`, `'Double`, `'String`,
-`'ForeignHandle`, `'Boolean`, `'Void`, `'Float32`, `'Int32`, `'Int64`,
+`'ForeignHandle`, `'Boolean`, `'Float32`, `'Int32`, `'Int64`,
 `'UInt32`, `'UInt64`, `'Buffer`, `'Struct`. Callback `'String` parameters are
 copied from NUL-terminated `char*` inputs into ordinary Omni `String` values.
+Use an empty parameter list for C callbacks declared with a `void` parameter
+list; `Void` is not a value-bearing callback parameter type.
 
 Supported return type symbols: `'Integer`, `'Double`, `'ForeignHandle`,
 `'Boolean`, `'Void`, `'Float32`, `'Int32`, `'Int64`, `'UInt32`, `'UInt64`,

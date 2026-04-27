@@ -3,6 +3,19 @@ module lisp;
 import std::io;
 import main;
 
+fn bool compiler_aot_type_literal_tag_supported(ValueTag tag) @inline {
+    switch (tag) {
+        case INT:
+        case FLOAT32:
+        case SYMBOL:
+        case STRING:
+        case NIL:
+            return true;
+        default:
+            return false;
+    }
+}
+
 fn void Compiler.emit_aot_type_annotation_spec_init(Compiler* self, char[] target, TypeAnnotation* ann) {
     self.emit_target_assignment_prefix(target, "has_annotation");
     self.emit_bool_literal(ann.has_annotation);
@@ -23,7 +36,7 @@ fn void Compiler.emit_aot_type_annotation_spec_init(Compiler* self, char[] targe
     if (ann.param_count > 0 && ann.params != null) {
         usz params_id = self.next_result();
         char[64] params_name_buf;
-        char[] params_name = compiler_format_generated_name_id(params_name_buf[..], "_aot_ann_params_", (long)params_id);
+        char[] params_name = self.generated_name_id(params_name_buf[..], "_aot_ann_params_", (long)params_id);
         self.emit_indent();
         self.emit("char[][");
         self.emit_usz(ann.param_count);
@@ -56,7 +69,7 @@ fn void Compiler.emit_aot_type_annotation_spec_init(Compiler* self, char[] targe
     if (ann.meta_count > 0 && ann.meta != null) {
         usz meta_id = self.next_result();
         char[64] meta_name_buf;
-        char[] meta_name = compiler_format_generated_name_id(meta_name_buf[..], "_aot_ann_meta_", (long)meta_id);
+        char[] meta_name = self.generated_name_id(meta_name_buf[..], "_aot_ann_meta_", (long)meta_id);
         self.emit_indent();
         self.emit("lisp::aot::AotMetaSpec[");
         self.emit_usz(ann.meta_count);
@@ -65,7 +78,7 @@ fn void Compiler.emit_aot_type_annotation_spec_init(Compiler* self, char[] targe
         self.emit(";\n");
         for (usz i = 0; i < ann.meta_count; i++) {
             char[96] entry_buf;
-            char[] entry = compiler_format_generated_name_index(entry_buf[..], meta_name, (long)i);
+            char[] entry = self.generated_name_index(entry_buf[..], meta_name, (long)i);
             self.emit_target_assignment_prefix(entry, "key");
             self.emit_string_literal(self.interp.symbols.get_name(ann.meta[i].key));
             self.emit(";\n");
@@ -98,6 +111,9 @@ fn void Compiler.emit_aot_type_annotation_spec_init(Compiler* self, char[] targe
     self.emit(";\n");
 
     self.emit_target_assignment_prefix(target, "val_tag");
+    if (ann.has_val_literal && !compiler_aot_type_literal_tag_supported(ann.val_literal.tag)) {
+        self.set_compile_error("compiler: unsupported type literal tag in AOT metadata");
+    }
     self.emit_value_tag_literal(ann.val_literal.tag);
     self.emit(";\n");
 

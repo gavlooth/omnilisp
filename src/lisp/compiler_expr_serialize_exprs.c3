@@ -57,6 +57,6 @@ fn void Compiler.serialize_expr_to_buf(Compiler* self, Expr* expr, List{char}* b
 
         default:
             if (self.serialize_expr_specialized(expr, buf)) return;
-            self.buf_append(buf, "nil");
+            self.set_compile_error("compiler: cannot serialize unknown expression tag");
     }
 }

@@ -29,6 +29,7 @@ fn void setup(Interp* interp, char[] code) {
     if (code.len > 0) {
         io::printfn("[FAIL] test setup source (%d bytes): %s", (int)code.len, (ZString)&code[0]);
     }
+    abort("test setup failed");
 }
 
 fn bool jit_checks_enabled() @inline {
@@ -166,23 +167,7 @@ fn void test_eq(Interp* interp, char[] name, char[] expr, long expected, int* pa
 }
 
 fn void test_eq_double(Interp* interp, char[] name, char[] expr, double expected, int* pass, int* fail) {
-    EvalResult ri = run(expr, interp);
-    bool interp_ok = !ri.error.has_error && is_double(ri.value) && ri.value.double_val == expected;
-
-    bool jit_ok = !jit_checks_enabled();
-    if (jit_checks_enabled()) {
-        JitTopLevelEval jit_eval = eval_jit_top_level(interp, expr);
-        Value* jv = jit_eval.value;
-        jit_ok = jit_eval.ok && jv != null && is_double(jv) && jv.double_val == expected;
-    }
-
-    if (interp_ok && jit_ok) {
-        emit_pass(name);
-        (*pass)++;
-    } else {
-        io::printfn("[FAIL] %s (interp=%s, jit=%s)", (ZString)name, interp_ok ? "ok" : "FAIL", jit_ok ? "ok" : "FAIL");
-        (*fail)++;
-    }
+    test_double(interp, name, expr, expected, pass, fail);
 }
 
 fn void test_truthy(Interp* interp, char[] name, char[] expr, int* pass, int* fail) {
@@ -198,6 +183,7 @@ fn void test_truthy(Interp* interp, char[] name, char[] expr, int* pass, int* fa
         jit_value = jit_eval.value;
         jit_ok = jit_eval.ok &&
             jit_value != null &&
+            jit_value.tag != ERROR &&
             !is_nil(jit_value) &&
             !(is_symbol(jit_value) && jit_value.sym_val == interp.sym_false);
     }
@@ -233,12 +219,15 @@ fn void test_nil(Interp* interp, char[] name, char[] expr, int* pass, int* fail)
 
 fn void test_error(Interp* interp, char[] name, char[] expr, int* pass, int* fail) {
     EvalResult ri = run(expr, interp);
-    bool interp_ok = ri.error.has_error;
+    char[] msg = ri.error.message[:256];
+    bool interp_ok = ri.error.has_error &&
+        msg[0] != 0 &&
+        !str_contains(msg, "out of memory");
     if (interp_ok) {
         emit_pass(name);
         (*pass)++;
     } else {
-        io::printfn("[FAIL] %s (expected error)", (ZString)name);
+        io::printfn("[FAIL] %s (expected non-allocation error payload, got '%s')", (ZString)name, (ZString)msg);
         (*fail)++;
     }
 }
@@ -467,7 +456,8 @@ fn void test_nil_jit(Interp* interp, char[] name, char[] source, int* pass, int*
 fn double dabs(double x) @inline { return x < 0.0 ? -x : x; }
 
 fn bool value_matches_double(Value* v, double expected) @inline {
-    return v != null && is_number(v) && dabs(to_double(v) - expected) < 0.0001;
+    double actual = 0.0;
+    return try_numeric_to_double(v, &actual) && dabs(actual - expected) < 0.0001;
 }
 
 fn bool eval_expr_as_double(Interp* interp, char[] expr, double expected) {

@@ -95,6 +95,9 @@ fn Value* jit_handle_dispatch_pending_raise_value(Interp* interp, HandleEffectSt
 fn Value* jit_handle_run_signals(Interp* interp, main::StackCtx* ctx, HandleEffectState* state, usz handler_idx) {
     Value* last_handler_v = null;
     while (state.signaled) {
+        Value* interrupt = runtime_eval_backedge_poll(interp);
+        if (interrupt != null) return interrupt;
+
         state.signaled = false;
         interp.handler_count = handler_idx;
 
@@ -121,7 +124,9 @@ fn Value* jit_handle_run_signals(Interp* interp, main::StackCtx* ctx, HandleEffe
             return pair;
         }
 
+        interp.flags.resolve_terminal_pending = false;
         last_handler_v = jit_apply_value(handler_closure, pair, interp);
+        interp.flags.resolve_terminal_pending = false;
         if (last_handler_v != null && last_handler_v.tag == ERROR) {
             interp_discard_lisp_continuation(interp, k);
             return last_handler_v;
@@ -208,13 +213,14 @@ fn Value* jit_handle_value(Interp* interp, Value** tags, Value** closures, usz c
     save_interp_state(interp, &saved);
     main::StackContext parent_ctx;
     main::stack_ctx_switch_to(ctx, &parent_ctx);
-    if (!jit_continuation_drive_blocked_fiber(ctx, interp, &parent_ctx)) {
+    JitBlockedFiberDriveStatus drive_status = jit_continuation_drive_blocked_fiber(ctx, interp, &parent_ctx);
+    if (jit_blocked_fiber_drive_failed(drive_status)) {
         restore_interp_state_preserve_raise(interp, &saved);
-        return raise_error_with_payload_names(
+        return jit_blocked_fiber_drive_raise(
             interp,
-            "runtime",
-            "runtime/fiber-yield-failed",
-            "handle: failed to yield blocked scheduler fiber"
+            drive_status,
+            "handle: failed to yield blocked scheduler fiber",
+            "handle: async yield propagation limit exceeded"
         );
     }
     restore_interp_state_preserve_raise(interp, &saved);
@@ -228,13 +234,20 @@ fn Value* jit_handle_value(Interp* interp, Value** tags, Value** closures, usz c
 
     Value* pending_raise_v = jit_handle_dispatch_pending_raise_value(interp, state);
     if (pending_raise_v != null) return pending_raise_v;
+    if (ctx.status == main::StackCtxStatus.CTX_COMPLETED) {
+        return (Value*)ctx.result;
+    }
+    if (last_handler_v != null && ctx.status == main::StackCtxStatus.CTX_SUSPENDED) {
+        return last_handler_v;
+    }
 
-    if (!jit_continuation_drive_blocked_fiber(ctx, interp, &parent_ctx)) {
-        return raise_error_with_payload_names(
+    drive_status = jit_continuation_drive_blocked_fiber(ctx, interp, &parent_ctx);
+    if (jit_blocked_fiber_drive_failed(drive_status)) {
+        return jit_blocked_fiber_drive_raise(
             interp,
-            "runtime",
-            "runtime/fiber-yield-failed",
-            "handle: failed to yield blocked scheduler fiber"
+            drive_status,
+            "handle: failed to yield blocked scheduler fiber",
+            "handle: async yield propagation limit exceeded"
         );
     }
 

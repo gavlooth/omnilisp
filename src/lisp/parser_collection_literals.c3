@@ -11,7 +11,8 @@ fn Expr* Parser.postfix_symbol_key_expr(Parser* self, SymbolId sym) {
     Expr* e = self.alloc_expr_here();
     if (e == null) return null;
     e.tag = E_LIT;
-    e.lit.value = self.interp.alloc_value_root();
+    e.lit.value = self.alloc_root_value_or_error("out of memory while parsing postfix path segment");
+    if (e.lit.value == null) return null;
     e.lit.value.tag = SYMBOL;
     e.lit.value.sym_val = sym;
     return e;

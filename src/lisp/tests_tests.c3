@@ -443,6 +443,8 @@ fn bool run_lisp_tests(int* out_pass, int* out_fail) {
     bool run_memory_lifetime_policy =
         lisp_slice_any(active_slice) ||
         lisp_slice_matches(active_slice, "memory-lifetime-policy");
+    bool run_boundary_graph_audit = lisp_slice_matches(active_slice, "boundary-graph-audit");
+    bool run_boundary_telemetry = lisp_slice_matches(active_slice, "boundary-telemetry");
     bool run_allocator_validation =
         lisp_slice_any(active_slice) ||
         lisp_slice_matches(active_slice, "allocator-validation");
@@ -476,7 +478,8 @@ fn bool run_lisp_tests(int* out_pass, int* out_fail) {
     bool run_any_unified =
         run_teardown_regression ||
         run_basic || run_memory_lifetime_smoke || run_memory_lifetime_soak || run_memory_lifetime_bench || run_allocator_bench || run_memory_stress ||
-        run_memory_lifetime_policy || run_allocator_validation ||
+        run_memory_lifetime_policy || run_boundary_telemetry || run_allocator_validation ||
+        run_boundary_graph_audit ||
         run_list_closure ||
         run_arithmetic_comparison || run_string_type || run_diagnostics || run_jit_policy ||
         run_advanced || run_escape_scope || run_limit_busting || run_tco_recycling ||
@@ -498,6 +501,12 @@ fn bool run_lisp_tests(int* out_pass, int* out_fail) {
         }
         if (run_memory_lifetime_policy) {
             run_group_isolated(&run_memory_lifetime_boundary_policy_parse_tests, &pass, &fail);
+        }
+        if (run_boundary_graph_audit) {
+            run_group_isolated(&run_memory_lifetime_boundary_graph_audit_tests, &pass, &fail);
+        }
+        if (run_boundary_telemetry) {
+            run_group_isolated(&run_memory_lifetime_boundary_telemetry_counter_tests, &pass, &fail);
         }
         if (run_allocator_validation) {
             run_group_isolated(&run_memory_lifetime_ast_arena_validation_tests, &pass, &fail);

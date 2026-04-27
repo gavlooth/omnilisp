@@ -201,7 +201,11 @@ fn Value* prim_load(Value*[] args, Env* env, Interp* interp) {
     char[] rel_path = args[0].str_chars[:args[0].str_len];
     char[512] resolved;
     usz rlen = 0;
-    if (!resolve_import_path_checked(rel_path, interp, &resolved, 512, &rlen)) {
+    ImportPathResolveStatus status = resolve_import_path_status(rel_path, interp, &resolved, 512, &rlen);
+    if (import_path_resolve_status_is_unsafe(status)) {
+        return io_raise(interp, "type/range-error", "load: path must be relative and stay within source directory");
+    }
+    if (import_path_resolve_status_is_too_long(status)) {
         return io_raise(interp, "type/range-error", "load: path too long");
     }
     char[] path = resolved[:rlen];

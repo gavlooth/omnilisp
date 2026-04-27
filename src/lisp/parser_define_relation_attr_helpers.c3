@@ -10,7 +10,8 @@ fn Expr* parser_relation_symbol_literal(Parser* self, SymbolId sym) {
     Expr* e = self.alloc_expr();
     if (e == null) return null;
     e.tag = E_LIT;
-    e.lit.value = self.interp.alloc_value_root();
+    e.lit.value = self.alloc_root_value_or_error("out of memory while parsing relation symbol literal");
+    if (e.lit.value == null) return null;
     e.lit.value.tag = SYMBOL;
     e.lit.value.sym_val = sym;
     return e;

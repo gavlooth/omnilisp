@@ -85,6 +85,24 @@ fn void run_compiler_group_constructor_dispatch_shadowing_tests(Interp* interp, 
             && compiler_code_contains_none(code, {"aot::dict_from_args", "unsupported"});
         compiler_test_finish_bool(ok, "Compiler: shadowed Dictionary uses call dispatch", "[FAIL] Compiler: shadowed Dictionary uses call dispatch", pass, fail);
     }
+    {
+        char[] code = compile_to_c3("(((lambda (false) (lambda () false)) 9))", interp);
+        bool ok = str_contains(code, "_capture_source_")
+            && str_contains(code, "_omni_sym_false_")
+            && str_contains(code, "captured__omni_sym_false_")
+            && !str_contains(code, "captured__omni_sym_false_ = aot::make_false()")
+            && !str_contains(code, "unsupported");
+        compiler_test_finish_bool(ok, "Compiler: nested closure captures shadowed false", "[FAIL] Compiler: nested closure captures shadowed false", pass, fail);
+    }
+    {
+        char[] code = compile_to_c3("(((lambda (+) (lambda (x) (+ x 2))) (lambda (a b) 88)) 1)", interp);
+        bool ok = str_contains(code, "_capture_source_")
+            && str_contains(code, "_omni_sym__plus__")
+            && str_contains(code, "captured__omni_sym__plus__")
+            && !str_contains(code, "captured__omni_sym__plus__ = _prim__omni_sym__plus__")
+            && !str_contains(code, "unsupported");
+        compiler_test_finish_bool(ok, "Compiler: nested closure captures shadowed callable primitive", "[FAIL] Compiler: nested closure captures shadowed callable primitive", pass, fail);
+    }
 }
 
 fn void run_compiler_group_set_path_tests(Interp* interp, usz* pass_out, usz* fail_out) {

@@ -68,9 +68,9 @@ fn void Compiler.compile_pattern_check_to_bool(Compiler* self, Pattern* pat, cha
             self.emit(val_name);
             self.emit(");\n");
             char[24] car_name;
-            char[] car_name_s = compiler_format_generated_name_id(car_name[..], "_r", (long)car_r);
+            char[] car_name_s = self.generated_name_id(car_name[..], "_r", (long)car_r);
             char[32] car_check_name;
-            char[] car_check_name_s = compiler_format_generated_name_id(car_check_name[..], "_match_pat_car_", (long)car_r);
+            char[] car_check_name_s = self.generated_name_id(car_check_name[..], "_match_pat_car_", (long)car_r);
             self.compile_pattern_check_to_bool(pat.car_pat, car_name_s, car_check_name_s);
             self.emit_indent();
             self.emit(out_name);
@@ -89,9 +89,9 @@ fn void Compiler.compile_pattern_check_to_bool(Compiler* self, Pattern* pat, cha
             self.emit(val_name);
             self.emit(");\n");
             char[24] cdr_name;
-            char[] cdr_name_s = compiler_format_generated_name_id(cdr_name[..], "_r", (long)cdr_r);
+            char[] cdr_name_s = self.generated_name_id(cdr_name[..], "_r", (long)cdr_r);
             char[32] cdr_check_name;
-            char[] cdr_check_name_s = compiler_format_generated_name_id(cdr_check_name[..], "_match_pat_cdr_", (long)cdr_r);
+            char[] cdr_check_name_s = self.generated_name_id(cdr_check_name[..], "_match_pat_cdr_", (long)cdr_r);
             self.compile_pattern_check_to_bool(pat.cdr_pat, cdr_name_s, cdr_check_name_s);
             self.emit_indent();
             self.emit(out_name);
@@ -109,7 +109,7 @@ fn void Compiler.compile_pattern_check_to_bool(Compiler* self, Pattern* pat, cha
         case PAT_SEQ:
             usz seq_len_id = self.next_result();
             char[32] seq_len_name;
-            char[] seq_len_name_s = compiler_format_generated_name_id(seq_len_name[..], "_match_seq_len_", (long)seq_len_id);
+            char[] seq_len_name_s = self.generated_name_id(seq_len_name[..], "_match_seq_len_", (long)seq_len_id);
             self.emit_indent();
             self.emit("usz ");
             self.emit(seq_len_name_s);
@@ -145,9 +145,9 @@ fn void Compiler.compile_pattern_check_to_bool(Compiler* self, Pattern* pat, cha
                 self.emit(";\n");
 
                 char[24] elem_name;
-                char[] elem_name_s = compiler_format_generated_name_id(elem_name[..], "_r", (long)elem_r);
+                char[] elem_name_s = self.generated_name_id(elem_name[..], "_r", (long)elem_r);
                 char[32] elem_check_name;
-                char[] elem_check_name_s = compiler_format_generated_name_id(elem_check_name[..], "_match_seq_pat_", (long)elem_r);
+                char[] elem_check_name_s = self.generated_name_id(elem_check_name[..], "_match_seq_pat_", (long)elem_r);
                 self.compile_pattern_check_to_bool(pat.elements[i], elem_name_s, elem_check_name_s);
                 self.emit_indent();
                 self.emit(out_name);
@@ -199,9 +199,9 @@ fn void Compiler.compile_pattern_check_to_bool(Compiler* self, Pattern* pat, cha
                 self.emit(");\n");
 
                 char[24] field_name;
-                char[] field_name_s = compiler_format_generated_name_id(field_name[..], "_r", (long)field_r);
+                char[] field_name_s = self.generated_name_id(field_name[..], "_r", (long)field_r);
                 char[32] field_check_name;
-                char[] field_check_name_s = compiler_format_generated_name_id(field_check_name[..], "_match_ctor_pat_", (long)field_r);
+                char[] field_check_name_s = self.generated_name_id(field_check_name[..], "_match_ctor_pat_", (long)field_r);
                 self.compile_pattern_check_to_bool(
                     pat.ctor_sub_patterns[i],
                     field_name_s,
@@ -226,9 +226,10 @@ fn void Compiler.compile_pattern_check_to_bool(Compiler* self, Pattern* pat, cha
             self.emit(");\n");
 
         default:
+            self.set_compile_error("compiler: unknown pattern tag in AOT match lowering");
             self.emit_indent();
             self.emit("bool ");
             self.emit(out_name);
-            self.emit(" = true;\n");
+            self.emit(" = false;\n");
     }
 }

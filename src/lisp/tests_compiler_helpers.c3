@@ -16,6 +16,30 @@ fn bool compiler_code_contains_none(char[] code, char[][] needles) {
     return true;
 }
 
+fn usz compiler_code_count_occurrences(char[] haystack, char[] needle) {
+    if (needle.len == 0) return 0;
+
+    usz count = 0;
+    usz search = 0;
+    while (search < haystack.len) {
+        isz pos = compiler_code_find_from(haystack, needle, search);
+        if (pos < 0) break;
+        count++;
+        search = (usz)pos + needle.len;
+    }
+    return count;
+}
+
+fn bool compiler_code_contains_ordered(char[] code, char[][] needles) {
+    usz search = 0;
+    foreach (needle : needles) {
+        isz pos = compiler_code_find_from(code, needle, search);
+        if (pos < 0) return false;
+        search = (usz)pos + needle.len;
+    }
+    return true;
+}
+
 fn isz compiler_code_find_from(char[] haystack, char[] needle, usz start) {
     if (needle.len == 0) return (isz)start;
     if (needle.len > haystack.len || start > haystack.len - needle.len) return -1;
@@ -63,7 +87,7 @@ fn bool compiler_char_is_digit(char c) @inline {
 
 fn bool compiler_match_guard_uses_scanned_lambda(char[] code) {
     char[] guard_needle = "match_guard_eval(";
-    char[] closure_prefix = "aot::make_closure(null, &invoke_lambda_";
+    char[] closure_prefix = "aot::make_generated_closure_with_retention(null, &invoke_lambda_";
     char[] sig_prefix = "fn lisp::Value* invoke_lambda_";
     char[] sig_suffix = "(void* _self, lisp::Value* v)";
 

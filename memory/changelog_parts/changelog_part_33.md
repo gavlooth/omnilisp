@@ -197,9 +197,9 @@ Source: `memory/CHANGELOG.md`
   - rerun validation completed with `Unified Tests: 89 passed, 0 failed`.
 # 2026-03-19 - Advanced iterator boundary closure
 
-- Replaced the stdlib lazy iterator combinator path with primitive-backed iterator state in [src/lisp/primitives_iter_coroutine.c3](/home/heefoo/Documents/code/Omni/src/lisp/primitives_iter_coroutine.c3) and [stdlib/stdlib.lisp](/home/heefoo/Documents/code/Omni/stdlib/stdlib.lisp), avoiding closure env-copy churn for `map`/`filter`/`take`/`zip`/`foldl` and infinite iterator sources.
-- Added a primitive list reverse fast path in [src/lisp/primitives_core.c3](/home/heefoo/Documents/code/Omni/src/lisp/primitives_core.c3) and rewired stdlib list `reverse`/`foldr` to use it.
-- Fixed the remaining nested closure-backed iterator chain by allowing releasing-escape results to fall back to destination builders before hard failing on scope splice rejection in [src/lisp/eval_boundary_commit_flow.c3](/home/heefoo/Documents/code/Omni/src/lisp/eval_boundary_commit_flow.c3).
+- Replaced the stdlib lazy iterator combinator path with primitive-backed iterator state in [src/lisp/primitives_iter_coroutine.c3](../../src/lisp/primitives_iter_coroutine.c3) and [stdlib/stdlib.lisp](../../stdlib/stdlib.lisp), avoiding closure env-copy churn for `map`/`filter`/`take`/`zip`/`foldl` and infinite iterator sources.
+- Added a primitive list reverse fast path in [src/lisp/primitives_core.c3](../../src/lisp/primitives_core.c3) and rewired stdlib list `reverse`/`foldr` to use it.
+- Fixed the remaining nested closure-backed iterator chain by allowing releasing-escape results to fall back to destination builders before hard failing on scope splice rejection in [src/lisp/eval_boundary_commit_flow.c3](../../src/lisp/eval_boundary_commit_flow.c3).
 - Validation:
   - `c3c build`
   - host repros for `take`, iterator `foldl`, list `foldr`, and nested `it3`

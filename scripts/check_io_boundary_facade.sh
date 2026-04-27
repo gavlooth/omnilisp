@@ -5,8 +5,9 @@ cd "$(dirname "$0")/.."
 
 stdlib_file="stdlib/stdlib.lisp"
 prims_file="src/lisp/eval_init_primitives.c3"
+prim_tables_file="src/lisp/eval_init_primitive_tables.c3"
 
-for required in "$stdlib_file" "$prims_file"; do
+for required in "$stdlib_file" "$prims_file" "$prim_tables_file"; do
   if [[ ! -f "$required" ]]; then
     echo "FAIL: missing required file: $required"
     exit 1
@@ -21,6 +22,7 @@ signals_stdlib="$tmp_dir/signals_stdlib.txt"
 fastpath_effects="$tmp_dir/fastpath_effects.txt"
 fastpath_raws="$tmp_dir/fastpath_raws.txt"
 registered_raws="$tmp_dir/registered_raws.txt"
+registered_raws_parts="$tmp_dir/registered_raws_parts.txt"
 
 extract_sorted_unique() {
   local src="$1"
@@ -33,7 +35,8 @@ extract_sorted_unique "$stdlib_file" 's/.*(define \[effect\] (\(io\/[^ )]*\).*/\
 extract_sorted_unique "$stdlib_file" 's/.*(signal \(io\/[^ )]*\).*/\1/p' "$signals_stdlib"
 extract_sorted_unique "$prims_file" 's/.*{ "\(io\/[^"]*\)",.*/\1/p' "$fastpath_effects"
 extract_sorted_unique "$prims_file" 's/.*{ "io\/[^"]*", "\(__raw-[^"]*\)".*/\1/p' "$fastpath_raws"
-extract_sorted_unique "$prims_file" 's/.*{ "\(__raw-[^"]*\)",.*/\1/p' "$registered_raws"
+sed -n 's/.*{ "\(__raw-[^"]*\)",.*/\1/p' "$prims_file" "$prim_tables_file" > "$registered_raws_parts"
+sort -u "$registered_raws_parts" > "$registered_raws"
 
 compare_sets() {
   local lhs_name="$1"

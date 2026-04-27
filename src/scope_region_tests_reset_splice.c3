@@ -36,6 +36,14 @@ fn ScopeRegionTestCounts run_scope_region_reset_splice_tests() {
         mem::free(dtor_counter);
     }
 
+    // Test 7null: reset APIs are no-ops on null scopes
+    {
+        ScopeRegion* null_scope = null;
+        scope_reset(null_scope);
+        scope_reset_temp_lane(null_scope);
+        passed++;
+    }
+
     // Test 7b: scope_reset clears ESCAPE lane
     {
         ScopeRegion* s = scope_create(null);

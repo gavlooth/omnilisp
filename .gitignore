@@ -19,6 +19,7 @@ llvm/
 
 # Temporary files
 tmp_tests/
+.tmp_tls_*
 
 # Backup files
 *.bak
@@ -36,15 +37,25 @@ tmp_tests/
 __pycache__/
 */__pycache__/
 !scripts/__init__.py
+!scripts/check_boundary_value_policy_coverage.py
+!scripts/check_memory_ownership_inventory.py
+!scripts/dialectic_mcp_single.py
+!scripts/fix_json_pointer_options.py
 !scripts/generate_language_reference_payload.py
+!scripts/migrate_*.py
+!scripts/remove_dup_*.py
 !scripts/dialectic_mcp/
 !scripts/dialectic_mcp/*.py
 !scripts/tests/
 !scripts/tests/*.py
+!tools/fast-dev/
+!tools/fast-dev/*.py
 !tooling/omni-lsp/
 !tooling/omni-lsp/*.py
 !tooling/omni-lsp/tests/
 !tooling/omni-lsp/tests/*.py
+!tooling/tests/
+!tooling/tests/*.py
 
 # Editor/tool files
 syntax.md
@@ -58,6 +69,9 @@ test.omni
 
 # Report output
 report/
+
+# Valgrind crash/core artifacts
+vgcore.*
 
 # Generated language reference payload artifacts
 src/entry_language_reference_payload.gz

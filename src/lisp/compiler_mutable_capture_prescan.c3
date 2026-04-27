@@ -26,7 +26,7 @@ fn void Compiler.add_mutable_capture_if_absent(Compiler* self, SymbolId sym) {
 
 fn void Compiler.prescan_let_expr(Compiler* self, Expr* expr) {
     // Check if this let-bound variable is mutable-captured.
-    if (self.is_mutable_capture(expr.let_expr.name, expr.let_expr.body)) {
+    if (self.is_let_binding_mutable_capture(expr)) {
         self.add_mutable_capture_if_absent(expr.let_expr.name);
     }
     self.prescan_mutable_captures(expr.let_expr.init);
@@ -63,6 +63,9 @@ fn void Compiler.prescan_match_pattern(Compiler* self, Pattern* pat) {
         case PAT_QUOTE:
         case PAT_DICT:
         case PAT_WILDCARD:
+            return;
+        default:
+            self.set_compile_error("compiler: unknown pattern tag in mutable-capture prescan");
             return;
     }
 }
@@ -152,7 +155,33 @@ fn void Compiler.prescan_mutable_captures(Compiler* self, Expr* expr) {
         case E_UNQUOTE_SPLICING:
             self.prescan_mutable_captures(expr.unquote_splicing.body);
             break;
+        case E_MODULE:
+            if (expr.module_expr != null) {
+                self.prescan_expr_list(expr.module_expr.body, expr.module_expr.body_count);
+            }
+            break;
+        case E_WITH_MODULE:
+            if (expr.with_module != null) {
+                self.prescan_expr_list(expr.with_module.body, expr.with_module.body_count);
+            }
+            break;
+        case E_LIT:
+        case E_VAR:
+        case E_QUOTE:
+        case E_PATH:
+        case E_DEFMACRO:
+        case E_IMPORT:
+        case E_EXPORT_FROM:
+        case E_FFI_LIB:
+        case E_FFI_FN:
+        case E_DEFTYPE:
+        case E_DEFABSTRACT:
+        case E_DEFUNION:
+        case E_DEFALIAS:
+        case E_DEFEFFECT:
+            return;
         default:
+            self.set_compile_error("compiler: unknown expression tag in mutable-capture prescan");
             return;
     }
 }

@@ -18,7 +18,8 @@ struct MetaEntry {
 
 /**
  * TypeAnnotation — Parsed ^Type annotation on a parameter.
- * Three forms: ^Integer (simple), ^(List Integer) (compound), ^{'T Number} (dict)
+ * Forms include ^Integer, ^(List Integer), ^{'T Number}, and literal
+ * singleton annotations ^#datum / ^(Literal datum).
  */
 struct ValueLiteralKey {
     ValueTag tag;         // INT/SYMBOL/STRING
@@ -30,13 +31,13 @@ struct TypeAnnotation {
     bool has_annotation;
     bool is_compound;          // ^(List Integer) form
     bool is_dict;              // ^{...} form
-    SymbolId base_type;        // Integer, List, Lambda, Value, etc.
+    SymbolId base_type;        // Integer, List, Lambda, Literal, etc.
     SymbolId* params;          // compound type params (heap-allocated)
     usz param_count;
     MetaEntry* meta;           // dict entries (heap-allocated)
     usz meta_count;
-    ValueLiteralKey val_literal; // For ^(Value x) literal matching
-    bool has_val_literal;      // true if this is a Value type with literal
+    ValueLiteralKey val_literal; // For literal singleton matching
+    bool has_val_literal;      // true if this is a literal singleton annotation
 }
 
 /**
@@ -145,7 +146,7 @@ struct MethodConstraint {
 struct MethodSignature {
     TypeId* param_types;     // length = param_count, INVALID_TYPE_ID = Any
     SymbolId* param_type_vars; // length = param_count, non-zero when param is a type variable (e.g., ^T)
-    ValueLiteralKey* val_literals; // length = param_count, for Value literal types
+    ValueLiteralKey* val_literals; // length = param_count, for literal singleton types
     bool* has_val_literal;   // length = param_count
     usz param_count;
     MethodConstraint* constraints;  // heap/scope-allocated, length = constraint_count
@@ -192,7 +193,7 @@ struct Complex64Val {
  */
 struct Value {
     ValueTag tag;
-    uint scope_gen;  // Scope generation stamp — set at allocation, used for O(1) scope checks
+    ulong scope_gen;  // Scope generation stamp — set at allocation, used for O(1) scope checks
     bool continuation_boundary_owned; // True when this wrapper introduced boundary handle retention
     bool string_heap_owned; // True when STRING/ERROR chars are heap-owned and must be freed
 
@@ -231,5 +232,5 @@ struct Value {
 
 // ABI/interop guard: Value is the central runtime handle exposed to generated,
 // JIT, and helper-boundary code. Update bindings and this assertion together.
-$assert(Value.sizeof == 56);
+$assert(Value.sizeof == 64);
 

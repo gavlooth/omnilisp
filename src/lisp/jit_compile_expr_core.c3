@@ -81,9 +81,11 @@ fn void? jit_compile_tail_cons_escape(void* s, Expr* expr, Interp* interp, JitLo
 
     int car_slot = _jit_allocai(s, 8);
     jit_compile_expr(s, expr.call.args[0], interp, locals)!;
+    jit_compile_return_if_sequence_should_stop(s, locals);
     _jit_new_node_www(s, CODE_STXI_L, (long)car_slot, (long)JIT_FP, (long)JIT_R0);
 
     jit_compile_expr(s, expr.call.args[1], interp, locals)!;
+    jit_compile_return_if_sequence_should_stop(s, locals);
     _jit_new_node_ww(s, CODE_MOVR, JIT_V2, JIT_R0);
     _jit_new_node_www(s, CODE_LDXI_L, (long)JIT_V1, (long)JIT_FP, (long)car_slot);
     emit_call_3(s, locals, (void*)&jit_cons_escape, JIT_V0, JIT_V1, JIT_V2);
@@ -99,6 +101,7 @@ fn void? jit_compile_tail_list_escape(void* s, Expr* expr, Interp* interp, JitLo
     for (usz i = 0; i < argc; i++) {
         arg_slots[i] = _jit_allocai(s, 8);
         jit_compile_expr(s, expr.call.args[i], interp, locals)!;
+        jit_compile_return_if_sequence_should_stop(s, locals);
         _jit_new_node_www(s, CODE_STXI_L, (long)arg_slots[i], (long)JIT_FP, (long)JIT_R0);
     }
 
@@ -123,6 +126,7 @@ fn void? jit_compile_tail_array_escape(void* s, Expr* expr, Interp* interp, JitL
     for (usz i = 0; i < argc; i++) {
         arg_slots[i] = _jit_allocai(s, 8);
         jit_compile_expr(s, expr.call.args[i], interp, locals)!;
+        jit_compile_return_if_sequence_should_stop(s, locals);
         _jit_new_node_www(s, CODE_STXI_L, (long)arg_slots[i], (long)JIT_FP, (long)JIT_R0);
     }
 
@@ -206,10 +210,12 @@ fn void? jit_compile_inline_binop(void* s, Expr* expr, Interp* interp, JitLocals
         // Fast path: both args are simple, no spilling needed
         // Compile arg0 -> R0, save to V1
         jit_compile_expr(s, expr.call.args[0], interp, locals)!;
+        jit_compile_return_if_sequence_should_stop(s, locals);
         _jit_new_node_ww(s, CODE_MOVR, JIT_V1, JIT_R0);  // V1 = arg0
 
         // Compile arg1 -> R0, save to V2
         jit_compile_expr(s, expr.call.args[1], interp, locals)!;
+        jit_compile_return_if_sequence_should_stop(s, locals);
         _jit_new_node_ww(s, CODE_MOVR, JIT_V2, JIT_R0);  // V2 = arg1
     } else {
         // Nested path: at least one arg is complex (e.g. a function call).
@@ -222,11 +228,13 @@ fn void? jit_compile_inline_binop(void* s, Expr* expr, Interp* interp, JitLocals
 
         // Compile first arg -> result in R0
         jit_compile_expr(s, expr.call.args[0], interp, locals)!;
+        jit_compile_return_if_sequence_should_stop(s, locals);
         // Spill arg0 result to stack: *(FP + spill_offset) = R0
         _jit_new_node_www(s, CODE_STXI_L, (long)spill_offset, (long)JIT_FP, (long)JIT_R0);
 
         // Compile second arg -> result in R0, move to V2
         jit_compile_expr(s, expr.call.args[1], interp, locals)!;
+        jit_compile_return_if_sequence_should_stop(s, locals);
         _jit_new_node_ww(s, CODE_MOVR, JIT_V2, JIT_R0);  // V2 = arg1
 
         // Restore arg0 from stack into V1: V1 = *(FP + spill_offset)
@@ -252,6 +260,7 @@ fn void? jit_compile_multi_arg_zero(void* s, Expr* expr, Interp* interp, JitLoca
     int spill_fn = _jit_allocai(s, 8);
 
     jit_compile_expr(s, expr.call.func, interp, locals)!;
+    jit_compile_return_if_sequence_should_stop(s, locals);
     _jit_new_node_www(s, CODE_STXI_L, (long)spill_fn, (long)JIT_FP, (long)JIT_R0);
 
     emit_call_1(s, locals, (void*)&jit_make_nil);
@@ -266,9 +275,11 @@ fn void? jit_compile_multi_arg_one(void* s, Expr* expr, Interp* interp, JitLocal
     int spill_fn = _jit_allocai(s, 8);
 
     jit_compile_expr(s, expr.call.func, interp, locals)!;
+    jit_compile_return_if_sequence_should_stop(s, locals);
     _jit_new_node_www(s, CODE_STXI_L, (long)spill_fn, (long)JIT_FP, (long)JIT_R0);
 
     jit_compile_expr(s, expr.call.args[0], interp, locals)!;
+    jit_compile_return_if_sequence_should_stop(s, locals);
     _jit_new_node_ww(s, CODE_MOVR, JIT_V2, JIT_R0);
     _jit_new_node_www(s, CODE_LDXI_L, (long)JIT_V1, (long)JIT_FP, (long)spill_fn);
 
@@ -289,11 +300,13 @@ fn void? jit_compile_multi_arg_many(void* s, Expr* expr, Interp* interp, JitLoca
 
     for (usz i = 0; i < argc; i++) {
         jit_compile_expr(s, expr.call.args[i], interp, locals)!;
+        jit_compile_return_if_sequence_should_stop(s, locals);
         _jit_new_node_www(s, CODE_STXI_L, (long)arg_slots[i], (long)JIT_FP, (long)JIT_R0);
     }
 
     int func_slot = _jit_allocai(s, 8);
     jit_compile_expr(s, expr.call.func, interp, locals)!;
+    jit_compile_return_if_sequence_should_stop(s, locals);
     _jit_new_node_www(s, CODE_STXI_L, (long)func_slot, (long)JIT_FP, (long)JIT_R0);
 
     void* nil_fn = is_tail ? (void*)&jit_make_nil_escape : (void*)&jit_make_nil;

@@ -29,7 +29,9 @@ fn Value* jit_resolve_value(Interp* interp, Value* k_val, Value* val) {
     // Resume the context
     main::StackContext parent_ctx;
     main::stack_ctx_resume(target_ctx, &parent_ctx);
-    if (!jit_continuation_drive_blocked_fiber(target_ctx, interp, &parent_ctx)) {
+    JitBlockedFiberDriveStatus drive_status = jit_continuation_drive_blocked_fiber(target_ctx, interp, &parent_ctx);
+    if (jit_blocked_fiber_drive_failed(drive_status)) {
+        restore_interp_state_preserve_raise(interp, &saved);
         jit_resolve_pop_handler_copy(interp, hstate);
         interp_clear_resume_value(interp);
         if (had_retained && hstate != null && hstate.continuation_refcount > 0) hstate.continuation_refcount--;
@@ -37,11 +39,11 @@ fn Value* jit_resolve_value(Interp* interp, Value* k_val, Value* val) {
         if (hstate != null && !hstate.frame_active && hstate.continuation_refcount == 0) {
             handle_effect_state_release(hstate);
         }
-        return raise_error_with_payload_names(
+        return jit_blocked_fiber_drive_raise(
             interp,
-            "runtime",
-            "runtime/fiber-yield-failed",
-            "resolve: failed to yield blocked scheduler fiber"
+            drive_status,
+            "resolve: failed to yield blocked scheduler fiber",
+            "resolve: async yield propagation limit exceeded"
         );
     }
     restore_interp_state_preserve_raise(interp, &saved);
@@ -87,6 +89,14 @@ fn Value* jit_resolve_value(Interp* interp, Value* k_val, Value* val) {
     return result;
 }
 
+fn Value* jit_resolve_terminal_value(Interp* interp, Value* k_val, Value* val) {
+    Value* result = jit_resolve_value(interp, k_val, val);
+    if (result == null || result.tag != ERROR) {
+        interp.flags.resolve_terminal_pending = true;
+    }
+    return result;
+}
+
 fn Value* jit_apply_handle_continuation_value(Interp* interp, Value* k_val, Value* val) {
     if (main::stack_runtime_asan_enabled()) {
         // ASAN stack instrumentation cannot safely clone suspended stacks. Fall
@@ -121,15 +131,17 @@ fn Value* jit_apply_handle_continuation_value(Interp* interp, Value* k_val, Valu
 
     main::StackContext parent_ctx;
     main::stack_ctx_resume(target_ctx, &parent_ctx);
-    if (!jit_continuation_drive_blocked_fiber(target_ctx, interp, &parent_ctx)) {
+    JitBlockedFiberDriveStatus drive_status = jit_continuation_drive_blocked_fiber(target_ctx, interp, &parent_ctx);
+    if (jit_blocked_fiber_drive_failed(drive_status)) {
+        restore_interp_state_preserve_raise(interp, &saved);
         jit_resolve_pop_handler_copy(interp, hstate);
         interp_clear_resume_value(interp);
         jit_resolve_destroy_ctx(interp, target_ctx);
-        return raise_error_with_payload_names(
+        return jit_blocked_fiber_drive_raise(
             interp,
-            "runtime",
-            "runtime/fiber-yield-failed",
-            "continuation: async yield propagation failed"
+            drive_status,
+            "continuation: async yield propagation failed",
+            "continuation: async yield propagation limit exceeded"
         );
     }
     restore_interp_state_preserve_raise(interp, &saved);

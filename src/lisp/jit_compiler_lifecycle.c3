@@ -246,5 +246,6 @@ fn bool jit_compiled_code_is_live_for_interp(void* code_ptr, Interp* interp) {
     jit_require_owner_thread("jit_compiled_code_is_live_for_interp");
     ulong interp_serial = 0;
     if (code_ptr == null || interp == null || !jit_attached_interp_serial(interp, &interp_serial)) return false;
+    if (jit_retired_code_contains(code_ptr, interp_serial)) return false;
     return runtime_backend_any_tracked_state_matches_code_ptr(code_ptr, interp, interp_serial);
 }

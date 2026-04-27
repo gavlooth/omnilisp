@@ -157,8 +157,7 @@ fn void run_scheduler_fiber_temp_thread_boundary_tests(Interp* interp, int* pass
         return;
     }
 
-    usz ctx_hits_before = main::g_fiber_temp_pool_stats.ctx_take_hits;
-    usz ctx_returns_before = main::g_fiber_temp_pool_stats.ctx_return_count;
+    main::FiberTempPoolStats fiber_before = main::fiber_temp_pool_stats_snapshot();
     bool ok = true;
 
     for (usz i = 0; i < 8; i++) {
@@ -174,12 +173,11 @@ fn void run_scheduler_fiber_temp_thread_boundary_tests(Interp* interp, int* pass
         }
     }
 
-    usz ctx_hits_after = main::g_fiber_temp_pool_stats.ctx_take_hits;
-    usz ctx_returns_after = main::g_fiber_temp_pool_stats.ctx_return_count;
+    main::FiberTempPoolStats fiber_after = main::fiber_temp_pool_stats_snapshot();
 
     ok = ok &&
-         (ctx_hits_after == ctx_hits_before) &&
-         (ctx_returns_after == ctx_returns_before);
+         (fiber_after.ctx_take_hits == fiber_before.ctx_take_hits) &&
+         (fiber_after.ctx_return_count == fiber_before.ctx_return_count);
 
     if (ok) {
         emit_pass_literal("[PASS] fiber-temp thread boundary metrics stay context-local");
@@ -252,8 +250,7 @@ fn void run_scheduler_fiber_temp_cancel_timeout_boundary_tests(Interp* interp, i
         return;
     }
 
-    usz ctx_hits_before = main::g_fiber_temp_pool_stats.ctx_take_hits;
-    usz ctx_returns_before = main::g_fiber_temp_pool_stats.ctx_return_count;
+    main::FiberTempPoolStats fiber_before = main::fiber_temp_pool_stats_snapshot();
     bool ok = true;
 
     for (usz i = 0; i < 8; i++) {
@@ -293,11 +290,10 @@ fn void run_scheduler_fiber_temp_cancel_timeout_boundary_tests(Interp* interp, i
         }
     }
 
-    usz ctx_hits_after = main::g_fiber_temp_pool_stats.ctx_take_hits;
-    usz ctx_returns_after = main::g_fiber_temp_pool_stats.ctx_return_count;
+    main::FiberTempPoolStats fiber_after = main::fiber_temp_pool_stats_snapshot();
     ok = ok &&
-         (ctx_hits_after == ctx_hits_before) &&
-         (ctx_returns_after == ctx_returns_before);
+         (fiber_after.ctx_take_hits == fiber_before.ctx_take_hits) &&
+         (fiber_after.ctx_return_count == fiber_before.ctx_return_count);
 
     if (ok) {
         emit_pass_literal("[PASS] fiber-temp cancel/timeout boundaries stay context-local");

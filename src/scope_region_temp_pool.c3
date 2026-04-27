@@ -7,13 +7,13 @@ fn void scope_chunk_reclaim_temp_global(ScopeChunk* chunk) {
         chunk.next = g_fiber_temp_chunk_pool;
         g_fiber_temp_chunk_pool = chunk;
         g_fiber_temp_chunk_pool_count++;
-        g_fiber_temp_pool_stats.return_count++;
+        scope_telemetry_inc(&g_fiber_temp_pool_stats.return_count);
         fiber_temp_telemetry_note_return(chunk, false);
         fiber_temp_pool_record_peak();
         scope_global_unlock();
         return;
     }
-    g_fiber_temp_pool_stats.drop_frees++;
+    scope_telemetry_inc(&g_fiber_temp_pool_stats.drop_frees);
     fiber_temp_telemetry_note_drop_free(chunk);
     scope_global_unlock();
     mem::free(chunk);
@@ -26,8 +26,8 @@ fn ScopeChunk* fiber_temp_chunk_try_take(usz min_bytes) {
     if (ctx_pool != null) {
         ScopeChunk* local = fiber_temp_chunk_take_from_ctx_pool(ctx_pool, min_bytes);
         if (local != null) {
-            g_fiber_temp_pool_stats.take_hits++;
-            g_fiber_temp_pool_stats.ctx_take_hits++;
+            scope_telemetry_inc(&g_fiber_temp_pool_stats.take_hits);
+            scope_telemetry_inc(&g_fiber_temp_pool_stats.ctx_take_hits);
             fiber_temp_telemetry_note_take_hit(local, true);
             return local;
         }
@@ -45,7 +45,7 @@ fn ScopeChunk* fiber_temp_chunk_try_take(usz min_bytes) {
                 g_fiber_temp_chunk_pool = next;
             }
             g_fiber_temp_chunk_pool_count--;
-            g_fiber_temp_pool_stats.take_hits++;
+            scope_telemetry_inc(&g_fiber_temp_pool_stats.take_hits);
             fiber_temp_telemetry_note_take_hit(cur, false);
             scope_global_unlock();
             cur.next = null;
@@ -54,7 +54,7 @@ fn ScopeChunk* fiber_temp_chunk_try_take(usz min_bytes) {
         prev = cur;
         cur = cur.next;
     }
-    g_fiber_temp_pool_stats.take_misses++;
+    scope_telemetry_inc(&g_fiber_temp_pool_stats.take_misses);
     scope_global_unlock();
     return null;
 }
@@ -71,8 +71,8 @@ fn void scope_chunk_reclaim_temp(ScopeChunk* chunk) {
         chunk.next = ctx_pool.chunks;
         ctx_pool.chunks = chunk;
         ctx_pool.count++;
-        g_fiber_temp_pool_stats.return_count++;
-        g_fiber_temp_pool_stats.ctx_return_count++;
+        scope_telemetry_inc(&g_fiber_temp_pool_stats.return_count);
+        scope_telemetry_inc(&g_fiber_temp_pool_stats.ctx_return_count);
         fiber_temp_telemetry_note_return(chunk, true);
         return;
     }

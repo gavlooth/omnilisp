@@ -3,6 +3,12 @@ module lisp;
 import std::collections::list;
 import main;
 
+fn void run_abort_scheduler_work_on_error(Interp* interp) {
+    if (scheduler_has_interp_owned_fibers(interp)) {
+        scheduler_abort_all_work();
+    }
+}
+
 /**
  * Run a complete program.
  */
@@ -56,6 +62,9 @@ fn EvalResult run_program(char[] source, Interp* interp) {
     }
 
     exprs.free();
+    if (result.error.has_error) {
+        run_abort_scheduler_work_on_error(interp);
+    }
     dispatch_pending_signal_callbacks(interp);
     return result;
 }
@@ -117,6 +126,7 @@ fn EvalResult run(char[] source, Interp* interp) {
         if (!run_execute_expr(expr, interp, &result_value, &result)) {
             emit_run_stage_trace("execute-expr-error", source);
             exprs.free();
+            run_abort_scheduler_work_on_error(interp);
             boundary_pop_child_scope(interp, saved_scope, child_scope);
             return result;
         }
@@ -133,6 +143,7 @@ fn EvalResult run(char[] source, Interp* interp) {
     exprs.free();
 
     if (result.error.has_error) {
+        run_abort_scheduler_work_on_error(interp);
         emit_run_stage_trace("before-pop-child-scope", source);
         boundary_pop_child_scope(interp, saved_scope, child_scope);
         emit_run_stage_trace("after-pop-child-scope", source);

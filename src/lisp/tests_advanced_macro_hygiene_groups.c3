@@ -58,10 +58,10 @@ fn void run_advanced_macro_hygiene_string_number_tests(Interp* interp, int* pass
 
     // Stack overflow / non-tail recursion headroom. This is a portable
     // non-tail recursion probe, not a maximum-depth assertion; ARM64 host and
-    // validation-container stack layouts diverge enough that deeper thresholds
-    // become environment-specific.
-    long deep_recursion_target = 512;
-    char[] deep_recursion_expr = "(let ^rec (f (lambda (n) (if (= n 0) 0 (+ 1 (f (- n 1)))))) (f 512))";
+    // validation-container stack layouts and runtime stack frames diverge
+    // enough that deeper thresholds become environment-specific.
+    long deep_recursion_target = 384;
+    char[] deep_recursion_expr = "(let ^rec (f (lambda (n) (if (= n 0) 0 (+ 1 (f (- n 1)))))) (f 384))";
     test_eq(interp, "non-tail recursion headroom",
         deep_recursion_expr,
         deep_recursion_target, pass, fail);
@@ -306,10 +306,10 @@ fn void run_advanced_macro_hygiene_special_form_conversion_tests(Interp* interp,
         "  (emit-match-any 99))",
         42, pass, fail);
 
+    setup(interp, "(module audit19mod (export audit19-value) (define audit19-value 33))");
     test_eq(interp,
         "macro emits scoped module open special form",
         "(block "
-        "  (module audit19mod (export audit19-value) (define audit19-value 33)) "
         "  (define [macro] emit-with-open (syntax-match ([] (template (with audit19mod audit19-value))))) "
         "  (emit-with-open))",
         33, pass, fail);

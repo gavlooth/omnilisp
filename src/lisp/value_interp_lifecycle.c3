@@ -285,7 +285,9 @@ fn bool Interp.ensure_module_capacity(Interp* self, usz needed) {
     for (usz i = 0; i < new_hash_cap; i++) new_hash[i] = usz.max;
 
     for (usz i = 0; i < self.module_count; i++) {
-        usz h = (usz)new_modules[i].name;
+        SymbolId name = new_modules[i].name;
+        if (name == (SymbolId)0 || name == INVALID_SYMBOL_ID) continue;
+        usz h = (usz)name;
         for (usz probe = 0; probe < new_hash_cap; probe++) {
             usz slot = (h + probe) % new_hash_cap;
             if (new_hash[slot] == usz.max) {
@@ -361,6 +363,7 @@ fn void interp_invalidate_live_continuations(Interp* self) {
             runtime_handle_state_invalidate_continuation(hstate, k.handle_retained);
         }
         // StackCtx objects are reclaimed by stack_pool_shutdown().
+        continuation_release_aot_snapshot(k);
         k.ctx = null;
         k.owner_interp = null;
         k.handle_retained = false;

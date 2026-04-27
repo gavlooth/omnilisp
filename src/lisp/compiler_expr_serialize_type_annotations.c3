@@ -49,7 +49,7 @@ fn void Compiler.serialize_type_val_literal_to_buf(Compiler* self, TypeAnnotatio
                 self.buf_append(buf, "nil");
             }
         default:
-            self.buf_append(buf, "nil");
+            self.set_compile_error("compiler: cannot serialize unsupported type literal annotation");
     }
 }
 

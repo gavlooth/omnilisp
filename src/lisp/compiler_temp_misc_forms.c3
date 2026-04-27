@@ -7,6 +7,7 @@ import main;
 // =============================================================================
 fn usz Compiler.compile_resolve_flat(Compiler* self, Expr* expr) {
     usz val_r = self.compile_to_temp(expr.resolve.value);
+    self.emit_return_if_sequence_should_stop(val_r);
     Expr dummy_k;
     dummy_k.tag = E_VAR;
     dummy_k.var_expr.name = self.interp.sym__k;
@@ -24,7 +25,9 @@ fn usz Compiler.compile_resolve_flat(Compiler* self, Expr* expr) {
 
 fn usz Compiler.compile_index_flat(Compiler* self, Expr* expr) {
     usz coll_r = self.compile_to_temp(expr.index.collection);
+    self.emit_return_if_sequence_should_stop(coll_r);
     usz idx_r = self.compile_to_temp(expr.index.index);
+    self.emit_return_if_sequence_should_stop(idx_r);
     usz id = self.next_result();
     self.emit_temp_decl(id);
     self.emit(" = aot::index(");
@@ -51,6 +54,7 @@ fn usz Compiler.compile_define_rhs_with_typed_bridge(Compiler* self, Expr* defin
 
 fn usz Compiler.compile_define_flat(Compiler* self, Expr* expr) {
     usz def_val_r = self.compile_define_rhs_with_typed_bridge(expr);
+    self.emit_return_if_sequence_should_stop(def_val_r);
     self.emit_indent();
     self.emit_symbol_assignment_target(expr.define.name);
     self.emit(" = ");

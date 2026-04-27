@@ -144,10 +144,10 @@ fn Value* runtime_eval_expr(Expr* expr, Env* env, Interp* interp) {
     Env* saved_env = interp.jit_env;
 
     for (;;) {
-        if (interp_interrupt_requested(interp)) {
-            interp_interrupt_clear(interp);
+        Value* backedge_error = runtime_eval_backedge_poll(interp);
+        if (backedge_error != null) {
             interp.jit_env = saved_env;
-            return interp_interrupt_error(interp);
+            return backedge_error;
         }
 
         if (expr == null) {

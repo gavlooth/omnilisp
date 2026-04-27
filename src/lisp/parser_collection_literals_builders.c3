@@ -7,7 +7,8 @@ fn Expr* Parser.parse_bare_dict_symbol_key(Parser* self) {
     Expr* e = self.alloc_expr_here();
     if (e == null) return null;
     e.tag = E_QUOTE;
-    e.quote.datum = self.interp.alloc_value_root();
+    e.quote.datum = self.alloc_root_value_or_error("out of memory while parsing dictionary key");
+    if (e.quote.datum == null) return null;
     e.quote.datum.tag = SYMBOL;
     e.quote.datum.sym_val = self.get_current_symbol();
     self.lexer.advance();

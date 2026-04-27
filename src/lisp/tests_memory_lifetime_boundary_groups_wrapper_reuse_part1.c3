@@ -209,6 +209,369 @@ fn bool run_memory_lifetime_wrapper_reuse_vs_defensive_copy_test_leaf_alloc_fail
     }
 }
 
+fn bool run_memory_lifetime_wrapper_reuse_vs_defensive_copy_test_leaf_dtor_failure_rollback(Interp* interp, int* pass, int* fail) {
+    // Invariant: retain-backed leaf wrapper copies roll back retained payloads
+    // when destination destructor registration fails.
+    {
+        main::ScopeRegion* saved = interp.current_scope;
+        main::ScopeRegion* target = main::scope_create(saved);
+        main::ScopeRegion* foreign = main::scope_create(saved);
+        if (target == null || foreign == null) {
+            if (foreign != null) main::scope_release(foreign);
+            if (target != null) main::scope_release(target);
+            io::printn("[FAIL] lifetime: leaf wrapper dtor registration failure rollback");
+            (*fail)++;
+            return false;
+        }
+
+        int ffi_destroy_count = 0;
+
+        interp.current_scope = foreign;
+        Value* inst_value = make_instance(interp, (TypeId)1, null, 0);
+        main::ScopeRegion* inst_owner_scope =
+            inst_value != null && inst_value.tag == INSTANCE ? inst_value.instance_val.owner_scope : null;
+        Value* ffi_value = make_ffi_handle_ex(
+            interp,
+            (void*)0x1234,
+            "__leaf-wrapper-dtor-fail",
+            fn void(void* ptr) {
+                int* counter = (int*)ptr;
+                if (counter != null) (*counter)++;
+            },
+            false
+        );
+        if (ffi_value != null && ffi_value.tag == FFI_HANDLE && ffi_value.ffi_val != null) {
+            ffi_value.ffi_val.finalizer = fn void(void* ptr) {
+                int* counter = (int*)ptr;
+                if (counter != null) (*counter)++;
+            };
+            ffi_value.ffi_val.lib_handle = (void*)&ffi_destroy_count;
+            ffi_value.ffi_val.free_lib_handle = false;
+        }
+
+        bool setup_ok = inst_value != null &&
+                        inst_value.tag == INSTANCE &&
+                        inst_owner_scope != null &&
+                        inst_owner_scope.refcount == 1 &&
+                        ffi_value != null &&
+                        ffi_value.tag == FFI_HANDLE &&
+                        ffi_value.ffi_val != null &&
+                        ffi_value.ffi_val.refcount == 1;
+
+        interp.current_scope = target;
+        interp.releasing_scope = foreign;
+
+        bool saved_dtor_oom = main::g_scope_force_dtor_alloc_oom;
+        main::g_scope_force_dtor_alloc_oom = true;
+
+        BoundaryCopyResult copied_instance =
+            setup_ok ? boundary_copy_to_parent_site_ctx_checked(inst_value, interp, COPY_SITE_GENERIC, null)
+                     : boundary_copy_fail(BOUNDARY_COPY_FAULT_NULL_RESULT);
+        BoundaryCopyResult copied_ffi =
+            setup_ok ? boundary_copy_to_parent_site_ctx_checked(ffi_value, interp, COPY_SITE_GENERIC, null)
+                     : boundary_copy_fail(BOUNDARY_COPY_FAULT_NULL_RESULT);
+
+        main::g_scope_force_dtor_alloc_oom = saved_dtor_oom;
+
+        interp.releasing_scope = null;
+        interp.current_scope = saved;
+
+        int inst_owner_rc_after_fail = inst_owner_scope != null ? (int)inst_owner_scope.refcount : -1;
+        int ffi_rc_after_fail = ffi_value != null && ffi_value.tag == FFI_HANDLE && ffi_value.ffi_val != null
+            ? (int)ffi_value.ffi_val.refcount
+            : -1;
+
+        bool instance_fault_ok = !boundary_copy_result_ok(copied_instance) &&
+                                 copied_instance.fault_code == BOUNDARY_COPY_FAULT_DTOR_REGISTRATION &&
+                                 inst_owner_rc_after_fail == 1;
+        bool ffi_fault_ok = !boundary_copy_result_ok(copied_ffi) &&
+                            copied_ffi.fault_code == BOUNDARY_COPY_FAULT_DTOR_REGISTRATION &&
+                            ffi_rc_after_fail == 1;
+
+        main::scope_release(target);
+        int inst_owner_rc_after_target_release = inst_owner_scope != null ? (int)inst_owner_scope.refcount : -1;
+        int ffi_rc_after_target_release = ffi_value != null && ffi_value.tag == FFI_HANDLE && ffi_value.ffi_val != null
+            ? (int)ffi_value.ffi_val.refcount
+            : -1;
+        bool teardown_ok = inst_owner_rc_after_target_release == 1 &&
+                           ffi_rc_after_target_release == 1 &&
+                           ffi_destroy_count == 0;
+
+        main::scope_release(foreign);
+        bool owner_release_ok = ffi_destroy_count == 1;
+
+        bool ok = setup_ok &&
+                  instance_fault_ok &&
+                  ffi_fault_ok &&
+                  teardown_ok &&
+                  owner_release_ok;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: leaf wrapper dtor registration failure rollback");
+            (*pass)++;
+            return true;
+        }
+
+        io::printfn(
+            "[FAIL] lifetime: leaf wrapper dtor registration failure rollback (setup_ok=%s inst_fault_ok=%s ffi_fault_ok=%s inst_rc_fail=%d ffi_rc_fail=%d inst_rc_target=%d ffi_rc_target=%d ffi_destroy_count=%d)",
+            setup_ok ? "yes" : "no",
+            instance_fault_ok ? "yes" : "no",
+            ffi_fault_ok ? "yes" : "no",
+            inst_owner_rc_after_fail,
+            ffi_rc_after_fail,
+            inst_owner_rc_after_target_release,
+            ffi_rc_after_target_release,
+            ffi_destroy_count
+        );
+        (*fail)++;
+        return false;
+    }
+}
+
+fn bool run_memory_lifetime_wrapper_reuse_vs_defensive_copy_test_escape_dtor_failure_rollback(Interp* interp, int* pass, int* fail) {
+    // Invariant: ESCAPE promotion must roll back retained or heap-owned leaf
+    // payloads when ESCAPE destructor registration fails.
+    {
+        main::ScopeRegion* saved = interp.current_scope;
+        main::ScopeRegion* target = main::scope_create(saved);
+        main::ScopeRegion* foreign = main::scope_create(saved);
+        if (target == null || foreign == null) {
+            if (foreign != null) main::scope_release(foreign);
+            if (target != null) main::scope_release(target);
+            io::printn("[FAIL] lifetime: leaf escape dtor registration failure rollback");
+            (*fail)++;
+            return false;
+        }
+
+        int ffi_destroy_count = 0;
+
+        interp.current_scope = foreign;
+        Value* inst_value = make_instance(interp, (TypeId)1, null, 0);
+        main::ScopeRegion* inst_owner_scope =
+            inst_value != null && inst_value.tag == INSTANCE ? inst_value.instance_val.owner_scope : null;
+        Value* ffi_value = make_ffi_handle_ex(
+            interp,
+            (void*)0x1234,
+            "__leaf-escape-dtor-fail",
+            fn void(void* ptr) {
+                int* counter = (int*)ptr;
+                if (counter != null) (*counter)++;
+            },
+            false
+        );
+        if (ffi_value != null && ffi_value.tag == FFI_HANDLE && ffi_value.ffi_val != null) {
+            ffi_value.ffi_val.finalizer = fn void(void* ptr) {
+                int* counter = (int*)ptr;
+                if (counter != null) (*counter)++;
+            };
+            ffi_value.ffi_val.lib_handle = (void*)&ffi_destroy_count;
+            ffi_value.ffi_val.free_lib_handle = false;
+        }
+        Value* string_value = make_string(interp, "escape-dtor-fail");
+
+        bool setup_ok = inst_value != null &&
+                        inst_value.tag == INSTANCE &&
+                        inst_owner_scope != null &&
+                        inst_owner_scope.refcount == 1 &&
+                        ffi_value != null &&
+                        ffi_value.tag == FFI_HANDLE &&
+                        ffi_value.ffi_val != null &&
+                        ffi_value.ffi_val.refcount == 1 &&
+                        string_value != null &&
+                        string_value.tag == STRING;
+
+        interp.current_scope = target;
+        interp.releasing_scope = foreign;
+
+        bool saved_escape_dtor_oom = main::g_scope_force_escape_dtor_alloc_oom;
+        main::g_scope_force_escape_dtor_alloc_oom = true;
+
+        Value* escaped_instance = setup_ok ? promote_to_escape(inst_value, interp) : null;
+        Value* escaped_ffi = setup_ok ? promote_to_escape(ffi_value, interp) : null;
+        Value* escaped_string = setup_ok ? promote_to_escape(string_value, interp) : null;
+
+        main::g_scope_force_escape_dtor_alloc_oom = saved_escape_dtor_oom;
+
+        interp.releasing_scope = null;
+        interp.current_scope = saved;
+
+        int inst_owner_rc_after_fail = inst_owner_scope != null ? (int)inst_owner_scope.refcount : -1;
+        int ffi_rc_after_fail = ffi_value != null && ffi_value.tag == FFI_HANDLE && ffi_value.ffi_val != null
+            ? (int)ffi_value.ffi_val.refcount
+            : -1;
+
+        bool instance_fault_ok = escaped_instance != null &&
+                                 escaped_instance.tag == ERROR &&
+                                 inst_owner_rc_after_fail == 1;
+        bool ffi_fault_ok = escaped_ffi != null &&
+                            escaped_ffi.tag == ERROR &&
+                            ffi_rc_after_fail == 1;
+        bool string_fault_ok = escaped_string != null &&
+                              escaped_string.tag == ERROR;
+
+        main::scope_release(target);
+        int inst_owner_rc_after_target_release = inst_owner_scope != null ? (int)inst_owner_scope.refcount : -1;
+        int ffi_rc_after_target_release = ffi_value != null && ffi_value.tag == FFI_HANDLE && ffi_value.ffi_val != null
+            ? (int)ffi_value.ffi_val.refcount
+            : -1;
+        bool teardown_ok = inst_owner_rc_after_target_release == 1 &&
+                           ffi_rc_after_target_release == 1 &&
+                           ffi_destroy_count == 0;
+
+        main::scope_release(foreign);
+        bool owner_release_ok = ffi_destroy_count == 1;
+
+        bool ok = setup_ok &&
+                  instance_fault_ok &&
+                  ffi_fault_ok &&
+                  string_fault_ok &&
+                  teardown_ok &&
+                  owner_release_ok;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: leaf escape dtor registration failure rollback");
+            (*pass)++;
+            return true;
+        }
+
+        io::printfn(
+            "[FAIL] lifetime: leaf escape dtor registration failure rollback (setup_ok=%s instance_fault_ok=%s ffi_fault_ok=%s string_fault_ok=%s inst_rc_fail=%d ffi_rc_fail=%d inst_rc_target=%d ffi_rc_target=%d ffi_destroy_count=%d)",
+            setup_ok ? "yes" : "no",
+            instance_fault_ok ? "yes" : "no",
+            ffi_fault_ok ? "yes" : "no",
+            string_fault_ok ? "yes" : "no",
+            inst_owner_rc_after_fail,
+            ffi_rc_after_fail,
+            inst_owner_rc_after_target_release,
+            ffi_rc_after_target_release,
+            ffi_destroy_count
+        );
+        (*fail)++;
+        return false;
+    }
+}
+
+fn bool run_memory_lifetime_wrapper_reuse_vs_defensive_copy_test_aggregate_dtor_failure(Interp* interp, int* pass, int* fail) {
+    // Invariant: aggregate wrappers fail closed when destination destructor
+    // registration fails across parent copy, ESCAPE promotion, and root store clone.
+    {
+        main::ScopeRegion* saved = interp.current_scope;
+        main::ScopeRegion* target = main::scope_create(saved);
+        main::ScopeRegion* foreign = main::scope_create(saved);
+        main::ScopeRegion* root_target = main::scope_create(saved);
+        if (target == null || foreign == null || root_target == null) {
+            if (root_target != null) main::scope_release(root_target);
+            if (foreign != null) main::scope_release(foreign);
+            if (target != null) main::scope_release(target);
+            io::printn("[FAIL] lifetime: aggregate wrapper dtor registration failure");
+            (*fail)++;
+            return false;
+        }
+
+        interp.current_scope = foreign;
+        Value* array_src = interp.alloc_value();
+        Value* hashmap_src = interp.alloc_value();
+        Value* set_src = interp.alloc_value();
+        Value* mt_src = interp.alloc_value();
+        bool setup_ok = array_src != null &&
+                        hashmap_src != null &&
+                        set_src != null &&
+                        mt_src != null;
+        if (setup_ok) {
+            array_src.tag = ARRAY;
+            array_src.array_val = null;
+            hashmap_src.tag = HASHMAP;
+            hashmap_src.hashmap_val = null;
+            set_src.tag = SET;
+            set_src.hashmap_val = null;
+            mt_src.tag = METHOD_TABLE;
+            mt_src.method_table_val = null;
+            setup_ok =
+                main::scope_register_dtor(foreign, (void*)array_src, &scope_dtor_value) &&
+                main::scope_register_dtor(foreign, (void*)hashmap_src, &scope_dtor_value) &&
+                main::scope_register_dtor(foreign, (void*)set_src, &scope_dtor_value) &&
+                main::scope_register_dtor(foreign, (void*)mt_src, &scope_dtor_value);
+        }
+
+        interp.current_scope = target;
+        interp.releasing_scope = foreign;
+
+        bool saved_dtor_oom = main::g_scope_force_dtor_alloc_oom;
+        main::g_scope_force_dtor_alloc_oom = true;
+        BoundaryCopyResult copied_array = setup_ok
+            ? boundary_copy_to_parent_site_ctx_checked(array_src, interp, COPY_SITE_GENERIC, null)
+            : boundary_copy_fail(BOUNDARY_COPY_FAULT_NULL_RESULT);
+        BoundaryCopyResult copied_hashmap = setup_ok
+            ? boundary_copy_to_parent_site_ctx_checked(hashmap_src, interp, COPY_SITE_GENERIC, null)
+            : boundary_copy_fail(BOUNDARY_COPY_FAULT_NULL_RESULT);
+        BoundaryCopyResult copied_set = setup_ok
+            ? boundary_copy_to_parent_site_ctx_checked(set_src, interp, COPY_SITE_GENERIC, null)
+            : boundary_copy_fail(BOUNDARY_COPY_FAULT_NULL_RESULT);
+        BoundaryCopyResult copied_mt = setup_ok
+            ? boundary_copy_to_parent_site_ctx_checked(mt_src, interp, COPY_SITE_GENERIC, null)
+            : boundary_copy_fail(BOUNDARY_COPY_FAULT_NULL_RESULT);
+        main::g_scope_force_dtor_alloc_oom = saved_dtor_oom;
+
+        bool parent_copy_ok =
+            !boundary_copy_result_ok(copied_array) &&
+            copied_array.fault_code == BOUNDARY_COPY_FAULT_DTOR_REGISTRATION &&
+            !boundary_copy_result_ok(copied_hashmap) &&
+            copied_hashmap.fault_code == BOUNDARY_COPY_FAULT_DTOR_REGISTRATION &&
+            !boundary_copy_result_ok(copied_set) &&
+            copied_set.fault_code == BOUNDARY_COPY_FAULT_DTOR_REGISTRATION &&
+            !boundary_copy_result_ok(copied_mt) &&
+            copied_mt.fault_code == BOUNDARY_COPY_FAULT_DTOR_REGISTRATION;
+
+        bool saved_escape_dtor_oom = main::g_scope_force_escape_dtor_alloc_oom;
+        main::g_scope_force_escape_dtor_alloc_oom = true;
+        Value* escaped_array = setup_ok ? promote_to_escape(array_src, interp) : null;
+        Value* escaped_hashmap = setup_ok ? promote_to_escape(hashmap_src, interp) : null;
+        Value* escaped_set = setup_ok ? promote_to_escape(set_src, interp) : null;
+        Value* escaped_mt = setup_ok ? promote_to_escape(mt_src, interp) : null;
+        main::g_scope_force_escape_dtor_alloc_oom = saved_escape_dtor_oom;
+
+        bool escape_ok =
+            escaped_array != null && escaped_array.tag == ERROR &&
+            escaped_hashmap != null && escaped_hashmap.tag == ERROR &&
+            escaped_set != null && escaped_set.tag == ERROR &&
+            escaped_mt != null && escaped_mt.tag == ERROR;
+
+        main::g_scope_force_escape_dtor_alloc_oom = true;
+        Value* root_array = setup_ok ? root_store_clone_array_to_scope(array_src, interp, root_target, foreign) : null;
+        Value* root_hashmap = setup_ok ? root_store_clone_hashmap_to_scope(hashmap_src, interp, root_target, foreign) : null;
+        Value* root_set = setup_ok ? root_store_clone_hashmap_to_scope(set_src, interp, root_target, foreign) : null;
+        Value* root_mt = setup_ok ? root_store_clone_method_table_to_scope(mt_src, interp, root_target, foreign) : null;
+        main::g_scope_force_escape_dtor_alloc_oom = saved_escape_dtor_oom;
+
+        bool root_ok =
+            root_array != null && root_array.tag == ERROR &&
+            root_hashmap != null && root_hashmap.tag == ERROR &&
+            root_set != null && root_set.tag == ERROR &&
+            root_mt != null && root_mt.tag == ERROR;
+
+        interp.releasing_scope = null;
+        interp.current_scope = saved;
+        main::scope_release(root_target);
+        main::scope_release(foreign);
+        main::scope_release(target);
+
+        bool ok = setup_ok && parent_copy_ok && escape_ok && root_ok;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: aggregate wrapper dtor registration failure");
+            (*pass)++;
+            return true;
+        }
+
+        io::printfn(
+            "[FAIL] lifetime: aggregate wrapper dtor registration failure (setup=%s parent=%s escape=%s root=%s)",
+            setup_ok ? "yes" : "no",
+            parent_copy_ok ? "yes" : "no",
+            escape_ok ? "yes" : "no",
+            root_ok ? "yes" : "no"
+        );
+        (*fail)++;
+        return false;
+    }
+}
+
 fn bool run_memory_lifetime_wrapper_reuse_vs_defensive_copy_test_shared_wrapper_defensive_clone(Interp* interp, int* pass, int* fail) {
     // Invariant: disjoint shared wrappers (collections/method tables) are
     // defensively cloned rather than aliased once reuse is declined.
@@ -559,6 +922,9 @@ fn bool run_memory_lifetime_wrapper_reuse_vs_defensive_copy_test_shared_wrapper_
 fn void run_memory_lifetime_wrapper_reuse_vs_defensive_copy_test(Interp* interp, int* pass, int* fail) {
     if (!run_memory_lifetime_wrapper_reuse_vs_defensive_copy_test_reuse_and_copy(interp, pass, fail)) return;
     if (!run_memory_lifetime_wrapper_reuse_vs_defensive_copy_test_leaf_alloc_failure_rollback(interp, pass, fail)) return;
+    if (!run_memory_lifetime_wrapper_reuse_vs_defensive_copy_test_leaf_dtor_failure_rollback(interp, pass, fail)) return;
+    if (!run_memory_lifetime_wrapper_reuse_vs_defensive_copy_test_escape_dtor_failure_rollback(interp, pass, fail)) return;
+    if (!run_memory_lifetime_wrapper_reuse_vs_defensive_copy_test_aggregate_dtor_failure(interp, pass, fail)) return;
     if (!run_memory_lifetime_wrapper_reuse_vs_defensive_copy_test_shared_wrapper_defensive_clone(interp, pass, fail)) return;
     if (!run_memory_lifetime_wrapper_reuse_vs_defensive_copy_test_nested_cons_wrapper_defensive_copy(interp, pass, fail)) return;
     if (!run_memory_lifetime_wrapper_reuse_vs_defensive_copy_test_primitive_wrapper_copy_policy(interp, pass, fail)) return;

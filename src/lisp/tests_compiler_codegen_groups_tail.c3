@@ -14,35 +14,47 @@ fn void run_compiler_group_mutable_capture_codegen_tests(Interp* interp, usz* pa
     // Phase 5: Mutable capture boxing
     // =========================================================================
 
-    // 60. Mutable capture detected and uses aot::define_var
+    // 60. Mutable capture detected and uses root-owned AOT cells
     {
         char[] code = compile_to_c3("(let (x 0) (let (inc (lambda () (set! x (+ x 1)))) (inc) x))", interp);
-        // Mutable capture test - checks generated code for interpreter env usage
-        bool ok = str_contains(code, "aot::define_var") && str_contains(code, "aot::set_var");
+        bool ok = compiler_code_contains_all(code, {
+            "aot::AotMutableCell* _aot_cell_",
+            "aot::make_mutable_cell_checked(",
+            "aot::mutable_cell_set_checked(",
+            "aot::mutable_cell_get("
+        }) && compiler_code_contains_none(code, {
+            "aot::define_var(\"x\"",
+            "aot::lookup_var(\"x\"",
+            "aot::set_var(\"x\""
+        });
         compiler_test_finish_bool(
             ok,
-            "Compiler: mutable capture uses aot::define_var/aot::set_var",
-            "[FAIL] Compiler: mutable capture uses aot::define_var/aot::set_var",
+            "Compiler: mutable capture uses AOT mutable cells",
+            "[FAIL] Compiler: mutable capture uses AOT mutable cells",
             pass,
             fail
         );
     }
 
-    // 61. Mutable capture reads use aot::lookup_var
+    // 61. Mutable capture reads use the captured cell, not source-name lookup
     {
         char[] code = compile_to_c3("(let (x 0) (let (inc (lambda () (set! x (+ x 1)))) (inc) x))", interp);
-        bool ok = str_contains(code, "aot::lookup_var");
+        bool ok = str_contains(code, "aot::mutable_cell_get(")
+            && !str_contains(code, "aot::lookup_var(\"x\"");
         compiler_test_finish_bool(
             ok,
-            "Compiler: mutable capture reads use aot::lookup_var",
-            "[FAIL] Compiler: mutable capture reads use aot::lookup_var",
+            "Compiler: mutable capture reads use mutable cells",
+            "[FAIL] Compiler: mutable capture reads use mutable cells",
             pass,
             fail
         );
     }
     {
         char[] code = compile_to_c3("(let (x 0) (let (make (lambda () (handle (+ 1 (signal ask 0)) (ask v (lambda () (set! x (+ x 1))))))) (make) x))", interp);
-        bool ok = str_contains(code, "aot::define_var") && str_contains(code, "aot::set_var");
+        bool ok = str_contains(code, "aot::make_mutable_cell_checked(")
+            && str_contains(code, "aot::mutable_cell_set_checked(")
+            && !str_contains(code, "aot::define_var(\"x\"")
+            && !str_contains(code, "aot::set_var(\"x\"");
         compiler_test_finish_bool(
             ok,
             "Compiler: mutable capture through handle body uses boxing",
@@ -53,11 +65,55 @@ fn void run_compiler_group_mutable_capture_codegen_tests(Interp* interp, usz* pa
     }
     {
         char[] code = compile_to_c3("(let (x 0) (let (make (lambda () (handle (+ 1 (signal ask 0)) (ask v (resolve (lambda () (set! x (+ x 1)))))))) (make) x))", interp);
-        bool ok = str_contains(code, "aot::define_var") && str_contains(code, "aot::set_var");
+        bool ok = str_contains(code, "aot::make_mutable_cell_checked(")
+            && str_contains(code, "aot::mutable_cell_set_checked(")
+            && !str_contains(code, "aot::define_var(\"x\"")
+            && !str_contains(code, "aot::set_var(\"x\"");
         compiler_test_finish_bool(
             ok,
             "Compiler: mutable capture through resolve value uses boxing",
             "[FAIL] Compiler: mutable capture through resolve value uses boxing",
+            pass,
+            fail
+        );
+    }
+    {
+        char[] code = compile_to_c3("(let (x 0) (block (checkpoint (let (f (lambda () (set! x (+ x 1)))) (f))) x))", interp);
+        bool ok = str_contains(code, "lisp::Value* captured_x")
+            && !str_contains(code, "aot::AotMutableCell* captured_x")
+            && !str_contains(code, "aot::define_var(\"x\"")
+            && !str_contains(code, "aot::set_var(\"x\"");
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: mutable capture through checkpoint body keeps outer direct",
+            "[FAIL] Compiler: mutable capture through checkpoint body keeps outer direct",
+            pass,
+            fail
+        );
+    }
+    {
+        char[] code = compile_to_c3("(let (x 0) (block (checkpoint (capture k (block (let (f (lambda () (set! x (+ x 1)))) (f)) (k 0)))) x))", interp);
+        bool ok = str_contains(code, "lisp::Value* captured_x")
+            && !str_contains(code, "aot::AotMutableCell* captured_x")
+            && !str_contains(code, "aot::define_var(\"x\"")
+            && !str_contains(code, "aot::set_var(\"x\"");
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: mutable capture through capture body keeps outer direct",
+            "[FAIL] Compiler: mutable capture through capture body keeps outer direct",
+            pass,
+            fail
+        );
+    }
+    {
+        char[] code = compile_to_c3("(checkpoint (let (x 0) (block (let (f (lambda () (set! x (+ x 1)))) (f)) x)))", interp);
+        bool ok = str_contains(code, "aot::make_mutable_cell_checked(")
+            && str_contains(code, "aot::mutable_cell_set_checked(")
+            && str_contains(code, "aot::mutable_cell_get(");
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: checkpoint-local mutable capture still uses boxing",
+            "[FAIL] Compiler: checkpoint-local mutable capture still uses boxing",
             pass,
             fail
         );

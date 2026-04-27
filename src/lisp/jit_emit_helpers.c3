@@ -120,6 +120,10 @@ fn void emit_load_env(void* s, JitLocals* locals, int target_reg) {
     emit_restore_interp_reg(s, locals);
 }
 
+fn Value* jit_build_locals_env_extend_failed(Interp* interp) @inline {
+    return jit_raise(interp, "runtime/out-of-memory", "out of memory while binding local");
+}
+
 fn bool emit_build_locals_env(void* s, Interp* interp, JitLocals* locals) {
     if (locals.locals.len() == 0) return false;
 
@@ -149,6 +153,10 @@ fn bool emit_build_locals_env(void* s, Interp* interp, JitLocals* locals) {
             _jit_finishi(s, (void*)&jit_env_extend);
             _jit_retval_l(s, JIT_V2);  // V2 = updated env
             emit_restore_interp_reg(s, locals);
+            void* continue_jump = _jit_new_node_pww(s, CODE_BNEI, null, (long)JIT_V2, 0);
+            emit_call_1(s, locals, (void*)&jit_build_locals_env_extend_failed);
+            _jit_retr(s, JIT_R0, CODE_RETR_L);
+            _jit_patch(s, continue_jump);
         }
     }
 

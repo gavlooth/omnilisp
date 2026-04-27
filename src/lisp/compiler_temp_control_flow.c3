@@ -8,7 +8,30 @@ fn void Compiler.emit_temp_assign(Compiler* self, usz dst_id, usz src_id) {
     self.emit(";\n");
 }
 
+fn void Compiler.emit_return_if_sequence_should_stop(Compiler* self, usz value_id) {
+    if (!self.emits_value_return) return;
+    self.emit_indent();
+    self.emit("if (aot::sequence_should_stop(");
+    self.emit_temp_ref(value_id);
+    self.emit(")) return ");
+    self.emit_temp_ref(value_id);
+    self.emit(";\n");
+}
+
+fn void Compiler.emit_return_if_error_or_sequence_should_stop(Compiler* self, usz value_id) {
+    if (!self.emits_value_return) return;
+    self.emit_indent();
+    self.emit("if (aot::is_error(");
+    self.emit_temp_ref(value_id);
+    self.emit(") || aot::sequence_should_stop(");
+    self.emit_temp_ref(value_id);
+    self.emit(")) return ");
+    self.emit_temp_ref(value_id);
+    self.emit(";\n");
+}
+
 fn void Compiler.compile_branch_assign(Compiler* self, usz dst_id, Expr* branch, bool tail) {
+    usz declared_mark = self.mark_declared_scope();
     usz branch_r;
     if (tail) {
         branch_r = self.compile_to_temp_tail(branch);
@@ -16,6 +39,7 @@ fn void Compiler.compile_branch_assign(Compiler* self, usz dst_id, Expr* branch,
         branch_r = self.compile_to_temp(branch);
     }
     self.emit_temp_assign(dst_id, branch_r);
+    self.restore_declared_scope(declared_mark);
 }
 
 fn void Compiler.compile_tail_branch_assign(Compiler* self, usz dst_id, Expr* branch) {
@@ -24,27 +48,6 @@ fn void Compiler.compile_tail_branch_assign(Compiler* self, usz dst_id, Expr* br
 
 fn usz Compiler.compile_block_child_to_temp(Compiler* self, Expr* expr) {
     usz result = self.compile_to_temp(expr);
-    if (expr == null) return result;
-
-    if (expr.tag == E_FFI_LIB) {
-        self.emit_indent();
-        self.emit_symbol_assignment_target(expr.ffi_lib.name);
-        self.emit(" = ");
-        self.emit_temp_ref(result);
-        self.emit(";\n");
-    } else if (expr.tag == E_FFI_FN && expr.ffi_fn != null) {
-        self.emit_indent();
-        self.emit_symbol_assignment_target(expr.ffi_fn.fn_name);
-        self.emit(" = ");
-        self.emit_temp_ref(result);
-        self.emit(";\n");
-    } else if (expr.tag == E_DEFEFFECT) {
-        self.emit_indent();
-        self.emit_symbol_assignment_target(expr.defeffect.name);
-        self.emit(" = ");
-        self.emit_temp_ref(result);
-        self.emit(";\n");
-    }
     return result;
 }
 
@@ -66,6 +69,8 @@ fn usz Compiler.compile_sequence_common(Compiler* self, Expr** exprs, usz count,
         usz child_r = self.compile_block_child_to_temp(exprs[i]);
         self.emit_indent();
         self.emit("if (aot::is_error(");
+        self.emit_temp_ref(child_r);
+        self.emit(") || aot::sequence_should_stop(");
         self.emit_temp_ref(child_r);
         self.emit(")) {\n");
         self.indent++;
@@ -97,6 +102,8 @@ fn usz Compiler.compile_short_circuit(Compiler* self, usz left_r, Expr* right_ex
     self.emit(";\n");
     self.emit_indent();
     self.emit("if (aot::is_error(");
+    self.emit_temp_ref(left_r);
+    self.emit(") || aot::sequence_should_stop(");
     self.emit_temp_ref(left_r);
     self.emit(")) {\n");
     self.indent++;
@@ -133,11 +140,22 @@ fn usz Compiler.compile_tail_short_circuit(Compiler* self, usz left_r, Expr* rig
 
 fn usz Compiler.compile_if_common(Compiler* self, Expr* expr, bool tail) {
     usz condition_tmp = self.compile_to_temp(expr.if_expr.test);
+    self.emit_return_if_error_or_sequence_should_stop(condition_tmp);
+    if (compiler_expr_is_literal_false(self, expr.if_expr.test)) {
+        if (tail) return self.compile_to_temp_tail(expr.if_expr.else_branch);
+        return self.compile_to_temp(expr.if_expr.else_branch);
+    }
+    if (compiler_expr_is_literal_truthy(self, expr.if_expr.test)) {
+        if (tail) return self.compile_to_temp_tail(expr.if_expr.then_branch);
+        return self.compile_to_temp(expr.if_expr.then_branch);
+    }
     usz id = self.next_result();
     self.emit_temp_decl(id);
     self.emit(";\n");
     self.emit_indent();
     self.emit("if (aot::is_error(");
+    self.emit_temp_ref(condition_tmp);
+    self.emit(") || aot::sequence_should_stop(");
     self.emit_temp_ref(condition_tmp);
     self.emit(")) {\n");
     self.indent++;

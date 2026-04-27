@@ -13,9 +13,8 @@ fn bool test_stack_ctx_fiber_temp_retention_guard() {
     }
 
     bool ok = true;
-    usz pooled_before = g_fiber_temp_chunk_pool_count;
-    usz created_before = g_fiber_temp_pool_stats.ctx_pool_created;
-    usz flush_before = g_fiber_temp_pool_stats.lifecycle_destroy_flush_chunks;
+    usz pooled_before = fiber_temp_chunk_pool_count_snapshot();
+    FiberTempPoolStats fiber_before = fiber_temp_pool_stats_snapshot();
 
     for (usz iter = 0; iter < 128; iter++) {
         StackCtx* source = stack_ctx_create(&pool);
@@ -58,12 +57,11 @@ fn bool test_stack_ctx_fiber_temp_retention_guard() {
         stack_ctx_destroy(source, &pool);
     }
 
-    usz pooled_after = g_fiber_temp_chunk_pool_count;
-    usz created_after = g_fiber_temp_pool_stats.ctx_pool_created;
-    usz flush_after = g_fiber_temp_pool_stats.lifecycle_destroy_flush_chunks;
+    usz pooled_after = fiber_temp_chunk_pool_count_snapshot();
+    FiberTempPoolStats fiber_after = fiber_temp_pool_stats_snapshot();
 
-    ok = ok && created_after > created_before;
-    ok = ok && flush_after > flush_before;
+    ok = ok && fiber_after.ctx_pool_created > fiber_before.ctx_pool_created;
+    ok = ok && fiber_after.lifecycle_destroy_flush_chunks > fiber_before.lifecycle_destroy_flush_chunks;
     // Retention guard: repeated clone/discard cycles should not cause runaway
     // growth in global pooled chunks.
     ok = ok && pooled_after <= pooled_before + 64;

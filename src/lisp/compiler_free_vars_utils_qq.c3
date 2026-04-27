@@ -28,8 +28,40 @@ fn void Compiler.find_free_vars_in_qq(Compiler* self, Expr* expr, List{SymbolId}
         case E_QUASIQUOTE:
             // Nested quasiquote - still only scan for unquotes
             self.find_free_vars_in_qq(expr.quasiquote.body, bound_vars, free_vars, enclosing_scope);
+        case E_LIT:
+        case E_VAR:
+        case E_LAMBDA:
+        case E_IF:
+        case E_LET:
+        case E_DEFINE:
+        case E_QUOTE:
+        case E_RESET:
+        case E_SHIFT:
+        case E_PERFORM:
+        case E_HANDLE:
+        case E_RESOLVE:
+        case E_INDEX:
+        case E_PATH:
+        case E_MATCH:
+        case E_AND:
+        case E_OR:
+        case E_BLOCK:
+        case E_SET:
+        case E_DEFMACRO:
+        case E_MODULE:
+        case E_IMPORT:
+        case E_WITH_MODULE:
+        case E_DEFTYPE:
+        case E_DEFABSTRACT:
+        case E_DEFUNION:
+        case E_DEFALIAS:
+        case E_DEFEFFECT:
+        case E_EXPORT_FROM:
+        case E_FFI_LIB:
+        case E_FFI_FN:
+            return;
         default:
-            // E_VAR, E_LIT, etc. in qq context are literal - no free vars
+            self.set_compile_error("compiler: unknown expression tag in quasiquote free-variable analysis");
             return;
     }
 }

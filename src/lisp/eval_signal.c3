@@ -48,3 +48,9 @@ fn void interp_interrupt_clear(Interp* interp) @inline {
 fn Value* interp_interrupt_error(Interp* interp) @inline {
     return runtime_raise(interp, "runtime/evaluation-error", "evaluation interrupted");
 }
+
+fn Value* runtime_eval_backedge_poll(Interp* interp) @inline {
+    if (!interp_interrupt_requested(interp)) return null;
+    interp_interrupt_clear(interp);
+    return interp_interrupt_error(interp);
+}

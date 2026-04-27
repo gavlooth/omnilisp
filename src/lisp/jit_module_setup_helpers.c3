@@ -24,6 +24,22 @@ fn void module_release_storage(Module* mod) {
     *mod = {};
 }
 
+fn bool interp_module_hash_insert(Interp* interp, SymbolId name, usz mod_idx) {
+    if (interp == null || interp.module_hash_index == null || interp.module_hash_capacity == 0) return false;
+    if (name == (SymbolId)0 || name == INVALID_SYMBOL_ID) return false;
+    if (mod_idx >= interp.module_count) return false;
+
+    usz slot = (usz)name % interp.module_hash_capacity;
+    for (usz probe = 0; probe < interp.module_hash_capacity; probe++) {
+        if (interp.module_hash_index[slot] == usz.max) {
+            interp.module_hash_index[slot] = mod_idx;
+            return true;
+        }
+        slot = (slot + 1) % interp.module_hash_capacity;
+    }
+    return false;
+}
+
 fn bool interp_rebuild_module_hash(Interp* interp) {
     if (interp == null || interp.module_hash_index == null || interp.module_hash_capacity == 0) return false;
     for (usz i = 0; i < interp.module_hash_capacity; i++) {
@@ -32,17 +48,7 @@ fn bool interp_rebuild_module_hash(Interp* interp) {
     for (usz i = 0; i < interp.module_count; i++) {
         SymbolId name = interp.modules[i].name;
         if (name == (SymbolId)0 || name == INVALID_SYMBOL_ID) continue;
-        usz slot = (usz)name % interp.module_hash_capacity;
-        bool inserted = false;
-        for (usz probe = 0; probe < interp.module_hash_capacity; probe++) {
-            if (interp.module_hash_index[slot] == usz.max) {
-                interp.module_hash_index[slot] = i;
-                inserted = true;
-                break;
-            }
-            slot = (slot + 1) % interp.module_hash_capacity;
-        }
-        if (!inserted) return false;
+        if (!interp_module_hash_insert(interp, name, i)) return false;
     }
     return true;
 }
@@ -88,12 +94,12 @@ fn void rollback_module_publication(Interp* interp, usz mod_idx) {
 fn EvalResult jit_eval_module_impl(Expr* expr, Env* env, Interp* interp) {
     SymbolId name = expr.module_expr.name;
 
-    Module* existing = find_module(name, interp);
-    if (existing != null) {
-        if (existing.loaded) {
+    usz existing_idx = find_module_index(name, interp);
+    if (existing_idx != usz.max) {
+        if (interp.modules[existing_idx].loaded) {
             return eval_error("module already defined");
         }
-        existing.name = (SymbolId)0;
+        rollback_module_publication(interp, existing_idx);
     }
 
     if (interp.module_count >= interp.module_capacity && !interp.grow_module_table()) {
@@ -126,11 +132,10 @@ fn EvalResult jit_eval_module_impl(Expr* expr, Env* env, Interp* interp) {
     interp.module_count++;
 
     usz mod_idx = interp.module_count - 1;
-    usz mh_slot = (usz)name % interp.module_hash_capacity;
-    while (interp.module_hash_index[mh_slot] != usz.max) {
-        mh_slot = (mh_slot + 1) % interp.module_hash_capacity;
+    if (!interp_module_hash_insert(interp, name, mod_idx)) {
+        rollback_module_publication(interp, mod_idx);
+        return eval_error("module hash insertion failed");
     }
-    interp.module_hash_index[mh_slot] = mod_idx;
 
     Env* saved_global = interp.global_env;
     interp.global_env = mod_env;
@@ -189,15 +194,47 @@ fn usz resolve_import_path(char[] rel_path, Interp* interp, char* buf, usz buf_c
     return pos;
 }
 
-fn bool resolve_import_path_checked(char[] rel_path, Interp* interp, char* buf, usz buf_cap, usz* out_len) {
-    if (buf == null || out_len == null || buf_cap == 0) return false;
+enum ImportPathResolveStatus : char {
+    IMPORT_PATH_RESOLVE_OK,
+    IMPORT_PATH_RESOLVE_TOO_LONG,
+    IMPORT_PATH_RESOLVE_UNSAFE,
+}
+
+fn bool import_path_has_parent_segment(char[] rel_path) {
+    usz segment_start = 0;
+    for (usz i = 0; i <= rel_path.len; i++) {
+        if (i == rel_path.len || rel_path[i] == '/') {
+            usz segment_len = i - segment_start;
+            if (segment_len == 2 &&
+                rel_path[segment_start] == '.' &&
+                rel_path[segment_start + 1] == '.') {
+                return true;
+            }
+            segment_start = i + 1;
+        }
+    }
+    return false;
+}
+
+fn bool import_path_is_safe_relative(char[] rel_path) {
+    if (rel_path.len > 0 && rel_path[0] == '/') return false;
+    foreach (item : rel_path) {
+        if (item == 0) return false;
+    }
+    return !import_path_has_parent_segment(rel_path);
+}
+
+fn ImportPathResolveStatus resolve_import_path_status(char[] rel_path, Interp* interp, char* buf, usz buf_cap, usz* out_len) {
+    if (out_len != null) *out_len = 0;
+    if (buf == null || out_len == null || buf_cap == 0 || interp == null) return IMPORT_PATH_RESOLVE_TOO_LONG;
+    if (!import_path_is_safe_relative(rel_path)) return IMPORT_PATH_RESOLVE_UNSAFE;
 
     usz pos = 0;
     if (interp.source_dir_count > 0) {
         char* dir = interp.source_dirs[interp.source_dir_count - 1];
         usz di = 0;
         while (dir[di] != 0) {
-            if (pos >= buf_cap - 1) return false;
+            if (pos >= buf_cap - 1) return IMPORT_PATH_RESOLVE_TOO_LONG;
             buf[pos] = dir[di];
             pos++;
             di++;
@@ -205,14 +242,27 @@ fn bool resolve_import_path_checked(char[] rel_path, Interp* interp, char* buf, 
     }
 
 foreach (item : rel_path) {
-        if (pos >= buf_cap - 1) return false;
+        if (pos >= buf_cap - 1) return IMPORT_PATH_RESOLVE_TOO_LONG;
         buf[pos] = item;
         pos++;
 }
 
     buf[pos] = 0;
     *out_len = pos;
-    return true;
+    return IMPORT_PATH_RESOLVE_OK;
+}
+
+fn bool resolve_import_path_checked(char[] rel_path, Interp* interp, char* buf, usz buf_cap, usz* out_len) {
+    ImportPathResolveStatus status = resolve_import_path_status(rel_path, interp, buf, buf_cap, out_len);
+    return status == IMPORT_PATH_RESOLVE_OK;
+}
+
+fn bool import_path_resolve_status_is_unsafe(ImportPathResolveStatus status) @inline {
+    return status == IMPORT_PATH_RESOLVE_UNSAFE;
+}
+
+fn bool import_path_resolve_status_is_too_long(ImportPathResolveStatus status) @inline {
+    return status == IMPORT_PATH_RESOLVE_TOO_LONG;
 }
 
 fn bool ensure_source_dir_capacity(Interp* interp, usz needed) {
@@ -261,6 +311,46 @@ fn void pop_source_dir(Interp* interp) {
     interp.source_dir_count--;
 }
 
+fn bool module_normalize_path_into(char[] path, char* out, usz out_cap, usz* out_len) {
+    if (out == null || out_len == null || out_cap == 0) return false;
+    *out_len = 0;
+
+    usz pos = 0;
+    usz i = 0;
+    bool absolute = path.len > 0 && path[0] == '/';
+    if (absolute) {
+        if (pos >= out_cap - 1) return false;
+        out[pos++] = '/';
+        while (i < path.len && path[i] == '/') i++;
+    }
+
+    while (i < path.len) {
+        while (i < path.len && path[i] == '/') i++;
+        usz segment_start = i;
+        while (i < path.len && path[i] != '/') i++;
+        usz segment_len = i - segment_start;
+        if (segment_len == 0) continue;
+        if (segment_len == 1 && path[segment_start] == '.') continue;
+
+        if (pos > 0 && out[pos - 1] != '/') {
+            if (pos >= out_cap - 1) return false;
+            out[pos++] = '/';
+        }
+        for (usz j = 0; j < segment_len; j++) {
+            if (pos >= out_cap - 1) return false;
+            out[pos++] = path[segment_start + j];
+        }
+    }
+
+    if (pos == 0 && absolute) {
+        if (out_cap < 2) return false;
+        out[pos++] = '/';
+    }
+    out[pos] = 0;
+    *out_len = pos;
+    return true;
+}
+
 fn bool module_copy_path(Module* mod, char[] path) {
     if (mod.path != null) {
         mem::free(mod.path);
@@ -275,12 +365,14 @@ fn bool module_copy_path(Module* mod, char[] path) {
         mod.path_len = 0;
         return false;
     }
-    for (usz i = 0; i < path.len; i++) {
-        stored[i] = path[i];
+    usz normalized_len = 0;
+    if (!module_normalize_path_into(path, stored, path.len + 1, &normalized_len)) {
+        mem::free(stored);
+        mod.path_len = 0;
+        return false;
     }
-    stored[path.len] = 0;
     mod.path = stored;
-    mod.path_len = path.len;
+    mod.path_len = normalized_len;
     return true;
 }
 
@@ -310,6 +402,11 @@ fn bool module_append_export(Module* mod, SymbolId name) {
 fn bool jit_create_file_module_index(SymbolId name, char[] path, Interp* interp, usz* mod_idx_out) {
     if (mod_idx_out == null) return false;
     *mod_idx_out = usz.max;
+    usz existing_idx = find_module_index_by_path(path, false, interp);
+    if (existing_idx != usz.max) {
+        *mod_idx_out = existing_idx;
+        return true;
+    }
     if (interp.module_count >= interp.module_capacity && !interp.grow_module_table()) return false;
     Module* mod = &interp.modules[interp.module_count];
     mod.name = name;
@@ -336,11 +433,10 @@ fn bool jit_create_file_module_index(SymbolId name, char[] path, Interp* interp,
 
     interp.module_count++;
     usz mod_idx = interp.module_count - 1;
-    usz slot = (usz)name % interp.module_hash_capacity;
-    while (interp.module_hash_index[slot] != usz.max) {
-        slot = (slot + 1) % interp.module_hash_capacity;
+    if (!interp_module_hash_insert(interp, name, mod_idx)) {
+        rollback_module_publication(interp, mod_idx);
+        return false;
     }
-    interp.module_hash_index[slot] = mod_idx;
     *mod_idx_out = mod_idx;
     return true;
 }

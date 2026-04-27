@@ -19,7 +19,10 @@ fn void Compiler.emit_value_tag_literal(Compiler* self, ValueTag tag) {
             self.emit("lisp::ValueTag.SYMBOL");
         case STRING:
             self.emit("lisp::ValueTag.STRING");
+        case NIL:
+            self.emit("lisp::ValueTag.NIL");
         default:
+            self.set_compile_error("compiler: cannot emit unsupported value tag literal");
             self.emit("lisp::ValueTag.NIL");
     }
 }

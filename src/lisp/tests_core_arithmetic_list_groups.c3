@@ -63,6 +63,7 @@ fn void run_arithmetic_basic_ops_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "(+ -5 3) => -2", "(+ -5 3)", -2, pass, fail);
     test_eq(interp, "(+ 100 -100) => 0", "(+ 100 -100)", 0, pass, fail);
     test_eq(interp, "(+ 1000000 2000000) => 3000000", "(+ 1000000 2000000)", 3000000, pass, fail);
+    test_error_contains(interp, "(+ 1 2 3) rejects extra args", "(+ 1 2 3)", "1 or 2 arguments", pass, fail);
     test_eq(interp, "hex radix literal", "#xFF", 255, pass, fail);
     test_eq(interp, "hex radix literal uppercase digits", "#xDEADBEEF", 3735928559, pass, fail);
     test_eq(interp, "negative hex radix literal", "#x-10", -16, pass, fail);
@@ -79,6 +80,7 @@ fn void run_arithmetic_basic_ops_tests(Interp* interp, int* pass, int* fail) {
 
     // Multiplication
     test_eq(interp, "(* 3 4) => 12", "(* 3 4)", 12, pass, fail);
+    test_error_contains(interp, "(* 2 3 4) rejects extra args", "(* 2 3 4)", "arity mismatch", pass, fail);
     test_eq(interp, "(* 0 999) => 0", "(* 0 999)", 0, pass, fail);
     test_eq(interp, "(* 1 42) => 42", "(* 1 42)", 42, pass, fail);
     test_eq(interp, "(* -3 4) => -12", "(* -3 4)", -12, pass, fail);
@@ -94,6 +96,28 @@ fn void run_arithmetic_basic_ops_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "(% 10 3) => 1", "(% 10 3)", 1, pass, fail);
     test_eq(interp, "(% 9 3) => 0", "(% 9 3)", 0, pass, fail);
     test_eq(interp, "(% 7 10) => 7", "(% 7 10)", 7, pass, fail);
+
+    {
+        Value*[3] raw_num_args = { make_int(interp, 2), make_int(interp, 3), make_int(interp, 4) };
+        Value* raw_mul = prim_mul(raw_num_args[0:raw_num_args.len], interp.global_env, interp);
+        Value* raw_eq = prim_eq(raw_num_args[0:raw_num_args.len], interp.global_env, interp);
+        Value* pair = make_cons(interp, make_int(interp, 1), make_nil(interp));
+        Value*[2] raw_car_args = { pair, make_int(interp, 99) };
+        Value* raw_car = prim_car(raw_car_args[0:raw_car_args.len], interp.global_env, interp);
+        bool ok = is_error(raw_mul) && is_error(raw_eq) && is_error(raw_car);
+        if (ok) {
+            emit_pass_literal("[PASS] raw fixed-arity core primitive bodies reject trailing args");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] raw fixed-arity core primitive bodies reject trailing args (mul=%d eq=%d car=%d)",
+                raw_mul != null ? (int)raw_mul.tag : -1,
+                raw_eq != null ? (int)raw_eq.tag : -1,
+                raw_car != null ? (int)raw_car.tag : -1
+            );
+            (*fail)++;
+        }
+    }
 
     // Nested arithmetic
     test_eq(interp, "(+ 1 (+ 2 3)) => 6", "(+ 1 (+ 2 3))", 6, pass, fail);
@@ -134,6 +158,7 @@ fn void run_arithmetic_comparison_ops_tests(Interp* interp, int* pass, int* fail
     test_eq(interp, "(if (< 1 2) 10 20) => 10", "(if (< 1 2) 10 20)", 10, pass, fail);
     test_eq(interp, "(if (> 1 2) 10 20) => 20", "(if (> 1 2) 10 20)", 20, pass, fail);
     test_eq(interp, "(if (= (+ 2 3) 5) 1 0) => 1", "(if (= (+ 2 3) 5) 1 0)", 1, pass, fail);
+    test_error_contains(interp, "if rejects missing else branch", "(if true 42)", "unexpected token in expression", pass, fail);
 }
 
 fn void run_arithmetic_comparison_tests(Interp* interp, int* pass, int* fail) {

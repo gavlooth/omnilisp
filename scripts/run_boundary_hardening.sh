@@ -47,6 +47,7 @@ fi
 
 normal_log="build/boundary_hardening_normal.log"
 asan_log="build/boundary_hardening_asan.log"
+secondary_stage="asan"
 
 mkdir -p build
 
@@ -230,41 +231,78 @@ append_stage_with_log "$normal_log" env "${base_env[@]}" OMNI_LISP_TEST_SLICE=co
 echo ""
 echo "=== Boundary Hardening: Stage 3 (ASAN build) ==="
 omni_run_with_hard_cap c3c clean
-omni_c3 build --sanitize=address -D OMNI_BOUNDARY_INSTR_COUNTERS
+asan_build_output=""
+if asan_build_output="$(omni_c3 build --sanitize=address -D OMNI_BOUNDARY_INSTR_COUNTERS 2>&1)"; then
+  printf "%s\n" "$asan_build_output"
+else
+  printf "%s\n" "$asan_build_output"
+  if grep -qi "address sanitizer is only supported" <<<"$asan_build_output"; then
+    secondary_stage="valgrind"
+    echo "ASAN is unsupported by this toolchain/target; rebuilding normal binary for Valgrind fallback."
+    omni_run_with_hard_cap c3c clean
+    omni_c3 build -D OMNI_BOUNDARY_INSTR_COUNTERS
+  else
+    exit 1
+  fi
+fi
 
 echo ""
-echo "=== Boundary Hardening: Stage 4 (ASAN run) ==="
-run_stage_with_log \
-  "$asan_log" \
-  env \
-    "${base_env[@]}" \
-    "ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1" \
-    ./build/main --test-suite all
+if [[ "$secondary_stage" == "asan" ]]; then
+  echo "=== Boundary Hardening: Stage 4 (ASAN run) ==="
+  run_stage_with_log \
+    "$asan_log" \
+    env \
+      "${base_env[@]}" \
+      "ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1" \
+      ./build/main --test-suite all
+else
+  echo "=== Boundary Hardening: Stage 4 (Valgrind fallback run) ==="
+  run_stage_with_log \
+    "$asan_log" \
+    valgrind \
+      --trace-children=yes \
+      --leak-check=full \
+      --show-leak-kinds=definite,indirect,possible \
+    --error-exitcode=99 \
+    env \
+      "${base_env[@]}" \
+      OMNI_LISP_TEST_SLICE=memory-lifetime-smoke \
+      ./build/main --test-suite lisp
+fi
 echo ""
-echo "=== Boundary Hardening: Stage 4b (ASAN compiler slice) ==="
-append_stage_with_log \
-  "$asan_log" \
-  env \
-    "${base_env[@]}" \
-    "ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1" \
-    OMNI_LISP_TEST_SLICE=compiler \
-    ./build/main --test-suite lisp
+if [[ "$secondary_stage" == "asan" ]]; then
+  echo "=== Boundary Hardening: Stage 4b (ASAN compiler slice) ==="
+  append_stage_with_log \
+    "$asan_log" \
+    env \
+      "${base_env[@]}" \
+      "ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1" \
+      OMNI_LISP_TEST_SLICE=compiler \
+      ./build/main --test-suite lisp
+else
+  echo "=== Boundary Hardening: Stage 4b (Valgrind fallback compiler slice skipped) ==="
+  echo "Normal compiler slice already passed; Valgrind fallback is scoped to memory-lifetime-smoke."
+fi
 
 if [[ "$OMNI_BOUNDARY_ASSERT_SUMMARY" == "1" ]]; then
   echo ""
   echo "=== Boundary Hardening: Stage 5 (summary assertions) ==="
   assert_stage_summary "$normal_log" "normal"
-  assert_stage_summary "$asan_log" "asan"
+  if [[ "$secondary_stage" == "asan" ]]; then
+    assert_stage_summary "$asan_log" "$secondary_stage"
+  else
+    assert_suite_fail_zero "$asan_log" "unified" "$secondary_stage"
+  fi
   echo "Summary assertions passed."
 fi
 
-if [[ "$OMNI_BOUNDARY_EMIT_JSON" == "1" && "$OMNI_BOUNDARY_SUMMARY" == "1" ]]; then
+if [[ "$secondary_stage" == "asan" && "$OMNI_BOUNDARY_EMIT_JSON" == "1" && "$OMNI_BOUNDARY_SUMMARY" == "1" ]]; then
   echo ""
   echo "=== Boundary Hardening: Stage 6 (summary artifact) ==="
   scripts/parse_boundary_summary.sh "$normal_log" "$asan_log" "$OMNI_BOUNDARY_SUMMARY_JSON"
 fi
 
-if [[ "$OMNI_BOUNDARY_ALERT_THRESHOLDS" == "1" ]]; then
+if [[ "$secondary_stage" == "asan" && "$OMNI_BOUNDARY_ALERT_THRESHOLDS" == "1" ]]; then
   echo ""
   echo "=== Boundary Hardening: Stage 7 (boundary telemetry thresholds) ==="
   "$boundary_threshold_script" "$normal_log" "$asan_log" "$OMNI_BOUNDARY_DECISION_BASELINE"
@@ -272,13 +310,15 @@ fi
 
 echo ""
 echo "=== Boundary Hardening: Stage 8 (boundary change policy) ==="
-"$boundary_policy_script" "$normal_log" "$asan_log"
+OMNI_BOUNDARY_SECONDARY_KIND="$secondary_stage" "$boundary_policy_script" "$normal_log" "$asan_log"
 
 echo ""
 echo "Boundary hardening profile passed."
 echo "  normal log: $normal_log"
-echo "  asan log:   $asan_log"
-if [[ "$OMNI_BOUNDARY_EMIT_JSON" == "1" && "$OMNI_BOUNDARY_SUMMARY" == "1" ]]; then
+echo "  ${secondary_stage} log:   $asan_log"
+if [[ "$secondary_stage" == "asan" && "$OMNI_BOUNDARY_EMIT_JSON" == "1" && "$OMNI_BOUNDARY_SUMMARY" == "1" ]]; then
   echo "  summary:    $OMNI_BOUNDARY_SUMMARY_JSON"
+elif [[ "$secondary_stage" == "valgrind" && "$OMNI_BOUNDARY_EMIT_JSON" == "1" && "$OMNI_BOUNDARY_SUMMARY" == "1" ]]; then
+  echo "  summary:    skipped for Valgrind fallback"
 fi
 echo "  lint json:  $OMNI_BOUNDARY_EFFECTS_LINT_JSON"

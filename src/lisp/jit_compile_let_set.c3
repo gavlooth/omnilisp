@@ -20,6 +20,7 @@ fn void? jit_compile_let(void* s, Expr* expr, Interp* interp, JitLocals* locals,
 
     // Compile init expression -> result in R0 (init is not in tail position)
     jit_compile_expr(s, expr.let_expr.init, interp, locals)!;
+    jit_compile_return_if_sequence_should_stop(s, locals);
 
     // Allocate a stack slot for this local variable
     int offset = _jit_allocai(s, 8);
@@ -75,6 +76,7 @@ fn void? jit_compile_set(void* s, Expr* expr, Interp* interp, JitLocals* locals)
 fn void? jit_compile_define(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
     // Compile the value expression -> R0
     jit_compile_expr(s, expr.define.value, interp, locals)!;
+    jit_compile_return_if_sequence_should_stop(s, locals);
 
     // Call jit_eval_define(interp, name, value)
     _jit_new_node_ww(s, CODE_MOVR, JIT_V1, JIT_R0);  // V1 = value
@@ -88,6 +90,7 @@ fn void? jit_compile_quasiquote(void* s, Expr* expr, Interp* interp, JitLocals* 
 fn void? jit_compile_match(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
     // Compile scrutinee natively → R0
     jit_compile_expr(s, expr.match.scrutinee, interp, locals)!;
+    jit_compile_return_if_sequence_should_stop(s, locals);
     // Save scrutinee to V1
     _jit_new_node_ww(s, CODE_MOVR, JIT_V1, JIT_R0);
 

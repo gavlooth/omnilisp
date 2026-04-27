@@ -114,19 +114,16 @@ fn bool ffi_tensor_buffer_export_rejects_unsupported_device_for_tests(Interp* in
 }
 
 fn void run_advanced_ffi_system_tensor_buffer_tests(Interp* interp, int* pass, int* fail) {
-    if (ffi_tensor_buffer_export_contract_for_tests(interp)) {
-        io::printn("[PASS] foreign tensor buffer export contract");
-        (*pass)++;
-    } else {
-        io::printn("[FAIL] foreign tensor buffer export contract");
-        (*fail)++;
-    }
-
-    if (ffi_tensor_buffer_export_rejects_unsupported_device_for_tests(interp)) {
-        io::printn("[PASS] foreign tensor buffer export rejects unsupported device");
-        (*pass)++;
-    } else {
-        io::printn("[FAIL] foreign tensor buffer export rejects unsupported device");
-        (*fail)++;
-    }
+    ftxui_record_result(
+        "foreign tensor buffer export contract",
+        ffi_tensor_buffer_export_contract_for_tests(interp),
+        pass,
+        fail
+    );
+    ftxui_record_result(
+        "foreign tensor buffer export rejects unsupported device",
+        ffi_tensor_buffer_export_rejects_unsupported_device_for_tests(interp),
+        pass,
+        fail
+    );
 }

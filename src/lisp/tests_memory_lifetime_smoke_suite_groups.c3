@@ -13,6 +13,8 @@ fn void run_memory_lifetime_smoke_tests(Interp* interp, int* pass, int* fail) {
     run_memory_lifetime_boundary_copy_fault_tests(interp, pass, fail);
     run_memory_lifetime_boundary_invariant_policy_tests(interp, pass, fail);
     run_memory_lifetime_boundary_scope_scan_budget_tests(interp, pass, fail);
+    run_memory_lifetime_boundary_telemetry_saturation_tests(interp, pass, fail);
+    run_memory_lifetime_boundary_threaded_telemetry_tests(interp, pass, fail);
     run_memory_lifetime_boundary_zero_hint_scope_cache_test(interp, pass, fail);
     run_memory_lifetime_boundary_explicit_target_scope_cache_test(interp, pass, fail);
     run_memory_lifetime_boundary_scope_interleaving_test(interp, pass, fail);

@@ -6,6 +6,10 @@ import std::io;
  * Format a detailed dispatch error showing method name, arg types, and arity hints.
  */
 fn Value* format_dispatch_error(MethodTable* mt, Value*[] args, Interp* interp) {
+    if (mt == null) {
+        return runtime_raise(interp, "runtime/evaluation-error", "invalid method table state");
+    }
+
     char[] name = interp.symbols.get_name(mt.name);
 
     // Build "Integer, String" arg type list
@@ -41,7 +45,7 @@ fn Value* format_dispatch_error(MethodTable* mt, Value*[] args, Interp* interp) 
             if (!dup) {
                 seen_arities[seen_count++] = pc;
                 if (arities.len() > 0) arities.append_string(", ");
-                char[4] nbuf;
+                char[32] nbuf;
                 arities.append_string((String)int_to_string((long)pc, &nbuf));
             }
         }
@@ -65,6 +69,36 @@ fn Value* format_dispatch_error(MethodTable* mt, Value*[] args, Interp* interp) 
 /**
  * Format a detailed match error showing type info and missing union variants.
  */
+fn bool match_pattern_contains_constructor(Pattern* pat, SymbolId constructor_name, Interp* interp) {
+    if (pat == null) return false;
+    switch (pat.tag) {
+        case PAT_CONSTRUCTOR:
+            if ((uint)pat.constructor_name == (uint)constructor_name) return true;
+            for (usz i = 0; i < pat.ctor_sub_count; i++) {
+                if (match_pattern_contains_constructor(pat.ctor_sub_patterns[i], constructor_name, interp)) return true;
+            }
+            return false;
+        case PAT_VAR: {
+            TypeId vt = interp.types.lookup(pat.var_name, &interp.symbols);
+            return vt != INVALID_TYPE_ID && (uint)pat.var_name == (uint)constructor_name;
+        }
+        case PAT_CONS:
+            return match_pattern_contains_constructor(pat.car_pat, constructor_name, interp) ||
+                match_pattern_contains_constructor(pat.cdr_pat, constructor_name, interp);
+        case PAT_SEQ:
+            for (usz i = 0; i < pat.elem_count; i++) {
+                if (match_pattern_contains_constructor(pat.elements[i], constructor_name, interp)) return true;
+            }
+            return false;
+        case PAT_AS:
+            return match_pattern_contains_constructor(pat.as_sub, constructor_name, interp);
+        case PAT_GUARD:
+            return match_pattern_contains_constructor(pat.guard_sub, constructor_name, interp);
+        default:
+            return false;
+    }
+}
+
 fn Value* format_match_error(Value* scrutinee, Expr* expr, Interp* interp) {
     char[512] buf;
     char[] type_name = interp.symbols.get_name(value_type_name(scrutinee, interp));
@@ -85,8 +119,7 @@ fn Value* format_match_error(Value* scrutinee, Expr* expr, Interp* interp) {
                     bool covered = false;
                     for (usz c = 0; c < expr.match.clause_count; c++) {
                         Pattern* pat = expr.match.clauses[c].pattern;
-                        if (pat.tag == PAT_CONSTRUCTOR &&
-                            (uint)pat.constructor_name == (uint)parent.variants[v].name) {
+                        if (match_pattern_contains_constructor(pat, parent.variants[v].name, interp)) {
                             covered = true; break;
                         }
                         if (pat.tag == PAT_WILDCARD) { covered = true; break; }

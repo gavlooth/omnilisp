@@ -6,6 +6,7 @@ cd "$(dirname "$0")/.."
 normal_log="${1:-build/boundary_hardening_normal.log}"
 asan_log="${2:-build/boundary_hardening_asan.log}"
 baseline_file="${3:-scripts/boundary_decision_baseline.env}"
+secondary_kind="${OMNI_BOUNDARY_SECONDARY_KIND:-}"
 
 : "${OMNI_BOUNDARY_ALERT_COPY_FALLBACK_FACTOR:=1.30}"
 : "${OMNI_BOUNDARY_ALERT_SPLICE_SUCCESS_DROP_PCT:=5.0}"
@@ -90,14 +91,29 @@ require_file "$baseline_file"
 # shellcheck disable=SC1090
 source "$baseline_file"
 
+if [[ -z "$secondary_kind" ]]; then
+  if grep -qa "Memcheck" "$asan_log"; then
+    secondary_kind="valgrind"
+  else
+    secondary_kind="asan"
+  fi
+fi
+
 check_stage "normal" "$normal_log" \
   "${BASELINE_NORMAL_SPLICE_ATTEMPTED:-0}" \
   "${BASELINE_NORMAL_SPLICE_SUCCEEDED:-0}" \
   "${BASELINE_NORMAL_COPY_FALLBACK_TOTAL:-0}"
 
-check_stage "asan" "$asan_log" \
-  "${BASELINE_ASAN_SPLICE_ATTEMPTED:-0}" \
-  "${BASELINE_ASAN_SPLICE_SUCCEEDED:-0}" \
-  "${BASELINE_ASAN_COPY_FALLBACK_TOTAL:-0}"
+if [[ "$secondary_kind" == "valgrind" ]]; then
+  check_stage "valgrind" "$asan_log" \
+    "${BASELINE_VALGRIND_SPLICE_ATTEMPTED:-0}" \
+    "${BASELINE_VALGRIND_SPLICE_SUCCEEDED:-0}" \
+    "${BASELINE_VALGRIND_COPY_FALLBACK_TOTAL:-0}"
+else
+  check_stage "asan" "$asan_log" \
+    "${BASELINE_ASAN_SPLICE_ATTEMPTED:-0}" \
+    "${BASELINE_ASAN_SPLICE_SUCCEEDED:-0}" \
+    "${BASELINE_ASAN_COPY_FALLBACK_TOTAL:-0}"
+fi
 
 echo "Boundary decision threshold checks passed."

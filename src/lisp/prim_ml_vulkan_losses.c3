@@ -70,7 +70,9 @@ fn Value* ml_mean_squared_error_eval_vulkan(
     }
     result.tag = TENSOR;
     result.tensor_val = tensor;
-    main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
+    if (!scope_register_value_dtor_or_cleanup(interp.current_scope, result)) {
+        return make_runtime_out_of_memory_error(interp, "Tensor: failed to register result destructor");
+    }
     return result;
 }
 
@@ -136,6 +138,8 @@ fn Value* ml_cross_entropy_eval_vulkan(
     }
     result.tag = TENSOR;
     result.tensor_val = tensor;
-    main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
+    if (!scope_register_value_dtor_or_cleanup(interp.current_scope, result)) {
+        return make_runtime_out_of_memory_error(interp, "Tensor: failed to register result destructor");
+    }
     return result;
 }

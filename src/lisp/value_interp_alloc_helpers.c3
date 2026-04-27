@@ -2,6 +2,14 @@ module lisp;
 
 import main;
 
+int g_interp_force_alloc_value_root_fail_nth = 0;
+
+fn bool interp_should_force_alloc_value_root_fail() @inline {
+    if (g_interp_force_alloc_value_root_fail_nth <= 0) return false;
+    g_interp_force_alloc_value_root_fail_nth--;
+    return g_interp_force_alloc_value_root_fail_nth == 0;
+}
+
 fn Value* Interp.alloc_value(Interp* self) @inline {
     Value* v = (Value*)self.current_scope.alloc(Value.sizeof);
     if (v == null) return null;
@@ -33,6 +41,7 @@ fn Value* Interp.alloc_value_escape(Interp* self) @inline {
 // Root-scope dtors only run at program exit, so unconditional registration is fine here.
 // The perf win is from removing dtors in alloc_value() (child scopes, per-call teardown).
 fn Value* Interp.alloc_value_root(Interp* self) @inline {
+    if (interp_should_force_alloc_value_root_fail()) return null;
     Value* v = (Value*)self.root_scope.alloc(Value.sizeof);
     if (v == null) return null;
     v.tag = NIL;
@@ -52,6 +61,7 @@ fn Env* Interp.alloc_env(Interp* self) @inline {
     e.parent = null;
     e.hash_table = null;
     e.hash_capacity = 0;
+    e.is_inline = false;
     e.lifetime_kind = ENV_LIFETIME_LOCAL_SCOPE_FRAME;
     e.scope_gen = self.current_scope.generation;
     e.owner_scope = self.current_scope;
@@ -71,6 +81,7 @@ fn Env* Interp.alloc_env_escape(Interp* self) @inline {
     e.parent = null;
     e.hash_table = null;
     e.hash_capacity = 0;
+    e.is_inline = false;
     e.lifetime_kind = ENV_LIFETIME_LOCAL_SCOPE_FRAME;
     e.scope_gen = self.current_scope.escape_generation;
     e.owner_scope = self.current_scope;

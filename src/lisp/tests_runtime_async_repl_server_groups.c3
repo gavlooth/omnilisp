@@ -314,6 +314,15 @@ fn void run_async_repl_server_auth_policy_test(Interp* interp, int* pass, int* f
         return;
     }
 
+    ReplServerConnection missing_token_conn = {};
+    repl_server_connection_init(&missing_token_conn, 1, false, false, null, true, null);
+    defer repl_server_connection_destroy(&missing_token_conn);
+
+    char[1] empty_token = {0};
+    ReplServerConnection empty_token_conn = {};
+    repl_server_connection_init(&empty_token_conn, 1, false, false, null, true, &empty_token[0]);
+    defer repl_server_connection_destroy(&empty_token_conn);
+
     char[7] token = {'s', 'e', 'c', 'r', 'e', 't', 0};
     ReplServerConnection secured_conn = {};
     repl_server_connection_init(&secured_conn, 1, false, false, null, true, &token[0]);
@@ -342,6 +351,12 @@ fn void run_async_repl_server_auth_policy_test(Interp* interp, int* pass, int* f
 
     bool ok =
         repl_server_request_is_authorized(&secured_conn, &describe) &&
+        repl_server_request_is_authorized(&missing_token_conn, &describe) &&
+        repl_server_request_is_authorized(&empty_token_conn, &describe) &&
+        missing_token_conn.auth_required &&
+        empty_token_conn.auth_required &&
+        !repl_server_request_is_authorized(&missing_token_conn, &missing_auth) &&
+        !repl_server_request_is_authorized(&empty_token_conn, &missing_auth) &&
         !repl_server_request_is_authorized(&secured_conn, &missing_auth) &&
         !repl_server_request_is_authorized(&secured_conn, &wrong_auth) &&
         repl_server_request_is_authorized(&secured_conn, &correct_auth) &&
@@ -355,6 +370,38 @@ fn void run_async_repl_server_auth_policy_test(Interp* interp, int* pass, int* f
         (*pass)++;
     } else {
         io::printn("[FAIL] async repl-server auth policy requires token on secured transports");
+        (*fail)++;
+    }
+}
+
+fn void run_async_repl_server_socket_permissions_test(Interp* interp, int* pass, int* fail) {
+    (void)interp;
+    char[] socket_path = "/tmp/omni-repl-server-permissions-test.sock";
+    (void)omni_uv_fs_unlink((char*)socket_path.ptr);
+
+    int listener_fd = -1;
+    int listen_status = omni_unix_socket_listen_fd((char*)socket_path.ptr, 1, &listener_fd);
+    uint mode = 0;
+    ulong size = 0;
+    int stat_status = omni_uv_fs_stat_basic((char*)socket_path.ptr, &size, &mode);
+    if (listener_fd >= 0) c_close_fd(listener_fd);
+    defer (void)omni_uv_fs_unlink((char*)socket_path.ptr);
+
+    bool ok = listen_status == 0 &&
+              listener_fd >= 0 &&
+              stat_status == 0 &&
+              (mode & 0o777) == 0o600;
+    if (ok) {
+        emit_pass_literal("[PASS] async repl-server unix socket is owner-only");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] async repl-server unix socket is owner-only (listen=%d fd=%d stat=%d mode=%o)",
+            listen_status,
+            listener_fd,
+            stat_status,
+            mode & 0o777
+        );
         (*fail)++;
     }
 }
@@ -486,6 +533,7 @@ fn void run_async_tests_repl_server(Interp* interp, int* pass, int* fail) {
     run_async_repl_server_clone_queue_defers_session_allocation_test(interp, pass, fail);
     run_async_repl_server_input_destroy_close_test(interp, pass, fail);
     run_async_repl_server_auth_policy_test(interp, pass, fail);
+    run_async_repl_server_socket_permissions_test(interp, pass, fail);
     run_async_repl_server_client_threads_handle_independent_streams_test(interp, pass, fail);
     run_async_repl_server_client_start_failure_rejects_protocol_error_test(interp, pass, fail);
 }

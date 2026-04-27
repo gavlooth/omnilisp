@@ -71,7 +71,7 @@
 (define (log/size)
   (match log-path
     (nil  0)
-    (path (try (lambda (x) ('size (fs-stat path)))
+    (path (try (lambda (x) (ref (fs-stat path) 'size))
                (lambda (e) 0)))))
 
 ;; ── System info ─────────────────────────────────────────────────────────────
@@ -83,9 +83,9 @@
 (define (log/system-uptime)
   (try (lambda (x)
          (let (proc   (process-spawn "/usr/bin/uptime" '("-p") nil)
-               output (fs-read ('stdout proc) 4096)
-               result (process-wait ('handle proc)))
-           (match ('exit-code result)
+               output (fs-read (ref proc 'stdout) 4096)
+               result (process-wait (ref proc 'handle)))
+           (match (ref result 'exit-code)
              (0 (string-trim output))
              (_ "unknown"))))
        (lambda (e) "unknown")))

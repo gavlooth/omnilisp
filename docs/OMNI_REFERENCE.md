@@ -17,6 +17,9 @@ Compatibility/removal policy:
 Authority and coverage map:
 - `docs/DOCS_CONTRACT.md`
 
+Compact LLM-facing syntax digest:
+- `docs/LLM_LANGUAGE_DIGEST.md`
+
 ---
 
 ## Chapters

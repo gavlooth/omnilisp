@@ -56,7 +56,7 @@ extern "C" __global__ void omni_cuda_diagonal_complex128(
     unsigned long long index =
         (unsigned long long)blockIdx.x * (unsigned long long)blockDim.x +
         (unsigned long long)threadIdx.x;
-    if (index >= diagonal_count) return;
+    if (index >= diagonal_count || index >= rows || index >= cols) return;
     out[index] = input[index * cols + index];
 }
 
@@ -70,7 +70,7 @@ extern "C" __global__ void omni_cuda_diagonal_complex64(
     unsigned long long index =
         (unsigned long long)blockIdx.x * (unsigned long long)blockDim.x +
         (unsigned long long)threadIdx.x;
-    if (index >= diagonal_count) return;
+    if (index >= diagonal_count || index >= rows || index >= cols) return;
     out[index] = input[index * cols + index];
 }
 

@@ -8,6 +8,7 @@ extern fn ulong omni_ffi_test_echo_u64(ulong value) @extern("omni_ffi_test_echo_
 extern fn uint omni_ffi_test_return_u32_max() @extern("omni_ffi_test_return_u32_max");
 extern fn ulong omni_ffi_test_return_u64_long_max() @extern("omni_ffi_test_return_u64_long_max");
 extern fn ulong omni_ffi_test_return_u64_above_long_max() @extern("omni_ffi_test_return_u64_above_long_max");
+extern fn long omni_ffi_test_return_bool_true() @extern("omni_ffi_test_return_bool_true");
 extern fn int omni_ffi_call_rejects_unsupported_type_tags_for_tests() @extern("omni_ffi_call_rejects_unsupported_type_tags_for_tests");
 extern fn int omni_ffi_closure_alloc_rejects_unsupported_type_tags_for_tests() @extern("omni_ffi_closure_alloc_rejects_unsupported_type_tags_for_tests");
 
@@ -51,6 +52,32 @@ fn bool ffi_unsigned_return_contract_for_tests(Interp* interp) {
     return u32 != null && u32.tag == INT && u32.int_val == (long)uint.max &&
         u64_max_signed != null && u64_max_signed.tag == INT && u64_max_signed.int_val == long.max &&
         ffi_test_error_contains(u64_high, "UInt64 return exceeds Integer range");
+}
+
+fn bool ffi_invalid_return_type_contract_for_tests(Interp* interp) {
+    FfiTypeTag invalid = {};
+    char* raw = (char*)&invalid;
+    raw[0] = (char)127;
+
+    long ret_int = 0;
+    uint ret_u32 = 0;
+    ulong ret_u64 = 0;
+    float ret_f32 = 0.0f;
+    double ret_dbl = 0.0;
+    void* ret_ptr = null;
+    void* storage = ffi_return_storage_for(invalid, &ret_int, &ret_u32, &ret_u64, &ret_f32, &ret_dbl, &ret_ptr);
+    Value* converted = ffi_return_value_for(null, invalid, null, 0, 0, 0, 0.0f, 0.0, null, interp);
+
+    FfiBoundFn bound = {};
+    bound.fn_ptr = (void*)&omni_ffi_test_return_u32_max;
+    bound.lib_handle = (void*)1;
+    bound.return_type = invalid;
+    Value*[] no_args = {};
+    Value* called = foreign_runtime_call_c_abi_bound(&bound, no_args, null, interp);
+
+    return storage == null &&
+        ffi_test_error_contains(converted, "unsupported return ABI type") &&
+        ffi_test_error_contains(called, "unsupported return ABI type");
 }
 
 fn bool ffi_unsigned_libffi_contract_for_tests(Interp* interp) {
@@ -130,6 +157,15 @@ fn bool ffi_async_unsigned_return_contract_for_tests() {
     if (completion != null) scheduler_free_offload_completion(completion);
 
     ctx.fn_ptr = (void*)&omni_ffi_test_return_u32_max;
+    ctx.ret_type = 127;
+    completion = ffi_async_offload_callback({ .custom_ctx = (void*)ctx });
+    bool invalid_type_rejected = completion != null &&
+        completion.kind == OFFLOAD_RES_ERROR &&
+        completion.error_msg != null &&
+        str_contains(completion.error_msg[:completion.error_len], "unsupported return ABI type");
+    if (completion != null) scheduler_free_offload_completion(completion);
+
+    ctx.fn_ptr = (void*)&omni_ffi_test_return_u32_max;
     ctx.ret_type = (int)FfiTypeTag.FFI_TYPE_UINT32;
     completion = ffi_async_offload_callback({ .custom_ctx = (void*)ctx });
     bool u32_ok = completion != null &&
@@ -138,7 +174,80 @@ fn bool ffi_async_unsigned_return_contract_for_tests() {
     if (completion != null) scheduler_free_offload_completion(completion);
 
     ffi_async_call_ctx_free((void*)ctx);
-    return high_rejected && u32_ok;
+    return high_rejected && invalid_type_rejected && u32_ok;
+}
+
+fn bool ffi_async_invalid_argument_type_contract_for_tests(Interp* interp) {
+    if (interp == null) return false;
+    FfiAsyncCallCtx* ctx = (FfiAsyncCallCtx*)mem::malloc(FfiAsyncCallCtx.sizeof);
+    if (ctx == null) return false;
+    *ctx = {};
+
+    ctx.arg_types[0] = 127;
+    Value* helper_err = ffi_async_own_string_arg(ctx, make_string(interp, "invalid"), 0, interp);
+    bool helper_rejected = ffi_test_error_contains(helper_err, "unsupported argument ABI type");
+
+    ctx.fn_ptr = (void*)&omni_ffi_test_echo_u32;
+    ctx.nargs = 1;
+    ctx.arg_types[0] = 127;
+    ctx.arg_values[0] = (void*)&ctx.int_storage[0];
+    ctx.ret_type = (int)FfiTypeTag.FFI_TYPE_UINT32;
+    OffloadCompletion* completion = ffi_async_offload_callback({ .custom_ctx = (void*)ctx });
+    bool callback_rejected = completion != null &&
+        completion.kind == OFFLOAD_RES_ERROR &&
+        completion.error_msg != null &&
+        str_contains(completion.error_msg[:completion.error_len], "unsupported argument ABI type");
+    if (completion != null) scheduler_free_offload_completion(completion);
+
+    ffi_async_call_ctx_free((void*)ctx);
+    return helper_rejected && callback_rejected;
+}
+
+fn bool ffi_async_void_return_contract_for_tests(Interp* interp) {
+    FfiAsyncCallCtx* ctx = (FfiAsyncCallCtx*)mem::malloc(FfiAsyncCallCtx.sizeof);
+    if (ctx == null) return false;
+    *ctx = {};
+    ctx.fn_ptr = (void*)&omni_ffi_test_return_u32_max;
+    ctx.nargs = 0;
+    ctx.ret_type = (int)FfiTypeTag.FFI_TYPE_VOID;
+
+    OffloadCompletion* completion = ffi_async_offload_callback({ .custom_ctx = (void*)ctx });
+    bool direct_ok = completion != null && completion.kind == OFFLOAD_RES_VOID;
+    if (completion != null) scheduler_free_offload_completion(completion);
+
+    ffi_async_call_ctx_free((void*)ctx);
+
+    EvalResult surface = run("(= (type-of (ffi-async-call free nil)) 'Void)", interp);
+    bool surface_ok = !surface.error.has_error &&
+        surface.value != null &&
+        surface.value.tag == SYMBOL &&
+        surface.value.sym_val == interp.sym_true;
+    return direct_ok && surface_ok;
+}
+
+fn bool ffi_async_bool_return_contract_for_tests(Interp* interp) {
+    FfiAsyncCallCtx* ctx = (FfiAsyncCallCtx*)mem::malloc(FfiAsyncCallCtx.sizeof);
+    if (ctx == null) return false;
+    *ctx = {};
+    ctx.fn_ptr = (void*)&omni_ffi_test_return_bool_true;
+    ctx.nargs = 0;
+    ctx.ret_type = (int)FfiTypeTag.FFI_TYPE_BOOL;
+
+    OffloadCompletion* completion = ffi_async_offload_callback({ .custom_ctx = (void*)ctx });
+    bool direct_ok = completion != null &&
+        completion.kind == OFFLOAD_RES_BOOL &&
+        completion.int_result == 1;
+    bool materialized_ok = false;
+    if (completion != null) {
+        Value* materialized = scheduler_value_from_offload_completion(completion, interp);
+        materialized_ok = materialized != null &&
+            materialized.tag == SYMBOL &&
+            materialized.sym_val == interp.sym_true;
+        scheduler_free_offload_completion(completion);
+    }
+
+    ffi_async_call_ctx_free((void*)ctx);
+    return direct_ok && materialized_ok;
 }
 
 fn bool ffi_callback_finalization_guard_contract_for_tests(Interp* interp) {
@@ -202,6 +311,29 @@ fn void run_advanced_ffi_system_surface_tests(Interp* interp, int* pass, int* fa
         "path must be a non-empty string shorter than 256 bytes",
         pass, fail);
     {
+        Expr path_expr = {};
+        path_expr.tag = E_LIT;
+        path_expr.lit.value = make_string(interp, "libc.so.6");
+
+        Expr ffi_lib_expr = {};
+        ffi_lib_expr.tag = E_FFI_LIB;
+        ffi_lib_expr.ffi_lib.name = interp.symbols.intern("ffi-null-global-env");
+        ffi_lib_expr.ffi_lib.path_expr = &path_expr;
+
+        Env* saved_global_env = interp.global_env;
+        interp.global_env = null;
+        Value* rejected = eval_ffi_lib(&ffi_lib_expr, saved_global_env, interp);
+        interp.global_env = saved_global_env;
+
+        if (ffi_test_error_contains(rejected, "global environment is unavailable")) {
+            emit_pass_literal("[PASS] ffi lib rejects missing global env");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] ffi lib rejects missing global env");
+            (*fail)++;
+        }
+    }
+    {
         bool saved_force = g_env_force_barrier_promote_failure;
         g_env_force_barrier_promote_failure = true;
         test_error_contains(interp, "ffi lib registration failure releases constructed wrapper",
@@ -225,7 +357,7 @@ fn void run_advanced_ffi_system_surface_tests(Interp* interp, int* pass, int* fa
             b_val != null && b_val.tag == FFI_HANDLE &&
             a_val.ffi_val != null && b_val.ffi_val != null &&
             a_val.ffi_val.lib_handle == b_val.ffi_val.lib_handle) {
-            io::printn("[PASS] shared dlopen registry");
+            emit_pass_literal("[PASS] shared dlopen registry");
             (*pass)++;
         } else {
             io::printn("[FAIL] shared dlopen registry: libc-shared-a and libc-shared-b do not share handle");
@@ -237,7 +369,7 @@ fn void run_advanced_ffi_system_surface_tests(Interp* interp, int* pass, int* fa
         for (usz i = 0; i < too_long_path.len; i++) too_long_path[i] = 'a';
         void* rejected = ffi_dlopen_registry_acquire(too_long_path[0:too_long_path.len]);
         if (rejected == null) {
-            io::printn("[PASS] shared dlopen registry rejects overlong non-NUL path");
+            emit_pass_literal("[PASS] shared dlopen registry rejects overlong non-NUL path");
             (*pass)++;
         } else {
             ffi_dlopen_registry_release(too_long_path[0:too_long_path.len]);
@@ -249,7 +381,7 @@ fn void run_advanced_ffi_system_surface_tests(Interp* interp, int* pass, int* fa
         char[12] nul_path = { 'l', 'i', 'b', 'c', (char)0, '.', 's', 'o', '.', '6', 0, 0 };
         void* rejected = ffi_dlopen_registry_acquire(nul_path[0:10]);
         if (rejected == null) {
-            io::printn("[PASS] shared dlopen registry rejects embedded-NUL path");
+            emit_pass_literal("[PASS] shared dlopen registry rejects embedded-NUL path");
             (*pass)++;
         } else {
             ffi_dlopen_registry_release(nul_path[0:10]);
@@ -414,6 +546,9 @@ fn void run_advanced_ffi_system_surface_tests(Interp* interp, int* pass, int* fa
     test_error_contains(interp, "ffi λ legacy Pointer annotation is rejected",
         "(block (define [ffi lib] bad-ffi-lib3 \"libc.so.6\") (define [ffi λ bad-ffi-lib3] (free (^Pointer p))))",
         "unsupported parameter type annotation '^Pointer'", pass, fail);
+    test_error_contains(interp, "ffi λ rejects Void parameter at definition time",
+        "(block (define [ffi lib] bad-ffi-lib4 \"libc.so.6\") (define [ffi λ bad-ffi-lib4] (bad_void_param (^Void v)) ^Integer))",
+        "unsupported parameter ABI type '^Void'", pass, fail);
     test_error_contains(interp, "ffi λ unsupported return annotation",
         "(block (define [ffi lib] bad-ffi-lib2 \"libc.so.6\") (define [ffi λ bad-ffi-lib2] (strlen (^String s)) ^Symbol))",
         "unsupported return type annotation '^Symbol'", pass, fail);
@@ -497,21 +632,21 @@ fn void run_advanced_ffi_system_surface_tests(Interp* interp, int* pass, int* fa
         "expected return type annotation after [ffi module] function signature", pass, fail);
 
     if (omni_ffi_call_null_arg_vectors_guard_for_tests() == -1) {
-        io::printn("[PASS] ffi native call rejects null arg vectors");
+        emit_pass_literal("[PASS] ffi native call rejects null arg vectors");
         (*pass)++;
     } else {
         io::printn("[FAIL] ffi native call rejects null arg vectors");
         (*fail)++;
     }
     if (omni_ffi_call_var_null_arg_vectors_guard_for_tests() == -1) {
-        io::printn("[PASS] ffi native variadic call rejects null arg vectors");
+        emit_pass_literal("[PASS] ffi native variadic call rejects null arg vectors");
         (*pass)++;
     } else {
         io::printn("[FAIL] ffi native variadic call rejects null arg vectors");
         (*fail)++;
     }
     if (omni_ffi_closure_alloc_failure_clears_outputs_for_tests() == 0) {
-        io::printn("[PASS] ffi native closure failure clears outputs");
+        emit_pass_literal("[PASS] ffi native closure failure clears outputs");
         (*pass)++;
     } else {
         io::printn("[FAIL] ffi native closure failure clears outputs");
@@ -528,6 +663,11 @@ fn void run_advanced_ffi_system_surface_tests(Interp* interp, int* pass, int* fa
         pass,
         fail);
     ftxui_record_result(
+        "ffi invalid return ABI type fails closed before libffi call",
+        ffi_invalid_return_type_contract_for_tests(interp),
+        pass,
+        fail);
+    ftxui_record_result(
         "ffi native unsigned libffi storage preserves unsigned ABI bits",
         ffi_unsigned_libffi_contract_for_tests(interp),
         pass,
@@ -535,6 +675,11 @@ fn void run_advanced_ffi_system_surface_tests(Interp* interp, int* pass, int* fa
     ftxui_record_result(
         "ffi native buffer return conversion exports opaque handles",
         ffi_buffer_return_contract_for_tests(interp),
+        pass,
+        fail);
+    ftxui_record_result(
+        "ffi native Struct return uses pointer storage before conversion boundary",
+        ffi_struct_return_storage_contract_for_tests(interp),
         pass,
         fail);
     ftxui_record_result(
@@ -548,7 +693,7 @@ fn void run_advanced_ffi_system_surface_tests(Interp* interp, int* pass, int* fa
         Value* forced_cons_failure = ffi_callback_make_arg_cons(interp, make_int(interp, 1), make_nil(interp));
         g_value_force_make_cons_or_error_alloc_fail_nth = saved_cons_fail;
         if (forced_cons_failure != null && forced_cons_failure.tag == ERROR) {
-            io::printn("[PASS] ffi-callback argument list cons failure fails closed");
+            emit_pass_literal("[PASS] ffi-callback argument list cons failure fails closed");
             (*pass)++;
         } else {
             io::printn("[FAIL] ffi-callback argument list cons failure fails closed");
@@ -565,6 +710,14 @@ fn void run_advanced_ffi_system_surface_tests(Interp* interp, int* pass, int* fa
 
     test_error_contains(interp, "ffi-callback rejects unsupported parameter type symbol",
         "(ffi-callback (lambda (x) x) ['UnknownType] 'Integer)",
+        "unsupported parameter type", pass, fail);
+
+    test_error_contains(interp, "ffi-callback rejects Void parameter in list form",
+        "(ffi-callback (lambda (x) x) ['Void] 'Integer)",
+        "unsupported parameter type", pass, fail);
+
+    test_error_contains(interp, "ffi-callback rejects Void parameter in variadic form",
+        "(ffi-callback (lambda (x) x) 'Void 'Integer)",
         "unsupported parameter type", pass, fail);
 
     test_error_contains(interp, "ffi-callback rejects unsupported return type symbol",
@@ -589,7 +742,7 @@ fn void run_advanced_ffi_system_surface_tests(Interp* interp, int* pass, int* fa
             void* code_ptr = ri.value.ffi_val.lib_handle;
             int result = omni_ffi_test_callback_int_int(code_ptr, 10, 3);
             if (result == 7) {
-                io::printfn("[PASS] ffi-callback end-to-end invocation");
+                emit_pass_literal("[PASS] ffi-callback end-to-end invocation");
                 (*pass)++;
             } else {
                 io::printfn("[FAIL] ffi-callback end-to-end invocation: expected 7, got %d", result);
@@ -606,7 +759,7 @@ fn void run_advanced_ffi_system_surface_tests(Interp* interp, int* pass, int* fa
         } else {
             int result = omni_ffi_test_callback_int_int(ri.value.ffi_val.lib_handle, 1, 2);
             if (result == 1) {
-                io::printfn("[PASS] ffi-callback Boolean return converts true to C true");
+                emit_pass_literal("[PASS] ffi-callback Boolean return converts true to C true");
                 (*pass)++;
             } else {
                 io::printfn("[FAIL] ffi-callback Boolean return converts true to C true: expected 1, got %d", result);
@@ -623,7 +776,7 @@ fn void run_advanced_ffi_system_surface_tests(Interp* interp, int* pass, int* fa
         } else {
             int result = omni_ffi_test_callback_int_int(ri.value.ffi_val.lib_handle, 1, 2);
             if (result == 0) {
-                io::printfn("[PASS] ffi-callback error return slot is deterministic zero");
+                emit_pass_literal("[PASS] ffi-callback error return slot is deterministic zero");
                 (*pass)++;
             } else {
                 io::printfn("[FAIL] ffi-callback error return slot is deterministic zero: expected 0, got %d", result);
@@ -641,7 +794,7 @@ fn void run_advanced_ffi_system_surface_tests(Interp* interp, int* pass, int* fa
             char[14] text = { 'c', 'a', 'l', 'l', 'b', 'a', 'c', 'k', '-', 't', 'e', 'x', 't', 0 };
             int result = omni_ffi_test_callback_string_len(ri.value.ffi_val.lib_handle, &text[0]);
             if (result == 13) {
-                io::printfn("[PASS] ffi-callback String parameter arrives as Omni String");
+                emit_pass_literal("[PASS] ffi-callback String parameter arrives as Omni String");
                 (*pass)++;
             } else {
                 io::printfn("[FAIL] ffi-callback String parameter arrives as Omni String: expected 13, got %d", result);
@@ -657,7 +810,7 @@ fn void run_advanced_ffi_system_surface_tests(Interp* interp, int* pass, int* fa
             io::printfn("[FAIL] ffi-callback foreign-release: got error: %s", ri.error.message);
             (*fail)++;
         } else {
-            io::printfn("[PASS] ffi-callback foreign-release");
+            emit_pass_literal("[PASS] ffi-callback foreign-release");
             (*pass)++;
         }
     }
@@ -675,6 +828,21 @@ fn void run_advanced_ffi_system_surface_tests(Interp* interp, int* pass, int* fa
     ftxui_record_result(
         "ffi-async-call owns copied String arguments before worker handoff",
         ffi_async_string_arg_copy_contract_for_tests(interp),
+        pass,
+        fail);
+    ftxui_record_result(
+        "ffi-async-call invalid argument ABI type fails closed before worker call",
+        ffi_async_invalid_argument_type_contract_for_tests(interp),
+        pass,
+        fail);
+    ftxui_record_result(
+        "ffi-async-call Void return preserves Void singleton contract",
+        ffi_async_void_return_contract_for_tests(interp),
+        pass,
+        fail);
+    ftxui_record_result(
+        "ffi-async-call Boolean return preserves Boolean singleton contract",
+        ffi_async_bool_return_contract_for_tests(interp),
         pass,
         fail);
     ftxui_record_result(
@@ -701,7 +869,7 @@ fn void run_advanced_ffi_system_surface_tests(Interp* interp, int* pass, int* fa
     test_eq_double(interp, "ffi-async-call sqrt",
         "(ffi-async-call sqrt 4.0)", 2.0, pass, fail);
     test_truthy(interp, "ffi-async-call sinf Float32 payload",
-        "(let (r (ffi-async-call sinf (Float32 1.5707964))) (and (> r 0.999) (< r 1.001)))",
+        "(let (r (ffi-async-call sinf (Float32 1.5707964))) (and (= (type-of r) 'Float32) (> r (Float32 0.999)) (< r (Float32 1.001))))",
         pass, fail);
     test_eq_double(interp, "ffi-async-call pow",
         "(ffi-async-call pow 2.0 10.0)", 1024.0, pass, fail);

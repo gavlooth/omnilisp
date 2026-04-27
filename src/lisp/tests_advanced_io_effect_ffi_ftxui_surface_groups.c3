@@ -4,7 +4,9 @@ import std::io;
 
 fn void ftxui_record_result(ZString name, bool ok, int* pass, int* fail) {
     if (ok) {
-        io::printfn("[PASS] %s", name);
+        if (!test_quiet_enabled()) {
+            io::printfn("[PASS] %s", name);
+        }
         (*pass)++;
     } else {
         io::printfn("[FAIL] %s", name);

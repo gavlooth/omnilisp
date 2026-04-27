@@ -62,7 +62,10 @@ fn void run_jit_policy_continuation_teardown_test(Interp* interp, int* pass, int
     (void)interp;
     Interp* other = (Interp*)mem::malloc(Interp.sizeof);
     bool ok = other != null;
-    if (ok) other.init();
+    if (ok) {
+        other.init();
+        ok = register_primitives(other);
+    }
 
     EvalResult r = {};
     if (ok) {
@@ -86,6 +89,25 @@ fn void run_jit_policy_continuation_teardown_test(Interp* interp, int* pass, int
         (*pass)++;
     } else {
         io::printn("[FAIL] jit policy: interp teardown reclaims abandoned continuation stack contexts");
+        (*fail)++;
+    }
+}
+
+fn void run_jit_policy_continuation_helper_invalid_value_fails_closed_test(Interp* interp, int* pass, int* fail) {
+    EvalResult null_result = jit_apply_continuation(null, make_nil(interp), interp);
+    Value* non_continuation = make_nil(interp);
+    EvalResult non_continuation_result = jit_apply_continuation(non_continuation, make_nil(interp), interp);
+
+    bool ok = null_result.error.has_error &&
+              non_continuation_result.error.has_error &&
+              str_starts_with(null_result.error.message[:256], "cannot resume continuation: invalid continuation") &&
+              str_starts_with(non_continuation_result.error.message[:256], "cannot resume continuation: invalid continuation");
+
+    if (ok) {
+        emit_pass_literal("[PASS] jit policy: continuation helper rejects invalid values before payload access");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] jit policy: continuation helper rejects invalid values before payload access");
         (*fail)++;
     }
 }
@@ -317,7 +339,10 @@ fn void run_jit_policy_capture_discard_recycles_stack_ctx_test(Interp* interp, i
     (void)interp;
     Interp* other = (Interp*)mem::malloc(Interp.sizeof);
     bool ok = other != null;
-    if (ok) other.init();
+    if (ok) {
+        other.init();
+        ok = register_primitives(other);
+    }
 
     usz before = 0;
     usz after = 0;

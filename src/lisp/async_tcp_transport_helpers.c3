@@ -7,6 +7,7 @@ extern fn int omni_addrinfo_render_ip(void* result, char* dst, uint dst_size) @e
 
 const int OMNI_ADDRINFO_RENDER_OK = 0;
 const int OMNI_ADDRINFO_RENDER_UNSUPPORTED_FAMILY = 1;
+const int OMNI_ADDRINFO_RENDER_FAILED = -1;
 
 fn bool is_localhost_name(char[] host) @inline {
     return host.len == 9 &&

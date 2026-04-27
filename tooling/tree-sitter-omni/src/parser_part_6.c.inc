@@ -1,3 +1,11 @@
+#ifdef TREE_SITTER_HIDE_SYMBOLS
+#define TS_PUBLIC
+#elif defined(_WIN32)
+#define TS_PUBLIC __declspec(dllexport)
+#else
+#define TS_PUBLIC __attribute__((visibility("default")))
+#endif
+
 TS_PUBLIC const TSLanguage *tree_sitter_omni(void) {
   static const TSLanguage language = {
     .abi_version = LANGUAGE_VERSION,

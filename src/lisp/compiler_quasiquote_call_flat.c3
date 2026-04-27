@@ -53,7 +53,11 @@ fn usz Compiler.compile_qq_call_no_splice(Compiler* self, Expr* tmpl, usz total,
     usz result_r = self.qq_emit_nil_result();
     for (usz i = total; i > 0; i--) {
         usz elem_r = self.compile_qq_flat(self.qq_call_element(tmpl, i - 1), depth);
+        if (self.has_error || elem_r == usz.max) return usz.max;
+        self.emit_return_if_sequence_should_stop(elem_r);
         result_r = self.qq_emit_cons_pair(elem_r, result_r);
+        if (self.has_error || result_r == usz.max) return usz.max;
+        self.emit_return_if_sequence_should_stop(result_r);
     }
     return result_r;
 }
@@ -64,11 +68,17 @@ fn usz Compiler.compile_qq_call_with_splice(Compiler* self, Expr* tmpl, usz tota
         Expr* elem = self.qq_call_element(tmpl, i - 1);
         if (elem.tag == E_UNQUOTE_SPLICING && depth == 0) {
             usz splice_r = self.compile_to_temp(elem.unquote_splicing.body);
+            if (self.has_error || splice_r == usz.max) return usz.max;
+            self.emit_return_if_sequence_should_stop(splice_r);
             result_r = self.qq_emit_append_pair(splice_r, result_r);
         } else {
             usz elem_r = self.compile_qq_flat(elem, depth);
+            if (self.has_error || elem_r == usz.max) return usz.max;
+            self.emit_return_if_sequence_should_stop(elem_r);
             result_r = self.qq_emit_cons_pair(elem_r, result_r);
         }
+        if (self.has_error || result_r == usz.max) return usz.max;
+        self.emit_return_if_sequence_should_stop(result_r);
     }
     return result_r;
 }

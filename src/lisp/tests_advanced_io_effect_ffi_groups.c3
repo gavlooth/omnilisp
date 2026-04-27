@@ -160,11 +160,11 @@ fn void run_advanced_union_memory_limit_tests(Interp* interp, int* pass, int* fa
         43, pass, fail);
     // Large method table (>32 methods, was max 32, now 64)
     setup(interp, "(define [type] TestMT33 (^Integer val))");
-    setup(interp, "(define (mt33-f (^(Value 1) n)) 1) (define (mt33-f (^(Value 2) n)) 2) (define (mt33-f (^(Value 3) n)) 3) (define (mt33-f (^(Value 4) n)) 4) (define (mt33-f (^(Value 5) n)) 5) (define (mt33-f (^(Value 6) n)) 6) (define (mt33-f (^(Value 7) n)) 7) (define (mt33-f (^(Value 8) n)) 8)");
-    setup(interp, "(define (mt33-f (^(Value 9) n)) 9) (define (mt33-f (^(Value 10) n)) 10) (define (mt33-f (^(Value 11) n)) 11) (define (mt33-f (^(Value 12) n)) 12) (define (mt33-f (^(Value 13) n)) 13) (define (mt33-f (^(Value 14) n)) 14) (define (mt33-f (^(Value 15) n)) 15) (define (mt33-f (^(Value 16) n)) 16)");
-    setup(interp, "(define (mt33-f (^(Value 17) n)) 17) (define (mt33-f (^(Value 18) n)) 18) (define (mt33-f (^(Value 19) n)) 19) (define (mt33-f (^(Value 20) n)) 20) (define (mt33-f (^(Value 21) n)) 21) (define (mt33-f (^(Value 22) n)) 22) (define (mt33-f (^(Value 23) n)) 23) (define (mt33-f (^(Value 24) n)) 24)");
-    setup(interp, "(define (mt33-f (^(Value 25) n)) 25) (define (mt33-f (^(Value 26) n)) 26) (define (mt33-f (^(Value 27) n)) 27) (define (mt33-f (^(Value 28) n)) 28) (define (mt33-f (^(Value 29) n)) 29) (define (mt33-f (^(Value 30) n)) 30) (define (mt33-f (^(Value 31) n)) 31) (define (mt33-f (^(Value 32) n)) 32)");
-    setup(interp, "(define (mt33-f (^(Value 33) n)) 33)");
+    setup(interp, "(define (mt33-f (^#1 n)) 1) (define (mt33-f (^#2 n)) 2) (define (mt33-f (^#3 n)) 3) (define (mt33-f (^#4 n)) 4) (define (mt33-f (^#5 n)) 5) (define (mt33-f (^#6 n)) 6) (define (mt33-f (^#7 n)) 7) (define (mt33-f (^#8 n)) 8)");
+    setup(interp, "(define (mt33-f (^#9 n)) 9) (define (mt33-f (^#10 n)) 10) (define (mt33-f (^#11 n)) 11) (define (mt33-f (^#12 n)) 12) (define (mt33-f (^#13 n)) 13) (define (mt33-f (^#14 n)) 14) (define (mt33-f (^#15 n)) 15) (define (mt33-f (^#16 n)) 16)");
+    setup(interp, "(define (mt33-f (^#17 n)) 17) (define (mt33-f (^#18 n)) 18) (define (mt33-f (^#19 n)) 19) (define (mt33-f (^#20 n)) 20) (define (mt33-f (^#21 n)) 21) (define (mt33-f (^#22 n)) 22) (define (mt33-f (^#23 n)) 23) (define (mt33-f (^#24 n)) 24)");
+    setup(interp, "(define (mt33-f (^#25 n)) 25) (define (mt33-f (^#26 n)) 26) (define (mt33-f (^#27 n)) 27) (define (mt33-f (^#28 n)) 28) (define (mt33-f (^#29 n)) 29) (define (mt33-f (^#30 n)) 30) (define (mt33-f (^#31 n)) 31) (define (mt33-f (^#32 n)) 32)");
+    setup(interp, "(define (mt33-f (^#33 n)) 33)");
     test_eq(interp, "method table >32", "(mt33-f 33)", 33, pass, fail);
 }
 

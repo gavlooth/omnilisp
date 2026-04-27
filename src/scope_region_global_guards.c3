@@ -13,7 +13,7 @@ const usz SCOPE_FREELIST_MAX = 64;  // Don't hoard too many recycled scopes
 
 // Global monotonic generation counter — ensures every scope gets a unique generation.
 // Used by Value.scope_gen stamps for O(1) scope membership checks.
-uint g_scope_generation_counter = 0;
+ulong g_scope_generation_counter = 0;
 
 thread::Mutex g_scope_global_mu;
 thread::OnceFlag g_scope_global_once;
@@ -61,20 +61,25 @@ fn void* scope_current_thread_token() @inline {
     return (void*)&g_scope_thread_marker;
 }
 
-fn void scope_thread_violation(char[] op) @inline {
+fn void scope_thread_violation(ZString op) @inline {
     io::eprintfn("scope-region thread-affinity violation in %s", op);
     unreachable("scope-region accessed from non-owner thread");
 }
 
-fn void scope_require_owner(ScopeRegion* scope, char[] op) @inline {
-    if (scope == null) return;
+fn bool scope_owner_guard_ok(ScopeRegion* scope, ZString op) @inline {
+    if (scope == null) return false;
     if (scope.owner_thread_token != scope_current_thread_token()) {
         scope_thread_violation(op);
     }
+    return true;
+}
+
+fn void scope_require_owner(ScopeRegion* scope, ZString op) @inline {
+    assert(scope_owner_guard_ok(scope, op), "scope owner guard requires non-null scope");
 }
 
 macro scope_guard_owner(scope, op) {
-    scope_require_owner(scope, op);
+    scope_require_owner(scope, (ZString)op);
 }
 
 macro scope_invariant_refcount_live(scope) {

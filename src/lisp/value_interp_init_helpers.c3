@@ -68,7 +68,7 @@ fn bool interp_init_type_symbols(Interp* self) {
         interp_init_symbol(self, &self.sym_Dictionary, "Dictionary") &&
         interp_init_symbol(self, &self.sym_Set, "Set") &&
         interp_init_symbol(self, &self.sym_Any, "Any") &&
-        interp_init_symbol(self, &self.sym_Value, "Value") &&
+        interp_init_symbol(self, &self.sym_Literal, "Literal") &&
         interp_init_symbol(self, &self.sym_Number, "Number") &&
         interp_init_symbol(self, &self.sym_Collection, "Collection") &&
         interp_init_symbol(self, &self.sym_Iterator, "Iterator") &&
@@ -107,6 +107,7 @@ fn void interp_init_runtime_flags(Interp* self) {
     self.flags.raise_pending = false;
     self.flags.jit_enabled = false;
     self.flags.console_to_stderr = false;
+    self.flags.resolve_terminal_pending = false;
     self.console_capture_active = false;
     self.console_capture_buf = null;
     self.console_capture_len = 0;

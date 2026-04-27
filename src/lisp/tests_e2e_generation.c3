@@ -23,26 +23,29 @@ fn bool e2e_generation_fail(char[] msg) {
 
 fn bool append_line_to_buf(char* buf, usz* pos, usz cap, char[] text) {
     if (*pos + text.len + 1 >= cap) return false;
-foreach (item : text) {
+    foreach (item : text) {
         buf[(*pos)++] = item;
-}
+    }
     buf[(*pos)++] = '\n';
     return true;
 }
 
-fn void generate_e2e_run_setups(Interp* e2e_interp) {
+fn bool generate_e2e_run_setups(Interp* e2e_interp) {
     for (usz i = 0; i < E2E_SETUPS.len; i++) {
         EvalResult r = run(E2E_SETUPS[i], e2e_interp);
-        if (r.error.has_error && !e2e_generation_quiet_requested()) {
-            io::printfn("WARNING: Setup %d failed, skipping", (int)i);
+        if (r.error.has_error) {
+            usz shown = r.error.message.len < 256 ? r.error.message.len : 256;
+            io::printfn("ERROR: E2E setup %d failed: %s", (int)i, (ZString)r.error.message[:shown]);
+            return false;
         }
     }
+    return true;
 }
 
 fn bool generate_e2e_build_source_prefix(char* source_buf, usz* source_pos, usz buf_size) {
-foreach (item : E2E_SETUPS) {
+    foreach (item : E2E_SETUPS) {
         if (!append_line_to_buf(source_buf, source_pos, buf_size, item)) return false;
-}
+    }
     return append_line_to_buf(source_buf, source_pos, buf_size, "(define __e2e_start__ true)");
 }
 
@@ -54,17 +57,18 @@ fn bool generate_e2e_collect_case_set(
     char* source_buf,
     usz* source_pos,
     usz buf_size,
-    int* test_count,
-    int* skip_count
+    int* test_count
 ) {
-foreach (test_case : test_cases) {
+    foreach (test_case : test_cases) {
         EvalResult r = run(test_case.expr, e2e_interp);
         if (r.error.has_error) {
-            if (!e2e_generation_quiet_requested()) {
-                io::printfn("  SKIP (interp error): %s", (ZString)test_case.name);
-            }
-            (*skip_count)++;
-            continue;
+            usz shown = r.error.message.len < 256 ? r.error.message.len : 256;
+            io::printfn(
+                "ERROR: E2E case '%s' failed during expected-output generation: %s",
+                (ZString)test_case.name,
+                (ZString)r.error.message[:shown]
+            );
+            return false;
         }
 
         char[1024] val_buf;
@@ -82,7 +86,7 @@ foreach (test_case : test_cases) {
             return false;
         }
         (*test_count)++;
-}
+    }
     return true;
 }
 
@@ -93,8 +97,7 @@ fn bool generate_e2e_collect_cases(
     char* source_buf,
     usz* source_pos,
     usz buf_size,
-    int* test_count,
-    int* skip_count
+    int* test_count
 ) {
     if (!generate_e2e_collect_case_set(
         e2e_interp,
@@ -104,8 +107,7 @@ fn bool generate_e2e_collect_cases(
         source_buf,
         source_pos,
         buf_size,
-        test_count,
-        skip_count)) return false;
+        test_count)) return false;
 
     return generate_e2e_collect_case_set(
         e2e_interp,
@@ -115,8 +117,7 @@ fn bool generate_e2e_collect_cases(
         source_buf,
         source_pos,
         buf_size,
-        test_count,
-        skip_count);
+        test_count);
 }
 
 fn bool write_text_file(char[] path, char[] text) {
@@ -146,7 +147,7 @@ fn bool generate_e2e_tests(Interp* e2e_interp) {
         io::printn("=== Generating E2E Compiler Tests ===");
     }
     if (e2e_interp == null) return e2e_generation_fail("ERROR: runtime bootstrap failed");
-    generate_e2e_run_setups(e2e_interp);
+    if (!generate_e2e_run_setups(e2e_interp)) return false;
 
     usz buf_size = 131072;
     char* expected_buf = (char*)mem::malloc(buf_size);
@@ -164,7 +165,6 @@ fn bool generate_e2e_tests(Interp* e2e_interp) {
     usz expected_pos = 0;
     usz source_pos = 0;
     int test_count = 0;
-    int skip_count = 0;
     if (!generate_e2e_build_source_prefix(source_buf, &source_pos, buf_size)) {
         return e2e_generation_fail("ERROR: E2E source buffer exhausted while emitting setup prefix");
     }
@@ -173,15 +173,20 @@ fn bool generate_e2e_tests(Interp* e2e_interp) {
         expected_buf, &expected_pos,
         source_buf, &source_pos,
         buf_size,
-        &test_count, &skip_count)) {
+        &test_count)) {
         return false;
     }
 
     if (!e2e_generation_quiet_requested()) {
         io::printfn("  Compiling %d test expressions...", test_count);
     }
-    char[] c3_code = compile_to_c3_ext(source_buf[:source_pos], e2e_interp, false, true);
+    char[] compile_error = "";
+    char[] c3_code = compile_to_c3_ext(source_buf[:source_pos], e2e_interp, false, true, &compile_error);
     if (c3_code.len == 0) {
+        if (compile_error.len > 0) {
+            usz shown = compile_error.len < 256 ? compile_error.len : 256;
+            io::printfn("ERROR: E2E compilation failed: %s", (ZString)compile_error[:shown]);
+        }
         return e2e_generation_fail("ERROR: Compilation produced empty output");
     }
 
@@ -198,7 +203,7 @@ fn bool generate_e2e_tests(Interp* e2e_interp) {
     }
     if (!e2e_generation_quiet_requested()) {
         io::printfn("  Wrote build/e2e_expected.txt (%d lines)", test_count);
-        io::printfn("=== Generated %d e2e tests (%d skipped) ===", test_count, skip_count);
     }
+    io::printfn("=== Generated %d e2e tests ===", test_count);
     return true;
 }

@@ -99,6 +99,10 @@ fn char[] jit_env_copy_fault_message(BoundaryEnvCopyFault fault_code) @inline {
             return "jit: closure env-copy failed (parent chain copy)";
         case BOUNDARY_ENV_COPY_FAULT_DTOR_REGISTRATION:
             return "jit: closure env-copy failed (destructor registration)";
+        case BOUNDARY_ENV_COPY_FAULT_INVALID_CLOSURE_STATE:
+            return "jit: closure env-copy failed (invalid closure state)";
+        default:
+            return "jit: closure env-copy failed (unknown fault)";
     }
 }
 
@@ -144,7 +148,7 @@ fn void jit_trace_delay_force_promise_closure(
         copied_env != null ? (int)copied_env.scope_gen : -1,
         env_scope != null ? (int)env_scope.generation : -1,
         interp.current_scope != null ? (int)interp.current_scope.generation : -1,
-        (int)closure.closure_val.body.tag
+        closure.closure_val.body != null ? (int)closure.closure_val.body.tag : -1
     );
 }
 
@@ -156,6 +160,10 @@ fn bool jit_copy_closure_env_if_needed(
     BoundaryEnvCopyFault* fault_out = null
 ) {
     if (fault_out != null) *fault_out = BOUNDARY_ENV_COPY_FAULT_NONE;
+    if (!jit_value_has_closure_payload(closure)) {
+        if (fault_out != null) *fault_out = BOUNDARY_ENV_COPY_FAULT_INVALID_CLOSURE_STATE;
+        return false;
+    }
     if (!need_env_copy) {
         jit_trace_delay_force_promise_closure(interp, closure, env, env, closure.closure_val.env_scope, need_env_copy);
         return true;

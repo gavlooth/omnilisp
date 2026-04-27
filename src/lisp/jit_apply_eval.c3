@@ -4,6 +4,7 @@ module lisp;
 /// Used to detect named-let bodies that capture continuations,
 /// which need normal env chain copying (can't use escape-scope env).
 fn bool expr_slice_contains_shift(Expr** exprs, usz count) {
+    if (exprs == null) return false;
     for (usz i = 0; i < count; i++) {
         if (expr_contains_shift(exprs[i])) return true;
     }
@@ -11,6 +12,7 @@ fn bool expr_slice_contains_shift(Expr** exprs, usz count) {
 }
 
 fn bool match_results_contain_shift(MatchClause* clauses, usz clause_count) {
+    if (clauses == null) return false;
     for (usz i = 0; i < clause_count; i++) {
         if (expr_contains_shift(clauses[i].result)) return true;
     }
@@ -22,6 +24,7 @@ fn bool expr_contains_shift_binary(Expr* left, Expr* right) {
 }
 
 fn bool expr_slice_contains_perform(Expr** exprs, usz count) {
+    if (exprs == null) return false;
     for (usz i = 0; i < count; i++) {
         if (expr_contains_perform(exprs[i])) return true;
     }
@@ -29,6 +32,7 @@ fn bool expr_slice_contains_perform(Expr** exprs, usz count) {
 }
 
 fn bool match_results_contain_perform(MatchClause* clauses, usz clause_count) {
+    if (clauses == null) return false;
     for (usz i = 0; i < clause_count; i++) {
         if (expr_contains_perform(clauses[i].result)) return true;
     }
@@ -41,8 +45,12 @@ fn bool expr_contains_perform_binary(Expr* left, Expr* right) {
 
 fn bool expr_contains_perform(Expr* e) {
     if (e == null) return false;
-    if (e.tag == E_PERFORM) return true;
+    if (e.tag == E_PERFORM || e.tag == E_RESOLVE) return true;
     switch (e.tag) {
+        case E_LIT:
+        case E_VAR:
+        case E_QUOTE:
+            return false;
         case E_IF:
             return expr_contains_perform(e.if_expr.test) ||
                 expr_contains_perform_binary(e.if_expr.then_branch, e.if_expr.else_branch);
@@ -78,7 +86,7 @@ fn bool expr_contains_perform(Expr* e) {
         case E_HANDLE:
             return false;
         default:
-            return false;
+            return true;
     }
 }
 
@@ -86,6 +94,10 @@ fn bool expr_contains_shift(Expr* e) {
     if (e == null) return false;
     if (e.tag == E_SHIFT) return true;
     switch (e.tag) {
+        case E_LIT:
+        case E_VAR:
+        case E_QUOTE:
+            return false;
         case E_IF:
             return expr_contains_shift(e.if_expr.test) ||
                 expr_contains_shift_binary(e.if_expr.then_branch, e.if_expr.else_branch);
@@ -128,7 +140,7 @@ fn bool expr_contains_shift(Expr* e) {
             // Handle body runs on its own StackCtx — shift inside is delimited
             return false;
         default:
-            return false;
+            return true;
     }
 }
 
@@ -177,28 +189,33 @@ fn void jit_warm_handle_clauses(Expr* expr, Interp* interp) {
 }
 
 fn void jit_warm_match_clauses(Expr* expr, Interp* interp) {
+    if (expr.match == null || expr.match.clauses == null) return;
     for (usz i = 0; i < expr.match.clause_count; i++) {
         jit_warm_pattern_cache(expr.match.clauses[i].pattern, interp);
         jit_warm_expr_cache(expr.match.clauses[i].result, interp);
     }
 }
 
-fn void jit_warm_call_args(Expr* expr, Interp* interp) {
-    for (usz i = 0; i < expr.call.arg_count; i++) {
-        jit_warm_expr_cache(expr.call.args[i], interp);
+fn void jit_warm_expr_list(Expr** exprs, usz count, Interp* interp) {
+    if (exprs == null || interp == null) return;
+    for (usz i = 0; i < count; i++) {
+        jit_warm_expr_cache(exprs[i], interp);
     }
+}
+
+fn void jit_warm_call_args(Expr* expr, Interp* interp) {
+    if (expr.call == null) return;
+    jit_warm_expr_list(expr.call.args, expr.call.arg_count, interp);
 }
 
 fn void jit_warm_begin_exprs(Expr* expr, Interp* interp) {
-    for (usz i = 0; i < expr.block.expr_count; i++) {
-        jit_warm_expr_cache(expr.block.exprs[i], interp);
-    }
+    if (expr.block == null) return;
+    jit_warm_expr_list(expr.block.exprs, expr.block.expr_count, interp);
 }
 
 fn void jit_warm_module_body(Expr* expr, Interp* interp) {
-    for (usz i = 0; i < expr.module_expr.body_count; i++) {
-        jit_warm_expr_cache(expr.module_expr.body[i], interp);
-    }
+    if (expr.module_expr == null) return;
+    jit_warm_expr_list(expr.module_expr.body, expr.module_expr.body_count, interp);
 }
 
 fn void jit_warm_expr_cache(Expr* expr, Interp* interp) {
@@ -263,9 +280,7 @@ fn void jit_warm_expr_cache(Expr* expr, Interp* interp) {
             jit_warm_module_body(expr, interp);
         case E_WITH_MODULE:
             if (expr.with_module != null) {
-                for (usz i = 0; i < expr.with_module.body_count; i++) {
-                    jit_warm_expr_cache(expr.with_module.body[i], interp);
-                }
+                jit_warm_expr_list(expr.with_module.body, expr.with_module.body_count, interp);
             }
         case E_FFI_LIB:
             jit_warm_expr_cache(expr.ffi_lib.path_expr, interp);

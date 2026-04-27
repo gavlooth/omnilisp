@@ -13,6 +13,37 @@ fn bool jit_value_is_error(Value* value) @inline {
     return value != null && value.tag == ERROR;
 }
 
+fn bool jit_sequence_should_stop(Interp* interp, Value* value) @inline {
+    return interp != null && interp.flags.resolve_terminal_pending;
+}
+
+fn bool jit_resolve_terminal_pending(Interp* interp) @inline {
+    return interp != null && interp.flags.resolve_terminal_pending;
+}
+
+fn void jit_compile_return_if_sequence_should_stop(void* s, JitLocals* locals) {
+    _jit_new_node_ww(s, CODE_MOVR, JIT_V1, JIT_R0);
+    emit_call_2(s, locals, (void*)&jit_sequence_should_stop, JIT_V0, JIT_V1);
+    void* continue_jump = _jit_new_node_pww(s, CODE_BEQI, null, (long)JIT_R0, 0);
+    _jit_new_node_ww(s, CODE_MOVR, JIT_R0, JIT_V1);
+    _jit_retr(s, JIT_R0, CODE_RETR_L);
+    _jit_patch(s, continue_jump);
+    _jit_new_node_ww(s, CODE_MOVR, JIT_R0, JIT_V1);
+}
+
+fn void jit_compile_return_if_error_or_sequence_should_stop(void* s, JitLocals* locals) {
+    _jit_new_node_ww(s, CODE_MOVR, JIT_V1, JIT_R0);
+    emit_call_1r(s, locals, (void*)&jit_value_is_error, JIT_V1);
+    void* return_jump = _jit_new_node_pww(s, CODE_BNEI, null, (long)JIT_R0, 0);
+    emit_call_2(s, locals, (void*)&jit_sequence_should_stop, JIT_V0, JIT_V1);
+    void* continue_jump = _jit_new_node_pww(s, CODE_BEQI, null, (long)JIT_R0, 0);
+    _jit_patch(s, return_jump);
+    _jit_new_node_ww(s, CODE_MOVR, JIT_R0, JIT_V1);
+    _jit_retr(s, JIT_R0, CODE_RETR_L);
+    _jit_patch(s, continue_jump);
+    _jit_new_node_ww(s, CODE_MOVR, JIT_R0, JIT_V1);
+}
+
 fn Value* jit_eval_staged_block(Interp* interp, Expr* expr, Env* env) {
     if (expr == null || expr.tag != E_BLOCK) {
         return runtime_raise(interp, "runtime/evaluation-error", "jit: staged block helper expects block expression");
@@ -20,7 +51,7 @@ fn Value* jit_eval_staged_block(Interp* interp, Expr* expr, Env* env) {
     Value* result = make_nil(interp);
     for (usz i = 0; i < expr.block.expr_count; i++) {
         result = jit_eval(expr.block.exprs[i], env, interp);
-        if (result != null && result.tag == ERROR) return result;
+        if (jit_value_is_error(result) || jit_sequence_should_stop(interp, result)) return result;
     }
     return result;
 }
@@ -40,7 +71,7 @@ fn Value* jit_eval_staged_and_chain(Interp* interp, Expr* expr, Env* env) {
     Expr* cur = expr;
     while (cur != null && cur.tag == E_AND) {
         Value* left = jit_eval(cur.and_expr.left, env, interp);
-        if (left != null && left.tag == ERROR) return left;
+        if (jit_value_is_error(left) || jit_sequence_should_stop(interp, left)) return left;
         if (is_falsy(left, interp)) return left;
         cur = cur.and_expr.right;
     }
@@ -51,7 +82,7 @@ fn Value* jit_eval_staged_or_chain(Interp* interp, Expr* expr, Env* env) {
     Expr* cur = expr;
     while (cur != null && cur.tag == E_OR) {
         Value* left = jit_eval(cur.or_expr.left, env, interp);
-        if (left != null && left.tag == ERROR) return left;
+        if (jit_value_is_error(left) || jit_sequence_should_stop(interp, left)) return left;
         if (!is_falsy(left, interp)) return left;
         cur = cur.or_expr.right;
     }
@@ -105,6 +136,8 @@ fn void? jit_compile_if(void* s, Expr* expr, Interp* interp, JitLocals* locals, 
     jit_compile_expr(s, expr.if_expr.test, interp, locals)!;
 
     _jit_new_node_ww(s, CODE_MOVR, JIT_V1, JIT_R0);  // V1 = test result
+    emit_call_1(s, locals, (void*)&jit_resolve_terminal_pending);
+    void* jump_terminal = _jit_new_node_pww(s, CODE_BNEI, null, (long)JIT_R0, 0);
     emit_call_1r(s, locals, (void*)&jit_value_is_error, JIT_V1);
     void* jump_error = _jit_new_node_pww(s, CODE_BNEI, null, (long)JIT_R0, 0);
 
@@ -124,6 +157,7 @@ fn void? jit_compile_if(void* s, Expr* expr, Interp* interp, JitLocals* locals, 
     void* jump_after_else = _jit_new_node_p(s, CODE_JMPI, null);
 
     _jit_patch(s, jump_error);
+    _jit_patch(s, jump_terminal);
     _jit_new_node_ww(s, CODE_MOVR, JIT_R0, JIT_V1);
     _jit_patch(s, jump_end);
     _jit_patch(s, jump_after_else);
@@ -143,6 +177,8 @@ fn void? jit_compile_and(void* s, Expr* expr, Interp* interp, JitLocals* locals,
     // Check if left is falsy
     _jit_new_node_ww(s, CODE_MOVR, JIT_V1, JIT_R0);  // V1 = left result
     void* error_jump = null;
+    emit_call_1(s, locals, (void*)&jit_resolve_terminal_pending);
+    void* terminal_jump = _jit_new_node_pww(s, CODE_BNEI, null, (long)JIT_R0, 0);
     emit_call_1r(s, locals, (void*)&jit_value_is_error, JIT_V1);
     error_jump = _jit_new_node_pww(s, CODE_BNEI, null, (long)JIT_R0, 0);
     emit_call_2(s, locals, (void*)&jit_is_falsy, JIT_V1, JIT_V0);
@@ -157,6 +193,7 @@ fn void? jit_compile_and(void* s, Expr* expr, Interp* interp, JitLocals* locals,
     // Short-circuit: restore V1 to R0
     _jit_patch(s, jump_done);
     _jit_patch(s, error_jump);
+    _jit_patch(s, terminal_jump);
     _jit_new_node_ww(s, CODE_MOVR, JIT_R0, JIT_V1);
 
     _jit_patch(s, jump_end);
@@ -176,6 +213,8 @@ fn void? jit_compile_or(void* s, Expr* expr, Interp* interp, JitLocals* locals, 
     // Check if left is falsy
     _jit_new_node_ww(s, CODE_MOVR, JIT_V1, JIT_R0);  // V1 = left result
     void* error_jump = null;
+    emit_call_1(s, locals, (void*)&jit_resolve_terminal_pending);
+    void* terminal_jump = _jit_new_node_pww(s, CODE_BNEI, null, (long)JIT_R0, 0);
     emit_call_1r(s, locals, (void*)&jit_value_is_error, JIT_V1);
     error_jump = _jit_new_node_pww(s, CODE_BNEI, null, (long)JIT_R0, 0);
     emit_call_2(s, locals, (void*)&jit_is_falsy, JIT_V1, JIT_V0);
@@ -190,6 +229,7 @@ fn void? jit_compile_or(void* s, Expr* expr, Interp* interp, JitLocals* locals, 
     // Short-circuit: restore V1 to R0
     _jit_patch(s, jump_done);
     _jit_patch(s, error_jump);
+    _jit_patch(s, terminal_jump);
     _jit_new_node_ww(s, CODE_MOVR, JIT_R0, JIT_V1);
 
     _jit_patch(s, jump_end);
@@ -215,10 +255,7 @@ fn void? jit_compile_block(void* s, Expr* expr, Interp* interp, JitLocals* local
         bool tail = is_tail && (i == count - 1);
         jit_compile_expr(s, expr.block.exprs[i], interp, locals, tail)!;
         if (i + 1 < count) {
-            _jit_new_node_ww(s, CODE_MOVR, JIT_V1, JIT_R0);
-            emit_call_1r(s, locals, (void*)&jit_value_is_error, JIT_V1);
-            error_jumps[error_jump_count++] =
-                _jit_new_node_pww(s, CODE_BNEI, null, (long)JIT_R0, 0);
+            jit_compile_return_if_error_or_sequence_should_stop(s, locals);
         }
     }
     if (error_jump_count > 0) {
@@ -234,10 +271,12 @@ fn void? jit_compile_block(void* s, Expr* expr, Interp* interp, JitLocals* local
 fn void? jit_compile_app(void* s, Expr* expr, Interp* interp, JitLocals* locals, bool is_tail) {
     // Compile function -> R0, save to V1 (not in tail position)
     jit_compile_expr(s, expr.app.func, interp, locals)!;
+    jit_compile_return_if_sequence_should_stop(s, locals);
     _jit_new_node_ww(s, CODE_MOVR, JIT_V1, JIT_R0);  // V1 = func
 
     // Compile argument -> R0, save to V2 (not in tail position)
     jit_compile_expr(s, expr.app.arg, interp, locals)!;
+    jit_compile_return_if_sequence_should_stop(s, locals);
     _jit_new_node_ww(s, CODE_MOVR, JIT_V2, JIT_R0);  // V2 = arg
 
     // Call apply — use _tail variant when in tail position

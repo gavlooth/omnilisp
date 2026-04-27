@@ -52,16 +52,16 @@ fn bool make_ffi_box_should_force_alloc_fail() @inline {
     return g_value_force_make_ffi_box_alloc_fail_nth == 0;
 }
 
-fn Value* make_primitive(Interp* interp, char[] name, PrimitiveFn func, int arity) {
-    // Allocate in root_scope — primitives are permanent (defined in global env).
-    Primitive* prim = make_primitive_payload_should_force_alloc_fail()
-        ? null
-        : (Primitive*)mem::malloc(Primitive.sizeof);
-    if (prim == null) {
-        return null;
-    }
-    // Copy name into fixed buffer
-    // Primitive.name is char[64]; keep one byte for the terminator.
+fn void primitive_init_payload(
+    Primitive* prim,
+    char[] name,
+    PrimitiveFn func,
+    int arity,
+    void* user_data = null,
+    PrimitiveUserDataCopy user_data_copy = null,
+    PrimitiveUserDataFinalizer user_data_finalizer = null
+) @inline {
+    if (prim == null) return;
     usz max_len = 63;
     usz len = name.len;
     if (len > max_len) {
@@ -78,17 +78,56 @@ fn Value* make_primitive(Interp* interp, char[] name, PrimitiveFn func, int arit
     prim.func = func;
     prim.arity = arity;
     prim.tag = 0;
-    prim.user_data = null;
+    prim.user_data = user_data;
+    prim.user_data_copy = user_data_copy;
+    prim.user_data_finalizer = user_data_finalizer;
+}
 
-    Value* v = boundary_alloc_value_in_root(interp, true);
+fn Value* make_primitive_with_user_data_in_scope(
+    Interp* interp,
+    main::ScopeRegion* target_scope,
+    char[] name,
+    PrimitiveFn func,
+    int arity,
+    void* user_data,
+    PrimitiveUserDataCopy user_data_copy,
+    PrimitiveUserDataFinalizer user_data_finalizer
+) {
+    if (interp == null || target_scope == null) {
+        if (user_data != null && user_data_finalizer != null) {
+            user_data_finalizer(user_data);
+        }
+        return null;
+    }
+    Primitive* prim = make_primitive_payload_should_force_alloc_fail()
+        ? null
+        : (Primitive*)mem::malloc(Primitive.sizeof);
+    if (prim == null) {
+        if (user_data != null && user_data_finalizer != null) {
+            user_data_finalizer(user_data);
+        }
+        return null;
+    }
+    primitive_init_payload(prim, name, func, arity, user_data, user_data_copy, user_data_finalizer);
+
+    Value* v = boundary_alloc_value_in_scope(interp, target_scope, false);
     if (v == null) {
-        mem::free(prim);
+        primitive_destroy_payload(prim);
         return null;
     }
     v.tag = PRIMITIVE;
     v.prim_val = prim;
+    if (!scope_register_value_dtor_or_cleanup(target_scope, v)) {
+        return null;
+    }
 
     return v;
+}
+
+fn Value* make_primitive(Interp* interp, char[] name, PrimitiveFn func, int arity) {
+    // Allocate in root_scope — ordinary primitives are permanent global env entries.
+    if (interp == null) return null;
+    return make_primitive_with_user_data_in_scope(interp, interp.root_scope, name, func, arity, null, null, null);
 }
 
 fn Value* make_ffi_handle(Interp* interp, void* handle, char[] name) {
@@ -267,9 +306,17 @@ fn Value* make_ffi_handle_ex_with_descriptor(
     void* user_data = null,
     FfiBridgeBoundaryMode boundary_mode = FFI_BRIDGE_BOUNDARY_OPAQUE
 ) {
-    main::ScopeRegion* target_scope = root_lifetime ? interp.root_scope : interp.current_scope;
     if (constructor_owns_handle != null) {
         *constructor_owns_handle = ffi_handle_release_raw_allowed(handle, finalizer, free_lib_handle, handle_kind);
+    }
+    if (interp == null) {
+        ffi_handle_release_raw_payload(handle, finalizer, free_lib_handle, handle_kind);
+        return null;
+    }
+    main::ScopeRegion* target_scope = root_lifetime ? interp.root_scope : interp.current_scope;
+    if (target_scope == null) {
+        ffi_handle_release_raw_payload(handle, finalizer, free_lib_handle, handle_kind);
+        return null;
     }
     FfiHandle* box = make_ffi_box(handle, name, finalizer, free_lib_handle,
         runtime_kind, handle_kind, capabilities, ownership, user_data, boundary_mode);

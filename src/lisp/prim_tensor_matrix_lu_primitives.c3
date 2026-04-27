@@ -139,7 +139,10 @@ fn Value* matrix_eigenpairs_try_vulkan_value(TensorVal* matrix, Interp* interp) 
     }
     values_value.tag = TENSOR;
     values_value.tensor_val = values_tensor;
-    main::scope_register_dtor(interp.current_scope, (void*)values_value, &scope_dtor_value);
+    if (!scope_register_value_dtor_or_cleanup(interp.current_scope, values_value)) {
+        if (vectors_device != null) omni_tensor_backend_vulkan_free(vectors_device);
+        return make_runtime_out_of_memory_error(interp, "Tensor: failed to register result destructor");
+    }
     bool keep_values = false;
     defer if (!keep_values) {
         boundary_cleanup_materialized_value(null, values_value, interp.current_scope);
@@ -162,7 +165,9 @@ fn Value* matrix_eigenpairs_try_vulkan_value(TensorVal* matrix, Interp* interp) 
     }
     vectors_value.tag = TENSOR;
     vectors_value.tensor_val = vectors_tensor;
-    main::scope_register_dtor(interp.current_scope, (void*)vectors_value, &scope_dtor_value);
+    if (!scope_register_value_dtor_or_cleanup(interp.current_scope, vectors_value)) {
+        return make_runtime_out_of_memory_error(interp, "Tensor: failed to register result destructor");
+    }
     bool keep_vectors = false;
     defer if (!keep_vectors) {
         boundary_cleanup_materialized_value(null, vectors_value, interp.current_scope);
@@ -240,7 +245,10 @@ fn Value* matrix_eigenvectors_try_vulkan_value(TensorVal* matrix, Interp* interp
     }
     values_value.tag = TENSOR;
     values_value.tensor_val = values_tensor;
-    main::scope_register_dtor(interp.current_scope, (void*)values_value, &scope_dtor_value);
+    if (!scope_register_value_dtor_or_cleanup(interp.current_scope, values_value)) {
+        if (vectors_device != null) omni_tensor_backend_vulkan_free(vectors_device);
+        return make_runtime_out_of_memory_error(interp, "Tensor: failed to register result destructor");
+    }
     bool keep_values = false;
     defer if (!keep_values) {
         boundary_cleanup_materialized_value(null, values_value, interp.current_scope);
@@ -263,7 +271,9 @@ fn Value* matrix_eigenvectors_try_vulkan_value(TensorVal* matrix, Interp* interp
     }
     vectors_value.tag = TENSOR;
     vectors_value.tensor_val = vectors_tensor;
-    main::scope_register_dtor(interp.current_scope, (void*)vectors_value, &scope_dtor_value);
+    if (!scope_register_value_dtor_or_cleanup(interp.current_scope, vectors_value)) {
+        return make_runtime_out_of_memory_error(interp, "Tensor: failed to register result destructor");
+    }
     bool keep_vectors = false;
     defer if (!keep_vectors) {
         boundary_cleanup_materialized_value(null, vectors_value, interp.current_scope);

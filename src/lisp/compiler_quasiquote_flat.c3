@@ -7,12 +7,16 @@ import main;
 // =============================================================================
 // SECTION 8a: STATEMENT-LEVEL COMPILATION (quasiquote lowering)
 // =============================================================================
+const usz AOT_QUASIQUOTE_MAX_DEPTH = 64;
+
 /**
  * compile_qq_flat — Flat-style quasiquote compilation.
  * Emits statements that build the quoted structure, storing result in _rN.
  * At depth 0, unquote sub-expressions are compiled as normal expressions.
  */
 fn usz Compiler.compile_qq_marker_pair(Compiler* self, char[] marker, usz inner_r) {
+    if (self.has_error || inner_r == usz.max) return usz.max;
+    self.emit_return_if_sequence_should_stop(inner_r);
     usz nil_r = self.emit_nil_temp();
 
     usz rest_r = self.next_result();
@@ -22,6 +26,7 @@ fn usz Compiler.compile_qq_marker_pair(Compiler* self, char[] marker, usz inner_
     self.emit(", ");
     self.emit_temp_ref(nil_r);
     self.emit(");\n");
+    self.emit_return_if_sequence_should_stop(rest_r);
 
     usz sym_r = self.next_result();
     self.emit_temp_decl(sym_r);
@@ -51,7 +56,11 @@ fn usz Compiler.compile_qq_var_symbol(Compiler* self, SymbolId sym) {
 
 fn usz Compiler.compile_qq_app_list(Compiler* self, Expr* tmpl, usz depth) {
     usz func_r = self.compile_qq_flat(tmpl.app.func, depth);
+    if (self.has_error || func_r == usz.max) return usz.max;
+    self.emit_return_if_sequence_should_stop(func_r);
     usz arg_r = self.compile_qq_flat(tmpl.app.arg, depth);
+    if (self.has_error || arg_r == usz.max) return usz.max;
+    self.emit_return_if_sequence_should_stop(arg_r);
     usz nil_r = self.emit_nil_temp();
 
     usz inner_r = self.next_result();
@@ -61,6 +70,8 @@ fn usz Compiler.compile_qq_app_list(Compiler* self, Expr* tmpl, usz depth) {
     self.emit(", ");
     self.emit_temp_ref(nil_r);
     self.emit(");\n");
+    if (self.has_error || inner_r == usz.max) return usz.max;
+    self.emit_return_if_sequence_should_stop(inner_r);
 
     usz id = self.next_result();
     self.emit_temp_decl(id);
@@ -73,20 +84,27 @@ fn usz Compiler.compile_qq_app_list(Compiler* self, Expr* tmpl, usz depth) {
 }
 
 fn usz Compiler.compile_qq_flat(Compiler* self, Expr* tmpl, usz depth) {
+    if (depth > AOT_QUASIQUOTE_MAX_DEPTH) {
+        self.set_compile_error("quasiquote nesting too deep (max 64)");
+        return usz.max;
+    }
     if (tmpl == null) {
         return self.emit_nil_temp();
     }
 
     switch (tmpl.tag) {
         case E_UNQUOTE:
-            if (depth == 0) return self.compile_to_temp(tmpl.unquote.body);
+            if (depth == 0) {
+                usz body_r = self.compile_to_temp(tmpl.unquote.body);
+                if (self.has_error || body_r == usz.max) return usz.max;
+                self.emit_return_if_sequence_should_stop(body_r);
+                return body_r;
+            }
             return self.compile_qq_marker_pair("unquote", self.compile_qq_flat(tmpl.unquote.body, depth - 1));
         case E_UNQUOTE_SPLICING:
             if (depth == 0) {
-                usz id = self.emit_nil_temp();
-                self.emit_indent();
-                self.emit("// ERROR: ,@ in non-list context\n");
-                return id;
+                self.set_compile_error("compiler: unquote-splicing is only valid in quasiquote list context");
+                return usz.max;
             }
             return self.compile_qq_marker_pair("unquote-splicing", self.compile_qq_flat(tmpl.unquote_splicing.body, depth - 1));
         case E_QUASIQUOTE:
@@ -114,6 +132,7 @@ fn usz Compiler.compile_qq_flat(Compiler* self, Expr* tmpl, usz depth) {
         case E_CALL:
             return self.compile_qq_call_flat(tmpl, depth);
         default:
-            return self.emit_nil_temp();
+            self.set_compile_error("compiler: unsupported quasiquote template expression in AOT lowering");
+            return usz.max;
     }
 }

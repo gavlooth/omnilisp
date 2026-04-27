@@ -49,8 +49,8 @@ struct StableEscapePreparedGraphScratch {
 }
 
 struct StableGraphPassport {
-    uint owner_scope_generation;
-    uint owner_escape_generation;
+    ulong owner_scope_generation;
+    ulong owner_escape_generation;
     usz prepared_node_count;
     usz prepared_edge_count;
     usz prepared_root_index;
@@ -73,7 +73,7 @@ struct StableEscapeStoreEntry {
     uint generation;
     Value* root;
     main::ScopeRegion* owner_scope;
-    uint owner_escape_generation;
+    ulong owner_escape_generation;
     StableEscapePreparedNode* prepared_nodes;
     usz prepared_node_count;
     usz* prepared_edges;

@@ -9,6 +9,7 @@ fn Value* boundary_raise(Interp* interp, String code, String message) @inline {
 
 bool g_boundary_force_copy_continuation_wrapper_alloc_fail = false;
 bool g_boundary_force_copy_time_point_wrapper_alloc_fail = false;
+bool g_boundary_force_copy_primitive_wrapper_alloc_fail = false;
 
 fn Value* copy_partial_prim_to_parent(Value* v, Interp* interp, BoundaryCopyFault* fault_out = null) {
     Value* first_arg = copy_to_parent_with_fault(v.partial_val.first_arg, interp, fault_out);
@@ -80,7 +81,10 @@ fn Value* copy_array_to_parent(Value* v, Interp* interp, BoundaryCopyFault* faul
         }
         result.tag = ARRAY;
         result.array_val = null;
-        main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
+        if (!main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value)) {
+            if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_DTOR_REGISTRATION;
+            return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to register array copy destructor");
+        }
         return result;
     }
 
@@ -137,7 +141,10 @@ fn Value* copy_array_to_parent(Value* v, Interp* interp, BoundaryCopyFault* faul
     }
     result.tag = ARRAY;
     result.array_val = dst_arr;
-    main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
+    if (!main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value)) {
+        if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_DTOR_REGISTRATION;
+        return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to register array copy destructor");
+    }
     dst_arr_committed = true;
     return result;
 }
@@ -154,7 +161,10 @@ fn Value* copy_hashmap_backed_to_parent(Value* v, Interp* interp, BoundaryCopyFa
         }
         result.tag = v.tag;
         result.hashmap_val = null;
-        main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
+        if (!main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value)) {
+            if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_DTOR_REGISTRATION;
+            return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to register hashmap copy destructor");
+        }
         return result;
     }
 
@@ -228,7 +238,10 @@ fn Value* copy_hashmap_backed_to_parent(Value* v, Interp* interp, BoundaryCopyFa
     }
     result.tag = v.tag;
     result.hashmap_val = dst_map;
-    main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
+    if (!main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value)) {
+        if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_DTOR_REGISTRATION;
+        return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to register hashmap copy destructor");
+    }
     dst_map_committed = true;
     return result;
 }
@@ -245,7 +258,10 @@ fn Value* copy_method_table_to_parent(Value* v, Interp* interp, BoundaryCopyFaul
         }
         result.tag = METHOD_TABLE;
         result.method_table_val = null;
-        main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
+        if (!main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value)) {
+            if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_DTOR_REGISTRATION;
+            return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to register method table copy destructor");
+        }
         return result;
     }
 
@@ -330,7 +346,10 @@ fn Value* copy_method_table_to_parent(Value* v, Interp* interp, BoundaryCopyFaul
     }
     result.tag = METHOD_TABLE;
     result.method_table_val = dst_mt;
-    main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
+    if (!main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value)) {
+        if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_DTOR_REGISTRATION;
+        return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to register method table copy destructor");
+    }
     dst_mt_committed = true;
     return result;
 }
@@ -351,7 +370,7 @@ fn Value* copy_shared_wrapper_to_parent(Value* v, Interp* interp, BoundaryCopyFa
     }
 }
 
-fn Value* copy_continuation_to_parent(Value* v, Interp* interp) {
+fn Value* copy_continuation_to_parent(Value* v, Interp* interp, BoundaryCopyFault* fault_out = null) {
     bool retained_now = false;
     if (v.cont_val != null) {
         if (v.cont_val.owner_interp != null && v.cont_val.owner_interp != interp) {
@@ -372,7 +391,13 @@ fn Value* copy_continuation_to_parent(Value* v, Interp* interp) {
     result.cont_val = v.cont_val;
     result.continuation_boundary_owned = retained_now;
     if (retained_now) {
-        main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
+        if (!main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value)) {
+            continuation_release_handle_state_for_boundary(result.cont_val);
+            result.cont_val = null;
+            result.continuation_boundary_owned = false;
+            if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_DTOR_REGISTRATION;
+            return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to register continuation copy destructor");
+        }
     }
     return result;
 }
@@ -393,7 +418,10 @@ fn Value* copy_primitive_to_parent(
         }
         result.tag = PRIMITIVE;
         result.prim_val = null;
-        main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
+        if (!main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value)) {
+            if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_DTOR_REGISTRATION;
+            return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to register primitive copy destructor");
+        }
         return result;
     }
     if (primitive_has_opaque_user_data(v)) {
@@ -406,13 +434,10 @@ fn Value* copy_primitive_to_parent(
         if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
         return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate primitive copy");
     }
-    if (!primitive_clone_plain_header(dst_prim, src_prim)) {
-        mem::free(dst_prim);
-        if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_OPAQUE_PRIMITIVE_PAYLOAD;
-        return fault_out != null ? null : boundary_raise(interp, "boundary/copy-fault", (String)boundary_copy_fault_message(BOUNDARY_COPY_FAULT_OPAQUE_PRIMITIVE_PAYLOAD));
-    }
 
-    Value* result = interp.alloc_value();
+    Value* result = g_boundary_force_copy_primitive_wrapper_alloc_fail
+        ? null
+        : interp.alloc_value();
     if (result == null) {
         mem::free(dst_prim);
         if (fault_out != null && *fault_out == BOUNDARY_COPY_FAULT_NONE) {
@@ -422,7 +447,16 @@ fn Value* copy_primitive_to_parent(
     }
     result.tag = PRIMITIVE;
     result.prim_val = null;
-    main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
+    if (!main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value)) {
+        mem::free(dst_prim);
+        if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_DTOR_REGISTRATION;
+        return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to register primitive copy destructor");
+    }
+    if (!primitive_clone_plain_header(dst_prim, src_prim)) {
+        primitive_destroy_payload(dst_prim);
+        if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_OPAQUE_PRIMITIVE_PAYLOAD;
+        return fault_out != null ? null : boundary_raise(interp, "boundary/copy-fault", (String)boundary_copy_fault_message(BOUNDARY_COPY_FAULT_OPAQUE_PRIMITIVE_PAYLOAD));
+    }
     result.prim_val = dst_prim;
     return result;
 }

@@ -107,8 +107,15 @@ surfaces and are also exposed as non-callable value-position type descriptors
 constructor/coercion symbols (`(Any ...)`, `(Number ...)`, `(Collection ...)`
 still error).
 
-`Value` remains dedicated to value-literal annotation forms
-(`^(Value literal)`) and is not a callable constructor surface.
+User-defined non-constructor type forms also publish descriptor values:
+`[abstract]` names, `[union]` heads, and `[alias]` names render as
+`#<type Name>` in value position. They are descriptors, not constructors, so
+calling them is a recoverable error.
+
+Literal singleton annotations use `^#datum` or the long form
+`^(Literal datum)`. `(Literal datum)` returns a singleton type descriptor; it
+does not box or wrap the runtime value. The former `^(Value datum)` spelling is
+removed.
 
 `Tensor` is registered as a builtin type descriptor for annotation, dispatch,
 introspection, and construction. `(format "%s" Tensor)` prints
@@ -221,27 +228,26 @@ Define multiple implementations with typed parameters. The best match wins:
 ### Value Dispatch (Value-Level Matching)
 
 ```lisp
-(define (fib (^(Value 0) n)) 0)
-(define (fib (^(Value 1) n)) 1)
+(define (fib (^#0 n)) 0)
+(define (fib (^#1 n)) 1)
 (define (fib (^Integer n)) (+ (fib (- n 1)) (fib (- n 2))))
 
-(define (udp (^(Value open) cmd)) (io/udp-open))
-(define (udp (^(Value bind) cmd) h host port) (io/udp-bind h host port))
-(define (udp (^(Value send) cmd) h host port payload) (io/udp-send h host port payload))
+(define (udp (^#'open cmd)) (io/udp-open))
+(define (udp (^#'bind cmd) h host port) (io/udp-bind h host port))
+(define (udp (^#'send cmd) h host port payload) (io/udp-send h host port payload))
 
 (fib 10)    ;; => 55
 ```
 
-`Value` is the only supported constructor for value-literal dispatch.
-Supported literals in this position are integers, symbols, strings, booleans
-(`true`/`false` symbols), and `nil`.
+Supported singleton literal annotation datums are integers, symbols, strings,
+booleans (`true`/`false` symbols), and `nil`.
 Command-style facades should delegate to canonical `io/udp-*` operations. Module packaging for façade surfaces is deferred; core surface remains canonical `io/*`.
 
 ### Dispatch Scoring
 
 | Match | Score | Example |
 |-------|-------|---------|
-| Value literal | 1000 | `^(Value 42)`, `^(Value open)`, `^(Value "open")`, `^(Value true)`, `^(Value nil)` |
+| Literal singleton | 1000 | `^#42`, `^#'open`, `^#"open"`, `^#true`, `^#nil`; long form `^(Literal datum)` |
 | Exact type | 100 | `^Integer` matches INT value |
 | Subtype | 10 | `^Shape` matches Circle |
 | Any (untyped) | 1 | Untyped param matches anything |

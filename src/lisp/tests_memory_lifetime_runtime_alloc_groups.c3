@@ -127,7 +127,9 @@ fn bool runtime_alloc_process_spawn_cleanup_case(
         trace.process_closed;
 
     if (ok) {
-        io::printfn("[PASS] %s", (ZString)label);
+        if (!test_quiet_enabled()) {
+            io::printfn("[PASS] %s", (ZString)label);
+        }
         (*pass)++;
     } else {
         io::printfn(

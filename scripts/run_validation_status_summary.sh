@@ -2,6 +2,33 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
+
+usage() {
+  cat <<'EOF'
+Usage: scripts/run_validation_status_summary.sh [OUTPUT_JSON]
+
+Run the validation status summary gate and write the JSON artifact.
+Defaults to build/validation_status_summary.json.
+EOF
+}
+
+if (( $# > 1 )); then
+  usage >&2
+  exit 2
+fi
+
+case "${1:-}" in
+  -h|--help)
+    usage
+    exit 0
+    ;;
+  --*)
+    echo "run_validation_status_summary.sh: unknown option: $1" >&2
+    usage >&2
+    exit 2
+    ;;
+esac
+
 source scripts/c3c_limits.sh
 
 out_json="${1:-build/validation_status_summary.json}"

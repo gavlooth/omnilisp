@@ -5,57 +5,6 @@ import std::io;
 import std::collections::list;
 import main;
 
-fn bool advanced_collections_float64_hash_regression(Interp* interp) {
-    double[16] values = {
-        -4096.5, -257.125, -17.25, -0.125,
-        0.125, 1.5, 2.5, 3.75,
-        8.125, 16.25, 31.5, 64.875,
-        128.0625, 257.5, 1024.03125, 4096.75
-    };
-    uint[16] hashes = {};
-    Value* dict = make_hashmap_checked(interp, 4, "test: Float64 dictionary allocation failed");
-    Value* set = make_set_checked(interp, 4, "test: Float64 set allocation failed");
-    Value* true_val = make_symbol(interp, interp.sym_true);
-    if (dict == null || dict.tag != HASHMAP || dict.hashmap_val == null ||
-        set == null || set.tag != SET || set.hashmap_val == null || true_val == null) {
-        return false;
-    }
-
-    for (usz i = 0; i < values.len; i++) {
-        Value* key = make_double(interp, values[i]);
-        hashes[i] = hash_value(key);
-        if (hashes[i] == 0) return false;
-        for (usz j = 0; j < i; j++) {
-            if (hashes[i] == hashes[j]) return false;
-        }
-        if (!hashmap_set_checked(dict.hashmap_val, key, make_int(interp, (long)i + 1000), interp)) return false;
-        if (!hashmap_set_checked(set.hashmap_val, key, true_val, interp)) return false;
-    }
-
-    for (usz i = 0; i < values.len; i++) {
-        Value* lookup_key = make_double(interp, values[i]);
-        Value* dict_value = hashmap_get(dict.hashmap_val, lookup_key);
-        Value* set_value = hashmap_get(set.hashmap_val, lookup_key);
-        if (dict_value == null || dict_value.tag != INT || dict_value.int_val != (long)i + 1000) return false;
-        if (set_value == null) return false;
-    }
-
-    Value* pos_zero = make_double(interp, 0.0);
-    Value* neg_zero = make_double(interp, -0.0);
-    if (!hashmap_key_equals(pos_zero, neg_zero)) return false;
-    if (hash_value(pos_zero) != hash_value(neg_zero)) return false;
-
-    double nan = 0.0 / 0.0;
-    Value* nan_a = make_double(interp, nan);
-    Value* nan_b = make_double(interp, nan);
-    if (hashmap_key_equals(nan_a, nan_b)) return false;
-    if (!hashmap_set_checked(dict.hashmap_val, nan_a, make_int(interp, 9090), interp)) return false;
-    if (hashmap_get(dict.hashmap_val, nan_b) != null) return false;
-    if (hashmap_get(dict.hashmap_val, nan_a) == null) return false;
-
-    return true;
-}
-
 fn void run_advanced_collections_dict_literal_tests(Interp* interp, int* pass, int* fail) {
     if (advanced_collections_float64_hash_regression(interp)) {
         emit_pass_literal("[PASS] Float64 dictionary and set keys use non-zero distinct hashes and preserve equality semantics");
@@ -583,6 +532,38 @@ fn bool module_test_declared_trailing_failure_rolls_back(Interp* interp) {
     return value != null && value.tag == INT && value.int_val == 9;
 }
 
+fn bool module_test_declared_loading_self_reference_rejected(Interp* interp) {
+    SymbolId mod_name = interp.symbols.intern("declared-self-reference-loading");
+    char[] path = "/tmp/omni-declared-self-reference-loading.omni";
+    usz before_count = interp.module_count;
+    Module* loading = jit_create_file_module(mod_name, path, interp);
+    if (loading == null || loading.loaded) return false;
+
+    List{Expr*} exprs;
+    defer exprs.free();
+    if (!module_test_parse_exprs_append(
+        "(module declared-self-reference-loading (export declared-self-value) (define declared-self-value 1))",
+        interp,
+        &exprs
+    )) {
+        rollback_module_publication(interp, find_module_index(mod_name, interp));
+        return false;
+    }
+
+    EvalResult result = jit_eval_declared_module_file(&exprs, exprs.len(), path, interp);
+    Module* still_loading = find_module(mod_name, interp);
+    bool ok = result.error.has_error &&
+        str_contains(result.error.message[..], "circular import detected") &&
+        still_loading == loading &&
+        still_loading != null &&
+        !still_loading.loaded &&
+        still_loading.path_len == path.len &&
+        interp.module_count == before_count + 1;
+
+    rollback_module_publication(interp, find_module_index(mod_name, interp));
+    return ok && find_module(mod_name, interp) == null;
+}
+
 fn bool module_test_implicit_nested_growth_keeps_root_module_stable(Interp* interp) {
     SymbolId mod_name = interp.symbols.intern("implicit-growth-root-mod");
     SymbolId value_name = interp.symbols.intern("implicit-growth-export");
@@ -619,6 +600,70 @@ fn bool module_test_implicit_nested_growth_keeps_root_module_stable(Interp* inte
     return value != null && value.tag == INT && value.int_val == 77;
 }
 
+fn bool module_test_hash_has_no_retired_names(Interp* interp) {
+    if (interp == null || interp.module_hash_index == null) return false;
+    for (usz i = 0; i < interp.module_hash_capacity; i++) {
+        usz idx = interp.module_hash_index[i];
+        if (idx == usz.max) continue;
+        if (idx >= interp.module_count) return false;
+        SymbolId name = interp.modules[idx].name;
+        if (name == (SymbolId)0 || name == INVALID_SYMBOL_ID) return false;
+    }
+    return true;
+}
+
+fn bool module_test_file_module_cache_reuses_existing_path(Interp* interp) {
+    SymbolId first_name = interp.symbols.intern("h16-file-cache-first");
+    SymbolId second_name = interp.symbols.intern("h16-file-cache-second");
+    usz before_count = interp.module_count;
+    Module* first = jit_create_file_module(first_name, "/tmp/omni-h16-cache.omni", interp);
+    usz after_first_count = interp.module_count;
+    Module* second = jit_create_file_module(second_name, "/tmp/omni-h16-cache.omni", interp);
+    return first != null &&
+           second == first &&
+           after_first_count == before_count + 1 &&
+           interp.module_count == after_first_count &&
+           first.name == first_name;
+}
+
+fn bool module_test_file_module_cache_normalizes_paths(Interp* interp) {
+    SymbolId first_name = interp.symbols.intern("l34-file-cache-first");
+    SymbolId second_name = interp.symbols.intern("l34-file-cache-second");
+    char[] normalized_path = "/tmp/omni-l34-cache/module.omni";
+    usz before_count = interp.module_count;
+    Module* first = jit_create_file_module(first_name, "/tmp/omni-l34-cache/./module.omni", interp);
+    usz after_first_count = interp.module_count;
+    Module* second = jit_create_file_module(second_name, "/tmp//omni-l34-cache/module.omni", interp);
+
+    bool path_ok = first != null &&
+        first.path_len == normalized_path.len &&
+        first.path[:first.path_len] == normalized_path;
+    return first != null &&
+           second == first &&
+           path_ok &&
+           after_first_count == before_count + 1 &&
+           interp.module_count == after_first_count &&
+           first.name == first_name;
+}
+
+fn bool module_test_redeclared_unloaded_module_rebuilds_hash_index(Interp* interp) {
+    SymbolId mod_name = interp.symbols.intern("h16-redeclared-unloaded");
+    SymbolId value_name = interp.symbols.intern("h16-value");
+    usz before_count = interp.module_count;
+    Module* stale = jit_create_file_module(mod_name, "/tmp/omni-h16-stale.omni", interp);
+    if (stale == null || stale.loaded) return false;
+
+    EvalResult result = run("(module h16-redeclared-unloaded (export h16-value) (define h16-value 64))", interp);
+    if (result.error.has_error) return false;
+
+    Module* current = find_module(mod_name, interp);
+    if (current == null || !current.loaded) return false;
+    if (interp.module_count != before_count + 1) return false;
+    if (!module_test_hash_has_no_retired_names(interp)) return false;
+    Value* value = current.env.lookup(value_name);
+    return value != null && value.tag == INT && value.int_val == 64;
+}
+
 fn void run_advanced_runtime_import_path_edge_tests(Interp* interp, int* pass, int* fail) {
     {
         bool ok = module_test_implicit_failure_rolls_back_and_retries(interp);
@@ -643,12 +688,56 @@ fn void run_advanced_runtime_import_path_edge_tests(Interp* interp, int* pass, i
     }
 
     {
+        bool ok = module_test_declared_loading_self_reference_rejected(interp);
+        if (ok) {
+            emit_pass_literal("[PASS] runtime declared loading module self-reference is rejected");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] runtime declared loading module self-reference is rejected");
+            (*fail)++;
+        }
+    }
+
+    {
         bool ok = module_test_implicit_nested_growth_keeps_root_module_stable(interp);
         if (ok) {
             emit_pass_literal("[PASS] runtime implicit module survives nested module-table growth");
             (*pass)++;
         } else {
             io::printn("[FAIL] runtime implicit module survives nested module-table growth");
+            (*fail)++;
+        }
+    }
+
+    {
+        bool ok = module_test_file_module_cache_reuses_existing_path(interp);
+        if (ok) {
+            emit_pass_literal("[PASS] runtime file module cache reuses existing path");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] runtime file module cache reuses existing path");
+            (*fail)++;
+        }
+    }
+
+    {
+        bool ok = module_test_file_module_cache_normalizes_paths(interp);
+        if (ok) {
+            emit_pass_literal("[PASS] runtime file module cache normalizes equivalent paths");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] runtime file module cache normalizes equivalent paths");
+            (*fail)++;
+        }
+    }
+
+    {
+        bool ok = module_test_redeclared_unloaded_module_rebuilds_hash_index(interp);
+        if (ok) {
+            emit_pass_literal("[PASS] runtime redeclared unloaded module rebuilds hash index");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] runtime redeclared unloaded module rebuilds hash index");
             (*fail)++;
         }
     }
@@ -695,6 +784,138 @@ fn void run_advanced_runtime_import_path_edge_tests(Interp* interp, int* pass, i
             (*pass)++;
         } else {
             io::printn("[FAIL] runtime import path checked resolver fails closed on overflow");
+            (*fail)++;
+        }
+    }
+
+    {
+        char[128] resolved;
+        usz resolved_len = 99;
+        ImportPathResolveStatus parent_status = resolve_import_path_status("../escape.omni", interp, &resolved, resolved.len, &resolved_len);
+        bool parent_ok = parent_status == IMPORT_PATH_RESOLVE_UNSAFE && resolved_len == 0;
+
+        resolved_len = 99;
+        ImportPathResolveStatus nested_parent_status = resolve_import_path_status("pkg/../escape.omni", interp, &resolved, resolved.len, &resolved_len);
+        bool nested_parent_ok = nested_parent_status == IMPORT_PATH_RESOLVE_UNSAFE && resolved_len == 0;
+
+        resolved_len = 99;
+        ImportPathResolveStatus absolute_status = resolve_import_path_status("/tmp/escape.omni", interp, &resolved, resolved.len, &resolved_len);
+        bool absolute_ok = absolute_status == IMPORT_PATH_RESOLVE_UNSAFE && resolved_len == 0;
+
+        resolved_len = 0;
+        ImportPathResolveStatus normal_status = resolve_import_path_status("pkg/math.omni", interp, &resolved, resolved.len, &resolved_len);
+        bool normal_ok = normal_status == IMPORT_PATH_RESOLVE_OK &&
+            resolved[:resolved_len] == "pkg/math.omni";
+
+        bool ok = parent_ok && nested_parent_ok && absolute_ok && normal_ok;
+        if (ok) {
+            emit_pass_literal("[PASS] runtime import path resolver rejects traversal and keeps nested relatives");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] runtime import path resolver rejects traversal and keeps nested relatives");
+            (*fail)++;
+        }
+    }
+
+    {
+        Expr* parent_ast = parse_for_jit("(import \"../escape.omni\")", interp);
+        Expr* absolute_ast = parse_for_jit("(import \"/tmp/escape.omni\")", interp);
+        EvalResult parent_result = eval_error("test bootstrap failed");
+        EvalResult absolute_result = eval_error("test bootstrap failed");
+        if (parent_ast != null && parent_ast.tag == E_IMPORT) {
+            Module* mod_out = null;
+            parent_result = load_import_target_module(parent_ast, parent_ast.import_expr.name, interp, &mod_out);
+        }
+        if (absolute_ast != null && absolute_ast.tag == E_IMPORT) {
+            Module* mod_out = null;
+            absolute_result = load_import_target_module(absolute_ast, absolute_ast.import_expr.name, interp, &mod_out);
+        }
+
+        bool ok = parent_ast != null &&
+            absolute_ast != null &&
+            parent_result.error.has_error &&
+            absolute_result.error.has_error &&
+            str_contains(parent_result.error.message[..], "stay within source directory") &&
+            str_contains(absolute_result.error.message[..], "stay within source directory");
+        if (ok) {
+            emit_pass_literal("[PASS] runtime import rejects traversal and absolute string paths");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] runtime import rejects traversal and absolute string paths");
+            (*fail)++;
+        }
+    }
+
+    {
+        EvalResult parent_load = run("(load \"../escape.omni\")", interp);
+        EvalResult absolute_load = run("(load \"/tmp/escape.omni\")", interp);
+        bool ok = parent_load.error.has_error &&
+            absolute_load.error.has_error &&
+            str_contains(parent_load.error.message[..], "stay within source directory") &&
+            str_contains(absolute_load.error.message[..], "stay within source directory");
+        if (ok) {
+            emit_pass_literal("[PASS] runtime load rejects traversal and absolute paths");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] runtime load rejects traversal and absolute paths");
+            (*fail)++;
+        }
+    }
+
+    {
+        SymbolId dotted_name = interp.symbols.intern("m68.dotted.module");
+        char[64] rel_buf;
+        usz rel_len = 0;
+        bool ok = build_default_module_rel_path(dotted_name, interp, &rel_buf, rel_buf.len, &rel_len) &&
+            rel_buf[:rel_len] == "lib/m68/dotted/module.omni";
+        if (ok) {
+            emit_pass_literal("[PASS] runtime default module path builder rewrites dotted symbols");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] runtime default module path builder rewrites dotted symbols");
+            (*fail)++;
+        }
+    }
+
+    {
+        SymbolId dotted_name = interp.symbols.intern("m68.dotted.module");
+        char[8] rel_buf;
+        usz rel_len = 99;
+        bool ok = !build_default_module_rel_path(dotted_name, interp, &rel_buf, rel_buf.len, &rel_len) &&
+            rel_len == 0;
+        if (ok) {
+            emit_pass_literal("[PASS] runtime default module path builder fails closed on overflow");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] runtime default module path builder fails closed on overflow");
+            (*fail)++;
+        }
+    }
+
+    {
+        char[280] long_name;
+        for (usz i = 0; i < 260; i++) long_name[i] = 'a';
+        long_name[260] = 0;
+
+        char[300] expr_buf;
+        Expr* ast = null;
+        if (try char[] expr_src = io::bprintf(&expr_buf, "(import %s)", (ZString)&long_name)) {
+            ast = parse_for_jit(expr_src, interp);
+        }
+
+        EvalResult load_result = eval_error("test bootstrap failed");
+        if (ast != null && ast.tag == E_IMPORT) {
+            Module* mod_out = null;
+            load_result = load_import_target_module(ast, ast.import_expr.name, interp, &mod_out);
+        }
+        bool ok = ast != null &&
+            load_result.error.has_error &&
+            str_contains(load_result.error.message[..], "default module import path too long");
+        if (ok) {
+            emit_pass_literal("[PASS] runtime default module import path overflow reports precise error");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] runtime default module import path overflow reports precise error");
             (*fail)++;
         }
     }

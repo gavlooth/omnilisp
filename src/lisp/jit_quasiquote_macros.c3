@@ -39,6 +39,7 @@ fn EvalResult jit_qq_impl(Expr* tmpl, Env* env, Interp* interp, usz depth) {
             }
             EvalResult inner = jit_qq_impl(tmpl.unquote.body, env, interp, depth - 1);
             if (inner.error.has_error) return inner;
+            if (interp.flags.resolve_terminal_pending) return inner;
             Value* sym = make_symbol(interp, interp.sym_unquote);
             EvalResult rest = jit_qq_make_cons_result(inner.value, make_nil(interp), interp, "quasiquote: failed to allocate pair");
             if (rest.error.has_error) return rest;
@@ -50,6 +51,7 @@ fn EvalResult jit_qq_impl(Expr* tmpl, Env* env, Interp* interp, usz depth) {
             }
             EvalResult inner = jit_qq_impl(tmpl.unquote_splicing.body, env, interp, depth - 1);
             if (inner.error.has_error) return inner;
+            if (interp.flags.resolve_terminal_pending) return inner;
             Value* sym = make_symbol(interp, interp.sym_unquote_splicing);
             EvalResult rest = jit_qq_make_cons_result(inner.value, make_nil(interp), interp, "quasiquote: failed to allocate pair");
             if (rest.error.has_error) return rest;
@@ -58,6 +60,7 @@ fn EvalResult jit_qq_impl(Expr* tmpl, Env* env, Interp* interp, usz depth) {
         case E_QUASIQUOTE: {
             EvalResult inner = jit_qq_impl(tmpl.quasiquote.body, env, interp, depth + 1);
             if (inner.error.has_error) return inner;
+            if (interp.flags.resolve_terminal_pending) return inner;
             Value* sym = make_symbol(interp, interp.sym_quasiquote);
             EvalResult rest = jit_qq_make_cons_result(inner.value, make_nil(interp), interp, "quasiquote: failed to allocate pair");
             if (rest.error.has_error) return rest;
@@ -72,8 +75,10 @@ fn EvalResult jit_qq_impl(Expr* tmpl, Env* env, Interp* interp, usz depth) {
         case E_APP: {
             EvalResult f = jit_qq_impl(tmpl.app.func, env, interp, depth);
             if (f.error.has_error) return f;
+            if (interp.flags.resolve_terminal_pending) return f;
             EvalResult a = jit_qq_impl(tmpl.app.arg, env, interp, depth);
             if (a.error.has_error) return a;
+            if (interp.flags.resolve_terminal_pending) return a;
             EvalResult rest = jit_qq_make_cons_result(a.value, make_nil(interp), interp, "quasiquote: failed to allocate pair");
             if (rest.error.has_error) return rest;
             return jit_qq_make_cons_result(f.value, rest.value, interp, "quasiquote: failed to allocate pair");
@@ -92,6 +97,7 @@ fn EvalResult jit_qq_expand_elements(Expr*[] elements, Env* env, Interp* interp,
         if (elem.tag == E_UNQUOTE_SPLICING && depth == 0) {
             EvalResult splice_result = jit_eval_to_result(elem.unquote_splicing.body, env, interp);
             if (splice_result.error.has_error) return splice_result;
+            if (interp.flags.resolve_terminal_pending) return splice_result;
             Value* spliced = splice_result.value;
             if (is_nil(spliced)) {
                 // Nothing to splice
@@ -121,6 +127,7 @@ fn EvalResult jit_qq_expand_elements(Expr*[] elements, Env* env, Interp* interp,
         } else {
             EvalResult expanded = jit_qq_impl(elem, env, interp, depth);
             if (expanded.error.has_error) return expanded;
+            if (interp.flags.resolve_terminal_pending) return expanded;
             EvalResult next = jit_qq_make_cons_result(expanded.value, result, interp, "quasiquote: failed to allocate pair");
             if (next.error.has_error) return next;
             result = next.value;
@@ -142,6 +149,7 @@ fn EvalResult jit_qq_expand_call(Expr* tmpl, Env* env, Interp* interp, usz depth
         if (elem.tag == E_UNQUOTE_SPLICING && depth == 0) {
             EvalResult splice_result = jit_eval_to_result(elem.unquote_splicing.body, env, interp);
             if (splice_result.error.has_error) return splice_result;
+            if (interp.flags.resolve_terminal_pending) return splice_result;
             Value* spliced = splice_result.value;
             if (is_nil(spliced)) {
                 // Nothing to splice
@@ -171,6 +179,7 @@ fn EvalResult jit_qq_expand_call(Expr* tmpl, Env* env, Interp* interp, usz depth
         } else {
             EvalResult expanded = jit_qq_impl(elem, env, interp, depth);
             if (expanded.error.has_error) return expanded;
+            if (interp.flags.resolve_terminal_pending) return expanded;
             EvalResult next = jit_qq_make_cons_result(expanded.value, result, interp, "quasiquote: failed to allocate pair");
             if (next.error.has_error) return next;
             result = next.value;

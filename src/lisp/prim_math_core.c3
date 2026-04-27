@@ -38,7 +38,7 @@ fn bool math_arg_to_double(Value* value, double* out) @inline {
 @require interp != null
 *>
 fn Value* prim_math_lgamma(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return primitive_arity_raise(interp, "math.lgamma", "1 argument", args.len);
+    if (args.len != 1) return primitive_arity_raise(interp, "math.lgamma", "1 argument", args.len);
     if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "math.lgamma", 0, "number", args[0]);
     if (is_big_float(args[0])) {
         return big_float_unary_math_value(
@@ -70,7 +70,7 @@ fn Value* prim_math_lgamma(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_math_erf(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return primitive_arity_raise(interp, "math.erf", "1 argument", args.len);
+    if (args.len != 1) return primitive_arity_raise(interp, "math.erf", "1 argument", args.len);
     if (is_tensor(args[0])) return tensor_unary_math_value(args[0], BIG_FLOAT_MATH_ERF, 0, interp);
     if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "math.erf", 0, "number", args[0]);
     if (is_big_float(args[0])) {
@@ -103,7 +103,7 @@ fn Value* prim_math_erf(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_math_erfc(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return primitive_arity_raise(interp, "math.erfc", "1 argument", args.len);
+    if (args.len != 1) return primitive_arity_raise(interp, "math.erfc", "1 argument", args.len);
     if (is_tensor(args[0])) return tensor_unary_math_value(args[0], BIG_FLOAT_MATH_ERFC, 0, interp);
     if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "math.erfc", 0, "number", args[0]);
     if (is_big_float(args[0])) {
@@ -136,7 +136,7 @@ fn Value* prim_math_erfc(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_stats_normal_cdf(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return primitive_arity_raise(interp, "stats.normal-cdf", "1 argument", args.len);
+    if (args.len != 1) return primitive_arity_raise(interp, "stats.normal-cdf", "1 argument", args.len);
     if (is_tensor(args[0])) return tensor_unary_math_value(args[0], BIG_FLOAT_MATH_NORMAL_CDF, 0, interp);
     if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "stats.normal-cdf", 0, "number", args[0]);
     if (is_big_float(args[0])) {
@@ -169,7 +169,7 @@ fn Value* prim_stats_normal_cdf(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_stats_normal_quantile(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return primitive_arity_raise(interp, "stats.normal-quantile", "1 argument", args.len);
+    if (args.len != 1) return primitive_arity_raise(interp, "stats.normal-quantile", "1 argument", args.len);
     if (is_tensor(args[0])) return tensor_unary_math_value(args[0], BIG_FLOAT_MATH_NORMAL_QUANTILE, 0, interp);
     if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "stats.normal-quantile", 0, "number", args[0]);
     if (is_big_float(args[0])) {
@@ -202,7 +202,7 @@ fn Value* prim_stats_normal_quantile(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_sin(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return primitive_arity_raise(interp, "sin", "1 argument", args.len);
+    if (args.len != 1) return primitive_arity_raise(interp, "sin", "1 argument", args.len);
     if (is_tensor(args[0])) return tensor_unary_math_value(args[0], BIG_FLOAT_MATH_SIN, BIG_COMPLEX_MATH_SIN, interp);
     if (is_big_complex(args[0])) {
         return big_complex_unary_math_value(interp, args[0], BIG_COMPLEX_MATH_SIN, "sin: BigComplex evaluation error");
@@ -219,7 +219,7 @@ fn Value* prim_sin(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_cos(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return primitive_arity_raise(interp, "cos", "1 argument", args.len);
+    if (args.len != 1) return primitive_arity_raise(interp, "cos", "1 argument", args.len);
     if (is_tensor(args[0])) return tensor_unary_math_value(args[0], BIG_FLOAT_MATH_COS, BIG_COMPLEX_MATH_COS, interp);
     if (is_big_complex(args[0])) {
         return big_complex_unary_math_value(interp, args[0], BIG_COMPLEX_MATH_COS, "cos: BigComplex evaluation error");
@@ -236,7 +236,7 @@ fn Value* prim_cos(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_tan(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return primitive_arity_raise(interp, "tan", "1 argument", args.len);
+    if (args.len != 1) return primitive_arity_raise(interp, "tan", "1 argument", args.len);
     if (is_tensor(args[0])) return tensor_unary_math_value(args[0], BIG_FLOAT_MATH_TAN, BIG_COMPLEX_MATH_TAN, interp);
     if (is_big_complex(args[0])) {
         return big_complex_unary_math_value(interp, args[0], BIG_COMPLEX_MATH_TAN, "tan: BigComplex evaluation error");
@@ -253,7 +253,7 @@ fn Value* prim_tan(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_sinh(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return primitive_arity_raise(interp, "sinh", "1 argument", args.len);
+    if (args.len != 1) return primitive_arity_raise(interp, "sinh", "1 argument", args.len);
     if (is_tensor(args[0])) return tensor_unary_math_value(args[0], BIG_FLOAT_MATH_SINH, BIG_COMPLEX_MATH_SINH, interp);
     if (is_big_complex(args[0])) {
         return big_complex_unary_math_value(interp, args[0], BIG_COMPLEX_MATH_SINH, "sinh: BigComplex evaluation error");
@@ -270,7 +270,7 @@ fn Value* prim_sinh(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_cosh(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return primitive_arity_raise(interp, "cosh", "1 argument", args.len);
+    if (args.len != 1) return primitive_arity_raise(interp, "cosh", "1 argument", args.len);
     if (is_tensor(args[0])) return tensor_unary_math_value(args[0], BIG_FLOAT_MATH_COSH, BIG_COMPLEX_MATH_COSH, interp);
     if (is_big_complex(args[0])) {
         return big_complex_unary_math_value(interp, args[0], BIG_COMPLEX_MATH_COSH, "cosh: BigComplex evaluation error");
@@ -287,7 +287,7 @@ fn Value* prim_cosh(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_tanh(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return primitive_arity_raise(interp, "tanh", "1 argument", args.len);
+    if (args.len != 1) return primitive_arity_raise(interp, "tanh", "1 argument", args.len);
     if (is_tensor(args[0])) return tensor_unary_math_value(args[0], BIG_FLOAT_MATH_TANH, BIG_COMPLEX_MATH_TANH, interp);
     if (is_big_complex(args[0])) {
         return big_complex_unary_math_value(interp, args[0], BIG_COMPLEX_MATH_TANH, "tanh: BigComplex evaluation error");
@@ -304,7 +304,7 @@ fn Value* prim_tanh(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_asin(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return primitive_arity_raise(interp, "asin", "1 argument", args.len);
+    if (args.len != 1) return primitive_arity_raise(interp, "asin", "1 argument", args.len);
     if (is_tensor(args[0])) return tensor_unary_math_value(args[0], BIG_FLOAT_MATH_ASIN, BIG_COMPLEX_MATH_ASIN, interp);
     if (is_big_complex(args[0])) {
         return big_complex_unary_math_value(interp, args[0], BIG_COMPLEX_MATH_ASIN, "asin: BigComplex evaluation error");
@@ -321,7 +321,7 @@ fn Value* prim_asin(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_acos(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return primitive_arity_raise(interp, "acos", "1 argument", args.len);
+    if (args.len != 1) return primitive_arity_raise(interp, "acos", "1 argument", args.len);
     if (is_tensor(args[0])) return tensor_unary_math_value(args[0], BIG_FLOAT_MATH_ACOS, BIG_COMPLEX_MATH_ACOS, interp);
     if (is_big_complex(args[0])) {
         return big_complex_unary_math_value(interp, args[0], BIG_COMPLEX_MATH_ACOS, "acos: BigComplex evaluation error");
@@ -338,7 +338,7 @@ fn Value* prim_acos(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_atan(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return primitive_arity_raise(interp, "atan", "1 argument", args.len);
+    if (args.len != 1) return primitive_arity_raise(interp, "atan", "1 argument", args.len);
     if (is_tensor(args[0])) return tensor_unary_math_value(args[0], BIG_FLOAT_MATH_ATAN, BIG_COMPLEX_MATH_ATAN, interp);
     if (is_big_complex(args[0])) {
         return big_complex_unary_math_value(interp, args[0], BIG_COMPLEX_MATH_ATAN, "atan: BigComplex evaluation error");
@@ -355,7 +355,7 @@ fn Value* prim_atan(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_atan2(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return primitive_arity_raise(interp, "atan2", "2 arguments", args.len);
+    if (args.len != 2) return primitive_arity_raise(interp, "atan2", "2 arguments", args.len);
     if (is_tensor(args[0]) || is_tensor(args[1])) return tensor_atan2_value(args[0], args[1], interp);
     if (is_big_complex(args[0]) || is_big_complex(args[1])) {
         return math_raise(interp, "type/unsupported", "atan2: complex numbers are not supported");
@@ -377,7 +377,7 @@ fn Value* prim_atan2(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_exp(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return primitive_arity_raise(interp, "exp", "1 argument", args.len);
+    if (args.len != 1) return primitive_arity_raise(interp, "exp", "1 argument", args.len);
     if (is_tensor(args[0])) return tensor_unary_math_value(args[0], BIG_FLOAT_MATH_EXP, BIG_COMPLEX_MATH_EXP, interp);
     if (is_big_complex(args[0])) {
         return big_complex_unary_math_value(interp, args[0], BIG_COMPLEX_MATH_EXP, "exp: BigComplex evaluation error");
@@ -394,7 +394,7 @@ fn Value* prim_exp(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_log(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return primitive_arity_raise(interp, "log", "1 argument", args.len);
+    if (args.len != 1) return primitive_arity_raise(interp, "log", "1 argument", args.len);
     if (is_tensor(args[0])) return tensor_unary_math_value(args[0], BIG_FLOAT_MATH_LOG, BIG_COMPLEX_MATH_LOG, interp);
     if (is_big_complex(args[0])) {
         return big_complex_unary_math_value(interp, args[0], BIG_COMPLEX_MATH_LOG, "log: BigComplex evaluation error");
@@ -411,7 +411,7 @@ fn Value* prim_log(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_log10(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return primitive_arity_raise(interp, "log10", "1 argument", args.len);
+    if (args.len != 1) return primitive_arity_raise(interp, "log10", "1 argument", args.len);
     if (is_tensor(args[0])) return tensor_unary_math_value(args[0], BIG_FLOAT_MATH_LOG10, BIG_COMPLEX_MATH_LOG10, interp);
     if (is_big_complex(args[0])) {
         return big_complex_unary_math_value(interp, args[0], BIG_COMPLEX_MATH_LOG10, "log10: BigComplex evaluation error");
@@ -428,7 +428,7 @@ fn Value* prim_log10(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_pow(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return primitive_arity_raise(interp, "pow", "2 arguments", args.len);
+    if (args.len != 2) return primitive_arity_raise(interp, "pow", "2 arguments", args.len);
     if (is_tensor(args[0]) || is_tensor(args[1])) return tensor_pow_value(args[0], args[1], interp);
     if (is_big_complex(args[0]) || is_big_complex(args[1])) {
         if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "pow", 0, "number", args[0]);
@@ -453,7 +453,7 @@ fn Value* prim_pow(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_sqrt(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return primitive_arity_raise(interp, "sqrt", "1 argument", args.len);
+    if (args.len != 1) return primitive_arity_raise(interp, "sqrt", "1 argument", args.len);
     if (is_tensor(args[0])) return tensor_sqrt_value(args[0], interp);
     if (is_big_complex(args[0])) {
         return big_complex_unary_math_value(interp, args[0], BIG_COMPLEX_MATH_SQRT, "sqrt: BigComplex evaluation error");
@@ -470,7 +470,7 @@ fn Value* prim_sqrt(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_real_part(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return primitive_arity_raise(interp, "real-part", "1 argument", args.len);
+    if (args.len != 1) return primitive_arity_raise(interp, "real-part", "1 argument", args.len);
     if (is_tensor(args[0])) return tensor_big_complex_component_value(args[0], false, interp);
     if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "real-part", 0, "number", args[0]);
     if (is_complex128(args[0])) return make_double(interp, args[0].complex128_val.real);
@@ -482,7 +482,7 @@ fn Value* prim_real_part(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_imag_part(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return primitive_arity_raise(interp, "imag-part", "1 argument", args.len);
+    if (args.len != 1) return primitive_arity_raise(interp, "imag-part", "1 argument", args.len);
     if (is_tensor(args[0])) return tensor_big_complex_component_value(args[0], true, interp);
     if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "imag-part", 0, "number", args[0]);
     if (is_complex128(args[0])) return make_double(interp, args[0].complex128_val.imag);
@@ -494,7 +494,7 @@ fn Value* prim_imag_part(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_conjugate(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return primitive_arity_raise(interp, "conjugate", "1 argument", args.len);
+    if (args.len != 1) return primitive_arity_raise(interp, "conjugate", "1 argument", args.len);
     if (is_tensor(args[0])) return tensor_big_complex_conjugate_value(args[0], interp);
     if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "conjugate", 0, "number", args[0]);
     if (is_complex128(args[0])) return make_complex128(interp, args[0].complex128_val.real, -args[0].complex128_val.imag);
@@ -506,7 +506,7 @@ fn Value* prim_conjugate(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_floor(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return primitive_arity_raise(interp, "floor", "1 argument", args.len);
+    if (args.len != 1) return primitive_arity_raise(interp, "floor", "1 argument", args.len);
     if (is_tensor(args[0])) return tensor_floor_value(args[0], interp);
     if (is_big_float(args[0])) {
         return big_float_round_to_integer_value(interp, args[0], BIG_FLOAT_ROUND_FLOOR, "floor: BigFloat integer result out of supported range");
@@ -520,7 +520,7 @@ fn Value* prim_floor(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_ceiling(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return primitive_arity_raise(interp, "ceiling", "1 argument", args.len);
+    if (args.len != 1) return primitive_arity_raise(interp, "ceiling", "1 argument", args.len);
     if (is_tensor(args[0])) return tensor_ceiling_value(args[0], interp);
     if (is_big_float(args[0])) {
         return big_float_round_to_integer_value(interp, args[0], BIG_FLOAT_ROUND_CEILING, "ceiling: BigFloat integer result out of supported range");
@@ -534,7 +534,7 @@ fn Value* prim_ceiling(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_round(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return primitive_arity_raise(interp, "round", "1 argument", args.len);
+    if (args.len != 1) return primitive_arity_raise(interp, "round", "1 argument", args.len);
     if (is_tensor(args[0])) return tensor_round_value(args[0], interp);
     if (is_big_float(args[0])) {
         return big_float_round_to_integer_value(interp, args[0], BIG_FLOAT_ROUND_ROUND, "round: BigFloat integer result out of supported range");
@@ -548,7 +548,7 @@ fn Value* prim_round(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_truncate(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return primitive_arity_raise(interp, "truncate", "1 argument", args.len);
+    if (args.len != 1) return primitive_arity_raise(interp, "truncate", "1 argument", args.len);
     if (is_tensor(args[0])) return tensor_truncate_value(args[0], interp);
     if (is_big_float(args[0])) {
         return big_float_round_to_integer_value(interp, args[0], BIG_FLOAT_ROUND_TRUNCATE, "truncate: BigFloat integer result out of supported range");
@@ -562,7 +562,7 @@ fn Value* prim_truncate(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_abs(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return primitive_arity_raise(interp, "abs", "1 argument", args.len);
+    if (args.len != 1) return primitive_arity_raise(interp, "abs", "1 argument", args.len);
     if (is_tensor(args[0])) return tensor_abs_value(args[0], interp);
     if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "abs", 0, "number", args[0]);
     if (is_complex128(args[0])) return make_double(interp, complex128_abs_value(args[0].complex128_val));
@@ -585,7 +585,7 @@ fn Value* prim_abs(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_min(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return primitive_arity_raise(interp, "min", "2 arguments", args.len);
+    if (args.len != 2) return primitive_arity_raise(interp, "min", "2 arguments", args.len);
     if (is_tensor(args[0]) || is_tensor(args[1])) return tensor_minmax_value(args[0], args[1], true, "min", interp);
     if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "min", 0, "number", args[0]);
     if (!is_numeric_value(args[1])) return primitive_arg_type_raise(interp, "min", 1, "number", args[1]);
@@ -626,7 +626,7 @@ fn Value* prim_min(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_max(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return primitive_arity_raise(interp, "max", "2 arguments", args.len);
+    if (args.len != 2) return primitive_arity_raise(interp, "max", "2 arguments", args.len);
     if (is_tensor(args[0]) || is_tensor(args[1])) return tensor_minmax_value(args[0], args[1], false, "max", interp);
     if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "max", 0, "number", args[0]);
     if (!is_numeric_value(args[1])) return primitive_arg_type_raise(interp, "max", 1, "number", args[1]);
@@ -667,7 +667,7 @@ fn Value* prim_max(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_gcd(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return primitive_arity_raise(interp, "gcd", "2 arguments", args.len);
+    if (args.len != 2) return primitive_arity_raise(interp, "gcd", "2 arguments", args.len);
     if (is_tensor(args[0]) || is_tensor(args[1])) {
         return tensor_exact_integer_binary_value(
             args[0], args[1], BIG_INTEGER_OP_GCD,
@@ -697,7 +697,7 @@ fn Value* prim_gcd(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_lcm(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return primitive_arity_raise(interp, "lcm", "2 arguments", args.len);
+    if (args.len != 2) return primitive_arity_raise(interp, "lcm", "2 arguments", args.len);
     if (is_tensor(args[0]) || is_tensor(args[1])) {
         return tensor_exact_integer_binary_value(
             args[0], args[1], BIG_INTEGER_OP_LCM,
@@ -735,7 +735,7 @@ fn Value* prim_lcm(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_bitwise_and(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return primitive_arity_raise(interp, "bitwise-and", "2 arguments", args.len);
+    if (args.len != 2) return primitive_arity_raise(interp, "bitwise-and", "2 arguments", args.len);
     if (!is_exact_integer_value(args[0])) return primitive_arg_type_raise(interp, "bitwise-and", 0, "integer", args[0]);
     if (!is_exact_integer_value(args[1])) return primitive_arg_type_raise(interp, "bitwise-and", 1, "integer", args[1]);
     if (args[0].tag == BIG_INTEGER || args[1].tag == BIG_INTEGER) {
@@ -749,7 +749,7 @@ fn Value* prim_bitwise_and(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_bitwise_or(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return primitive_arity_raise(interp, "bitwise-or", "2 arguments", args.len);
+    if (args.len != 2) return primitive_arity_raise(interp, "bitwise-or", "2 arguments", args.len);
     if (!is_exact_integer_value(args[0])) return primitive_arg_type_raise(interp, "bitwise-or", 0, "integer", args[0]);
     if (!is_exact_integer_value(args[1])) return primitive_arg_type_raise(interp, "bitwise-or", 1, "integer", args[1]);
     if (args[0].tag == BIG_INTEGER || args[1].tag == BIG_INTEGER) {
@@ -763,7 +763,7 @@ fn Value* prim_bitwise_or(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_bitwise_xor(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return primitive_arity_raise(interp, "bitwise-xor", "2 arguments", args.len);
+    if (args.len != 2) return primitive_arity_raise(interp, "bitwise-xor", "2 arguments", args.len);
     if (!is_exact_integer_value(args[0])) return primitive_arg_type_raise(interp, "bitwise-xor", 0, "integer", args[0]);
     if (!is_exact_integer_value(args[1])) return primitive_arg_type_raise(interp, "bitwise-xor", 1, "integer", args[1]);
     if (args[0].tag == BIG_INTEGER || args[1].tag == BIG_INTEGER) {
@@ -777,7 +777,7 @@ fn Value* prim_bitwise_xor(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_bitwise_not(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return primitive_arity_raise(interp, "bitwise-not", "1 argument", args.len);
+    if (args.len != 1) return primitive_arity_raise(interp, "bitwise-not", "1 argument", args.len);
     if (!is_exact_integer_value(args[0])) return primitive_arg_type_raise(interp, "bitwise-not", 0, "integer", args[0]);
     if (args[0].tag == BIG_INTEGER) {
         return big_integer_bitwise_not_value(
@@ -790,7 +790,7 @@ fn Value* prim_bitwise_not(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_lshift(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return primitive_arity_raise(interp, "lshift", "2 arguments", args.len);
+    if (args.len != 2) return primitive_arity_raise(interp, "lshift", "2 arguments", args.len);
     if (!is_exact_integer_value(args[0])) return primitive_arg_type_raise(interp, "lshift", 0, "integer", args[0]);
     if (!is_exact_integer_value(args[1])) return primitive_arg_type_raise(interp, "lshift", 1, "integer", args[1]);
     long shift = 0;
@@ -805,7 +805,7 @@ fn Value* prim_lshift(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_rshift(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return primitive_arity_raise(interp, "rshift", "2 arguments", args.len);
+    if (args.len != 2) return primitive_arity_raise(interp, "rshift", "2 arguments", args.len);
     if (!is_exact_integer_value(args[0])) return primitive_arg_type_raise(interp, "rshift", 0, "integer", args[0]);
     if (!is_exact_integer_value(args[1])) return primitive_arg_type_raise(interp, "rshift", 1, "integer", args[1]);
     long shift = 0;

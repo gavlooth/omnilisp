@@ -1,5 +1,6 @@
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <stddef.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -10,10 +11,10 @@ enum {
 };
 
 int omni_addrinfo_connect_fd(void* result) {
-    if (result == 0) return -1;
+    if (result == NULL) return -1;
 
     struct addrinfo* ai = (struct addrinfo*)result;
-    if (ai->ai_addr == 0 || ai->ai_addrlen == 0) return -1;
+    if (ai->ai_addr == NULL || ai->ai_addrlen == 0) return -1;
 
     int fd = socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
     if (fd < 0) return -1;
@@ -27,12 +28,12 @@ int omni_addrinfo_connect_fd(void* result) {
 }
 
 int omni_addrinfo_render_ip(void* result, char* dst, unsigned int dst_size) {
-    if (result == 0 || dst == 0 || dst_size == 0) return OMNI_ADDRINFO_RENDER_FAILED;
+    if (result == NULL || dst == NULL || dst_size == 0) return OMNI_ADDRINFO_RENDER_FAILED;
 
     struct addrinfo* ai = (struct addrinfo*)result;
-    if (ai->ai_addr == 0) return OMNI_ADDRINFO_RENDER_FAILED;
+    if (ai->ai_addr == NULL) return OMNI_ADDRINFO_RENDER_FAILED;
 
-    const void* source = 0;
+    const void* source = NULL;
     if (ai->ai_family == AF_INET) {
         source = &((struct sockaddr_in*)ai->ai_addr)->sin_addr;
     } else if (ai->ai_family == AF_INET6) {
@@ -41,7 +42,7 @@ int omni_addrinfo_render_ip(void* result, char* dst, unsigned int dst_size) {
         return OMNI_ADDRINFO_RENDER_UNSUPPORTED_FAMILY;
     }
 
-    if (inet_ntop(ai->ai_family, source, dst, dst_size) == 0) {
+    if (inet_ntop(ai->ai_family, source, dst, dst_size) == NULL) {
         return OMNI_ADDRINFO_RENDER_FAILED;
     }
 

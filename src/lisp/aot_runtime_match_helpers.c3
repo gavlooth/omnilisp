@@ -14,6 +14,15 @@ fn bool is_error(lisp::Value* v) @inline {
     return v != null && v.tag == lisp::ValueTag.ERROR;
 }
 
+fn bool resolve_terminal_pending() @inline {
+    lisp::Interp* interp = aot_bridge_interp();
+    return interp != null && interp.flags.resolve_terminal_pending;
+}
+
+fn bool sequence_should_stop(lisp::Value* v) @inline {
+    return resolve_terminal_pending();
+}
+
 fn bool guard_pred_accepts_scrutinee(lisp::Value* pred) @inline {
     if (pred == null) return false;
     switch (pred.tag) {
@@ -35,7 +44,7 @@ fn lisp::Value* match_guard_eval(lisp::Value* pred, lisp::Value* val) {
     if (result == null) {
         lisp::Interp* interp = aot_bridge_interp();
         if (interp == null) return aot_make_error_best_effort(null, "aot match-guard-eval: runtime interpreter unavailable");
-        return lisp::make_nil(interp);
+        return aot_make_error_best_effort(interp, "aot match-guard-eval: callable guard returned null");
     }
     return result;
 }

@@ -19,19 +19,29 @@ fn void run_scheduler_offload_tests(Interp* interp, int* pass, int* fail) {
     }
 
     {
+        usz fiber_count_before = g_scheduler.fiber_count;
         EvalResult r = run(
-            "(block "
-            "  (define a (spawn (lambda () (offload 'sleep-ms 5)))) "
-            "  (define b (spawn (lambda () (offload 'sleep-ms 5)))) "
-            "  (await a) "
-            "  (await b) "
-            "  1)",
+            "(let (sched-offload-a (spawn (lambda () (offload 'sleep-ms 5))) "
+            "      sched-offload-b (spawn (lambda () (offload 'sleep-ms 5)))) "
+            "  (block "
+            "    (await sched-offload-a) "
+            "    (await sched-offload-b) "
+            "    1))",
             interp);
         if (!r.error.has_error && is_int(r.value) && r.value.int_val == 1) {
             emit_pass_literal("[PASS] offload async fiber resume");
             (*pass)++;
         } else {
-            io::printn("[FAIL] offload async fiber resume");
+            if (r.error.has_error) {
+                io::printfn("[FAIL] offload async fiber resume (fiber_count_before=%d error: %s)",
+                    (long)fiber_count_before, (ZString)r.error.message[:256]);
+            } else if (r.value == null) {
+                io::printfn("[FAIL] offload async fiber resume (fiber_count_before=%d null result)",
+                    (long)fiber_count_before);
+            } else {
+                io::printfn("[FAIL] offload async fiber resume (fiber_count_before=%d tag=%d)",
+                    (long)fiber_count_before, (int)r.value.tag);
+            }
             (*fail)++;
         }
     }

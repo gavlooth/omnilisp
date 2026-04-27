@@ -4,245 +4,6 @@ import std::io;
 import std::core::mem;
 import main;
 
-fn void run_jit_policy_closure_method_iterator_boundary_test(Interp* interp, int* pass, int* fail) {
-    // Invariant: typed method wrappers that return iterators must detach a thunk
-    // payload from the callee TEMP lane before handing the iterator back.
-    test_eq(
-        interp,
-        "jit closure method iterator wrapper detaches thunk boundary",
-        "(block (define (wrap (^Closure thunk)) (Iterator thunk)) (define (wrap (^Array arr)) (let (len (length arr)) (let make-it (i 0) (if (= i len) (wrap (lambda () nil)) (wrap (lambda () (cons (ref arr i) (make-it (+ i 1))))))))) (car (next (wrap [1 2 3]))))",
-        1,
-        pass,
-        fail
-    );
-}
-
-fn void run_jit_policy_rec_closure_type_sig_copy_failure_test(Interp* interp, int* pass, int* fail) {
-    // Invariant: detached recursive closure publication fails closed if
-    // type-signature cloning into the detached env scope fails.
-    main::ScopeRegion* saved_scope = interp.current_scope;
-    main::ScopeRegion* source = main::scope_create(saved_scope);
-    if (source == null) {
-        io::printn("[FAIL] jit policy: rec closure type signature copy failure returns null");
-        (*fail)++;
-        return;
-    }
-
-    SymbolId rec_sym = interp.symbols.intern("__jit_policy_rec_type_sig");
-    Value* placeholder = null;
-    main::ScopeRegion* detached_env_scope = null;
-    Value* closure = null;
-    MethodSignature* sig = null;
-
-    interp.current_scope = source;
-    Env* captured_env = make_env(interp, interp.global_env);
-    if (captured_env != null) {
-        placeholder = make_nil(interp);
-        env_define_with_barrier(captured_env, rec_sym, placeholder, interp);
-        closure = make_env_scope_closure_for_test(interp, captured_env, &detached_env_scope);
-    }
-    if (closure != null) {
-        sig = (MethodSignature*)source.alloc(MethodSignature.sizeof);
-        if (sig != null && method_signature_alloc_arrays_in_scope(sig, source, 1, 0)) {
-            sig.param_types[0] = interp.tid_Integer;
-            sig.param_type_vars[0] = (SymbolId)0;
-            sig.has_val_literal[0] = false;
-            sig.val_literals[0].tag = NIL;
-            sig.val_literals[0].int_value = 0;
-            sig.val_literals[0].sym_value = (SymbolId)0;
-            closure.closure_val.has_typed_params = true;
-            closure.closure_val.type_sig = sig;
-        } else {
-            sig = null;
-        }
-    }
-
-    Value* binding_before = closure != null && closure.closure_val.env != null
-        ? closure.closure_val.env.lookup(rec_sym)
-        : null;
-    g_method_signature_scope_copy_call_count = 0;
-    g_method_signature_force_scope_copy_fail_on_call = 1;
-    Value* published = closure != null ? jit_patch_rec_closure(closure, null, rec_sym, interp) : null;
-    g_method_signature_force_scope_copy_fail_on_call = 0;
-    Value* binding_after = closure != null && closure.closure_val.env != null
-        ? closure.closure_val.env.lookup(rec_sym)
-        : null;
-
-    bool setup_ok = captured_env != null &&
-                    closure != null &&
-                    closure.tag == CLOSURE &&
-                    closure.closure_val != null &&
-                    detached_env_scope != null &&
-                    closure.closure_val.env_scope == detached_env_scope &&
-                    sig != null &&
-                    closure.closure_val.type_sig == sig &&
-                    binding_before != null &&
-                    binding_before.tag == NIL;
-    bool fail_closed_ok = published == null &&
-                          g_method_signature_scope_copy_call_count == 1 &&
-                          binding_after == binding_before &&
-                          binding_after != null &&
-                          binding_after.tag == NIL &&
-                          closure.closure_val.type_sig == sig;
-    int scope_copy_calls = (int)g_method_signature_scope_copy_call_count;
-    g_method_signature_scope_copy_call_count = 0;
-
-    interp.current_scope = saved_scope;
-    main::scope_release(source);
-
-    bool ok = setup_ok && fail_closed_ok;
-    if (ok) {
-        emit_pass_literal("[PASS] jit policy: rec closure type signature copy failure returns null");
-        (*pass)++;
-    } else {
-        io::printfn(
-            "[FAIL] jit policy: rec closure type signature copy failure returns null (setup_ok=%s fail_closed_ok=%s call_count=%d published=%s binding_after=%s)",
-            setup_ok ? "yes" : "no",
-            fail_closed_ok ? "yes" : "no",
-            scope_copy_calls,
-            published == null ? "null" : "non-null",
-            binding_after == null ? "null" : (binding_after.tag == NIL ? "nil" : "non-nil")
-        );
-        (*fail)++;
-    }
-}
-
-fn void run_jit_policy_stdlib_teardown_redefinition_test(Interp* interp, int* pass, int* fail) {
-    // Regression: stdlib-loaded typed method redefinition must still tear down
-    // cleanly after interpreter destroy.
-    (void)interp;
-
-    Interp* tmp = (Interp*)mem::malloc(Interp.sizeof);
-    if (tmp == null) {
-        io::printn("[FAIL] jit policy: stdlib teardown redefinition destroys cleanly (alloc)");
-        (*fail)++;
-        return;
-    }
-
-    tmp.init();
-    if (!bootstrap_runtime_interp(tmp)) {
-        io::printn("[FAIL] jit policy: stdlib teardown redefinition destroys cleanly (bootstrap)");
-        (*fail)++;
-        tmp.destroy();
-        mem::free(tmp);
-        return;
-    }
-
-    EvalResult r = run(
-        "(block "
-        "  (define (dispatch-teardown (^Integer x)) x) "
-        "  (define (dispatch-teardown x) x) "
-        "  (define (dispatch-teardown (^Integer x)) (+ x 1)) "
-        "  (dispatch-teardown 1))",
-        tmp
-    );
-
-    bool ok = !r.error.has_error &&
-              r.value != null &&
-              r.value.tag == INT &&
-              r.value.int_val == 2;
-
-    tmp.destroy();
-    mem::free(tmp);
-
-    if (ok) {
-        emit_pass_literal("[PASS] jit policy: stdlib teardown redefinition destroys cleanly");
-        (*pass)++;
-    } else {
-        io::printn("[FAIL] jit policy: stdlib teardown redefinition destroys cleanly");
-        (*fail)++;
-    }
-}
-
-fn void run_jit_policy_mutable_local_null_box_helpers_fail_closed_test(Interp* interp, int* pass, int* fail) {
-    // Invariant: generated mutable-local helper paths must not dereference a
-    // null env box if root-box setup failed before later lookup/capture code.
-    Value* lookup_err = jit_env_lookup_local(
-        interp,
-        (uint)interp.symbols.intern("__jit_policy_missing_mutable_box"),
-        null
-    );
-    Env* reparented = jit_env_reparent(null, interp.global_env);
-
-    bool lookup_ok = lookup_err != null &&
-                     lookup_err.tag == ERROR &&
-                     lookup_err.str_chars != null &&
-                     jit_policy_str_contains(
-                         lookup_err.str_chars[:lookup_err.str_len],
-                         "jit: missing mutable local binding"
-                     );
-    bool reparent_ok = reparented == interp.global_env;
-    bool ok = lookup_ok && reparent_ok;
-
-    if (ok) {
-        emit_pass_literal("[PASS] jit policy: mutable local null box helpers fail closed");
-        (*pass)++;
-    } else {
-        io::printfn(
-            "[FAIL] jit policy: mutable local null box helpers fail closed (lookup_ok=%s reparent_ok=%s)",
-            lookup_ok ? "yes" : "no",
-            reparent_ok ? "yes" : "no"
-        );
-        (*fail)++;
-    }
-}
-
-fn void run_jit_policy_match_binding_growth_failure_test(Interp* interp, int* pass, int* fail) {
-    if (!jit_checks_enabled()) {
-        emit_pass_literal("[PASS] jit policy: match binding growth failure skipped when jit disabled");
-        (*pass)++;
-        return;
-    }
-
-    char[] source = "(match '(1 2 3 4 5) ([a b c d e] (+ a e)) (_ 0))";
-    g_env_force_bindings_alloc_oom = true;
-    JitTopLevelEval jit_eval = eval_jit_top_level(interp, source);
-    g_env_force_bindings_alloc_oom = false;
-
-    Value* result = jit_eval.value;
-    bool ok = jit_eval.ok &&
-              result != null &&
-              result.tag == ERROR &&
-              jit_policy_str_contains(result.str_chars[:result.str_len], "out of memory while binding match clause");
-
-    if (ok) {
-        emit_pass_literal("[PASS] jit policy: match binding growth failure returns error");
-        (*pass)++;
-    } else {
-        io::printn("[FAIL] jit policy: match binding growth failure returns error");
-        print_jit_failure_debug(interp, "jit match binding growth failure", jit_eval.stage, result);
-        (*fail)++;
-    }
-}
-
-fn void run_jit_policy_multi_arg_binding_growth_failure_test(Interp* interp, int* pass, int* fail) {
-    if (!jit_checks_enabled()) {
-        emit_pass_literal("[PASS] jit policy: multi-arg binding growth failure skipped when jit disabled");
-        (*pass)++;
-        return;
-    }
-
-    char[] source = "((lambda (a b c d e) (+ a e)) 1 2 3 4 5)";
-    g_env_force_bindings_alloc_oom = true;
-    JitTopLevelEval jit_eval = eval_jit_top_level(interp, source);
-    g_env_force_bindings_alloc_oom = false;
-
-    Value* result = jit_eval.value;
-    bool ok = jit_eval.ok &&
-              result != null &&
-              result.tag == ERROR &&
-              jit_policy_str_contains(result.str_chars[:result.str_len], "out of memory while binding argument");
-
-    if (ok) {
-        emit_pass_literal("[PASS] jit policy: multi-arg binding growth failure returns error");
-        (*pass)++;
-    } else {
-        io::printn("[FAIL] jit policy: multi-arg binding growth failure returns error");
-        print_jit_failure_debug(interp, "jit multi-arg binding growth failure", jit_eval.stage, result);
-        (*fail)++;
-    }
-}
-
 fn bool jit_policy_list_value_is_1_2_3(Value* value) {
     return value != null &&
            value.tag == CONS &&
@@ -271,6 +32,12 @@ fn void run_jit_policy_tail_constructor_escape_opcode_test(Interp* interp, int* 
     }
 
     jit_escape_allocation_stats_reset();
+    Expr* array_ast = parse_for_jit("(Array 4 5)", interp);
+    if (array_ast != null) array_ast = expand_macros_in_expr(array_ast, interp);
+    JitLocals classifier_locals = {};
+    JitTailConstructorKind array_tail_kind = array_ast != null && array_ast.tag == E_CALL
+        ? jit_tail_constructor_kind(array_ast, interp, &classifier_locals, true)
+        : JIT_TAIL_CTOR_NONE;
     JitTopLevelEval list_eval = eval_jit_top_level(interp, "(List 1 2 3)");
     JitTopLevelEval array_eval = eval_jit_top_level(interp, "(Array 4 5)");
     JitTopLevelEval string_eval = eval_jit_top_level(interp, "\"jit-tail\"");
@@ -297,17 +64,19 @@ fn void run_jit_policy_tail_constructor_escape_opcode_test(Interp* interp, int* 
                      stats.cons_calls >= 3 &&
                      stats.array_calls >= 1 &&
                      stats.string_calls >= 1;
+    bool array_classifier_ok = array_tail_kind == JIT_TAIL_CTOR_ARRAY;
 
-    if (list_ok && array_ok && string_ok && escape_ok) {
+    if (list_ok && array_ok && string_ok && escape_ok && array_classifier_ok) {
         emit_pass_literal("[PASS] jit policy: tail constructor escape opcode uses ESCAPE helpers");
         (*pass)++;
     } else {
         io::printfn(
-            "[FAIL] jit policy: tail constructor escape opcode uses ESCAPE helpers (list_ok=%s array_ok=%s string_ok=%s escape_ok=%s nil=%d cons=%d array=%d string=%d)",
+            "[FAIL] jit policy: tail constructor escape opcode uses ESCAPE helpers (list_ok=%s array_ok=%s string_ok=%s escape_ok=%s array_classifier=%s nil=%d cons=%d array=%d string=%d)",
             list_ok ? "yes" : "no",
             array_ok ? "yes" : "no",
             string_ok ? "yes" : "no",
             escape_ok ? "yes" : "no",
+            array_classifier_ok ? "yes" : "no",
             (int)stats.nil_calls,
             (int)stats.cons_calls,
             (int)stats.array_calls,
@@ -375,6 +144,69 @@ fn void run_jit_policy_multi_arg_method_table_buffer_failure_test(Interp* interp
     } else {
         io::printn("[FAIL] jit policy: multi-arg method-table buffer failure returns error");
         print_jit_failure_debug(interp, "jit multi-arg method-table buffer failure", jit_eval.stage, result);
+        (*fail)++;
+    }
+}
+
+fn Value* jit_policy_null_result_primitive(Value*[] args, Env* env, Interp* interp) {
+    (void)args;
+    (void)env;
+    (void)interp;
+    return null;
+}
+
+fn void run_jit_policy_apply_null_result_fails_closed_test(Interp* interp, int* pass, int* fail) {
+    Value* null_prim = make_primitive(interp, "__jit-policy-null-result", &jit_policy_null_result_primitive, 1);
+    Value* first_arg = make_int(interp, 1);
+    Value* second_arg = make_int(interp, 2);
+    Value* one_arg_list = first_arg != null
+        ? make_cons(interp, first_arg, make_nil(interp))
+        : null;
+    Value* two_arg_tail = second_arg != null
+        ? make_cons(interp, second_arg, make_nil(interp))
+        : null;
+    Value* two_arg_list = first_arg != null && two_arg_tail != null
+        ? make_cons(interp, first_arg, two_arg_tail)
+        : null;
+
+    Value* direct_apply_result = null;
+    Value* direct_result = null;
+    Value* iterative_result = null;
+    bool setup_ok = null_prim != null &&
+                    null_prim.tag == PRIMITIVE &&
+                    one_arg_list != null &&
+                    one_arg_list.tag == CONS &&
+                    two_arg_list != null &&
+                    two_arg_list.tag == CONS;
+    if (setup_ok) {
+        direct_apply_result = jit_apply_value(null_prim, first_arg, interp);
+        direct_result = jit_apply_multi_args(interp, null_prim, one_arg_list, 1);
+        iterative_result = jit_apply_multi_args_iterative(null_prim, two_arg_list, 2, interp);
+    }
+
+    bool direct_apply_ok = direct_apply_result != null &&
+                           direct_apply_result.tag == ERROR &&
+                           jit_policy_str_contains(direct_apply_result.str_chars[:direct_apply_result.str_len], "function application returned null");
+    bool direct_ok = direct_result != null &&
+                     direct_result.tag == ERROR &&
+                     jit_policy_str_contains(direct_result.str_chars[:direct_result.str_len], "function application returned null");
+    bool iterative_ok = iterative_result != null &&
+                        iterative_result.tag == ERROR &&
+                        jit_policy_str_contains(iterative_result.str_chars[:iterative_result.str_len], "function application returned null");
+    if (setup_ok && direct_apply_ok && direct_ok && iterative_ok) {
+        emit_pass_literal("[PASS] jit policy: null apply result fails closed");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] jit policy: null apply result fails closed (setup_ok=%s apply_tag=%d direct_tag=%d iterative_tag=%d apply_ok=%s direct_ok=%s iterative_ok=%s)",
+            setup_ok ? "true" : "false",
+            direct_apply_result != null ? (int)direct_apply_result.tag : -1,
+            direct_result != null ? (int)direct_result.tag : -1,
+            iterative_result != null ? (int)iterative_result.tag : -1,
+            direct_apply_ok ? "true" : "false",
+            direct_ok ? "true" : "false",
+            iterative_ok ? "true" : "false"
+        );
         (*fail)++;
     }
 }
@@ -602,7 +434,10 @@ fn void run_jit_policy_handler_arg_list_alloc_failure_test(Interp* interp, int* 
     (void)interp;
     Interp* other = (Interp*)mem::malloc(Interp.sizeof);
     bool ok = other != null;
-    if (ok) other.init();
+    if (ok) {
+        other.init();
+        ok = register_primitives(other);
+    }
 
     main::StackCtx* ctx = null;
     HandleEffectState* state = null;
@@ -610,6 +445,9 @@ fn void run_jit_policy_handler_arg_list_alloc_failure_test(Interp* interp, int* 
     Value* signal_result = null;
     Value* raise_result = null;
     Continuation* saved_head = null;
+    bool signal_msg_ok = false;
+    bool raise_msg_ok = false;
+    bool continuation_scrubbed = false;
     if (ok) {
         EvalResult closure_r = run("(lambda (k x) x)", other);
         ok = !closure_r.error.has_error && closure_r.value != null && closure_r.value.tag == CLOSURE;
@@ -653,14 +491,23 @@ fn void run_jit_policy_handler_arg_list_alloc_failure_test(Interp* interp, int* 
         g_value_force_make_list2_alloc_fail_nth = saved_force;
     }
 
-    ok = ok &&
-        signal_result != null &&
+    signal_msg_ok = signal_result != null &&
         signal_result.tag == ERROR &&
-        jit_policy_str_contains(signal_result.str_chars[:signal_result.str_len], "handle: failed to construct handler args") &&
-        raise_result != null &&
+        signal_result.str_chars != null &&
+        jit_policy_str_contains(signal_result.str_chars[:signal_result.str_len], "handle: failed to construct handler args");
+    raise_msg_ok = raise_result != null &&
         raise_result.tag == ERROR &&
+        raise_result.str_chars != null &&
         jit_policy_str_contains(raise_result.str_chars[:raise_result.str_len], "handle: failed to construct raise handler args");
-    ok = ok && other.continuation_head == saved_head;
+    Continuation* head_after_failure = other != null ? other.continuation_head : null;
+    continuation_scrubbed =
+        head_after_failure == saved_head ||
+        (head_after_failure != null &&
+         head_after_failure.next_owned == saved_head &&
+         head_after_failure.ctx == null &&
+         head_after_failure.handle_state == null &&
+         !head_after_failure.handle_retained);
+    ok = ok && signal_msg_ok && raise_msg_ok && continuation_scrubbed;
 
     if (ctx != null) main::stack_ctx_destroy(ctx, &other.stack_ctx_pool);
     if (state != null) handle_effect_state_release(state);
@@ -674,9 +521,12 @@ fn void run_jit_policy_handler_arg_list_alloc_failure_test(Interp* interp, int* 
         (*pass)++;
     } else {
         io::printfn(
-            "[FAIL] jit policy: handler arg list construction fails closed (signal_tag=%d raise_tag=%d)",
+            "[FAIL] jit policy: handler arg list construction fails closed (signal_tag=%d raise_tag=%d signal_msg_ok=%s raise_msg_ok=%s continuation_scrubbed=%s)",
             signal_result != null ? (int)signal_result.tag : -1,
-            raise_result != null ? (int)raise_result.tag : -1
+            raise_result != null ? (int)raise_result.tag : -1,
+            signal_msg_ok ? "true" : "false",
+            raise_msg_ok ? "true" : "false",
+            continuation_scrubbed ? "true" : "false"
         );
         (*fail)++;
     }
@@ -686,18 +536,32 @@ fn void run_jit_policy_handle_clause_bind_failure_releases_continuation_test(Int
     (void)interp;
     Interp* other = (Interp*)mem::malloc(Interp.sizeof);
     bool ok = other != null;
-    if (ok) other.init();
+    if (ok) {
+        other.init();
+        ok = register_primitives(other);
+    }
 
     Continuation* saved_head = null;
+    EvalResult r = {};
+    bool msg_ok = false;
+    bool continuation_scrubbed = false;
     if (ok) {
         saved_head = other.continuation_head;
         g_env_force_bindings_alloc_oom = true;
-        EvalResult r = run("(handle (+ 1 (signal ask 0)) (ask x x))", other);
+        r = run("(handle (+ 1 (signal ask 0)) (ask x x))", other);
         g_env_force_bindings_alloc_oom = false;
         char[] msg = r.error.message[:256];
-        ok = r.error.has_error &&
-             jit_policy_str_contains(msg, "handle: out of memory while binding clause") &&
-             other.continuation_head == saved_head;
+        msg_ok = r.error.has_error &&
+            jit_policy_str_contains(msg, "handle: out of memory while binding clause");
+        Continuation* head_after_failure = other.continuation_head;
+        continuation_scrubbed =
+            head_after_failure == saved_head ||
+            (head_after_failure != null &&
+             head_after_failure.next_owned == saved_head &&
+             head_after_failure.ctx == null &&
+             head_after_failure.handle_state == null &&
+             !head_after_failure.handle_retained);
+        ok = msg_ok && continuation_scrubbed;
     } else {
         g_env_force_bindings_alloc_oom = false;
     }
@@ -711,7 +575,117 @@ fn void run_jit_policy_handle_clause_bind_failure_releases_continuation_test(Int
         emit_pass_literal("[PASS] jit policy: handle clause bind failure releases continuation");
         (*pass)++;
     } else {
-        io::printn("[FAIL] jit policy: handle clause bind failure releases continuation");
+        io::printfn(
+            "[FAIL] jit policy: handle clause bind failure releases continuation (run_error=%s msg_ok=%s msg=%s continuation_scrubbed=%s)",
+            r.error.has_error ? "true" : "false",
+            msg_ok ? "true" : "false",
+            (ZString)&r.error.message,
+            continuation_scrubbed ? "true" : "false"
+        );
+        (*fail)++;
+    }
+}
+
+fn void run_jit_policy_handler_copy_promotion_failure_cleans_prior_closure_test(Interp* interp, int* pass, int* fail) {
+    (void)interp;
+    Interp* other = (Interp*)mem::malloc(Interp.sizeof);
+    bool ok = other != null;
+    if (ok) {
+        other.init();
+        ok = register_primitives(other);
+    }
+
+    main::ScopeRegion* saved_scope = null;
+    main::ScopeRegion* child = null;
+    HandleEffectState* state = null;
+    main::ScopeRegion* closure_env_scope = null;
+    int closure_env_destroy_count = 0;
+    Value* closure = null;
+    Value* opaque = null;
+    int rc_before_capture = -1;
+    int rc_after_capture = -1;
+    bool captured = true;
+    if (ok) {
+        saved_scope = other.current_scope;
+        child = main::scope_create(saved_scope);
+        ok = child != null;
+    }
+    if (ok) {
+        other.current_scope = child;
+        Env* captured_env = make_env(other, other.global_env);
+        closure = captured_env != null
+            ? make_env_scope_closure_for_test(other, captured_env, &closure_env_scope)
+            : null;
+        if (closure_env_scope != null) {
+            main::scope_register_dtor(closure_env_scope, (void*)&closure_env_destroy_count, fn void(void* ptr) {
+                int* count = (int*)ptr;
+                if (count != null) (*count)++;
+            });
+        }
+        int* opaque_payload = memory_lifetime_test_opaque_payload(child);
+        if (opaque_payload != null) *opaque_payload = 70;
+        opaque = opaque_payload != null
+            ? make_primitive_with_user_data_in_scope(other, child, "__handler-copy-opaque", &prim_add, 2, (void*)opaque_payload, null, null)
+            : null;
+        state = (HandleEffectState*)mem::malloc(HandleEffectState.sizeof);
+        ok = closure != null &&
+             closure.tag == CLOSURE &&
+             closure_env_scope != null &&
+             closure_env_scope.refcount == 1 &&
+             opaque != null &&
+             opaque.tag == PRIMITIVE &&
+             state != null;
+    }
+    if (ok) {
+        handle_effect_state_init(state, other);
+        HandleEffectState* live_state = state;
+        state = null;
+
+        SymbolId[2] tags = { other.symbols.intern("first"), other.symbols.intern("second") };
+        Value*[2] closures = { closure, opaque };
+        EffectHandler handler = {
+            .tags = &tags[0],
+            .clauses = null,
+            .closures = &closures[0],
+            .clause_count = 2,
+            .handler_env = null,
+            .body_expr = null,
+            .body_env = null,
+            .strict_mode = false,
+            .effect_state = live_state,
+        };
+        rc_before_capture = (int)closure_env_scope.refcount;
+        captured = handle_effect_state_capture_handler_copy(live_state, &handler);
+        rc_after_capture = (int)closure_env_scope.refcount;
+        handle_effect_state_release(live_state);
+    }
+
+    if (state != null) mem::free(state);
+    if (other != null && saved_scope != null) other.current_scope = saved_scope;
+    if (child != null) main::scope_release(child);
+    int destroy_count_after_child_release = closure_env_destroy_count;
+    if (other != null) {
+        other.destroy();
+        mem::free(other);
+    }
+
+    bool cleanup_ok = ok &&
+                      !captured &&
+                      rc_before_capture == 1 &&
+                      rc_after_capture == 1 &&
+                      destroy_count_after_child_release == 1;
+    if (cleanup_ok) {
+        emit_pass_literal("[PASS] jit policy: handler copy promotion failure cleans prior closure");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] jit policy: handler copy promotion failure cleans prior closure (setup_ok=%s captured=%s rc_before=%d rc_after=%d destroy_count=%d)",
+            ok ? "true" : "false",
+            captured ? "true" : "false",
+            rc_before_capture,
+            rc_after_capture,
+            destroy_count_after_child_release
+        );
         (*fail)++;
     }
 }

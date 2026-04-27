@@ -137,7 +137,7 @@
 (define (server/read-file-text/sync path)
   (let (st (fs-stat path)
         fd (fs-open path O_RDONLY)
-        txt (fs-read fd (+ ('size st) 1)))
+        txt (fs-read fd (+ (ref st 'size) 1)))
     (fs-close fd)
     txt))
 
@@ -199,8 +199,8 @@
   (let (respond (partial tcp-write client))
     (handle
       (let (req (|> (tcp-read client) decode-request))
-        (log/write! (format "%s %s" ('method req) ('path req)))
-        (|> (server-dispatch ('method req) ('path req) ('body req))
+        (log/write! (format "%s %s" (ref req 'method) (ref req 'path)))
+        (|> (server-dispatch (ref req 'method) (ref req 'path) (ref req 'body))
             respond)
         (tcp-close client))
       (raise msg

@@ -6,11 +6,13 @@
 
 #include "../deps/src/BearSSL/inc/bearssl.h"
 #include <errno.h>
+#include <limits.h>
 #include <pthread.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
 #include <unistd.h>
 
 static void omni_tls_set_last_errorf(const char *fmt, ...);
@@ -22,9 +24,10 @@ const char *omni_tls_error_code_string(int err);
 /* Socket read callback for br_sslio_init */
 int omni_tls_sock_read(void *ctx, unsigned char *buf, size_t len) {
     int fd = *(int *)ctx;
+    size_t chunk_len = len > (size_t)INT_MAX ? (size_t)INT_MAX : len;
     omni_tls_clear_last_error();
     for (;;) {
-        long rlen = read(fd, buf, len);
+        ssize_t rlen = read(fd, buf, chunk_len);
         if (rlen <= 0) {
             if (rlen < 0 && errno == EINTR) continue;
             if (rlen < 0) {
@@ -41,9 +44,14 @@ int omni_tls_sock_read(void *ctx, unsigned char *buf, size_t len) {
 /* Socket write callback for br_sslio_init */
 int omni_tls_sock_write(void *ctx, const unsigned char *buf, size_t len) {
     int fd = *(int *)ctx;
+    size_t chunk_len = len > (size_t)INT_MAX ? (size_t)INT_MAX : len;
     omni_tls_clear_last_error();
     for (;;) {
-        long wlen = write(fd, buf, len);
+#ifdef MSG_NOSIGNAL
+        ssize_t wlen = send(fd, buf, chunk_len, MSG_NOSIGNAL);
+#else
+        ssize_t wlen = write(fd, buf, chunk_len);
+#endif
         if (wlen <= 0) {
             if (wlen < 0 && errno == EINTR) continue;
             if (wlen < 0) {

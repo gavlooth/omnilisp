@@ -171,22 +171,24 @@ fn Value* ui_ftxui_collect_number_sequence(
     if (seq.tag == ARRAY && seq.array_val != null) {
         for (usz i = 0; i < count; i++) {
             Value* item = seq.array_val.items[i];
-            if (!is_number(item)) {
+            double value = 0.0;
+            if (!try_numeric_to_double(item, &value)) {
                 mem::free(values);
                 return ftxui_raise(interp, "ui/invalid-argument", message);
             }
-            values[i] = to_double(item);
+            values[i] = value;
         }
     } else {
         Value* cur = seq;
         usz index = 0;
         while (is_cons(cur) && index < count) {
             Value* item = car(cur);
-            if (!is_number(item)) {
+            double value = 0.0;
+            if (!try_numeric_to_double(item, &value)) {
                 mem::free(values);
                 return ftxui_raise(interp, "ui/invalid-argument", message);
             }
-            values[index++] = to_double(item);
+            values[index++] = value;
             cur = cdr(cur);
         }
     }

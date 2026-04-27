@@ -71,7 +71,7 @@ struct ScopeDtor {
  */
 struct ScopeRegion {
     // Identity & lifetime
-    uint         generation;    // Incremented on recycle (for handle validation)
+    ulong        generation;    // Incremented on recycle (for handle validation)
     uint         refcount;      // +1 per external reference (owner + captures)
 
     // Hierarchy
@@ -111,7 +111,7 @@ struct ScopeRegion {
     ScopeDtor*   escape_dtors_tail; // Tail of escape_dtors (oldest, next=null)
     usz          alloc_bytes;   // Total bytes allocated (for split decisions)
     usz          alloc_count;   // Object count (for stats)
-    uint         escape_generation; // Unique stamp for ESCAPE-lane membership checks
+    ulong        escape_generation; // Unique stamp for ESCAPE-lane membership checks
     void*        owner_thread_token; // Thread-affinity token for runtime safety checks
     bool         fiber_temp_eligible; // True when scope may use fiber-temp TEMP backing
 
@@ -121,7 +121,7 @@ struct ScopeRegion {
 
 // ABI/interop guard: scope regions are retained and inspected across runtime
 // boundary helpers. Update bindings and this assertion together on layout change.
-$assert(ScopeRegion.sizeof == 232);
+$assert(ScopeRegion.sizeof == 240);
 
 // =============================================================================
 // Constants

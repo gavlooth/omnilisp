@@ -155,8 +155,11 @@ fn Value* jit_handle_dispatch_signal(HandleEffectState* hstate, Expr* expr, Env*
         );
     }
 
-    // Evaluate handler clause
+    // Evaluate handler clause. A successful resolve exits this clause only;
+    // clear the marker before returning to the enclosing handle expression.
+    interp.flags.resolve_terminal_pending = false;
     Value* handler_v = jit_eval(clause.handler_body, clause_env, interp);
+    interp.flags.resolve_terminal_pending = false;
     // Keep only continuations reachable from the returned result graph. Binding
     // k into the ESCAPE-lane clause env may retain transiently even when the
     // handler ignores k, and that must not transfer the suspended ctx.

@@ -115,7 +115,7 @@ These redefine I/O to go through effects (fast path when no handler):
 `udp-recv`, `udp-close`,
 `pipe-connect`, `pipe-listen`, `process-spawn`, `process-wait`,
 `process-kill`, `signal-handle`, `signal-unhandle`, `dns-resolve`, `async-sleep`,
-`offload`, `task-spawn`, `task-join`, `task-join-timeout`, `task-cancel`,
+`offload`, `offload-batch`, `task-spawn`, `task-join`, `task-join-timeout`, `task-cancel`,
 `task-spawn-batch`, `thread-spawn`, `thread-spawn-batch`, `thread-join`,
 `thread-join-timeout`, `thread-cancel`,
 `tls-connect`, `tls-server-wrap`,

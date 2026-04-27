@@ -123,6 +123,8 @@ fn Value* copy_env_value_fast(Value* v, Interp* interp, PromotionContext* ctx = 
             if (!boundary_copy_result_ok(copied)) return null;
             return copied.value;
         }
+        default:
+            return null;
     }
 }
 

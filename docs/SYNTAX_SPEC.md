@@ -344,8 +344,9 @@ Each `{name}` hole is parsed as an expression at macro expansion time. Use
 ```lisp
 ^Integer          ;; simple type
 ^(List Integer)   ;; compound type
-^(Value 42)       ;; canonical value-level type (dispatch on literal)
-^(Value nil)      ;; nil literal dispatch
+^#42              ;; canonical singleton literal shorthand
+^#nil             ;; nil literal dispatch
+^(Literal 42)     ;; explicit long form
 ^{'T Number}      ;; metadata dictionary
 ```
 
@@ -362,7 +363,7 @@ Each `{name}` hole is parsed as an expression at macro expansion time. Use
 ### 4.3 Multiple Dispatch
 
 Typed defines create method tables. Best match wins:
-- Value literal match: score 1000
+- Literal singleton match: score 1000
 - Exact type match: score 100
 - Subtype match: score 10
 - Any type (untyped param): score 1

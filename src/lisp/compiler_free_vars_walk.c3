@@ -15,6 +15,13 @@ fn void Compiler.find_free_vars(Compiler* self, Expr* expr, List{SymbolId}* boun
         case E_DEFMACRO:
         case E_IMPORT:
         case E_EXPORT_FROM:
+        case E_FFI_LIB:
+        case E_FFI_FN:
+        case E_DEFTYPE:
+        case E_DEFABSTRACT:
+        case E_DEFUNION:
+        case E_DEFALIAS:
+        case E_DEFEFFECT:
             return;
 
         case E_VAR:
@@ -50,6 +57,7 @@ fn void Compiler.find_free_vars(Compiler* self, Expr* expr, List{SymbolId}* boun
             self.find_free_vars_complex_form(expr, bound_vars, free_vars, enclosing_scope);
 
         default:
+            self.set_compile_error("compiler: unknown expression tag in free-variable analysis");
             return;
     }
 }

@@ -4,5 +4,5 @@
 
 ## Parts
 
-- Part 01: [docs/areas/tensor-scientific_parts/tensor-scientific_part_01.md](tensor-scientific_parts/tensor-scientific_part_01.md) (624 lines)
+- Part 01: [docs/areas/tensor-scientific_parts/tensor-scientific_part_01.md](tensor-scientific_parts/tensor-scientific_part_01.md) (628 lines)
 - Part 02: [docs/areas/tensor-scientific_parts/tensor-scientific_part_02.md](tensor-scientific_parts/tensor-scientific_part_02.md) (261 lines)

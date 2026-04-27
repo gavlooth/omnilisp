@@ -169,14 +169,16 @@ fn Value* prim_sort_by(Value*[] args, Env* env, Interp* interp) {
         Value* key = arr[i];
         isz j = (isz)i - 1;
         while (j >= 0) {
-            // Comparator returns positive numeric or truthy when left should move after right.
-            Value* r2 = sort_by_apply_comparator(cmp_fn, arr[(usz)j], key, interp);
+            // Comparator answers whether the candidate key orders before the
+            // existing item. Numeric comparators use negative/zero/positive
+            // ordering; boolean comparators use truthiness directly.
+            Value* r2 = sort_by_apply_comparator(cmp_fn, key, arr[(usz)j], interp);
             if (r2 == null) return collection_raise(interp, "runtime/evaluation-error", "sort-by: comparator application failed");
             if (r2.tag == ERROR) return r2;
             bool gt = false;
             double cmp_value = 0.0;
             if (try_numeric_to_double(r2, &cmp_value)) {
-                gt = cmp_value > 0.0;
+                gt = cmp_value < 0.0;
             } else {
                 gt = !is_falsy(r2, interp);
             }

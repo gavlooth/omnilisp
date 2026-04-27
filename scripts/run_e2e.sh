@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
 cd "$(dirname "$0")/.."
 source scripts/c3c_limits.sh
@@ -127,7 +127,19 @@ omni_c3 build
 
 echo ""
 echo "=== Stage 2: Generating e2e test files ==="
-omni_run_with_hard_cap env "LD_LIBRARY_PATH=${runtime_ld_library_path}" ./build/main --gen-e2e
+set +e
+stage2_output="$(omni_run_with_hard_cap env "LD_LIBRARY_PATH=${runtime_ld_library_path}" ./build/main --gen-e2e)"
+stage2_status=$?
+set -e
+printf '%s\n' "$stage2_output"
+if [[ "$stage2_status" -ne 0 ]]; then
+    echo "E2E generation failed before producing generated test files." >&2
+    exit "$stage2_status"
+fi
+if [[ "$stage2_output" != *"=== Generated 431 e2e tests ==="* ]]; then
+    echo "E2E generation contract failed: expected exactly 431 generated tests." >&2
+    exit 1
+fi
 
 echo ""
 echo "=== Stage 3: Building e2e test binary ==="
@@ -148,7 +160,7 @@ stage3_compile_sources=(
 omni_run_with_hard_cap ./scripts/check_e2e_baseline_policy.sh --stage3-source-parity
 
 omni_c3 compile \
-  ${stage3_compile_sources[@]} \
+  "${stage3_compile_sources[@]}" \
   -o build/e2e_test \
   -L build -L "${runtime_ld_library_path}" -L deps/lib \
   -l omni_chelpers -l lightning -l ffi -l dl -l m -l replxx -l stdc++ \
@@ -161,15 +173,38 @@ fi
 
 echo ""
 echo "=== Stage 4: Running e2e tests ==="
+set +e
 omni_run_with_hard_cap env "LD_LIBRARY_PATH=${runtime_ld_library_path}" ./build/e2e_test > build/e2e_actual.txt
+stage4_status=$?
+set -e
+if [[ "$stage4_status" -ne 0 ]]; then
+    echo "E2E test binary failed with status ${stage4_status}." >&2
+    echo "Captured output: build/e2e_actual.txt" >&2
+    if [[ -s build/e2e_actual.txt ]]; then
+        echo "" >&2
+        echo "=== e2e_actual.txt head ===" >&2
+        head -20 build/e2e_actual.txt >&2
+        echo "" >&2
+        echo "=== e2e_actual.txt tail ===" >&2
+        tail -20 build/e2e_actual.txt >&2
+    else
+        echo "build/e2e_actual.txt is empty." >&2
+    fi
+    exit "$stage4_status"
+fi
 
 echo ""
 echo "=== Stage 5: Comparing output ==="
 if diff build/e2e_expected.txt build/e2e_actual.txt > build/e2e_diff.txt 2>&1; then
     TESTS=$(wc -l < build/e2e_expected.txt)
+    if [[ "$TESTS" -ne 431 ]]; then
+        echo "E2E generation contract failed: expected 431 output rows, got $TESTS." >&2
+        exit 1
+    fi
     echo "ALL $TESTS e2e compiler tests passed!"
     rm -f build/e2e_diff.txt
 elif [[ -f "${e2e_expected_diff_manifest}" ]] && cmp -s build/e2e_diff.txt "${e2e_expected_diff_manifest}"; then
+    ./scripts/check_e2e_baseline_policy.sh
     tracked_rows="unknown"
     if [[ -f "${e2e_expected_diff_metadata}" ]]; then
         tracked_rows=$(awk 'BEGIN { count = 0 } NR > 1 && $0 !~ /^[[:space:]]*$/ { count++ } END { print count }' "${e2e_expected_diff_metadata}")

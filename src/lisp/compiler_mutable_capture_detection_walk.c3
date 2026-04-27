@@ -50,6 +50,10 @@ fn bool Compiler.has_set_on(Compiler* self, SymbolId name, Expr* expr) {
                    self.has_set_on(name, expr.if_expr.then_branch) ||
                    self.has_set_on(name, expr.if_expr.else_branch);
         case E_LET:
+            if ((uint)expr.let_expr.name == (uint)name) {
+                if (expr.let_expr.is_recursive) return false;
+                return self.has_set_on(name, expr.let_expr.init);
+            }
             return self.has_set_on(name, expr.let_expr.init) || self.has_set_on(name, expr.let_expr.body);
         case E_LAMBDA:
             // If the lambda shadows the name, any set! inside refers to the parameter,
@@ -89,11 +93,13 @@ fn bool Compiler.has_set_on(Compiler* self, SymbolId name, Expr* expr) {
                 if (self.has_set_on_pattern(name, expr.match.clauses[i].pattern)) return true;
             }
             return false;
+        case E_RESET:
+            return false;
+        case E_SHIFT:
+            return false;
         case E_LIT:
         case E_VAR:
         case E_QUOTE:
-        case E_RESET:
-        case E_SHIFT:
             return false;
         case E_PERFORM:
             if (expr.perform.has_tag_expr && self.has_set_on(name, expr.perform.tag_expr)) return true;
@@ -186,11 +192,14 @@ fn bool Compiler.is_captured_by_nested_lambda(Compiler* self, SymbolId name, Exp
                 bound.push(expr.lambda.rest_param);
             }
             List{SymbolId} free;
-            self.find_free_vars(expr.lambda.body, &bound, &free, null);
+            List{SymbolId} enclosing;
+            enclosing.push(name);
+            self.find_free_vars(expr.lambda.body, &bound, &free, &enclosing);
             bool captured = false;
             foreach (f : free) {
                 if ((uint)f == (uint)name) { captured = true; break; }
             }
+            enclosing.free();
             bound.free();
             free.free();
             if (captured) return true;
@@ -204,6 +213,10 @@ fn bool Compiler.is_captured_by_nested_lambda(Compiler* self, SymbolId name, Exp
                    self.is_captured_by_nested_lambda(name, expr.if_expr.then_branch) ||
                    self.is_captured_by_nested_lambda(name, expr.if_expr.else_branch);
         case E_LET:
+            if ((uint)expr.let_expr.name == (uint)name) {
+                if (expr.let_expr.is_recursive) return false;
+                return self.is_captured_by_nested_lambda(name, expr.let_expr.init);
+            }
             return self.is_captured_by_nested_lambda(name, expr.let_expr.init) ||
                    self.is_captured_by_nested_lambda(name, expr.let_expr.body);
         case E_DEFINE:
@@ -234,11 +247,13 @@ fn bool Compiler.is_captured_by_nested_lambda(Compiler* self, SymbolId name, Exp
             return false;
         case E_SET:
             return self.is_captured_by_nested_lambda(name, expr.set_expr.value);
+        case E_RESET:
+            return false;
+        case E_SHIFT:
+            return false;
         case E_LIT:
         case E_VAR:
         case E_QUOTE:
-        case E_RESET:
-        case E_SHIFT:
             return false;
         case E_PERFORM:
             if (expr.perform.has_tag_expr && self.is_captured_by_nested_lambda(name, expr.perform.tag_expr)) return true;

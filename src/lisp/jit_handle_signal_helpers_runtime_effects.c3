@@ -191,6 +191,13 @@ fn Value* jit_signal_try_fast_path(SymbolId tag, Value* arg_v, Interp* interp) {
         if (interp.fast_path_table[i].tag != tag) continue;
 
         Value* fp_prim = interp.fast_path_table[i].prim;
+        if (!jit_fast_path_primitive_is_valid(fp_prim)) {
+            return runtime_effect_raise(
+                interp,
+                "runtime/invalid-fast-path-primitive",
+                "effect fast path: invalid primitive entry"
+            );
+        }
         int fp_arity = fp_prim.prim_val.arity;
         if (fp_arity == 0) {
             return call_fast_path_primitive_preserving_error(fp_prim, make_nil(interp), interp);

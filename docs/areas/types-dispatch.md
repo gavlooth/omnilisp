@@ -1,7 +1,7 @@
 # Type System and Dispatch
 
 Status: `green` (core parity matrix/explainability/type-gap/backend-matrix closure is complete, and the bounded `run_e2e.sh` lane is fully clean again)
-As of: 2026-04-27
+As of: 2026-04-30
 
 ## Canonical Sources
 
@@ -42,11 +42,35 @@ As of: 2026-04-27
     canonicalizes it: `(format "%s" Dict)` renders `#<type Dictionary>`.
   - AOT type-form helpers now materialize metadata-dictionary annotations such
     as `^{'T Number}` without requiring a base type.
-- Value-literal annotations are current as of 2026-04-12:
-  - `^(Value nil)` parses as the nil literal rather than the symbol named
+- Literal-singleton annotations are current as of 2026-04-27:
+  - `^#nil` and `^(Literal nil)` parse as the nil literal rather than the symbol named
     `nil`.
+  - `^(Value datum)` and `^(Val datum)` are removed public spellings.
   - runtime dispatch matches `nil` but not `'nil`, and compiler metadata emits
     `ValueTag.NIL` for the AOT path.
+- Literal-singleton shorthand exactness is current as of 2026-04-28:
+  - reserved inline forms `^#nil`, `^#true`, and `^#false` require exact token
+    matches; prefixed misspellings such as `^#nilx` fail closed.
+  - `(Literal datum)` descriptor-name rendering is dynamically sized before
+    interning, so long string singleton descriptors are no longer rejected by a
+    fixed local buffer.
+- Non-constructor type definition descriptors are current as of 2026-04-28:
+  `[abstract]` names, `[union]` heads, and `[alias]` names publish root-owned
+  `TYPE_INFO` descriptor values. `(format "%s" Shape)`, `(format "%s" Option)`,
+  and `(format "%s" Num)` render as canonical `#<type ...>` descriptors, and
+  calling one reports that the value is a type descriptor, not a function.
+  The AOT top-level global sync path mirrors this for direct `define_abstract`,
+  `define_union`, and `define_alias` helper lowering. Inline-compiled modules
+  also reserve and populate private backings for exported abstract descriptors,
+  union heads, aliases, and union variants. Module-local effect declarations
+  use the same helper-published binding rule for exported effect tags. That
+  rule is enforced at the shared type/effect helper boundary, so nested module
+  declarations follow the same private-backing sync path as direct module body
+  declarations. Block sequencing no longer assigns the command-style
+  `define [effect]` result back to the effect name, so those published effect
+  tag bindings remain intact. The same helper boundary now syncs generated
+  global descriptor/constructor bindings, so nested top-level blocks containing
+  type forms do not leave generated globals at their initial `nil` values.
 - Runtime and parser include type/dispatch infrastructure used by current tests.
 - Julia-parity matrix is explicit and currently has no `missing` rows.
 - Runtime dispatch semantics are test-anchored for ambiguity, unification, union participation, invariant variance policy, and explicit numeric conversion.
@@ -94,8 +118,10 @@ As of: 2026-04-27
   `scripts/baselines/e2e_expected_diff.txt` and
   `scripts/baselines/e2e_expected_diff.tsv`, but both artifacts are now clean
   (empty manifest, metadata header only) on the checked-in state.
-- `scripts/check_e2e_baseline_policy.sh` now enforces both tracked-row
-  manifests and the zero-row clean state, so any new diff is explicit.
+- `scripts/check_e2e_baseline_policy.sh` now enforces tracked-row manifests,
+  source-corpus sentinels, and the zero-row clean state when a live
+  `build/e2e_diff.txt` artifact exists. Run `scripts/run_e2e.sh` first when
+  claiming current generated-output parity.
 
 ## L5 Closeout Evidence (2026-03-09)
 
@@ -123,7 +149,7 @@ As of: 2026-04-27
     keeps only its header row.
 - L4 backend parity rows remain aligned:
   - type ctor rows (`type struct ctor`, `type union ctor`),
-  - dispatch rows (`dispatch exact subtype`, `dispatch parent subtype`, `dispatch numeric explicit conversion`, `dispatch value literal exact`, `dispatch value literal fallback`),
+  - dispatch rows (`dispatch exact subtype`, `dispatch parent subtype`, `dispatch numeric explicit conversion`, `dispatch literal singleton exact`, `dispatch literal singleton fallback`),
   - explainability row (`dispatch ambiguity reason`).
 - Baseline stability check:
   - bounded `scripts/run_e2e.sh` now finishes with no `build/e2e_diff.txt`

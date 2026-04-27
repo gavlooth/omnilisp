@@ -15,6 +15,7 @@ struct ReadLineResult {
 
 fn ReadLineResult read_line(char[] buffer) {
     ReadLineResult out = { .len = 0, .eof = false, .truncated = false };
+    if (buffer.len == 0) return out;
     usz max_len = buffer.len - 1;
     while (out.len < max_len) {
         if (try c = io::stdin().read_byte()) {

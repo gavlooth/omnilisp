@@ -33,6 +33,11 @@ fn void tail_state_restore(TailStateSnapshot* s) @inline {
     g_tail_pending = s.pending;
 }
 
+fn lisp::Value* tail_backedge_poll(lisp::Interp* interp) @inline {
+    lisp::Interp* active_interp = interp != null ? interp : aot_dispatch_interp();
+    return lisp::runtime_eval_backedge_poll(active_interp);
+}
+
 /**
  * invoke_once — Single call without trampoline loop.
  * Used internally by invoke's trampoline.
@@ -129,6 +134,12 @@ fn lisp::Value* invoke(lisp::Value* func, lisp::Value* arg) {
 
     lisp::Value* result = invoke_once(func, arg);
     while (g_tail_pending) {
+        lisp::Value* backedge_error = tail_backedge_poll(null);
+        if (backedge_error != null) {
+            g_tail_pending = false;
+            result = backedge_error;
+            break;
+        }
         g_tail_pending = false;
         if (g_tail_is_multi) {
             result = apply_multi_once(g_tail_func, g_tail_arg, g_tail_argc);
@@ -161,6 +172,12 @@ fn lisp::Value* apply_multi(lisp::Value* func, lisp::Value* arg_list, long argc)
 
     lisp::Value* result = apply_multi_once(func, arg_list, argc);
     while (g_tail_pending) {
+        lisp::Value* backedge_error = tail_backedge_poll(active_interp);
+        if (backedge_error != null) {
+            g_tail_pending = false;
+            result = backedge_error;
+            break;
+        }
         g_tail_pending = false;
         if (g_tail_is_multi) {
             result = apply_multi_once(g_tail_func, g_tail_arg, g_tail_argc);

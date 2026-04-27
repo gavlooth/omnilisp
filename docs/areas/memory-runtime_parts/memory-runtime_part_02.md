@@ -321,8 +321,10 @@ for future concurrency ownership evolution.
   returns typed iterator constructor/state errors instead of silently
   terminating the stream.
 - `__iterator-cycle` now validates both active and reset iterator tails before
-  re-publication, and `__iterator-foldl` now rejects `null` next-results as
-  malformed iterator pairs instead of treating them as normal completion.
+  re-publication, and `__iterator-foldl` now fails closed for malformed
+  next-results. Raw null thunk results are normalized by the shared JIT apply
+  boundary as `jit: function application returned null`; non-null malformed
+  pairs remain iterator-shape errors.
 - Boundary wrapper allocation is now fail-closed too:
   boundary alloc helpers no longer register destructors on null wrappers, and
   array/dictionary/module/coroutine/primitive/FFI wrapper constructors now

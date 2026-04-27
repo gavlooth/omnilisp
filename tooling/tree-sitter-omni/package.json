@@ -17,19 +17,19 @@
     "tree-sitter.json"
   ],
   "scripts": {
-    "generate": "tree-sitter generate",
-    "parse": "tree-sitter parse --rebuild examples/sample.omni",
-    "query:highlights": "tree-sitter query --captures queries/highlights.scm test/queries/highlights/canonical_forms.omni test/queries/highlights/legacy_forms.omni",
-    "query:injections": "tree-sitter query --captures queries/injections.scm test/queries/highlights/canonical_forms.omni",
-    "query:textobjects": "tree-sitter query --captures queries/textobjects.scm test/queries/structural_forms.omni",
-    "query:locals": "tree-sitter query --captures queries/locals.scm test/queries/locals_forms.omni",
-    "query:folds": "tree-sitter query --captures queries/folds.scm test/queries/structural_forms.omni",
-    "query:indents": "tree-sitter query --captures queries/indents.scm test/queries/indents_forms.omni",
-    "test": "tree-sitter test --rebuild",
-    "test:update": "tree-sitter test --rebuild --update",
+    "generate": "npx --yes tree-sitter-cli@0.25.10 generate && bash ../../scripts/split_tree_sitter_parser.sh",
+    "parse": "npx --yes tree-sitter-cli@0.25.10 parse --rebuild examples/sample.omni",
+    "query:highlights": "npx --yes tree-sitter-cli@0.25.10 query --captures queries/highlights.scm test/queries/highlights/canonical_forms.omni test/queries/highlights/legacy_forms.omni",
+    "query:injections": "npx --yes tree-sitter-cli@0.25.10 query --captures queries/injections.scm test/queries/highlights/canonical_forms.omni",
+    "query:textobjects": "npx --yes tree-sitter-cli@0.25.10 query --captures queries/textobjects.scm test/queries/structural_forms.omni",
+    "query:locals": "npx --yes tree-sitter-cli@0.25.10 query --captures queries/locals.scm test/queries/locals_forms.omni",
+    "query:folds": "npx --yes tree-sitter-cli@0.25.10 query --captures queries/folds.scm test/queries/structural_forms.omni",
+    "query:indents": "npx --yes tree-sitter-cli@0.25.10 query --captures queries/indents.scm test/queries/indents_forms.omni",
+    "test": "npx --yes tree-sitter-cli@0.25.10 test --rebuild",
+    "test:update": "npx --yes tree-sitter-cli@0.25.10 test --rebuild --update",
     "test:queries": "sh ./test/check_queries.sh"
   },
   "devDependencies": {
-    "tree-sitter-cli": "^0.25.10"
+    "tree-sitter-cli": "0.25.10"
   }
 }

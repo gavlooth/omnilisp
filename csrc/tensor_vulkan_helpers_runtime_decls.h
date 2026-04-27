@@ -257,11 +257,6 @@ extern omni_vulkan_cmd_dispatch_fn omni_vulkan_cmd_dispatch;
 extern omni_vulkan_cmd_pipeline_barrier_fn omni_vulkan_cmd_pipeline_barrier;
 extern omni_vulkan_queue_submit_fn omni_vulkan_queue_submit;
 extern omni_vulkan_queue_wait_idle_fn omni_vulkan_queue_wait_idle;
-extern int omni_tensor_vulkan_resolution_attempted;
-extern int omni_tensor_vulkan_probe_attempted;
-extern int omni_tensor_vulkan_available_cached;
-extern int omni_tensor_vulkan_float64_cached;
-extern int omni_tensor_vulkan_int64_cached;
 // Process-lifetime backend context so independently placed buffers can bind
 // together in binary Vulkan kernels.
 extern OmniTensorVulkanContext* omni_tensor_vulkan_shared_context;

@@ -17,11 +17,9 @@ fn void boundary_debug_graph_audit_committed_escape_root(
     if (committed.value == null || target_scope == null) return;
     if (committed.value.scope_gen != target_scope.escape_generation) return;
 
-    boundary_telemetry_inc_graph_audit_invoked();
-
     usz rate = boundary_graph_audit_rate();
     usz max_roots = boundary_graph_audit_max_roots();
-    usz audit_index = g_boundary_decision_stats.graph_audit_invoked;
+    usz audit_index = boundary_telemetry_note_graph_audit_invoked();
 
     if (rate == 0) {
         boundary_telemetry_inc_graph_audit_skipped_rate();
@@ -66,11 +64,9 @@ fn bool boundary_debug_graph_audit_pre_splice_escape_root(
     if (!boundary_graph_audit_enabled()) return true;
     if (root == null || target_scope == null || releasing_scope == null) return true;
 
-    boundary_telemetry_inc_graph_audit_invoked();
-
     usz rate = boundary_graph_audit_rate();
     usz max_roots = boundary_graph_audit_max_roots();
-    usz audit_index = g_boundary_decision_stats.graph_audit_invoked;
+    usz audit_index = boundary_telemetry_note_graph_audit_invoked();
 
     if (rate == 0) {
         boundary_telemetry_inc_graph_audit_skipped_rate();
@@ -88,7 +84,7 @@ fn bool boundary_debug_graph_audit_pre_splice_escape_root(
     }
 
     BoundaryGraphAuditResult audit =
-        boundary_graph_audit_escape_reachability_result(root, target_scope, true, releasing_scope, global_env);
+        boundary_graph_audit_escape_reachability_result(root, target_scope, false, releasing_scope, global_env);
     if (audit.ok) return true;
 
     if (boundary_verbose_telemetry_enabled()) {

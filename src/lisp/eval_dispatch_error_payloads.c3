@@ -25,8 +25,12 @@ fn SymbolId dispatch_failure_reason_symbol(DispatchMatchFailureReason reason, In
             return interp.symbols.intern("type");
         case DISPATCH_MATCH_FAIL_CONSTRAINT:
             return interp.symbols.intern("constraint");
-        default:
+        case DISPATCH_MATCH_FAIL_INVALID_LITERAL:
+            return interp.symbols.intern("invalid-literal");
+        case DISPATCH_MATCH_FAIL_NONE:
             return interp.symbols.intern("none");
+        default:
+            return interp.symbols.intern("invalid");
     }
 }
 
@@ -45,7 +49,7 @@ fn Value* dispatch_literal_to_value(ValueLiteralKey* literal, Interp* interp) {
         case STRING:
             return make_string(interp, interp.symbols.get_name(literal.sym_value));
         default:
-            return make_nil(interp);
+            return make_symbol(interp, interp.symbols.intern("invalid-literal"));
     }
 }
 
@@ -169,6 +173,14 @@ fn Value* lambda_call_type_error(
                 msg = "lambda: argument type mismatch";
             }
             break;
+        case DISPATCH_MATCH_FAIL_INVALID_LITERAL:
+            if (try char[] formatted = io::bprintf(&ebuf, "%s: invalid literal dispatch signature",
+                (ZString)label)) {
+                msg = formatted;
+            } else {
+                msg = "lambda: invalid literal dispatch signature";
+            }
+            return runtime_raise(interp, "runtime/invalid-state", msg);
         default:
             if (try char[] formatted = io::bprintf(&ebuf, "%s: argument type mismatch", (ZString)label)) {
                 msg = formatted;

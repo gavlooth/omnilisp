@@ -5,5 +5,5 @@
 
 (define req (decode-request "GET /health HTTP/1.1\nHost: local\n\n"))
 (and (procedure? server/start)
-     (and (= ('method req) "GET")
-          (= ('path req) "/health")))
+     (and (= (ref req 'method) "GET")
+          (= (ref req 'path) "/health")))

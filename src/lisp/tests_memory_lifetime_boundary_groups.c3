@@ -88,7 +88,7 @@ fn void run_memory_lifetime_boundary_transition_regression_tests(Interp* interp,
         Value* leaf = null;
         Value* tail = null;
         bool setup_ok = target_scope != null && releasing_scope != null;
-        uint target_escape_generation = target_scope != null ? target_scope.escape_generation : 0;
+        ulong target_escape_generation = target_scope != null ? target_scope.escape_generation : 0;
 
         if (setup_ok) {
             interp.current_scope = releasing_scope;

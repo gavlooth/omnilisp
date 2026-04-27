@@ -26,7 +26,7 @@ fn Value* jit_exec_resolve(Interp* interp, Expr* expr, Env* env) {
     if (interp == null) return null;
     // Evaluate the value to resolve with
     Value* val = jit_eval(expr.resolve.value, env, interp);
-    if (val != null && val.tag == ERROR) return val;
+    if (jit_sequence_should_stop(interp, val)) return val;
 
     Value* k_val = jit_resolve_lookup_continuation(interp, env);
     if (k_val != null && k_val.tag == ERROR) return k_val;
@@ -37,8 +37,8 @@ fn Value* jit_exec_resolve(Interp* interp, Expr* expr, Env* env) {
         );
     }
 
-    // Effect-handler resolve is single-shot by contract.
-    return jit_resolve_value(interp, k_val, val);
+    // Syntactic resolve is single-shot and exits the active handler clause.
+    return jit_resolve_terminal_value(interp, k_val, val);
 }
 
 fn void? jit_compile_resolve(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
@@ -65,10 +65,12 @@ fn void? jit_compile_index(void* s, Expr* expr, Interp* interp, JitLocals* local
     // calls emitted by index compilation (e.g. int literals) can clobber V1.
     int collection_slot = _jit_allocai(s, 8);
     jit_compile_expr(s, expr.index.collection, interp, locals)!;
+    jit_compile_return_if_sequence_should_stop(s, locals);
     _jit_new_node_www(s, CODE_STXI_L, (long)collection_slot, (long)JIT_FP, (long)JIT_R0);
 
     // Compile index sub-expression → R0, save to V2
     jit_compile_expr(s, expr.index.index, interp, locals)!;
+    jit_compile_return_if_sequence_should_stop(s, locals);
     _jit_new_node_ww(s, CODE_MOVR, JIT_V2, JIT_R0);
 
     // Restore collection into V1, then call helper.

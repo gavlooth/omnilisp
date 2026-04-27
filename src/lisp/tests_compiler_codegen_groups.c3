@@ -118,12 +118,128 @@ fn void run_compiler_group_multiarg_tco_tests(Interp* interp, usz* pass_out, usz
     // 44c. Guard lambdas capture clause-local pattern bindings during scan/codegen.
     {
         char[] code = compile_to_c3("(match 5 ((? (lambda (v) (> x 3)) x) x) (_ 0))", interp);
-        bool ok = compiler_code_contains_all(code, {"captured_x", "captured_x = x;", "match_guard_eval"})
+        bool ok = compiler_code_contains_all(code, {"captured_x", "_capture_source_", "captured_x = _capture_source_", "match_guard_eval"})
             && compiler_code_contains_none(code, {"unsupported"});
         compiler_test_finish_bool(
             ok,
             "Compiler: callable match guard captures clause-local bindings",
             "[FAIL] Compiler: callable match guard captures clause-local bindings",
+            &pass,
+            &fail
+        );
+    }
+
+    // 44d. Unknown internal pattern tags must not compile as catch-all matches.
+    {
+        Compiler compiler;
+        compiler.init(interp);
+        defer compiler.free();
+
+        Pattern invalid = {};
+        char* raw = (char*)&invalid;
+        raw[0] = (char)127;
+
+        compiler.compile_pattern_check_to_bool(&invalid, "_value", "_match_ok");
+        char[] code = compiler.get_output();
+        bool ok = compiler.has_error &&
+            str_contains(compiler.error_message, "unknown pattern tag in AOT match lowering") &&
+            str_contains(code, "_match_ok = false") &&
+            !str_contains(code, "_match_ok = true");
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: AOT match rejects unknown pattern tags",
+            "[FAIL] Compiler: AOT match rejects unknown pattern tags",
+            &pass,
+            &fail
+        );
+    }
+
+    // 44e. Unknown internal pattern tags must not silently skip binding lowering.
+    {
+        Compiler compiler;
+        compiler.init(interp);
+        defer compiler.free();
+
+        Pattern invalid = {};
+        char* raw = (char*)&invalid;
+        raw[0] = (char)127;
+
+        compiler.compile_pattern_bindings(&invalid, "_value");
+        char[] code = compiler.get_output();
+        bool ok = compiler.has_error &&
+            str_contains(compiler.error_message, "unknown pattern tag in AOT match binding lowering") &&
+            code.len == 0;
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: AOT match binding rejects unknown pattern tags",
+            "[FAIL] Compiler: AOT match binding rejects unknown pattern tags",
+            &pass,
+            &fail
+        );
+    }
+
+    // 44f. Unknown internal pattern tags must not silently skip guard scan/lowering.
+    {
+        Pattern invalid = {};
+        char* raw = (char*)&invalid;
+        raw[0] = (char)127;
+
+        Compiler scanner;
+        scanner.init(interp);
+        defer scanner.free();
+        bool has_guard = scanner.pattern_has_guard(&invalid);
+        bool scan_ok = scanner.has_error &&
+            !has_guard &&
+            str_contains(scanner.error_message, "unknown pattern tag in AOT match guard scan");
+
+        Compiler compiler;
+        compiler.init(interp);
+        defer compiler.free();
+        compiler.compile_pattern_guards(&invalid, "_value", 0, "_matched", "_ready");
+        char[] code = compiler.get_output();
+        bool lower_ok = compiler.has_error &&
+            str_contains(compiler.error_message, "unknown pattern tag in AOT match guard lowering") &&
+            code.len == 0;
+
+        compiler_test_finish_bool(
+            scan_ok && lower_ok,
+            "Compiler: AOT match guards reject unknown pattern tags",
+            "[FAIL] Compiler: AOT match guards reject unknown pattern tags",
+            &pass,
+            &fail
+        );
+    }
+
+    // 44d. Syntactic resolve exits handler clauses before generated parent work.
+    {
+        char[] code = compile_to_c3("(handle (signal e 0) (e v (+ (resolve 1) 2)))", interp);
+        bool ok = compiler_code_contains_ordered(code, {
+                "aot::compiled_resolve(",
+                "aot::sequence_should_stop(",
+                "return _r"
+            }) &&
+            compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: resolve terminal guard in call lowering",
+            "[FAIL] Compiler: resolve terminal guard in call lowering",
+            &pass,
+            &fail
+        );
+    }
+
+    {
+        char[] code = compile_to_c3("(handle (signal e 0) (e v (match 0 (0 (resolve 42)))))", interp);
+        bool ok = compiler_code_contains_ordered(code, {
+                "aot::compiled_resolve(",
+                "aot::sequence_should_stop(",
+                "return _r"
+            }) &&
+            compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: resolve terminal guard in match lowering",
+            "[FAIL] Compiler: resolve terminal guard in match lowering",
             &pass,
             &fail
         );
@@ -327,6 +443,93 @@ fn void run_compiler_group_quasiquote_macro_tests(Interp* interp, usz* pass_out,
         );
     }
 
+    {
+        char[96] source;
+        for (usz i = 0; i < 66; i++) source[i] = '`';
+        source[66] = 'x';
+        source[67] = 0;
+        char[] error = "";
+        char[] code = compile_to_c3(source[:67], interp, &error);
+        bool ok = code.len == 0 &&
+            str_contains(error, "quasiquote nesting too deep (max 64)") &&
+            !str_contains(code, "_r184467");
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: AOT quasiquote nesting depth fails closed",
+            "[FAIL] Compiler: AOT quasiquote nesting depth fails closed",
+            &pass,
+            &fail
+        );
+    }
+
+    {
+        char[96] source;
+        source[0] = '`';
+        source[1] = '(';
+        for (usz i = 0; i < 66; i++) source[i + 2] = '`';
+        source[68] = 'x';
+        source[69] = ' ';
+        source[70] = 'y';
+        source[71] = ' ';
+        source[72] = 'z';
+        source[73] = ')';
+        source[74] = 0;
+        char[] error = "";
+        char[] code = compile_to_c3(source[:74], interp, &error);
+        bool ok = code.len == 0 &&
+            str_contains(error, "quasiquote nesting too deep (max 64)") &&
+            !str_contains(code, "_r184467");
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: AOT quasiquote call nesting propagates failure",
+            "[FAIL] Compiler: AOT quasiquote call nesting propagates failure",
+            &pass,
+            &fail
+        );
+    }
+
+    {
+        Compiler compiler;
+        compiler.init(interp);
+        defer compiler.free();
+
+        Expr expr = {};
+        expr.tag = E_UNQUOTE_SPLICING;
+
+        usz result = compiler.compile_qq_flat(&expr, 0);
+        bool ok = result == usz.max &&
+            compiler.has_error &&
+            str_contains(compiler.error_message, "unquote-splicing is only valid in quasiquote list context");
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: AOT quasiquote standalone splice fails closed",
+            "[FAIL] Compiler: AOT quasiquote standalone splice fails closed",
+            &pass,
+            &fail
+        );
+    }
+
+    {
+        Compiler compiler;
+        compiler.init(interp);
+        defer compiler.free();
+
+        Expr expr = {};
+        expr.tag = E_IF;
+
+        usz result = compiler.compile_qq_flat(&expr, 0);
+        bool ok = result == usz.max &&
+            compiler.has_error &&
+            str_contains(compiler.error_message, "unsupported quasiquote template expression");
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: AOT quasiquote unsupported template fails closed",
+            "[FAIL] Compiler: AOT quasiquote unsupported template fails closed",
+            &pass,
+            &fail
+        );
+    }
+
     // 50. Defmacro delegates to eval_source
     {
         char[] code = compile_to_c3(
@@ -513,10 +716,10 @@ fn void run_compiler_group_missing_numeric_symbol_tests(Interp* interp, usz* pas
         bool ok = compiler_code_contains_all(code, {
                 "Value* find;",
                 "Value* partition;",
-                "Value* _omni_default;",
+                "Value* _omni_sym_default_",
                 "Value* delay;",
                 "Value* force;",
-                "Value* stream_take;"
+                "Value* _omni_sym_stream_take_"
             }) &&
             compiler_code_contains_none(code, {
                 "unsupported",

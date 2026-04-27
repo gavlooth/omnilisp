@@ -52,25 +52,87 @@ fn bool jit_continuation_needs_fiber_yield() @inline {
     return g_scheduler.fibers[fid].state == FIBER_BLOCKED;
 }
 
-fn bool jit_continuation_drive_blocked_fiber(
+enum JitBlockedFiberDriveStatus : char {
+    JIT_BLOCKED_FIBER_DRIVE_OK,
+    JIT_BLOCKED_FIBER_DRIVE_YIELD_FAILED,
+    JIT_BLOCKED_FIBER_DRIVE_LIMIT_EXCEEDED,
+}
+
+usz g_jit_blocked_fiber_drive_limit_for_test = 0;
+
+fn usz jit_blocked_fiber_drive_limit() @inline {
+    if (g_jit_blocked_fiber_drive_limit_for_test > 0) {
+        return g_jit_blocked_fiber_drive_limit_for_test;
+    }
+    return scheduler_max_rounds();
+}
+
+fn bool jit_blocked_fiber_drive_failed(JitBlockedFiberDriveStatus status) @inline {
+    return status != JIT_BLOCKED_FIBER_DRIVE_OK;
+}
+
+fn Value* jit_blocked_fiber_drive_raise(
+    Interp* interp,
+    JitBlockedFiberDriveStatus status,
+    char[] yield_message,
+    char[] limit_message
+) @inline {
+    if (status == JIT_BLOCKED_FIBER_DRIVE_LIMIT_EXCEEDED) {
+        return raise_error_with_payload_names(
+            interp,
+            "runtime",
+            "runtime/fiber-yield-propagation-limit-exceeded",
+            (String)limit_message,
+            null
+        );
+    }
+    return raise_error_with_payload_names(
+        interp,
+        "runtime",
+        "runtime/fiber-yield-failed",
+        (String)yield_message,
+        null
+    );
+}
+
+fn EvalResult jit_blocked_fiber_drive_eval_error(
+    JitBlockedFiberDriveStatus status,
+    char[] yield_message,
+    char[] limit_message
+) @inline {
+    if (status == JIT_BLOCKED_FIBER_DRIVE_LIMIT_EXCEEDED) {
+        return eval_error(limit_message);
+    }
+    return eval_error(yield_message);
+}
+
+fn JitBlockedFiberDriveStatus jit_continuation_drive_blocked_fiber(
     main::StackCtx* target,
     Interp* interp,
     main::StackContext* parent_ctx
 ) {
+    usz iterations = 0;
+    usz max_iterations = jit_blocked_fiber_drive_limit();
     while (target != null &&
            parent_ctx != null &&
            target.status == main::StackCtxStatus.CTX_SUSPENDED &&
            jit_continuation_needs_fiber_yield()) {
+        if (iterations >= max_iterations) {
+            return JIT_BLOCKED_FIBER_DRIVE_LIMIT_EXCEEDED;
+        }
+        iterations++;
         main::StackCtx* outer_ctx = main::g_current_stack_ctx;
-        if (outer_ctx == null) return false;
-        if (!prim_yield_suspend_and_restore(outer_ctx, interp)) return false;
+        if (outer_ctx == null) return JIT_BLOCKED_FIBER_DRIVE_YIELD_FAILED;
+        if (!prim_yield_suspend_and_restore(outer_ctx, interp)) {
+            return JIT_BLOCKED_FIBER_DRIVE_YIELD_FAILED;
+        }
 
         SavedInterpState saved;
         save_interp_state(interp, &saved);
         main::stack_ctx_resume(target, parent_ctx);
         restore_interp_state_preserve_raise(interp, &saved);
     }
-    return true;
+    return JIT_BLOCKED_FIBER_DRIVE_OK;
 }
 
 fn EvalResult jit_continuation_finish(main::StackCtx* target, ResetState* resume_state, Interp* interp) {
@@ -153,6 +215,7 @@ fn EvalResult jit_apply_continuation_impl(Value* k_val, Value* arg, Interp* inte
             return eval_error("stack engine: failed to clone context for continuation");
         }
     }
+    continuation_replay_aot_snapshot(k);
     if (jit_cont_trace_enabled()) {
         main::ScopeRegion* scope = interp.current_scope;
         io::printfn(
@@ -198,10 +261,15 @@ fn EvalResult jit_apply_continuation_impl(Value* k_val, Value* arg, Interp* inte
     restore_interp_state_preserve_raise(interp, &saved);
     interp.current_reset_state = saved_state;
 
-    if (!jit_continuation_drive_blocked_fiber(target, interp, &parent_ctx)) {
+    JitBlockedFiberDriveStatus drive_status = jit_continuation_drive_blocked_fiber(target, interp, &parent_ctx);
+    if (jit_blocked_fiber_drive_failed(drive_status)) {
         jit_continuation_destroy_ctx(target, interp);
         interp_clear_resume_value(interp);
-        return eval_error("continuation: async yield propagation failed");
+        return jit_blocked_fiber_drive_eval_error(
+            drive_status,
+            "continuation: async yield propagation failed",
+            "continuation: async yield propagation limit exceeded"
+        );
     }
     if (jit_cont_trace_enabled()) {
         main::ScopeRegion* scope = interp.current_scope;

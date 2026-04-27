@@ -174,9 +174,9 @@ Either delete entirely (if all continuations are fiber-based) or reduce to a min
 
 #### 3.4.4 Delete or gut unused files
 
-- `/home/heefoo/Documents/code/Omni/src/continuation.c3`: Delete or reduce to just the `PromptTag`/`ContinuationId` typedefs if still referenced.
-- `/home/heefoo/Documents/code/Omni/src/delimited.c3`: Delete entirely (its tests call the unused reset_begin/shift_capture API).
-- `/home/heefoo/Documents/code/Omni/src/context.c3`: Keep `context_capture`/`context_restore` (still useful as lightweight setjmp/longjmp). Remove `capture_continuation_context`/`restore_continuation_context` and `stack_segment_*` functions.
+- `src/continuation.c3`: Delete or reduce to just the `PromptTag`/`ContinuationId` typedefs if still referenced.
+- `src/delimited.c3`: Delete entirely (its tests call the unused reset_begin/shift_capture API).
+- `src/context.c3`: Keep `context_capture`/`context_restore` (still useful as lightweight setjmp/longjmp). Remove `capture_continuation_context`/`restore_continuation_context` and `stack_segment_*` functions.
 
 #### 3.4.5 Update entry.c3
 
@@ -309,8 +309,8 @@ Phases 1 and 2 are the critical ones. The toggle flag (`use_fiber_continuations`
 ---
 
 ### Critical Files for Implementation
-- `/home/heefoo/Documents/code/Omni/src/lisp/jit.c3` - Contains all effect/continuation dispatch: jit_handle_impl, jit_perform_impl, jit_apply_continuation, jit_exec_resolve. This is where the fiber-based alternatives must be wired in alongside the existing replay mechanism.
-- `/home/heefoo/Documents/code/Omni/src/lisp/value.c3` - Contains Continuation struct (line 251), CapturedCont (line 1738), EffectHandler (line 1723), Interp struct with all replay state (lines 1941-1984). All data structures need fiber fields added.
-- `/home/heefoo/Documents/code/Omni/src/context.c3` - Contains the existing x86_64 assembly context_capture/context_restore (lines 106-183) that serve as the reference for writing fiber_context_switch. Also contains StackSegment and stack copy utilities to be repurposed for fiber stack cloning.
-- `/home/heefoo/Documents/code/Omni/src/continuation.c3` - Contains the unused PromptStack/PromptFrame/Continuation scaffolding. Must be understood to determine what, if anything, to preserve versus replace with the fiber implementation.
-- `/home/heefoo/Documents/code/Omni/src/lisp/tests.c3` - Contains all effect/continuation tests (lines 1507-1718) that define the behavioral contract the fiber implementation must satisfy. Every existing test must continue passing.
+- `src/lisp/jit.c3` - Contains all effect/continuation dispatch: jit_handle_impl, jit_perform_impl, jit_apply_continuation, jit_exec_resolve. This is where the fiber-based alternatives must be wired in alongside the existing replay mechanism.
+- `src/lisp/value.c3` - Contains Continuation struct (line 251), CapturedCont (line 1738), EffectHandler (line 1723), Interp struct with all replay state (lines 1941-1984). All data structures need fiber fields added.
+- `src/context.c3` - Contains the existing x86_64 assembly context_capture/context_restore (lines 106-183) that serve as the reference for writing fiber_context_switch. Also contains StackSegment and stack copy utilities to be repurposed for fiber stack cloning.
+- `src/continuation.c3` - Contains the unused PromptStack/PromptFrame/Continuation scaffolding. Must be understood to determine what, if anything, to preserve versus replace with the fiber implementation.
+- `src/lisp/tests.c3` - Contains all effect/continuation tests (lines 1507-1718) that define the behavioral contract the fiber implementation must satisfy. Every existing test must continue passing.

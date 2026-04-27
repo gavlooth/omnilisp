@@ -30,6 +30,9 @@ fn void run_diagnostic_tests(Interp* interp, int* pass, int* fail) {
     test_error_contains(interp, "match: missing union variant",
         "(block (define [union] DiagResult DiagOk (DiagErr Integer)) (match (DiagErr 42) ((DiagOk) 1)))",
         "missing variants", pass, fail);
+    test_error_contains(interp, "match: nested constructor coverage avoids false missing variant",
+        "(block (define [union] M40Maybe M40None (M40Some Integer)) (match (M40Some 1) ((? false (M40Some x)) x) (M40None 0)))",
+        "no pattern matched for value of type M40Some", pass, fail);
     test_eq(interp, "match: wildcard intentionally handles non-exhaustive union match",
         "(block (define [union] DiagResultW DiagOkW (DiagErrW Integer)) (match (DiagErrW 42) ((DiagOkW) 1) (_ 2)))",
         2, pass, fail);

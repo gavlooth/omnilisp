@@ -61,6 +61,7 @@ fn bool scheduler_advance_round(
 fn void scheduler_abort_all_work() {
     scheduler_close_pending_io_for_all_fibers();
     for (usz i = 0; i < g_scheduler.fiber_count; i++) {
+        scheduler_release_fiber_coroutine(i, null);
         g_scheduler.fibers[i] = {};
     }
 
@@ -141,10 +142,10 @@ fn void scheduler_reset_if_idle() {
 
     scheduler_close_pending_io_for_all_fibers();
 
-    g_scheduler.fiber_count = 0;
-    g_scheduler.current_fiber_id = NO_FIBER;
-    scheduler_reset_wakeup_queue();
     for (usz i = 0; i < MAX_FIBERS; i++) {
+        if (i < g_scheduler.fiber_count) {
+            scheduler_release_fiber_coroutine(i, null);
+        }
         g_scheduler.fibers[i] = {};
         g_scheduler.pending_reads[i] = {};
         g_scheduler.pending_offloads[i] = {};
@@ -153,6 +154,9 @@ fn void scheduler_reset_if_idle() {
         g_scheduler.pending_connects[i] = {};
         g_scheduler.pending_accepts[i] = {};
     }
+    g_scheduler.fiber_count = 0;
+    g_scheduler.current_fiber_id = NO_FIBER;
+    scheduler_reset_wakeup_queue();
 }
 
 fn Value* scheduler_run_all(Interp* interp) {

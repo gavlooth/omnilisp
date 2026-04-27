@@ -21,3 +21,12 @@ fn bool Compiler.is_mutable_capture(Compiler* self, SymbolId name, Expr* body) {
     bool has_capture = self.is_captured_by_nested_lambda(name, body);
     return has_set && has_capture;
 }
+
+fn bool Compiler.is_let_binding_mutable_capture(Compiler* self, Expr* expr) {
+    if (expr == null || expr.tag != E_LET) return false;
+    if (self.is_mutable_capture(expr.let_expr.name, expr.let_expr.body)) return true;
+    if (expr.let_expr.is_recursive) {
+        return self.is_mutable_capture(expr.let_expr.name, expr.let_expr.init);
+    }
+    return false;
+}

@@ -42,6 +42,21 @@ struct Compiler {
     // Track variables declared in current function scope (to avoid re-declaration/shadowing)
     List{SymbolId} declared_vars;
 
+    // Primitive names that are shadowed by currently active generated C locals.
+    // `declared_vars` is intentionally broader than C block scope, so primitive
+    // shadowing needs its own stack-like tracker.
+    List{SymbolId} primitive_shadow_symbols;
+
+    // Source lexical names mapped to generated C backing locals for active lets.
+    List{SymbolId} lexical_alias_symbols;
+    List{SymbolId} lexical_alias_backings;
+    usz module_binding_lexical_alias_mark;
+
+    // Source lexical names mapped to active mutable capture cells.
+    List{SymbolId} mutable_cell_symbols;
+    List{SymbolId} mutable_cell_backings;
+    usz module_binding_mutable_cell_mark;
+
     // D2: Track referenced primitives for global caching
     List{SymbolId} referenced_prims;
 
@@ -63,6 +78,19 @@ struct Compiler {
     // (for delegation contexts where user globals need injection into interpreter env)
     bool for_delegation;
 
+    // True while emitting a generated function that returns lisp::Value*.
+    // Top-level main returns int, so expression-local terminal guards cannot
+    // emit `return _rN` there.
+    bool emits_value_return;
+
+    // Generated-global collection still walks lexical bodies for legal helper
+    // declarations, but `[effect]` cannot be globally published there.
+    bool reject_lexical_defeffect_globals;
+
+    // Bare `true` / `false` parse as variables, not literal AST nodes. They
+    // may be folded only outside lexical scopes that can shadow those names.
+    bool allow_symbol_literal_constant_folding;
+
 // Compiled modules: track module name, exported symbols, and private AOT storage.
     usz compiled_module_count;
     usz compiled_module_capacity;
@@ -76,6 +104,7 @@ struct Compiler {
  */
 struct CompiledModule {
     SymbolId     name;
+    Expr*        source_expr;    // AST node this metadata belongs to
     SymbolId*    exports;       // heap-allocated
     usz          export_count;
     usz          export_capacity;
@@ -97,6 +126,7 @@ struct LambdaDef {
     SymbolId    param;           // Parameter name (for single-param lambdas)
     Expr*       body;            // Body expression
     SymbolId*   captures;        // Captured variables (heap-allocated)
+    bool*       capture_is_mutable; // Parallel to captures; true for cell-backed captures
     usz         capture_count;
     usz         capture_capacity;
     bool        creates_closure; // Does this lambda create nested closures?

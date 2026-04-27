@@ -9,11 +9,11 @@ fn Value* Parser.parse_datum_collection_template(Parser* self, bool is_dict) {
     // Consume opening token.
     lex.advance();
 
-    Value* head = parser_make_cons_datum(
-        self.interp,
-        parser_make_symbol_datum(self.interp, ctor_sym),
-        null
-    );
+    Value* ctor = parser_make_symbol_datum(self, ctor_sym);
+    Value* head = ctor != null ? parser_make_cons_datum(self, ctor, null) : null;
+    if (head == null) {
+        return null;
+    }
     Value* tail = head;
     usz elem_count = 0;
 
@@ -29,7 +29,10 @@ fn Value* Parser.parse_datum_collection_template(Parser* self, bool is_dict) {
             return null;
         }
 
-        Value* cell = parser_make_cons_datum(self.interp, elem, null);
+        Value* cell = parser_make_cons_datum(self, elem, null);
+        if (cell == null) {
+            return null;
+        }
         tail.cons_val.cdr = cell;
         tail = cell;
         elem_count++;
@@ -45,7 +48,10 @@ fn Value* Parser.parse_datum_collection_template(Parser* self, bool is_dict) {
         return null;
     }
 
-    tail.cons_val.cdr = parser_make_nil_datum(self.interp);
+    tail.cons_val.cdr = parser_make_nil_datum(self);
+    if (tail.cons_val.cdr == null) {
+        return null;
+    }
     lex.advance();  // consume closing token
     return head;
 }
@@ -55,7 +61,7 @@ fn Value* Parser.parse_datum_list(Parser* self, bool template_mode) {
     lex.advance();
     if (lex.current.type == T_RPAREN) {
         lex.advance();
-        return parser_make_nil_datum(self.interp);
+        return parser_make_nil_datum(self);
     }
 
     usz first_line = lex.current.line;
@@ -67,7 +73,10 @@ fn Value* Parser.parse_datum_list(Parser* self, bool template_mode) {
         self.set_error(template_mode ? "template datum parser made no progress" : "datum parser made no progress");
         return null;
     }
-    Value* head = self.interp.alloc_value_root();
+    Value* head = self.alloc_root_value_or_error("out of memory while parsing datum");
+    if (head == null) {
+        return null;
+    }
     head.tag = CONS;
     head.cons_val.car = first;
     head.cons_val.cdr = null;
@@ -83,7 +92,10 @@ fn Value* Parser.parse_datum_list(Parser* self, bool template_mode) {
             self.set_error(template_mode ? "template datum parser made no progress" : "datum parser made no progress");
             return null;
         }
-        Value* cell = self.interp.alloc_value_root();
+        Value* cell = self.alloc_root_value_or_error("out of memory while parsing datum");
+        if (cell == null) {
+            return null;
+        }
         cell.tag = CONS;
         cell.cons_val.car = next;
         cell.cons_val.cdr = null;
@@ -92,7 +104,10 @@ fn Value* Parser.parse_datum_list(Parser* self, bool template_mode) {
     }
     if (self.has_error) return null;
 
-    tail.cons_val.cdr = parser_make_nil_datum(self.interp);
+    tail.cons_val.cdr = parser_make_nil_datum(self);
+    if (tail.cons_val.cdr == null) {
+        return null;
+    }
     lex.advance();  // consume ')'
     return head;
 }

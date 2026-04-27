@@ -3,6 +3,11 @@ module lisp;
 import std::io;
 import main;
 
+fn bool env_hash_warning_suppressed() @inline {
+    ZString quiet = main::getenv("OMNI_TEST_QUIET");
+    return quiet != null && quiet[0] != 0;
+}
+
 fn bool Env.define(Env* self, SymbolId name, Value* value) @nodiscard {
     if (self == null || name == INVALID_SYMBOL_ID) return false;
     // Fast path: use hash table if available
@@ -50,7 +55,9 @@ fn bool Env.define(Env* self, SymbolId name, Value* value) @nodiscard {
     // Build hash table if we crossed the threshold
     if (self.hash_table == null && self.binding_count > ENV_HASH_THRESHOLD) {
         if (!self.build_hash_table()) {
-            io::eprintfn("WARNING: env hash table build failed; falling back to linear lookup");
+            if (!env_hash_warning_suppressed()) {
+                io::eprintfn("WARNING: env hash table build failed; falling back to linear lookup");
+            }
         }
     } else if (self.hash_table != null) {
         // Check load factor: rebuild if > 70%
@@ -59,7 +66,9 @@ fn bool Env.define(Env* self, SymbolId name, Value* value) @nodiscard {
             || self.binding_count * (usz)10 > self.hash_capacity * (usz)7;
         if (rebuild_hash) {
             if (!self.build_hash_table()) {
-                io::eprintfn("WARNING: env hash table rebuild failed; falling back to linear lookup");
+                if (!env_hash_warning_suppressed()) {
+                    io::eprintfn("WARNING: env hash table rebuild failed; falling back to linear lookup");
+                }
             }
         } else {
             self.hash_insert(name, new_idx);

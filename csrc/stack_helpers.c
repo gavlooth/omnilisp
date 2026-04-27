@@ -199,8 +199,8 @@ void fpu_save(uint32_t* mxcsr, uint32_t* x87cw) {
     uint16_t c;
     __asm__ volatile("stmxcsr %0" : "=m" (m));
     __asm__ volatile("fnstcw %0" : "=m" (c));
-    *mxcsr = m;
-    *x87cw = (uint32_t)c;
+    if (mxcsr != NULL) *mxcsr = m;
+    if (x87cw != NULL) *x87cw = (uint32_t)c;
 #else
     if (mxcsr != NULL) *mxcsr = 0;
     if (x87cw != NULL) *x87cw = 0;
@@ -456,15 +456,15 @@ void stack_raw_copy(void* dst, const void* src, size_t size) {
 #define INITIAL_GUARD_CAPACITY 16
 
 struct guard_entry {
-    void*  base;
-    size_t size;
+    uintptr_t base;
+    uintptr_t end;
 };
 
 static __thread struct guard_entry* g_guards = NULL;
-static __thread int g_guard_count = 0;
+static __thread volatile sig_atomic_t g_guard_count = 0;
 static __thread int g_guard_capacity = 0;
 static __thread sigjmp_buf g_recovery_stack[MAX_RECOVERY_DEPTH];
-static __thread int g_recovery_depth = 0;
+static __thread volatile sig_atomic_t g_recovery_depth = 0;
 static __thread volatile sig_atomic_t g_guard_hit = 0;
 
 static __thread void* g_sigstack = NULL;
@@ -477,21 +477,52 @@ static int g_handler_refcount = 0;
 /* The context switch function defined in stack_engine.c3 (@naked, SysV ABI) */
 extern void omni_context_switch(void* old_ctx, void* new_ctx);
 
+static int stack_guard_count_load(void) {
+    return (int)__atomic_load_n(&g_guard_count, __ATOMIC_ACQUIRE);
+}
+
+static void stack_guard_count_store(int count) {
+    __atomic_store_n(&g_guard_count, (sig_atomic_t)count, __ATOMIC_RELEASE);
+}
+
+static int stack_guard_recovery_depth_load(void) {
+    return (int)__atomic_load_n(&g_recovery_depth, __ATOMIC_ACQUIRE);
+}
+
+static void stack_guard_recovery_depth_store(int depth) {
+    __atomic_store_n(&g_recovery_depth, (sig_atomic_t)depth, __ATOMIC_RELEASE);
+}
+
+static void stack_guard_entry_store(int index, uintptr_t base, uintptr_t end) {
+    __atomic_store_n(&g_guards[index].base, base, __ATOMIC_RELEASE);
+    __atomic_store_n(&g_guards[index].end, end, __ATOMIC_RELEASE);
+}
+
+static uintptr_t stack_guard_entry_base_load(int index) {
+    return __atomic_load_n(&g_guards[index].base, __ATOMIC_ACQUIRE);
+}
+
+static uintptr_t stack_guard_entry_end_load(int index) {
+    return __atomic_load_n(&g_guards[index].end, __ATOMIC_ACQUIRE);
+}
+
 static void sigsegv_handler(int sig, siginfo_t* info, void* ucontext) {
     (void)sig; (void)ucontext;
 
-    if (g_recovery_depth <= 0)
+    int recovery_depth = stack_guard_recovery_depth_load();
+    if (recovery_depth <= 0)
         goto reraise;
 
     {
         uintptr_t addr = (uintptr_t)info->si_addr;
-        for (int i = 0; i < g_guard_count; i++) {
-            uintptr_t lo = (uintptr_t)g_guards[i].base;
-            uintptr_t hi = lo + g_guards[i].size;
+        int guard_count = stack_guard_count_load();
+        for (int i = 0; i < guard_count; i++) {
+            uintptr_t lo = stack_guard_entry_base_load(i);
+            uintptr_t hi = stack_guard_entry_end_load(i);
             if (addr >= lo && addr < hi) {
                 g_guard_hit = 1;
-                int depth = g_recovery_depth - 1;
-                g_recovery_depth = depth;
+                int depth = recovery_depth - 1;
+                stack_guard_recovery_depth_store(depth);
                 siglongjmp(g_recovery_stack[depth], 1);
                 /* NOTREACHED */
             }
@@ -589,18 +620,20 @@ void stack_guard_shutdown(void) {
     sigaltstack(&ss, NULL);
 
     free(g_sigstack); g_sigstack = NULL;
+    stack_guard_count_store(0);
     free(g_guards); g_guards = NULL;
     g_guard_capacity = 0;
-    g_guard_count = 0;
-    g_recovery_depth = 0;
+    stack_guard_recovery_depth_store(0);
     g_thread_initialized = 0;
     g_thread_init_refcount = 0;
 }
 
 int stack_guard_register(void* base, size_t size) {
     if (base == NULL || size == 0) return -1;
+    if (stack_guard_recovery_depth_load() != 0) return -1;
 
-    if (g_guard_count == g_guard_capacity) {
+    int guard_count = stack_guard_count_load();
+    if (guard_count == g_guard_capacity) {
         int new_capacity = g_guard_capacity == 0 ? INITIAL_GUARD_CAPACITY : g_guard_capacity * 2;
         if (new_capacity < g_guard_capacity) return -1;
         struct guard_entry* grown = (struct guard_entry*)realloc(
@@ -611,17 +644,28 @@ int stack_guard_register(void* base, size_t size) {
         g_guard_capacity = new_capacity;
     }
 
-    g_guards[g_guard_count].base = base;
-    g_guards[g_guard_count].size = size;
-    g_guard_count++;
+    uintptr_t guard_base = (uintptr_t)base;
+    uintptr_t guard_end = guard_base + size;
+    if (guard_end < guard_base) return -1;
+    stack_guard_entry_store(guard_count, guard_base, guard_end);
+    stack_guard_count_store(guard_count + 1);
     return 0;
 }
 
 void stack_guard_unregister(void* base) {
-    for (int i = 0; i < g_guard_count; i++) {
-        if (g_guards[i].base == base) {
-            g_guards[i] = g_guards[g_guard_count - 1];
-            g_guard_count--;
+    if (base == NULL || stack_guard_recovery_depth_load() != 0) return;
+
+    int guard_count = stack_guard_count_load();
+    uintptr_t target = (uintptr_t)base;
+    for (int i = 0; i < guard_count; i++) {
+        if (stack_guard_entry_base_load(i) == target) {
+            int last = guard_count - 1;
+            if (i != last) {
+                uintptr_t last_base = stack_guard_entry_base_load(last);
+                uintptr_t last_end = stack_guard_entry_end_load(last);
+                stack_guard_entry_store(i, last_base, last_end);
+            }
+            stack_guard_count_store(last);
             return;
         }
     }
@@ -636,21 +680,23 @@ void stack_guard_unregister(void* base) {
  * Returns 0 on normal switch-back, 1 on stack overflow recovery.
  */
 int stack_guard_protected_switch(void* old_ctx, void* new_ctx) {
-    if (g_recovery_depth >= MAX_RECOVERY_DEPTH) {
+    int recovery_depth = stack_guard_recovery_depth_load();
+    if (recovery_depth >= MAX_RECOVERY_DEPTH) {
         /* Too deep — switch without protection */
         omni_context_switch(old_ctx, new_ctx);
         return 0;
     }
 
     g_guard_hit = 0;
-    if (sigsetjmp(g_recovery_stack[g_recovery_depth], 1) != 0) {
+    if (sigsetjmp(g_recovery_stack[recovery_depth], 1) != 0) {
         /* Stack overflow — siglongjmp'd back here */
         return 1;
     }
-    g_recovery_depth++;
+    stack_guard_recovery_depth_store(recovery_depth + 1);
 
     omni_context_switch(old_ctx, new_ctx);
 
-    g_recovery_depth--;
+    recovery_depth = stack_guard_recovery_depth_load();
+    if (recovery_depth > 0) stack_guard_recovery_depth_store(recovery_depth - 1);
     return 0;
 }

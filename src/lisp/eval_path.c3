@@ -3,9 +3,9 @@ module lisp;
 import std::io;
 
 fn Value* eval_path_lookup_root(SymbolId root, Env* env, Interp* interp) {
-    Value* current = env.lookup(root);
+    Value* current = env != null ? env.lookup(root) : null;
     if (current != null) return current;
-    return interp.global_env.lookup(root);
+    return interp != null && interp.global_env != null ? interp.global_env.lookup(root) : null;
 }
 
 fn bool module_exports_key(Module* mod, SymbolId key) @inline {
@@ -17,6 +17,7 @@ fn bool module_exports_key(Module* mod, SymbolId key) @inline {
 }
 
 fn EvalResult eval_path_module_step(Value* current, SymbolId key, Interp* interp) {
+    if (current == null || current.tag != MODULE) return eval_path_invalid_step(current, key, interp);
     Module* mod = current.module_val;
     if (mod == null || mod.env == null || (mod.export_count > 0 && mod.exports == null)) {
         return eval_error("module value is invalid");
@@ -48,6 +49,9 @@ fn EvalResult eval_path_module_step(Value* current, SymbolId key, Interp* interp
 }
 
 fn EvalResult eval_path_instance_step(Value* current, SymbolId key, Interp* interp) {
+    if (current == null || current.tag != INSTANCE || current.instance_val == null) {
+        return eval_path_invalid_step(current, key, interp);
+    }
     TypeInfo* ti = interp.types.get(current.instance_val.type_id);
     if (ti != null) {
         for (usz fi = 0; fi < ti.field_count; fi++) {
@@ -71,6 +75,9 @@ fn EvalResult eval_path_instance_step(Value* current, SymbolId key, Interp* inte
 }
 
 fn EvalResult eval_path_dict_step(Value* current, SymbolId key, Interp* interp) {
+    if (current == null || current.tag != HASHMAP || current.hashmap_val == null) {
+        return eval_path_invalid_step(current, key, interp);
+    }
     Value* lookup_key = make_symbol(interp, key);
     Value* found = hashmap_get(current.hashmap_val, lookup_key);
     if (found != null) return eval_ok(found);
@@ -88,7 +95,7 @@ fn EvalResult eval_path_dict_step(Value* current, SymbolId key, Interp* interp) 
 }
 
 fn bool eval_path_cons_step(Value* current, SymbolId key, Interp* interp, Value** out_next) @inline {
-    if (current == null || current.tag != CONS) return false;
+    if (current == null || current.tag != CONS || out_next == null) return false;
     if ((uint)key == (uint)interp.sym_car) {
         *out_next = current.cons_val.car;
         return true;
@@ -114,19 +121,23 @@ fn EvalResult eval_path_invalid_step(Value* current, SymbolId key, Interp* inter
 }
 
 fn EvalResult eval_path_step(Value* current, SymbolId key, Interp* interp) {
-    if (current != null && current.tag == MODULE && current.module_val != null) {
-        return eval_path_module_step(current, key, interp);
-    }
-    if (current != null && current.tag == INSTANCE && current.instance_val != null) {
-        return eval_path_instance_step(current, key, interp);
-    }
-    if (current != null && current.tag == HASHMAP && current.hashmap_val != null) {
-        return eval_path_dict_step(current, key, interp);
-    }
+    if (current == null) return eval_path_invalid_step(current, key, interp);
 
-    Value* cons_step = null;
-    if (eval_path_cons_step(current, key, interp, &cons_step)) {
-        return eval_ok(cons_step);
+    switch (current.tag) {
+        case MODULE:
+            return eval_path_module_step(current, key, interp);
+        case INSTANCE:
+            return eval_path_instance_step(current, key, interp);
+        case HASHMAP:
+            return eval_path_dict_step(current, key, interp);
+        case CONS: {
+            Value* cons_step = null;
+            if (eval_path_cons_step(current, key, interp, &cons_step)) {
+                return eval_ok(cons_step);
+            }
+        }
+        default:
+            break;
     }
     return eval_path_invalid_step(current, key, interp);
 }

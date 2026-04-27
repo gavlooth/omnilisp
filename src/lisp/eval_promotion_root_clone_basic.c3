@@ -22,7 +22,9 @@ fn Value* root_store_clone_primitive_to_scope(
         if (result == null) return null;
         result.tag = PRIMITIVE;
         result.prim_val = null;
-        main::scope_register_dtor_escape(target_scope, (void*)result, &scope_dtor_value);
+        if (!main::scope_register_dtor_escape(target_scope, (void*)result, &scope_dtor_value)) {
+            return runtime_raise(interp, "runtime/out-of-memory", "root-store: failed to register primitive clone destructor");
+        }
         return result;
     }
     if (primitive_has_opaque_user_data(src)) {
@@ -31,10 +33,6 @@ fn Value* root_store_clone_primitive_to_scope(
 
     Primitive* dst_prim = (Primitive*)mem::malloc(Primitive.sizeof);
     if (dst_prim == null) return null;
-    if (!primitive_clone_plain_header(dst_prim, src_prim)) {
-        mem::free(dst_prim);
-        return runtime_raise(interp, "runtime/evaluation-error", "root-store: refusing primitive clone with opaque user_data");
-    }
 
     Value* result = boundary_alloc_value_in_current_escape(interp);
     if (result == null) {
@@ -42,8 +40,16 @@ fn Value* root_store_clone_primitive_to_scope(
         return null;
     }
     result.tag = PRIMITIVE;
+    result.prim_val = null;
+    if (!main::scope_register_dtor_escape(target_scope, (void*)result, &scope_dtor_value)) {
+        mem::free(dst_prim);
+        return runtime_raise(interp, "runtime/out-of-memory", "root-store: failed to register primitive clone destructor");
+    }
+    if (!primitive_clone_plain_header(dst_prim, src_prim)) {
+        primitive_destroy_payload(dst_prim);
+        return runtime_raise(interp, "runtime/evaluation-error", "root-store: refusing primitive clone with opaque user_data");
+    }
     result.prim_val = dst_prim;
-    main::scope_register_dtor_escape(target_scope, (void*)result, &scope_dtor_value);
     return result;
 }
 
@@ -69,7 +75,9 @@ fn Value* root_store_clone_array_to_scope(
         if (result == null) return null;
         result.tag = ARRAY;
         result.array_val = null;
-        main::scope_register_dtor_escape(target_scope, (void*)result, &scope_dtor_value);
+        if (!main::scope_register_dtor_escape(target_scope, (void*)result, &scope_dtor_value)) {
+            return runtime_raise(interp, "runtime/out-of-memory", "root-store: failed to register array clone destructor");
+        }
         return result;
     }
 
@@ -119,7 +127,11 @@ fn Value* root_store_clone_array_to_scope(
     }
     result.tag = ARRAY;
     result.array_val = dst_arr;
-    main::scope_register_dtor_escape(target_scope, (void*)result, &scope_dtor_value);
+    if (!main::scope_register_dtor_escape(target_scope, (void*)result, &scope_dtor_value)) {
+        boundary_cleanup_partial_array_copy(src_arr, dst_arr, src_arr.length, target_scope);
+        result.array_val = null;
+        return runtime_raise(interp, "runtime/out-of-memory", "root-store: failed to register array clone destructor");
+    }
     return result;
 }
 
@@ -145,7 +157,9 @@ fn Value* root_store_clone_hashmap_to_scope(
         if (result == null) return null;
         result.tag = src.tag;
         result.hashmap_val = null;
-        main::scope_register_dtor_escape(target_scope, (void*)result, &scope_dtor_value);
+        if (!main::scope_register_dtor_escape(target_scope, (void*)result, &scope_dtor_value)) {
+            return runtime_raise(interp, "runtime/out-of-memory", "root-store: failed to register hashmap clone destructor");
+        }
         return result;
     }
 
@@ -218,6 +232,10 @@ fn Value* root_store_clone_hashmap_to_scope(
     }
     result.tag = src.tag;
     result.hashmap_val = dst_map;
-    main::scope_register_dtor_escape(target_scope, (void*)result, &scope_dtor_value);
+    if (!main::scope_register_dtor_escape(target_scope, (void*)result, &scope_dtor_value)) {
+        boundary_cleanup_partial_hashmap_copy(src_map, dst_map, src_map.capacity, target_scope);
+        result.hashmap_val = null;
+        return runtime_raise(interp, "runtime/out-of-memory", "root-store: failed to register hashmap clone destructor");
+    }
     return result;
 }

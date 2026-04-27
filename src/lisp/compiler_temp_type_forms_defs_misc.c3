@@ -24,6 +24,7 @@ fn usz Compiler.compile_defalias_direct(Compiler* self, Expr* expr) {
     self.emit("&");
     self.emit(ann_name);
     self.emit(");\n");
+    self.emit_helper_published_binding_sync(expr.defalias.name);
     return id;
 }
 
@@ -57,13 +58,6 @@ fn usz Compiler.compile_defeffect_direct(Compiler* self, Expr* expr) {
         self.emit("null");
     }
     self.emit(");\n");
-    SymbolId backing = INVALID_SYMBOL_ID;
-    if (self.find_active_module_private_backing(expr.defeffect.name, &backing)) {
-        self.emit_indent();
-        self.emit_symbol_name(backing);
-        self.emit(" = ");
-        self.emit_temp_ref(id);
-        self.emit(";\n");
-    }
+    self.emit_helper_published_binding_sync(expr.defeffect.name);
     return id;
 }

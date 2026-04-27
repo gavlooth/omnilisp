@@ -33,7 +33,7 @@ That choice keeps the grammar resilient while the parser continues to evolve.
 
 ```bash
 cd tooling/tree-sitter-omni
-tree-sitter generate
+npm run generate
 ```
 
 ## Quick Parse Check
@@ -41,24 +41,24 @@ tree-sitter generate
 ```bash
 cd tooling/tree-sitter-omni
 printf "(define (inc x) (+ x 1))\n(handle (signal 'ask 1) (ask v (resolve (+ v 1))))\n" > examples/sample.omni
-tree-sitter parse --rebuild examples/sample.omni
+npm run parse
 ```
 
 ## Corpus Tests
 
 ```bash
 cd tooling/tree-sitter-omni
-tree-sitter test --rebuild
+npm test
 ```
 
 ## Query Checks
 
 ```bash
 cd tooling/tree-sitter-omni
-tree-sitter query --captures queries/highlights.scm test/queries/highlights/canonical_forms.omni
-tree-sitter query --captures queries/textobjects.scm test/queries/structural_forms.omni
-tree-sitter query --captures queries/indents.scm test/queries/indents_forms.omni
-sh ./test/check_queries.sh
+npm run query:highlights
+npm run query:textobjects
+npm run query:indents
+npm run test:queries
 ```
 
 ## Current Notes

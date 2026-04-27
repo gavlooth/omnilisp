@@ -13,7 +13,8 @@ fn Expr* Parser.parse_list_form(Parser* self) {
         if (e == null) return null;
         lex.advance();
         e.tag = E_LIT;
-        e.lit.value = self.interp.alloc_value_root();
+        e.lit.value = self.alloc_root_value_or_error("out of memory while parsing root literal");
+        if (e.lit.value == null) return null;
         e.lit.value.tag = NIL;
         return e;
     }

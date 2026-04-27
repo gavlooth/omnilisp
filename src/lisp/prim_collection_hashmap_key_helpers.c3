@@ -267,9 +267,11 @@ fn int hashmap_iteration_key_compare(Value* left, Value* right, Interp* interp) 
 bool g_hashmap_force_sorted_slots_alloc_fail = false;
 
 fn uint[] hashmap_sorted_slots(HashMap* map, Interp* interp) {
-    usz count = map == null ? 0 : (usz)map.count;
+    if (!hashmap_storage_valid(map) || map.count == 0) return {};
+
+    usz count = (usz)map.count;
     uint[] slots = g_hashmap_force_sorted_slots_alloc_fail ? {} : mem::new_array(uint, count);
-    if (slots.ptr == null || count == 0) return slots;
+    if (slots.ptr == null) return slots;
 
     usz used = 0;
     for (uint i = 0; i < map.capacity && used < count; i++) {
@@ -298,6 +300,7 @@ fn uint[] hashmap_sorted_slots(HashMap* map, Interp* interp) {
 
 fn Value* hashmap_keys_list_canonical(HashMap* map, Interp* interp) {
     if (map == null || map.count == 0) return make_nil(interp);
+    if (!hashmap_storage_valid(map)) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "keys: dict backing entries are missing");
 
     uint[] slots = hashmap_sorted_slots(map, interp);
     if (slots.ptr == null) {
@@ -317,6 +320,7 @@ fn Value* hashmap_keys_list_canonical(HashMap* map, Interp* interp) {
 
 fn Value* hashmap_values_list_canonical(HashMap* map, Interp* interp) {
     if (map == null || map.count == 0) return make_nil(interp);
+    if (!hashmap_storage_valid(map)) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "values: dict backing entries are missing");
 
     uint[] slots = hashmap_sorted_slots(map, interp);
     if (slots.ptr == null) {

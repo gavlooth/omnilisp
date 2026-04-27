@@ -5,6 +5,7 @@ import main;
 // JIT runtime bridge surface: env extension and quasiquote support.
 fn Env* jit_env_extend(Interp* interp, Env* env, SymbolId name, Value* value) {
     if (interp == null || interp.current_scope == null || env == null) return null;
+    if (g_env_force_bindings_alloc_oom) return null;
     return boundary_env_extend_in_scope(interp, interp.current_scope, env, name, value);
 }
 

@@ -6,6 +6,7 @@ static void omni_tensor_vulkan_cmd_barrier_two_outputs(
     OmniTensorVulkanBuffer* second_output,
     size_t second_output_byte_len
 ) {
+    if (first_output == NULL || second_output == NULL) return;
     OmniVulkanBufferMemoryBarrier barriers[2] = {
         {
             OMNI_VULKAN_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
@@ -53,6 +54,7 @@ static void omni_tensor_vulkan_cmd_barrier_three_outputs(
     OmniTensorVulkanBuffer* third_output,
     size_t third_output_byte_len
 ) {
+    if (first_output == NULL || second_output == NULL || third_output == NULL) return;
     OmniVulkanBufferMemoryBarrier barriers[3] = {
         {
             OMNI_VULKAN_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
@@ -113,6 +115,7 @@ void omni_tensor_vulkan_cmd_barrier_four_outputs(
     OmniTensorVulkanBuffer* fourth_output,
     size_t fourth_output_byte_len
 ) {
+    if (first_output == NULL || second_output == NULL || third_output == NULL || fourth_output == NULL) return;
     OmniVulkanBufferMemoryBarrier barriers[4] = {
         {
             OMNI_VULKAN_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
@@ -171,6 +174,51 @@ void omni_tensor_vulkan_cmd_barrier_four_outputs(
         0,
         NULL
     );
+}
+
+static long omni_tensor_vulkan_multi_output_barrier_test_call_count = 0;
+
+static void omni_tensor_vulkan_multi_output_barrier_test_pipeline_barrier(
+    OmniVulkanCommandBuffer command_buffer,
+    OmniVulkanFlags src_stage_mask,
+    OmniVulkanFlags dst_stage_mask,
+    OmniVulkanFlags dependency_flags,
+    uint32_t memory_barrier_count,
+    const OmniVulkanMemoryBarrier* memory_barriers,
+    uint32_t buffer_memory_barrier_count,
+    const OmniVulkanBufferMemoryBarrier* buffer_memory_barriers,
+    uint32_t image_memory_barrier_count,
+    const void* image_memory_barriers
+) {
+    (void)command_buffer;
+    (void)src_stage_mask;
+    (void)dst_stage_mask;
+    (void)dependency_flags;
+    (void)memory_barrier_count;
+    (void)memory_barriers;
+    (void)buffer_memory_barrier_count;
+    (void)buffer_memory_barriers;
+    (void)image_memory_barrier_count;
+    (void)image_memory_barriers;
+    omni_tensor_vulkan_multi_output_barrier_test_call_count++;
+}
+
+int omni_tensor_backend_vulkan_multi_output_barrier_null_guard_for_tests(void) {
+    omni_vulkan_cmd_pipeline_barrier_fn saved = omni_vulkan_cmd_pipeline_barrier;
+    omni_tensor_vulkan_multi_output_barrier_test_call_count = 0;
+    omni_vulkan_cmd_pipeline_barrier = omni_tensor_vulkan_multi_output_barrier_test_pipeline_barrier;
+
+    OmniTensorVulkanBuffer dummy = {0};
+    dummy.buffer = (OmniVulkanBuffer)1;
+    omni_tensor_vulkan_cmd_barrier_two_outputs(NULL, NULL, 1u, &dummy, 1u);
+    omni_tensor_vulkan_cmd_barrier_two_outputs(NULL, &dummy, 1u, NULL, 1u);
+    omni_tensor_vulkan_cmd_barrier_three_outputs(NULL, &dummy, 1u, NULL, 1u, &dummy, 1u);
+    omni_tensor_vulkan_cmd_barrier_four_outputs(NULL, &dummy, 1u, &dummy, 1u, NULL, 1u, &dummy, 1u);
+
+    omni_vulkan_cmd_pipeline_barrier = saved;
+    return omni_tensor_vulkan_multi_output_barrier_test_call_count == 0
+        ? OMNI_TENSOR_VULKAN_SUCCESS
+        : OMNI_TENSOR_VULKAN_INVALID;
 }
 
 static int omni_tensor_backend_vulkan_dispatch_two_inputs_two_outputs_f64(

@@ -74,11 +74,14 @@ It is a short reference for contributors to avoid reintroducing removed aliases 
 
 - Legacy transaction helper names were removed from parser and runtime surfaces.
 
-### 6. Value Constructors for Dispatch
+### 6. Literal Singleton Dispatch
 
-- Canonical constructor for value dispatch literals is `Value`.
-- `^(Value ...)` is used for value-level dispatch in method signatures.
-- Legacy `Val` spelling is rejected with explicit migration diagnostics.
+- Canonical shorthand for literal singleton dispatch is `^#datum`.
+- Explicit long form is `^(Literal datum)`.
+- `(Literal datum)` returns a singleton literal type descriptor and does not box
+  or wrap the runtime value.
+- Legacy `Value` and `Val` dispatch spellings are removed and rejected with
+  explicit diagnostics.
 
 ### 7. Names Used in Helper Composition
 

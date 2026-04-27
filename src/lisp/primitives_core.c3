@@ -52,7 +52,7 @@ fn Value* numeric_compare_primitive_result(Interp* interp, Value* lhs, Value* rh
 @require interp != null
 *>
 fn Value* prim_eq(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return primitive_arity_raise(interp, "=", "2 arguments", args.len);
+    if (args.len != 2) return primitive_arity_raise(interp, "=", "2 arguments", args.len);
     bool eq = values_equal(args[0], args[1]);
     return eq ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
@@ -61,7 +61,7 @@ fn Value* prim_eq(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_lt(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return primitive_arity_raise(interp, "<", "2 arguments", args.len);
+    if (args.len != 2) return primitive_arity_raise(interp, "<", "2 arguments", args.len);
     return numeric_compare_primitive_result(interp, args[0], args[1], "<", NUMERIC_COMPARE_LT);
 }
 
@@ -69,7 +69,7 @@ fn Value* prim_lt(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_gt(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return primitive_arity_raise(interp, ">", "2 arguments", args.len);
+    if (args.len != 2) return primitive_arity_raise(interp, ">", "2 arguments", args.len);
     return numeric_compare_primitive_result(interp, args[0], args[1], ">", NUMERIC_COMPARE_GT);
 }
 
@@ -77,7 +77,7 @@ fn Value* prim_gt(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_le(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return primitive_arity_raise(interp, "<=", "2 arguments", args.len);
+    if (args.len != 2) return primitive_arity_raise(interp, "<=", "2 arguments", args.len);
     return numeric_compare_primitive_result(interp, args[0], args[1], "<=", NUMERIC_COMPARE_LE);
 }
 
@@ -85,7 +85,7 @@ fn Value* prim_le(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_ge(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return primitive_arity_raise(interp, ">=", "2 arguments", args.len);
+    if (args.len != 2) return primitive_arity_raise(interp, ">=", "2 arguments", args.len);
     return numeric_compare_primitive_result(interp, args[0], args[1], ">=", NUMERIC_COMPARE_GE);
 }
 
@@ -93,7 +93,7 @@ fn Value* prim_ge(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_cons(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return primitive_arity_raise(interp, "cons", "2 arguments", args.len);
+    if (args.len != 2) return primitive_arity_raise(interp, "cons", "2 arguments", args.len);
     return make_cons(interp, args[0], args[1]);
 }
 
@@ -101,7 +101,7 @@ fn Value* prim_cons(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_car(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return primitive_arity_raise(interp, "car", "1 argument", args.len);
+    if (args.len != 1) return primitive_arity_raise(interp, "car", "1 argument", args.len);
     if (!is_cons(args[0])) return primitive_arg_type_raise(interp, "car", 0, "pair/list", args[0]);
     return args[0].cons_val.car;
 }
@@ -110,7 +110,7 @@ fn Value* prim_car(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_cdr(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return primitive_arity_raise(interp, "cdr", "1 argument", args.len);
+    if (args.len != 1) return primitive_arity_raise(interp, "cdr", "1 argument", args.len);
     if (!is_cons(args[0])) return primitive_arg_type_raise(interp, "cdr", 0, "pair/list", args[0]);
     return args[0].cons_val.cdr;
 }
@@ -119,7 +119,7 @@ fn Value* prim_cdr(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_null(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return primitive_arity_raise(interp, "null?", "1 argument", args.len);
+    if (args.len != 1) return primitive_arity_raise(interp, "null?", "1 argument", args.len);
     bool is_null = is_nil(args[0]);
     return is_null ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
@@ -128,7 +128,7 @@ fn Value* prim_null(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_pair(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return primitive_arity_raise(interp, "pair?", "1 argument", args.len);
+    if (args.len != 1) return primitive_arity_raise(interp, "pair?", "1 argument", args.len);
     bool is_pair = is_cons(args[0]);
     return is_pair ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
@@ -137,7 +137,7 @@ fn Value* prim_pair(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_not(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return primitive_arity_raise(interp, "not", "1 argument", args.len);
+    if (args.len != 1) return primitive_arity_raise(interp, "not", "1 argument", args.len);
     bool falsy = is_falsy(args[0], interp);
     return falsy ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
@@ -210,7 +210,7 @@ fn Value* prim_reverse_list(Value*[] args, Env* env, Interp* interp) {
 @require interp != null
 *>
 fn Value* prim_is_continuation(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return primitive_arity_raise(interp, "continuation?", "1 argument", args.len);
+    if (args.len != 1) return primitive_arity_raise(interp, "continuation?", "1 argument", args.len);
     bool result = args[0].tag == CONTINUATION;
     return result ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }

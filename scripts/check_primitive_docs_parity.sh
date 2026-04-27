@@ -4,6 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 prims_file="src/lisp/eval_init_primitives.c3"
+prim_tables_file="src/lisp/eval_init_primitive_tables.c3"
 stdlib_file="stdlib/stdlib.lisp"
 docs_a="docs/reference/11-appendix-primitives.md"
 docs_b="docs/reference/12-appendix-stdlib.md"
@@ -11,7 +12,7 @@ docs_c="docs/LANGUAGE_SPEC.md"
 docs_d="docs/reference/08-libraries.md"
 diff_range="${OMNI_EFFECTS_POLICY_RANGE:-${OMNI_BOUNDARY_POLICY_RANGE:-}}"
 
-for required in "$prims_file" "$stdlib_file" "$docs_a" "$docs_b" "$docs_c" "$docs_d"; do
+for required in "$prims_file" "$prim_tables_file" "$stdlib_file" "$docs_a" "$docs_b" "$docs_c" "$docs_d"; do
   if [[ ! -f "$required" ]]; then
     echo "FAIL: primitive docs parity missing required file: $required"
     exit 1
@@ -141,7 +142,7 @@ if [[ "$raw_added_count" != "0" || "$wrapper_added_count" != "0" ]]; then
     [[ -z "$wrapper" ]] && continue
     raw_name="__raw-${wrapper}"
 
-    if ! search_fixed_quiet "{ \"${raw_name}\"," "$prims_file"; then
+    if ! search_fixed_quiet "{ \"${raw_name}\"," "$prims_file" "$prim_tables_file"; then
       echo "FAIL: docs parity missing raw primitive registration for io/${wrapper} (${raw_name})."
       raw_violations=1
     fi

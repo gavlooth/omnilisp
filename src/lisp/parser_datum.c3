@@ -26,7 +26,7 @@ fn Value* Parser.parse_datum_template_only(
         return null;
     }
     self.lexer.advance();
-    return parser_make_symbol_datum(self.interp, sym);
+    return parser_make_symbol_datum(self, sym);
 }
 
 fn Value* Parser.parse_datum_string(Parser* self) {
@@ -40,7 +40,7 @@ fn Value* Parser.parse_datum_quote(Parser* self, bool template_mode) {
     self.lexer.advance();
     Value* inner = self.parse_datum_impl(template_mode);
     if (self.has_error) return null;
-    return parser_make_quote_datum(self.interp, inner);
+    return parser_make_quote_datum(self, inner);
 }
 
 fn Value* Parser.parse_datum_impl(Parser* self, bool template_mode) {
@@ -55,12 +55,12 @@ fn Value* Parser.parse_datum_impl(Parser* self, bool template_mode) {
         case T_INT: {
             long val = lex.current.int_value;
             lex.advance();
-            return parser_make_int_datum(self.interp, val);
+            return parser_make_int_datum(self, val);
         }
         case T_SYMBOL: {
             SymbolId sym = self.get_current_symbol();
             lex.advance();
-            return parser_make_symbol_datum(self.interp, sym);
+            return parser_make_symbol_datum(self, sym);
         }
         case T_STRING:
             return self.parse_datum_string();

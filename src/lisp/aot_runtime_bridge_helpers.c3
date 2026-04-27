@@ -10,12 +10,17 @@ fn lisp::Value* lookup_prim(char[] name) {
     if (!aot_intern_checked(interp, name, &sid)) return aot_make_error_best_effort(interp, "aot lookup-prim: invalid or uninternable symbol");
     lisp::Value* v = interp.global_env.lookup(sid);
     if (v != null) return v;
-    return lisp::make_nil(interp);
+    char[256] msg_buf;
+    if (try msg = io::bprintf(&msg_buf, "aot lookup-prim: primitive '%s' not found", (ZString)name)) {
+        return aot_make_error_best_effort(interp, msg);
+    }
+    return aot_make_error_best_effort(interp, "aot lookup-prim: primitive not found");
 }
 
 fn lisp::Value* define_var(char[] name, lisp::Value* val) @nodiscard {
     lisp::Interp* interp = aot_bridge_interp();
     if (interp == null) return aot_make_error_best_effort(null, "aot define-var: runtime interpreter unavailable");
+    if (val != null && val.tag == lisp::ValueTag.ERROR) return val;
     lisp::SymbolId sid = (lisp::SymbolId)0;
     if (!aot_intern_checked(interp, name, &sid)) return aot_make_error_best_effort(interp, "aot define-var: invalid or uninternable symbol");
     if (lisp::Value* bind_err = lisp::env_define_with_barrier_result(interp.global_env, sid, val, interp)) {
@@ -30,7 +35,29 @@ fn lisp::Value* lookup_var(char[] name) {
     lisp::SymbolId sid = (lisp::SymbolId)0;
     if (!aot_intern_checked(interp, name, &sid)) return aot_make_error_best_effort(interp, "aot lookup-var: invalid or uninternable symbol");
     lisp::Value* v = interp.global_env.lookup(sid);
-    return v != null ? v : lisp::make_nil(interp);
+    if (v != null) return v;
+    char[256] msg_buf;
+    if (try msg = io::bprintf(&msg_buf, "aot lookup-var: unbound variable '%s'", (ZString)name)) {
+        return aot_make_error_best_effort(interp, msg);
+    }
+    return aot_make_error_best_effort(interp, "aot lookup-var: unbound variable");
+}
+
+fn lisp::Env* push_module_env() {
+    lisp::Interp* interp = aot_bridge_interp();
+    if (interp == null) return null;
+    lisp::Env* saved = interp.global_env;
+    if (saved == null) return null;
+    lisp::Env* mod_env = lisp::boundary_make_env_in_root(interp, saved);
+    if (mod_env == null) return null;
+    interp.global_env = mod_env;
+    return saved;
+}
+
+fn void pop_module_env(lisp::Env* saved) {
+    lisp::Interp* interp = aot_bridge_interp();
+    if (interp == null || saved == null) return;
+    interp.global_env = saved;
 }
 
 fn lisp::Value* lookup_module_export(char[] module_name, char[] export_name) {
@@ -66,7 +93,18 @@ fn lisp::Value* lookup_module_export(char[] module_name, char[] export_name) {
     }
 
     lisp::Value* v = mod.env.lookup(export_sid);
-    return v != null ? v : lisp::make_nil(interp);
+    if (v != null) return v;
+
+    char[320] msg_buf;
+    if (try msg = io::bprintf(
+        &msg_buf,
+        "aot lookup-module-export: exported symbol '%s' is not bound in module '%s'",
+        (ZString)export_name,
+        (ZString)module_name
+    )) {
+        return aot_make_error_best_effort(interp, msg);
+    }
+    return aot_make_error_best_effort(interp, "aot lookup-module-export: exported symbol is not bound");
 }
 
 fn lisp::Value* import_module(char[] name, char[] path, bool has_path, bool import_all) {
@@ -157,6 +195,18 @@ fn void set_var(char[] name, lisp::Value* val) {
     lisp::SymbolId sid = (lisp::SymbolId)0;
     if (!aot_intern_checked(interp, name, &sid)) return;
     if (!lisp::env_set_with_barrier_checked(interp.global_env, sid, val, interp)) return;
+}
+
+fn lisp::Value* set_var_result(char[] name, lisp::Value* val) {
+    lisp::Interp* interp = aot_bridge_interp();
+    if (interp == null) return aot_make_error_best_effort(null, "aot set-var: runtime interpreter unavailable");
+    lisp::SymbolId sid = (lisp::SymbolId)0;
+    if (!aot_intern_checked(interp, name, &sid)) return aot_make_error_best_effort(interp, "aot set-var: invalid or uninternable symbol");
+    bool found = false;
+    lisp::Value* write_err = lisp::env_set_with_barrier_result(interp.global_env, sid, val, interp, &found);
+    if (write_err != null) return write_err;
+    if (!found) return aot_make_error_best_effort(interp, "set!: unbound variable");
+    return null;
 }
 
 fn lisp::Value* explain_dispatch(char[] source, lisp::Value* callee, lisp::Value* arg_list, long argc) {

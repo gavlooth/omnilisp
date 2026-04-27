@@ -137,13 +137,16 @@ fn bool coroutine_ctx_matches_interp(main::StackCtx* ctx, Interp* interp) @inlin
 }
 
 fn void coroutine_ctx_cleanup(Value* coroutine_val, main::StackCtx* ctx, Interp* interp) {
+    main::StackPool* owner_pool = ctx.owner_pool;
+    if (owner_pool == null) {
+        if (interp == null) return;
+        owner_pool = &interp.stack_ctx_pool;
+    }
     if (ctx.user_data != null) {
         mem::free(ctx.user_data);
         ctx.user_data = null;
     }
     coroutine_val.coroutine_val = null;
-    main::StackPool* owner_pool = ctx.owner_pool;
-    if (owner_pool == null) owner_pool = &interp.stack_ctx_pool;
     main::stack_ctx_destroy(ctx, owner_pool);
 }
 

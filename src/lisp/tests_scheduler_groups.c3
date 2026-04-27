@@ -159,6 +159,59 @@ fn void run_scheduler_spawn_error_tests(Interp* interp, int* pass, int* fail) {
             (*fail)++;
         }
     }
+
+    {
+        Value synthetic_coroutine = {};
+        synthetic_coroutine.tag = COROUTINE;
+        synthetic_coroutine.coroutine_val = (main::StackCtx*)1;
+
+        scheduler_init();
+        usz saved_fiber_count = g_scheduler.fiber_count;
+        usz saved_current_fiber_id = g_scheduler.current_fiber_id;
+        FiberEntry saved_parent = g_scheduler.fibers[0];
+
+        g_scheduler.fiber_count = 1;
+        g_scheduler.current_fiber_id = NO_FIBER;
+        g_scheduler.fibers[0] = {};
+        g_scheduler.fibers[0].owner_interp = interp;
+        g_scheduler.fibers[0].state = FIBER_DONE;
+        g_scheduler.fibers[0].live_children = 7;
+
+        bool done_promo_failed = false;
+        bool done_parent_invalid = false;
+        usz done_id = scheduler_add_fiber(&synthetic_coroutine, 0, interp, &done_promo_failed, &done_parent_invalid);
+        bool done_rejected = done_id == MAX_FIBERS &&
+            !done_promo_failed &&
+            done_parent_invalid &&
+            g_scheduler.fiber_count == 1 &&
+            g_scheduler.fibers[0].live_children == 7;
+
+        g_scheduler.fibers[0].state = FIBER_READY;
+        bool stale_promo_failed = false;
+        bool stale_parent_invalid = false;
+        usz stale_id = scheduler_add_fiber(&synthetic_coroutine, 1, interp, &stale_promo_failed, &stale_parent_invalid);
+        bool stale_rejected = stale_id == MAX_FIBERS &&
+            !stale_promo_failed &&
+            stale_parent_invalid &&
+            g_scheduler.fiber_count == 1 &&
+            g_scheduler.fibers[0].live_children == 7;
+
+        g_scheduler.fibers[0] = saved_parent;
+        g_scheduler.current_fiber_id = saved_current_fiber_id;
+        g_scheduler.fiber_count = saved_fiber_count;
+
+        if (done_rejected && stale_rejected) {
+            emit_pass_literal("[PASS] scheduler_add_fiber rejects completed and stale parents");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] scheduler_add_fiber completed/stale parent guard (done=%s stale=%s)",
+                done_rejected ? "yes" : "no",
+                stale_rejected ? "yes" : "no"
+            );
+            (*fail)++;
+        }
+    }
 }
 
 fn void run_scheduler_offload_setup_error_tests(Interp* interp, int* pass, int* fail) {
@@ -282,14 +335,15 @@ fn void run_scheduler_await_structure_tests(Interp* interp, int* pass, int* fail
     scheduler_test_expect_error(
         interp,
         "(block "
-        "  (define b (spawn (lambda () 99))) "
-        "  (define a (spawn (lambda () (await b)))) "
-        "  (await a))",
+          "  (define sched-nonchild-target (spawn (lambda () 99))) "
+          "  (define sched-nonchild-waiter (spawn (lambda () (await sched-nonchild-target)))) "
+          "  (await sched-nonchild-waiter))",
         "[PASS] await non-child rejected",
         "[FAIL] await non-child rejected",
         pass,
         fail
     );
+    scheduler_abort_all_work();
 
     {
         Interp* foreign = (Interp*)mem::malloc(Interp.sizeof);
@@ -349,33 +403,58 @@ fn void run_scheduler_await_structure_tests(Interp* interp, int* pass, int* fail
     }
 
     {
-        EvalResult r = run(
-            "(block "
-            "  (define p "
-            "    (spawn (lambda () "
-            "      (checkpoint "
-            "        (block "
-            "          (define c (spawn (lambda () 7))) "
-            "          (await c)))))) "
-            "  (await p))",
-            interp);
-        bool nested_rejected = false;
-        if (r.error.has_error) {
-            nested_rejected = scheduler_test_str_contains(
-                r.error.message[:256],
+        scheduler_init();
+        usz saved_fiber_count = g_scheduler.fiber_count;
+        usz saved_current_fiber_id = g_scheduler.current_fiber_id;
+        bool saved_running = g_scheduler.running;
+        FiberEntry saved_fiber = g_scheduler.fibers[0];
+        main::StackCtx* saved_current_ctx = main::g_current_stack_ctx;
+
+        Value fake_coroutine = {};
+        fake_coroutine.tag = COROUTINE;
+        fake_coroutine.coroutine_val = (main::StackCtx*)1;
+        Value target_arg = {};
+        target_arg.tag = INT;
+        target_arg.int_val = 0;
+        Value*[1] await_args;
+        await_args[0] = &target_arg;
+
+        g_scheduler.fiber_count = 1;
+        g_scheduler.current_fiber_id = 0;
+        g_scheduler.running = true;
+        g_scheduler.fibers[0] = {};
+        g_scheduler.fibers[0].owner_interp = interp;
+        g_scheduler.fibers[0].state = FIBER_RUNNING;
+        g_scheduler.fibers[0].coroutine = &fake_coroutine;
+        g_scheduler.fibers[0].parent_id = NO_FIBER;
+        g_scheduler.fibers[0].await_target = NO_FIBER;
+        main::g_current_stack_ctx = (main::StackCtx*)2;
+
+        Value* err = prim_await(await_args[..], null, interp);
+        bool nested_rejected = err != null &&
+            err.tag == ERROR &&
+            scheduler_test_str_contains(
+                err.str_chars[:err.str_len],
                 "blocking scheduler op requires the fiber root context"
             );
-        } else if (r.value != null && r.value.tag == ERROR) {
-            nested_rejected = scheduler_test_str_contains(
-                r.value.str_chars[:r.value.str_len],
-                "blocking scheduler op requires the fiber root context"
-            );
-        }
+
+        main::g_current_stack_ctx = saved_current_ctx;
+        g_scheduler.fibers[0] = saved_fiber;
+        g_scheduler.running = saved_running;
+        g_scheduler.current_fiber_id = saved_current_fiber_id;
+        g_scheduler.fiber_count = saved_fiber_count;
+
         if (nested_rejected) {
             emit_pass_literal("[PASS] nested-context await in fiber rejected");
             (*pass)++;
         } else {
-            io::printn("[FAIL] nested-context await in fiber rejected");
+            if (err != null && err.tag == ERROR) {
+                io::printfn("[FAIL] nested-context await in fiber rejected (value-error=%s)", (ZString)err.str_chars[:err.str_len]);
+            } else if (err != null && err.tag == INT) {
+                io::printfn("[FAIL] nested-context await in fiber rejected (value=%d)", (int)err.int_val);
+            } else {
+                io::printn("[FAIL] nested-context await in fiber rejected");
+            }
             (*fail)++;
         }
     }
@@ -453,8 +532,14 @@ fn void run_scheduler_run_loop_failure_tests(Interp* interp, int* pass, int* fai
 }
 fn void run_scheduler_tests(Interp* interp, int* pass, int* fail) {
     emit_test_section_banner("Scheduler Tests");
+    scheduler_shutdown();
+    scheduler_init();
     run_scheduler_spawn_and_await_tests(interp, pass, fail);
     run_scheduler_wakeup_tests(interp, pass, fail);
+    // Wakeup tests deliberately mutate low-level scheduler fixtures; restart
+    // before public offload/thread tests so they exercise production state.
+    scheduler_shutdown();
+    scheduler_init();
     run_scheduler_offload_thread_tests(interp, pass, fail);
     run_scheduler_fiber_temp_thread_boundary_tests(interp, pass, fail);
     run_scheduler_wakeup_offload_interleave_tests(interp, pass, fail);

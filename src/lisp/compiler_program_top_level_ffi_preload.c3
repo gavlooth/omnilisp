@@ -9,6 +9,22 @@ fn bool Compiler.has_ffi_preload_expr(Compiler* self, Expr* expr) {
         case E_FFI_LIB:
         case E_FFI_FN:
             return true;
+        case E_LIT:
+        case E_VAR:
+        case E_QUOTE:
+        case E_QUASIQUOTE:
+        case E_UNQUOTE:
+        case E_UNQUOTE_SPLICING:
+        case E_PATH:
+        case E_DEFMACRO:
+        case E_IMPORT:
+        case E_EXPORT_FROM:
+        case E_DEFTYPE:
+        case E_DEFABSTRACT:
+        case E_DEFUNION:
+        case E_DEFALIAS:
+        case E_DEFEFFECT:
+            return false;
         case E_LAMBDA:
             return expr.lambda != null && self.has_ffi_preload_expr(expr.lambda.body);
         case E_APP:
@@ -84,6 +100,7 @@ fn bool Compiler.has_ffi_preload_expr(Compiler* self, Expr* expr) {
         case E_DEFINE:
             return self.has_ffi_preload_expr(expr.define.value);
         default:
+            self.set_compile_error("compiler: unknown expression tag in FFI preload discovery");
             return false;
     }
 }
@@ -101,6 +118,25 @@ fn void Compiler.emit_ffi_preload_expr_phase(Compiler* self, Expr* expr, bool li
     if (expr == null) return;
 
     switch (expr.tag) {
+        case E_FFI_LIB:
+        case E_FFI_FN:
+            break;
+        case E_LIT:
+        case E_VAR:
+        case E_QUOTE:
+        case E_QUASIQUOTE:
+        case E_UNQUOTE:
+        case E_UNQUOTE_SPLICING:
+        case E_PATH:
+        case E_DEFMACRO:
+        case E_IMPORT:
+        case E_EXPORT_FROM:
+        case E_DEFTYPE:
+        case E_DEFABSTRACT:
+        case E_DEFUNION:
+        case E_DEFALIAS:
+        case E_DEFEFFECT:
+            return;
         case E_LAMBDA:
             if (expr.lambda != null) self.emit_ffi_preload_expr_phase(expr.lambda.body, libs_phase);
             return;
@@ -197,6 +233,8 @@ fn void Compiler.emit_ffi_preload_expr_phase(Compiler* self, Expr* expr, bool li
             }
             return;
         default:
+            self.set_compile_error("compiler: unknown expression tag in FFI preload emission");
+            return;
     }
 
     if (libs_phase) {
@@ -235,12 +273,12 @@ fn void Compiler.emit_ffi_preload_expr_phase(Compiler* self, Expr* expr, bool li
     }
     usz tags_id = self.next_result();
     char[64] tags_name_buf;
-    char[] tags_name = compiler_format_generated_name_id(tags_name_buf[..], "_ffi_param_tags_", (long)tags_id);
+    char[] tags_name = self.generated_name_id(tags_name_buf[..], "_ffi_param_tags_", (long)tags_id);
     usz policies_id = self.next_result();
     char[64] param_policies_name_buf;
-    char[] param_policies_name = compiler_format_generated_name_id(param_policies_name_buf[..], "_ffi_param_policies_", (long)policies_id);
+    char[] param_policies_name = self.generated_name_id(param_policies_name_buf[..], "_ffi_param_policies_", (long)policies_id);
     char[64] return_policy_name_buf;
-    char[] return_policy_name = compiler_format_generated_name_id(return_policy_name_buf[..], "_ffi_return_policy_", (long)policies_id);
+    char[] return_policy_name = self.generated_name_id(return_policy_name_buf[..], "_ffi_return_policy_", (long)policies_id);
     bool emit_policy_specs = compiler_ffi_prepared_needs_aot_policy_specs(param_policies, param_count, &return_policy);
 
     self.emit_ffi_fn_support_decls(param_tags, param_policies, param_count, &return_policy,

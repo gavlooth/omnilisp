@@ -1,5 +1,202 @@
 # TODO Part 18
 
+## Validation Follow-ups — 2026-04-28
+
+- [x] `VALIDATION-001-TLS-INTEGRATION-GATE` close the skipped TLS integration gate before returning validation status to green.
+  - classification: runtime validation behavior, targeted gate closure.
+  - why: the latest broad all-slice result passed only with
+    `OMNI_SKIP_TLS_INTEGRATION=1`, so the validation area cannot truthfully
+    remain green until TLS integration is either run cleanly or split into a
+    concrete blocker.
+  - closure evidence: `scripts/run_tls_targeted.sh` passed all 5 TLS handshake
+    cases in the bounded validation container, and the TLS-enabled async slice
+    passed with `OMNI_ENABLE_TLS_INTEGRATION=1`, `OMNI_LISP_TEST_SLICE=async`,
+    `pass=104 fail=0`.
+  - split residual: the bounded all-slice gate no longer fails on TLS first; it
+    now fails/times out on unrelated boundary/JIT/list regressions tracked by
+    `VALIDATION-002-ALL-SLICE-BOUNDARY-JIT-BLOCKER`.
+  - prerequisites: bounded Docker validation path and TLS integration
+    dependencies available inside the validation image.
+  - negative-memory constraint: do not mark `docs/areas/validation-status.md`
+    green from an all-slice run that still uses `OMNI_SKIP_TLS_INTEGRATION=1`.
+
+- [x] `VALIDATION-002-ALL-SLICE-BOUNDARY-JIT-BLOCKER` close the non-TLS all-slice blocker before returning validation status to green.
+  - classification: runtime validation behavior, targeted blocker promotion.
+  - why: the bounded all-slice gate with `OMNI_ENABLE_TLS_INTEGRATION=1` and no
+    TLS skip timed out after emitting boundary graph-audit violations and
+    failures in JIT policy, list/range/sort materialization, pipe loopback, and
+    signal callback tests. These failures are not TLS integration failures, but
+    they still block a green validation baseline.
+  - concrete next step: run a bounded focused reproduction for the first
+    boundary/list materialization failure, starting with the
+    `destination-cons-build` graph-audit failures and `range`/`sort` list
+    errors, then patch the shared boundary/JIT materialization path.
+  - closure evidence: Pika, Deduce, scheduler, and HTTP/Finwatch residuals were
+    fixed and focused slices passed; the bounded TLS-enabled all-slice gate
+    passed with `OMNI_ENABLE_TLS_INTEGRATION=1`, no TLS skip, and
+    `pass=5532 fail=0`.
+  - prerequisites: bounded Docker validation path; keep high-memory all-slice
+    runs inside `scripts/run_validation_container.sh`.
+  - negative-memory constraint: do not treat the passing TLS-enabled async slice
+    as a substitute for the all-slice baseline; the remaining blocker is now
+    non-TLS boundary/JIT behavior.
+
+## Tensor Runtime Audit Follow-ups — 2026-04-28
+
+- [x] `AUDIT-248-TENSOR-DEVICE-DTOR-REGISTRATION` replace raw tensor device result destructor registrations with checked fail-closed helpers.
+  - classification: runtime memory behavior, targeted structural hardening.
+  - why: the 2026-04-28 tensor audit closed backend-independent map,
+    contract, transpose-view, root-store, and scalar parent-copy dtor OOM
+    cases, but follow-up source inspection still found raw
+    `scope_register_dtor` calls in CUDA/Vulkan result constructors under
+    `src/lisp/prim_tensor*.c3`. Those paths can publish tensor wrappers whose
+    native device payload is not lifecycle-registered when destructor-record
+    allocation fails.
+  - concrete next step: add a shared tensor-result registration helper that
+    calls `scope_register_value_dtor_or_cleanup`, convert the CUDA/Vulkan
+    tensor result constructors to use it, and add forced
+    `g_scope_force_dtor_alloc_oom` tests for at least one CUDA and one Vulkan
+    backend result path or a backend-mocked equivalent.
+  - prerequisites: bounded container validation path; backend paths must either
+    be runnable in the validation image or isolated behind deterministic
+    backend-mocked constructor tests.
+  - negative-memory constraint: do not treat backend-independent tensor dtor
+    OOM coverage as proof for CUDA/Vulkan result constructors that still call
+    `scope_register_dtor` directly.
+  - done 2026-04-28: converted the remaining raw tensor result
+    `scope_register_dtor` calls under `src/lisp/prim_tensor*.c3` and
+    `src/lisp/value_tensor*.c3` to `scope_register_value_dtor_or_cleanup`.
+    Multi-result Vulkan SVD/eigen/QR paths now free any still-unwrapped sibling
+    device buffers before returning the registration OOM error, and
+    `scripts/check_status_consistency.sh` rejects future raw tensor result
+    destructor registrations.
+
+## AOT Compiler Audit — 2026-04-28
+
+- [x] `AUDIT-242-AOT-MUTABLE-CAPTURE-BINDINGS` replace source-name-keyed AOT mutable capture lowering with lexical binding identity.
+  - classification: runtime compiler semantics, structural targeted rewrite.
+  - done 2026-04-28: replaced source-name environment lowering with
+    `AotMutableCell` storage for mutable captured lets; threaded lexical
+    mutable-cell aliases through reads, writes, module alias restore points,
+    and lambda bodies; added per-capture mutability bits to `LambdaDef` so
+    same-name unrelated captures remain plain `Value*` captures.
+  - test coverage: `src/lisp/tests_compiler_core_groups_fail_closed.c3`
+    covers mutable-cell lowering, lexical leak prevention, same-name mutable
+    capture identity, same-name immutable capture value layout, and unbound
+    lambda `set!` fail-closed lowering.
+  - validation: `c3c build`; compiler slice
+    `OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=compiler LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+    passed with `397 fail=0`; generated e2e
+    `OMNI_TEST_QUIET=1 scripts/run_e2e.sh` passed with
+    `ALL 423 e2e compiler tests passed!`; baseline policy check passed.
+  - negative-memory constraint: do not key the repair on source `SymbolId`
+    membership in `mutable_captures`; lexical shadowing and unbound `set!`
+    require a binding-aware authority.
+
+- [x] `AUDIT-244-AOT-MUTABLE-CELL-ROOT-LIFETIME` harden root-owned mutable cells against child-scope values.
+  - classification: runtime memory semantics, targeted structural hardening.
+  - done 2026-04-28: `AotMutableCell` creation and update now promote stored
+    `Value*` graphs through the root-store boundary before retaining them in
+    the root-owned cell. Generated mutable-capture initialization and `set!`
+    lowering call checked cell APIs, so promotion/runtime failures are
+    observable and cannot be confused with success.
+  - proof lanes: `MEM-PROOF-005` root-store boundary routes and
+    `MEM-PROOF-007` mutation storage. The new memory-lifetime smoke cases
+    assert child-scope cons/string graphs stored through AOT mutable cells are
+    root-owned before child release and remain readable after release.
+  - validation: `c3c build`; compiler slice
+    `OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=compiler LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+    passed with `401 fail=0`; bounded container memory-lifetime smoke
+    `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh bash -lc 'c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+    passed with `285 fail=0`; generated e2e
+    `OMNI_TEST_QUIET=1 scripts/run_e2e.sh` passed with
+    `ALL 423 e2e compiler tests passed!`; status consistency and
+    `git diff --check` passed.
+  - negative-memory constraint: do not make AOT mutable cells safe by running
+    all closure bodies in root scope. Store-time root promotion preserves
+    child-scope temporary allocation while removing root-to-TEMP cell edges.
+
+- [x] `AUDIT-245-AOT-CLOSURE-CAPTURE-ROOT-LIFETIME` retain temp-scope AOT closure captures without clone-on-capture semantics drift.
+  - classification: runtime memory semantics, structural implementation.
+  - shipped: generated AOT closures with immutable captures now allocate an
+    `AotCaptureRetention`, retain the current scope when the captured graph
+    reaches the current temp scope chain, pass retention ownership into
+    `make_closure_with_retention`/`make_variadic_closure_with_retention`, and
+    release the retained scope from root closure-data teardown. Generated
+    all-mutable closure captures skip retention allocation and pass `null`.
+  - shipped: generated mixed immutable/mutable capture lowering guards mutable
+    capture writes behind the same `_closure_capture_ok_*` flag so retention
+    failures cannot write through freed closure payload storage.
+  - shipped: runtime closure factory failure paths release retention on
+    payload, destructor-registration, primitive-allocation, and missing-callback
+    failures without taking ownership of caller-owned payloads unless the
+    closure was successfully published.
+  - validation: C3 diagnostics for touched files; `c3c build`; compiler slice
+    `OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=compiler LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+    passed with `402 fail=0`; bounded container memory-lifetime smoke
+    `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh bash -lc 'c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+    passed with `287 fail=0`; generated e2e
+    `OMNI_TEST_QUIET=1 scripts/run_e2e.sh` passed with
+    `ALL 423 e2e compiler tests passed!`; `git diff --check` passed.
+  - negative-memory constraint: do not blindly call `retain_root_value` for
+    every immutable capture; clone-on-capture regressed lexical capture shape
+    and can break shared mutable value identity.
+
+- [x] `AUDIT-246-AOT-CLOSURE-PRIMITIVE-LIFETIME` replace root-owned AOT closure primitive lifetime with a bounded closure-value teardown model.
+  - classification: runtime memory semantics, structural design/implementation.
+  - landed slice 2026-04-28: AOT capture-retention reachability audit failures
+    now fail closed instead of being treated as successful retention triggers.
+    Real `REACHABLE_TEMP_*` audit results still retain; audit allocation,
+    overflow, or forced internal failures now return an AOT capture error.
+    Validation: C3 diagnostics, `c3c build`, compiler slice `402 fail=0`,
+    bounded `memory-lifetime-smoke` `287 fail=0`.
+  - landed slice 2026-04-28: generated captured closures now call explicit
+    `make_generated_closure_with_retention` /
+    `make_generated_variadic_closure_with_retention` APIs instead of passing a
+    trailing `true` ownership flag to the lower-level constructors. Manual
+    `make_closure` / `make_variadic_closure` remain caller-owned. Validation:
+    C3 diagnostics, `c3c build`, compiler slice `402 fail=0`, bounded
+    `memory-lifetime-smoke` `287 fail=0`, and generated e2e `423 fail=0`.
+  - landed slice 2026-04-28: generated AOT closure primitives now use scoped
+    primitive `user_data` copy/finalizer hooks with refcounted generated
+    sidecars. Manual `make_closure` / `make_variadic_closure` remain
+    caller-owned and opaque across boundary copies. Generated no-capture
+    closures also route through the generated-owned constructors. Validation:
+    `c3c build`, compiler slice `402 fail=0`, bounded `memory-lifetime-smoke`
+    `288 fail=0`, bounded generated e2e `423 fail=0`,
+    `scripts/check_status_consistency.sh`, and `git diff --check`.
+  - closure note: the copy hook activates retained temp-scope ownership only
+    when the copied wrapper lives outside the retained scope chain; explicitly
+    retained source scopes are detached from their parent chain to avoid
+    ancestor/descendant teardown cycles.
+  - negative-memory constraint: do not solve this by clone-on-capture or by
+    running closure bodies in root scope; both approaches were invalidated by
+    capture identity/provenance requirements.
+
+- [x] `AUDIT-247-PRIMITIVE-USER-DATA-COPY-ROLLBACK` harden hook-backed primitive copy publication and rollback.
+  - classification: runtime memory semantics, targeted hardening.
+  - shipped 2026-04-28: primitive parent-boundary copy, escape promotion, and
+    root-store clone now allocate the destination `Primitive` shell, allocate
+    the destination `Value`, install an inert `PRIMITIVE` wrapper, and register
+    the destination destructor before invoking `Primitive.user_data_copy`.
+    `user_data_copy` is therefore the commit step; no destination wrapper
+    allocation or destructor-registration failure can occur after the hook has
+    mutated shared sidecar state.
+  - shipped 2026-04-28: null-`prim_val` primitive copies now check
+    destructor-registration failure and fail closed with
+    `BOUNDARY_COPY_FAULT_DTOR_REGISTRATION` instead of silently publishing an
+    unregistered wrapper.
+  - test coverage: `src/lisp/tests_memory_lifetime_runtime_alloc_groups_apply_coroutine.c3`
+    covers wrapper-allocation failure before copy-hook invocation,
+    destructor-registration failure before copy-hook invocation, and the
+    null-`prim_val` destructor-registration failure branch.
+  - validation: `c3c build`; bounded container `memory-lifetime-smoke`
+    `291 pass/0 fail`; `scripts/check_status_consistency.sh`; and
+    `git diff --check`.
+  - negative-memory constraint: do not solve rollback by treating all primitive
+    `user_data` as copyable; manual/FFI opaque payloads must remain
+    fail-closed unless they provide an explicit safe ownership contract.
+
 ## Memory Boundary Architecture — 2026-04-24
 
 Source: `docs/plans/memory-boundary-architecture-spec-2026-04-24.md`.
@@ -864,10 +1061,10 @@ Source: `docs/plans/memory-model-improvement-plan-2026-04-25.md`.
   - task: prove jobs, callbacks, futures, process/socket/TLS wrappers, and
     offload handles cannot retain dead Omni values through raw pointers.
   - plan: `docs/plans/memory-model-proof-matrix-2026-04-26.md`.
-  - concrete next step: verified with callback-after-source-release coverage,
-    bounded advanced-ffi-system-surface runtime validation, and bounded
-    Valgrind on the broader surface. The broader Valgrind run still reports
-    pre-existing leak contexts in unrelated ffi_callback/libffi paths.
+  - concrete next step: verified with callback-after-source-release coverage
+    and bounded advanced-ffi-system-surface runtime validation. Historical
+    ffi_callback/libffi Valgrind notes are not the closure authority for this
+    async/callback proof; FFI leak evidence is owned by `MEM-PROOF-010`.
 
 - [x] `MEM-PROOF-010` close FFI ScopeRegion migration proof.
   - classification: runtime FFI/native resource lifetime, structural closure.
@@ -878,3 +1075,409 @@ Source: `docs/plans/memory-model-improvement-plan-2026-04-25.md`.
   - concrete next step: verified with native wrapper-family metadata coverage
     for fs/tcp/udp/process/tls handles plus targeted Valgrind on the isolated
     foreign-handle metadata group.
+
+- [x] `AUDIT-249-BOUNDARY-TELEMETRY-ATOMICITY` make boundary route/value-shape
+  telemetry counters atomic.
+  - classification: runtime telemetry, targeted helper/snapshot migration.
+  - task: route `src/lisp/eval_boundary_telemetry.c3` counters and snapshots
+    through relaxed-atomic helpers so threaded boundary workloads cannot lose
+    updates or read incoherent telemetry.
+  - plan: `AUDIT_2.md` M45A and `.agents/PLAN.md`.
+  - why deferred: M45 closed scope/fiber/transfer telemetry atomicity, but
+    boundary route/value-shape telemetry has its own plain process-wide
+    counters and raw struct snapshots.
+  - concrete next step: add boundary telemetry add/load/snapshot helpers, update
+    route/value-shape writers and benchmark/runtime readers, and add a threaded
+    boundary telemetry regression.
+  - closure evidence: boundary telemetry now uses relaxed atomic loads/stores,
+    saturating CAS-add/inc helpers, atomic max helpers, field-wise snapshots,
+    and focused saturation/threaded regressions under the `boundary-telemetry`
+    slice.
+  - prerequisites: keep M45's scope telemetry helper contract intact; rerun the
+    counters-enabled build, targeted boundary telemetry regression, and memory
+    telemetry benchmark envelope check.
+  - negative-memory constraint: do not use `scope_global_lock()` or another
+    allocator/ownership lock as a broad telemetry serialization shortcut.
+
+- [x] `AUDIT-250-SCOPE-TELEMETRY-SATURATING-COUNTERS` make scope/fiber/transfer
+  telemetry atomic adds saturating.
+  - classification: runtime telemetry, targeted helper migration.
+  - task: update `src/scope_region_temp_pool_stats.c3` helper family so
+    process-wide scope memory, scope transfer, and fiber temp pool totals
+    saturate instead of wrapping under long-running workloads.
+  - plan: `AUDIT_2.md` M46 and `.agents/PLAN.md`.
+  - why deferred: M45 closed atomicity for these counters with
+    non-saturating `atomic::fetch_add`; M45A closed boundary telemetry
+    atomicity/overflow with a CAS saturating-add helper.
+  - concrete next step: replace `scope_telemetry_add` with a CAS-loop
+    saturating helper, preserve field-wise snapshots, add an overflow
+    regression for scope/fiber/transfer counters, and rerun scope plus
+    counters-enabled telemetry validation.
+  - closure evidence: `scope_telemetry_add` now saturates with a CAS loop,
+    guarded decrement uses CAS instead of load/store, local staging and
+    aggregation paths saturate before publication, and
+    `run_scope_region_telemetry_saturation_test()` covers global scope,
+    transfer, fiber-temp, local chunk-byte, destructor-count, and slow-sequence
+    follow-up saturation.
+  - prerequisites: keep M45's threaded scope telemetry regression passing.
+  - negative-memory constraint: do not use `fetch_add` followed by a clamp; a
+    concurrent snapshot can observe the transient wrapped value.
+
+- [x] `AUDIT-251-TELEMETRY-TEST-SNAPSHOT-READS` replace remaining raw telemetry
+  struct reads in tests with helper snapshots.
+  - classification: static/runtime test hygiene, targeted helper migration.
+  - task: update older telemetry assertions in
+    `src/lisp/tests_core_groups.c3`,
+    `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part9.c3`,
+    `src/lisp/tests_scheduler_io_task_groups.c3`, and
+    `src/stack_engine_tests_fiber_temp*.c3` to use the field-wise snapshot/load
+    helper contract instead of copying process-wide telemetry structs directly.
+  - plan: `.agents/PLAN.md`.
+  - why deferred: M46 closed the production overflow contract and added focused
+    saturation coverage; these older tests are adjacent evidence hygiene and
+    should be handled as a separate low-blast-radius test cleanup.
+  - concrete next step: `rg -n "g_scope_memory_telemetry_stats|g_fiber_temp_pool_stats|g_scope_transfer_stats" src/lisp src/stack_engine_tests_fiber_temp*.c3`, replace raw reads with existing snapshot helpers, and rerun the touched slices plus the scope suite.
+  - closure evidence: Lisp runtime-memory stats tests, scheduler fiber-temp
+    boundary tests, ML validation benchmark telemetry, stack fiber-temp tests,
+    scope fiber-temp pool summary, and runtime-memory-stats fiber-temp output
+    now read through `scope_memory_telemetry_stats_snapshot()`,
+    `fiber_temp_pool_stats_snapshot()`, or
+    `fiber_temp_chunk_pool_count_snapshot()`. Remaining raw global references
+    are production helper implementations, protected pool mutations, or the
+    focused M46 saturation helper probe.
+  - prerequisites: keep M45/M46 helper semantics and focused saturation tests
+    passing.
+  - negative-memory constraint: do not reintroduce raw struct snapshots for
+    process-wide telemetry; field-wise helper snapshots are the concurrency
+    boundary.
+
+- [x] `AUDIT-252-M9-DEFAULT-SWITCH-RESIDUAL` audit remaining non-exhaustive
+  compiler/AOT default-switch sites after the literal-lowering sub-slice.
+  - classification: static/runtime compiler correctness, targeted residual
+    audit.
+  - task: inspect the remaining M9 default-switch sites for success-shaped
+    fallbacks that should fail closed or become explicit supported cases.
+  - plan: `AUDIT_2.md` M9 and `.agents/PLAN.md`.
+  - closure evidence: final current-source classification found the remaining
+    compiler/AOT `default:` arms are explicit fail-closed diagnostics,
+    parent-dispatched helper fallbacks, or benign format/classification
+    defaults. No success-shaped fallback remains in the audited compiler/AOT
+    default-switch surface.
+  - landed slice: AOT primitive lookup now fails closed with an error when a
+    generated primitive reference is absent from the runtime global environment
+    instead of returning `nil`.
+  - landed slice: AOT module-export lookup now fails closed with an error when
+    an exported symbol has no module-environment binding instead of returning
+    `nil`.
+  - landed slice: AOT variable lookup now fails closed with an unbound-variable
+    error instead of returning `nil`, and `define_var` propagates incoming
+    error values instead of publishing them as successful bindings.
+  - landed slice: AOT callable match guards now fail closed when the guard
+    callback returns null instead of treating the malformed callback result as
+    a false guard.
+  - landed slice: compiler source serialization now rejects unknown expression
+    tags and unsupported singleton type-literal tags instead of emitting `nil`.
+  - landed slice: AOT type-annotation metadata emission now rejects unsupported
+    singleton literal tags only when `has_val_literal` is set, preserving benign
+    default tag emission for inactive metadata storage fields.
+  - landed slice: AOT quasiquote lowering now rejects standalone
+    unquote-splicing and unsupported internal template expression tags instead
+    of emitting success-shaped `nil` temps.
+  - landed slice: AOT match pattern-check lowering now rejects unknown internal
+    pattern tags instead of compiling them as catch-all matches.
+  - landed slice: FFI contract manifest emission now rejects invalid raw ABI
+    type tags and serializes them as `Invalid` instead of publishing them as
+    `Void`.
+  - landed slice: generated-global collection now rejects unknown internal
+    expression and pattern tags instead of treating them as no-op leaves; the
+    inline-module backing collector explicitly traverses `with` bodies.
+  - landed slice: generated-global literal collection now rejects malformed
+    internal `ValueTag` values instead of silently treating them as "no
+    generated globals needed"; valid non-container value tags remain explicit
+    no-op cases.
+  - landed slice: lambda scanning now rejects unknown internal expression and
+    pattern tags instead of treating malformed scan input as "no lambdas
+    found".
+  - landed slice: free-variable analysis now rejects unknown internal
+    expression tags and malformed pattern-binding tags instead of silently
+    producing incomplete capture metadata.
+  - landed slice: mutable-capture prescan now rejects unknown internal
+    expression and pattern tags while explicitly traversing module and scoped
+    module-open bodies.
+  - landed slice: quasiquote free-variable analysis now rejects unknown
+    internal expression tags while preserving valid template forms as
+    capture-free.
+  - landed slice: AOT match binding lowering now rejects unknown internal
+    pattern tags instead of silently emitting no bindings.
+  - landed slice: AOT match guard scan/lowering now rejects unknown internal
+    pattern tags instead of treating malformed guard patterns as no guard work.
+  - landed slice: inline-module export classification and local collection now
+    reject unknown internal expression/pattern tags instead of treating
+    malformed module metadata inputs as non-exporting no-ops.
+  - landed slice: AOT type metadata value-tag emission now rejects unsupported
+    value tags while preserving explicit `NIL` as a valid emitted tag.
+  - landed slice: FFI preload and contract-manifest discovery now reject
+    unknown internal expression tags while preserving quasiquote template forms
+    as explicit no-op cases.
+  - landed slice: runtime sequence-pattern matching now rejects unknown
+    internal rest positions instead of treating malformed sequence patterns as
+    ordinary non-matches.
+  - landed slice: runtime literal-dispatch matching now rejects malformed
+    internal `ValueLiteralKey` tags instead of treating corrupted typed method
+    signatures as ordinary literal mismatches or falling through to fallback.
+  - prerequisites: keep `c3c build main` and the compiler Lisp slice passing
+    while narrowing individual sites.
+  - negative-memory constraint: do not treat quasiquote/unquote template forms
+    as malformed during FFI discovery. A first strict FFI discovery pass
+    regressed the compiler slice to `pass=445 fail=5`; these forms are valid
+    non-FFI template leaves for preload/manifest discovery.
+  - negative-memory constraint: do not treat `NIL` value-tag emission as an
+    invalid fallback. A first value-tag emitter tightening regressed the
+    compiler slice to `pass=243 fail=206`; `NIL` is a valid explicit metadata
+    tag and must remain supported.
+  - negative-memory constraint: do not repeat the blanket rejection of all
+    non-scalar literal tags; that failed because stdlib macro expansion
+    legitimately emits collection, primitive, and captured global function
+    literals.
+  - negative-memory constraint: do not move singleton literal tag validation
+    into the low-level tag renderer without `has_val_literal` context; the
+    overbroad attempt failed the compiler slice by treating inactive metadata
+    fields as active literal contracts.
+  - negative-memory constraint: do not cast raw manifest ABI integers to
+    `FfiTypeTag` before validation; invalid values trap during enum conversion
+    and bypass the intended compiler error path.
+  - negative-memory constraint: do not make inline-module backing collection
+    strict without explicit `E_WITH_MODULE` traversal; the first attempt failed
+    existing module/private-backing regressions.
+  - negative-memory constraint: do not make mutable-capture prescan strict
+    without explicit `E_MODULE`/`E_WITH_MODULE` traversal; the first attempt
+    failed existing module/private-backing regressions.
+  - landed slice: JIT continuation-sensitivity scans now treat unknown
+    expression tags as continuation-sensitive instead of returning an ordinary
+    `false`, keeping malformed trees off the non-continuation fast call path.
+  - landed slice: generated-global literal collection now rejects malformed
+    internal value tags while preserving explicit no-op handling for all valid
+    non-container `ValueTag` cases.
+  - landed slice: final M9 default-switch classification closed the broad
+    residual after confirming the remaining compiler/AOT defaults are already
+    fail-closed, delegated to fail-closed parent boundaries, or benign
+    formatting/classification defaults.
+
+- [x] `AUDIT-255-FFI-INVALID-RETURN-ABI-TAG` close malformed FFI return ABI
+  tag fallbacks.
+  - classification: dynamic runtime FFI correctness, targeted fail-closed
+    repair.
+  - task: prevent malformed internal FFI return ABI tags from reaching libffi
+    preparation or converting to successful `nil` results.
+  - closure evidence: `ffi_abi_type_tag_supported()` now validates return ABI
+    tags before `omni_ffi_call`, `ffi_abi_type_tag_int_supported()` validates
+    async raw return tags before enum conversion, `ffi_return_storage_for()`
+    returns null for malformed tags, and `ffi_return_value_for()` reports a
+    typed FFI invalid-state error instead of `nil`.
+  - validation: C3 diagnostics for `eval_ffi_bound_call.c3` and
+    `tests_advanced_io_effect_ffi_ffi_surface_groups.c3`; `c3c build main`;
+    `OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced
+    OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system LD_LIBRARY_PATH=/usr/local/lib
+    ./build/main --test-suite lisp` (`pass=192 fail=0`).
+  - negative-memory constraint: do not route malformed return ABI tags through
+    libffi as integer storage and do not convert unsupported return tags to
+    `nil`; synchronous and async FFI boundaries must fail closed before native
+    call preparation.
+
+- [x] `AUDIT-256-FFI-ASYNC-INVALID-ARG-ABI-TAG` close malformed async FFI
+  argument ABI tag fallbacks.
+  - classification: dynamic runtime FFI correctness, targeted fail-closed
+    repair.
+  - task: prevent malformed internal async FFI argument ABI tags from being
+    cast to `FfiTypeTag` or handed to the native C ABI helper.
+  - closure evidence: `ffi_abi_arg_type_tag_int_supported()` validates raw
+    argument ABI integers, `ffi_async_own_string_arg()` rejects unsupported raw
+    tags before string ownership logic, and `ffi_async_offload_callback()`
+    validates argument count, argument tag, and argument storage before
+    `omni_ffi_call`.
+  - validation: C3 diagnostics for `eval_ffi_bound_call.c3`,
+    `prim_ffi_async.c3`, and
+    `tests_advanced_io_effect_ffi_ffi_surface_groups.c3`; `c3c build main`;
+    `OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced
+    OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system LD_LIBRARY_PATH=/usr/local/lib
+    ./build/main --test-suite lisp` (`pass=193 fail=0`).
+  - negative-memory constraint: do not cast raw async FFI argument ABI integers
+    to `FfiTypeTag` before validation; malformed async call contexts must fail
+    closed before worker/native call preparation.
+
+- [x] `AUDIT-257-FFI-ASYNC-VOID-RETURN-CONTRACT` preserve async FFI `^Void`
+  return semantics across worker completion.
+  - classification: dynamic runtime FFI/scheduler correctness, targeted
+    contract repair.
+  - task: make valid async FFI void returns reach the native call and
+    materialize the language `Void` singleton, matching synchronous FFI.
+  - closure evidence: `ffi_async_offload_callback()` now uses valid dummy
+    storage for `FFI_TYPE_VOID`, scheduler offload completions have an explicit
+    `OFFLOAD_RES_VOID` kind, and scheduler wakeup conversion maps that kind to
+    `make_void(interp)` while existing `OFFLOAD_RES_NIL` behavior is preserved.
+  - validation: C3 diagnostics for `scheduler_state_support_types.c3`,
+    `scheduler_wakeup_io.c3`, `prim_ffi_async.c3`, and
+    `tests_advanced_io_effect_ffi_ffi_surface_groups.c3`; `c3c build main`;
+    `OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced
+    OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system LD_LIBRARY_PATH=/usr/local/lib
+    ./build/main --test-suite lisp` (`pass=194 fail=0`);
+    `OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=scheduler LD_LIBRARY_PATH=/usr/local/lib
+    ./build/main --test-suite lisp` (`pass=147 fail=0`).
+  - negative-memory constraint: do not conflate valid `FFI_TYPE_VOID` returns
+    with unsupported return ABI tags, and do not map FFI `^Void` completions to
+    `nil`.
+
+- [x] `AUDIT-258-FFI-ASYNC-FLOAT32-RETURN-CONTRACT` preserve async FFI
+  `^Float32` return semantics across worker completion.
+  - classification: dynamic runtime FFI/scheduler correctness, targeted
+    contract repair.
+  - task: keep async FFI `^Float32` returns as Omni `Float32` instead of
+    widening them to `Float64` through scheduler completion.
+  - closure evidence: scheduler offload completions now have an explicit
+    `OFFLOAD_RES_FLOAT32` kind, scheduler wakeup conversion maps that kind to
+    `make_float32(interp, ...)`, and async FFI publishes `FFI_TYPE_FLOAT32`
+    returns with that kind while retaining `OFFLOAD_RES_DOUBLE` for Float64.
+  - validation: C3 diagnostics for `scheduler_state_support_types.c3`,
+    `scheduler_wakeup_io.c3`, `prim_ffi_async.c3`, and
+    `tests_advanced_io_effect_ffi_ffi_surface_groups.c3`; `c3c build main`;
+    advanced FFI/system slice (`pass=194 fail=0`); scheduler slice
+    (`pass=147 fail=0`).
+  - negative-memory constraint: do not route typed FFI scalar returns through a
+    wider offload kind when the language surface has a distinct scalar type.
+
+- [x] `AUDIT-259-FFI-ASYNC-BOOLEAN-RETURN-CONTRACT` preserve async FFI
+  `^Boolean` return semantics across worker completion.
+  - classification: dynamic runtime FFI/scheduler correctness, targeted
+    contract repair.
+  - task: keep async FFI `^Boolean` returns as Omni Boolean singleton values
+    instead of widening them to Integer `0`/`1` through scheduler completion.
+  - closure evidence: scheduler offload completions now have an explicit
+    `OFFLOAD_RES_BOOL` kind, scheduler wakeup conversion maps that kind to
+    `true`/`false` symbols, and async FFI publishes `FFI_TYPE_BOOL` returns
+    with that kind while retaining `OFFLOAD_RES_INT` for integer returns.
+  - validation: C3 diagnostics for `scheduler_state_support_types.c3`,
+    `scheduler_wakeup_io.c3`, `prim_ffi_async.c3`, and
+    `tests_advanced_io_effect_ffi_ffi_surface_groups.c3`; `c3c build main`;
+    advanced FFI/system slice (`pass=195 fail=0`); scheduler slice
+    (`pass=147 fail=0`).
+  - negative-memory constraint: do not route Boolean FFI returns through an
+    integer offload kind; Omni booleans are singleton symbols, not numeric
+    truth values.
+
+- [x] `AUDIT-260-FFI-STRUCT-RETURN-STORAGE` preserve pointer-shaped storage for
+  FFI `^Struct` returns.
+  - classification: dynamic runtime FFI correctness, targeted storage-boundary
+    repair.
+  - task: keep valid `FFI_TYPE_STRUCT` return metadata from being rejected at
+    return-storage selection before the established conversion/rejection
+    boundary can run.
+  - closure evidence: `ffi_return_storage_for()` and async FFI return-storage
+    selection now treat `FFI_TYPE_STRUCT` as pointer-shaped storage. Sync FFI
+    reaches the existing opaque `ffi-struct` handle conversion, while async FFI
+    reaches the existing pointer-like return rejection boundary.
+  - validation: C3 diagnostics for `eval_ffi_bound_call.c3`,
+    `prim_ffi_async.c3`, and
+    `tests_advanced_io_effect_ffi_ffi_surface_groups.c3`; `c3c build main`;
+    advanced FFI/system slice (`pass=196 fail=0`); scheduler slice
+    (`pass=147 fail=0`).
+  - negative-memory constraint: do not classify valid pointer-shaped `Struct`
+    return metadata as unsupported ABI before the established sync conversion
+    or async pointer-like return boundary.
+
+- [x] `AUDIT-261-FFI-VOID-PARAMETER-DECLARATION` close the FFI Void-parameter
+  declaration gap.
+  - classification: static/runtime FFI correctness, targeted declaration
+    fail-closed repair.
+  - task: keep return-only `^Void` ABI metadata from being accepted as a
+    parameter annotation and failing later during argument packing.
+  - closure evidence: interpreter/JIT `define [ffi λ]` now rejects `^Void`
+    parameters at declaration time, and the AOT runtime bridge rejects raw
+    `FFI_TYPE_VOID` parameter tags before publishing the primitive.
+  - validation: C3 diagnostics for `eval_ffi_eval.c3`,
+    `aot_runtime_bridge_ffi.c3`,
+    `tests_advanced_io_effect_ffi_ffi_surface_groups.c3`, and
+    `tests_compiler_core_groups_aot_runtime.c3`; `c3c build main`; advanced
+    FFI/system slice (`pass=197 fail=0`); compiler slice (`pass=452 fail=0`);
+    `git diff --check`; file-size gate; status consistency gate.
+  - negative-memory constraint: do not treat `^Void` as a general FFI
+    parameter ABI; it is a return-only surface and should fail closed during
+    declaration.
+
+- [x] `AUDIT-262-FFI-CALLBACK-VOID-PARAMETER` close the FFI callback
+  Void-parameter role gap.
+  - classification: static/runtime FFI callback correctness, targeted
+    declaration fail-closed repair.
+  - task: keep non-value-bearing `Void` callback parameter metadata from
+    reaching libffi closure preparation.
+  - closure evidence: callback parameter parsing now rejects `FFI_TYPE_VOID`
+    through a shared role predicate for list/array and variadic callback forms,
+    while `Void` remains valid as a callback return type.
+  - validation: C3 diagnostics for `prim_ffi_callback.c3` and
+    `tests_advanced_io_effect_ffi_ffi_surface_groups.c3`; `c3c build main`;
+    advanced FFI/system slice (`pass=199 fail=0`); `git diff --check`;
+    file-size gate; status consistency gate.
+  - negative-memory constraint: do not list or accept `Void` as a callback
+    parameter type; use an empty parameter list for C `void` parameter lists.
+
+- [x] `AUDIT-253-MACRO-HYGIENE-RECURSION-HARD-EXIT` investigate and repair the
+  recursion hard exit exposed by macro-hygiene validation.
+  - classification: dynamic runtime validation, targeted runtime/JIT recursion
+    defect.
+  - task: make the `advanced-macro-hygiene-string-number` subgroup complete
+    with a normal pass/fail summary instead of process exit `-1`.
+  - plan: `.agents/PLAN.md`.
+  - why deferred: it was discovered while validating M30, but isolated probes
+    show it is caused by recursive evaluation of
+    `(let ^rec (f (lambda (n) (if (= n 0) 0 (+ 1 (f (- n 1)))))) (f 512))`,
+    not by the `test_error()` helper payload tightening.
+  - concrete next step: isolate interpreter versus JIT execution for the
+    `advanced-macro-hygiene-string-number` subgroup, then run the direct eval
+    under the relevant runtime debug mode or debugger to identify whether the
+    hard exit is stack exhaustion, recursion lowering, or signal handling.
+  - prerequisites: keep the M30 helper behavior intact and preserve the passing
+    macro-hygiene subgroups:
+    `advanced-macro-hygiene-stdlib-migration`,
+    `advanced-macro-hygiene-quasi-pattern`,
+    `advanced-macro-hygiene-gensym`, `advanced-macro-hygiene-capture`,
+    `advanced-macro-hygiene-template-datum-collection`, and
+    `advanced-macro-hygiene-malformed-let`.
+  - negative-memory constraint: do not treat the full macro-hygiene filter as a
+    regression signal for M30 until this subgroup hard exit is fixed; the
+    failing direct recursion eval reproduces without the error-helper path.
+  - closure 2026-04-30: direct eval at depth `512` reproduced as a native
+    segfault while depth `384` returned `384`; the fixture now uses `384`.
+    `advanced-macro-hygiene-string-number` passes with `pass=9 fail=0`, and
+    full `advanced-macro-hygiene` passes with `pass=100 fail=0`.
+  - invalidated assumption: do not treat `512` as a portable macro-hygiene
+    non-tail recursion headroom value after the current runtime/JIT stack
+    frame shape changes. Keep this fixture as a substantial smoke probe, not a
+    maximum-depth contract.
+
+- [x] `AUDIT-254-JIT-TAIL-CONSTRUCTOR-ESCAPE-OPCODE` repair the JIT tail
+  constructor ESCAPE allocation policy regression.
+  - classification: dynamic runtime/JIT allocation policy, targeted regression.
+  - task: make `OMNI_JIT_POLICY_FILTER=tail-constructor-escape-opcode` pass by
+    restoring ESCAPE-helper use for tail constructor allocation.
+  - plan: `.agents/PLAN.md`.
+  - why deferred: discovered while validating the M9/JIT continuation-sensitivity
+    scan slice; the failing policy fixture is independent of the unknown-tag
+    scan change and has its own allocation-route contract.
+  - concrete next step: run
+    `OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=jit-policy OMNI_JIT_POLICY_FILTER=tail-constructor-escape-opcode LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`,
+    inspect tail constructor lowering/allocation helper selection, then repair
+    the route so `escape_ok=yes` without regressing list/array/string counters.
+  - prerequisites: preserve passing `warm-cache` JIT policy coverage and the
+    current M9 unknown-tag continuation-sensitive behavior.
+  - negative-memory constraint: do not conflate this with the M9 unknown-tag
+    scanner slice; the exact tail-constructor filter fails independently with
+    `escape_ok=no`.
+  - closure 2026-04-30: root cause was the M9 scanner hardening treating known
+    inert atom forms (`E_LIT`, `E_VAR`, `E_QUOTE`) as continuation-sensitive
+    because only unknown/default tags were fail-closed. The scanner now keeps
+    those known atoms non-sensitive while unknown tags remain conservative, and
+    the policy test also asserts `Array` is still classified as a tail
+    constructor. Exact `tail-constructor-escape-opcode`, `warm-cache`, and full
+    `jit-policy` validation passed.
+  - invalidated assumption: the `Array` tail-constructor detector was not the
+    broken route; classifier evidence returned `array_classifier=yes` while the
+    call was still diverted before constructor lowering.

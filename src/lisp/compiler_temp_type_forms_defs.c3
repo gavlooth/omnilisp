@@ -10,12 +10,12 @@ fn usz Compiler.compile_deftype_direct(Compiler* self, Expr* expr) {
     ExprDefType* dt = expr.deftype;
     usz fields_id = self.next_result();
     char[64] fields_name_buf;
-    char[] fields_name = compiler_format_generated_name_id(fields_name_buf[..], "_aot_type_fields_", (long)fields_id);
+    char[] fields_name = self.generated_name_id(fields_name_buf[..], "_aot_type_fields_", (long)fields_id);
 
     if (dt.type_param_count > 0) {
         usz params_id = self.next_result();
         char[64] params_name_buf;
-        char[] params_name = compiler_format_generated_name_id(params_name_buf[..], "_aot_type_params_", (long)params_id);
+        char[] params_name = self.generated_name_id(params_name_buf[..], "_aot_type_params_", (long)params_id);
         self.emit_indent();
         self.emit("char[][");
         self.emit_usz(dt.type_param_count);
@@ -40,12 +40,12 @@ fn usz Compiler.compile_deftype_direct(Compiler* self, Expr* expr) {
             self.emit(";\n");
             for (usz i = 0; i < dt.field_count; i++) {
                 char[96] field_buf;
-                char[] field_target = compiler_format_generated_name_index(field_buf[..], fields_name, (long)i);
+                char[] field_target = self.generated_name_index(field_buf[..], fields_name, (long)i);
                 self.emit_target_assignment_prefix(field_target, "name");
                 self.emit_string_literal(self.interp.symbols.get_name(dt.fields[i].name));
                 self.emit(";\n");
                 char[128] ann_buf;
-                char[] ann_target = compiler_format_generated_name_suffix(ann_buf[..], field_target, ".annotation");
+                char[] ann_target = self.generated_name_suffix(ann_buf[..], field_target, ".annotation");
                 self.emit_aot_type_annotation_spec_init(ann_target, &dt.fields[i].type_ann);
             }
         }
@@ -73,6 +73,7 @@ fn usz Compiler.compile_deftype_direct(Compiler* self, Expr* expr) {
         self.emit(", ");
         self.emit_usz(dt.field_count);
         self.emit(");\n");
+        self.emit_helper_published_binding_sync(dt.name);
         return id;
     }
 
@@ -85,12 +86,12 @@ fn usz Compiler.compile_deftype_direct(Compiler* self, Expr* expr) {
         self.emit(";\n");
         for (usz i = 0; i < dt.field_count; i++) {
             char[96] field_buf;
-            char[] field_target = compiler_format_generated_name_index(field_buf[..], fields_name, (long)i);
+            char[] field_target = self.generated_name_index(field_buf[..], fields_name, (long)i);
             self.emit_target_assignment_prefix(field_target, "name");
             self.emit_string_literal(self.interp.symbols.get_name(dt.fields[i].name));
             self.emit(";\n");
             char[128] ann_buf;
-            char[] ann_target = compiler_format_generated_name_suffix(ann_buf[..], field_target, ".annotation");
+            char[] ann_target = self.generated_name_suffix(ann_buf[..], field_target, ".annotation");
             self.emit_aot_type_annotation_spec_init(ann_target, &dt.fields[i].type_ann);
         }
     }
@@ -114,5 +115,6 @@ fn usz Compiler.compile_deftype_direct(Compiler* self, Expr* expr) {
     self.emit(", ");
     self.emit_usz(dt.field_count);
     self.emit(");\n");
+    self.emit_helper_published_binding_sync(dt.name);
     return id;
 }

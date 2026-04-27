@@ -1,5 +1,7 @@
 #include <dlfcn.h>
 #include <limits.h>
+#include <pthread.h>
+#include <stdatomic.h>
 #include <stddef.h>
 
 #define OMNI_CBLAS_ROW_MAJOR 101
@@ -64,17 +66,80 @@ static omni_cblas_dgemm_fn omni_tensor_cblas_dgemm = NULL;
 static omni_cblas_dgemv_fn omni_tensor_cblas_dgemv = NULL;
 static omni_cblas_ddot_fn omni_tensor_cblas_ddot = NULL;
 static omni_cblas_dger_fn omni_tensor_cblas_dger = NULL;
-static int omni_tensor_blas_resolution_attempted = 0;
-static long omni_tensor_blas_dgemm_calls = 0;
-static long omni_tensor_blas_dgemv_calls = 0;
-static long omni_tensor_blas_ddot_calls = 0;
-static long omni_tensor_blas_dger_calls = 0;
+static pthread_once_t omni_tensor_blas_resolve_once = PTHREAD_ONCE_INIT;
+static atomic_long omni_tensor_blas_dgemm_calls = 0;
+static atomic_long omni_tensor_blas_dgemv_calls = 0;
+static atomic_long omni_tensor_blas_ddot_calls = 0;
+static atomic_long omni_tensor_blas_dger_calls = 0;
 
-static int omni_tensor_blas_resolve(void) {
-    if (omni_tensor_cblas_dgemm != NULL) return 1;
-    if (omni_tensor_blas_resolution_attempted) return 0;
-    omni_tensor_blas_resolution_attempted = 1;
+static void omni_tensor_blas_noop_dgemv(
+    int order,
+    int trans_a,
+    int m,
+    int n,
+    double alpha,
+    const double* a,
+    int lda,
+    const double* x,
+    int incx,
+    double beta,
+    double* y,
+    int incy
+) {
+    (void)order;
+    (void)trans_a;
+    (void)m;
+    (void)n;
+    (void)alpha;
+    (void)a;
+    (void)lda;
+    (void)x;
+    (void)incx;
+    (void)beta;
+    (void)y;
+    (void)incy;
+}
 
+static double omni_tensor_blas_noop_ddot(
+    int n,
+    const double* x,
+    int incx,
+    const double* y,
+    int incy
+) {
+    (void)n;
+    (void)x;
+    (void)incx;
+    (void)y;
+    (void)incy;
+    return 0.0;
+}
+
+static void omni_tensor_blas_noop_dger(
+    int order,
+    int m,
+    int n,
+    double alpha,
+    const double* x,
+    int incx,
+    const double* y,
+    int incy,
+    double* a,
+    int lda
+) {
+    (void)order;
+    (void)m;
+    (void)n;
+    (void)alpha;
+    (void)x;
+    (void)incx;
+    (void)y;
+    (void)incy;
+    (void)a;
+    (void)lda;
+}
+
+static void omni_tensor_blas_resolve_once_fn(void) {
     const char* candidates[] = {
         "libopenblas.so.0",
         "libopenblas.so",
@@ -91,9 +156,10 @@ static int omni_tensor_blas_resolve(void) {
         void* dgemv_symbol = dlsym(handle, "cblas_dgemv");
         void* ddot_symbol = dlsym(handle, "cblas_ddot");
         void* dger_symbol = dlsym(handle, "cblas_dger");
-        if (dgemm_symbol != NULL) {
-            omni_tensor_blas_handle = handle;
-            omni_tensor_cblas_dgemm = (omni_cblas_dgemm_fn)dgemm_symbol;
+        if (dgemm_symbol != NULL || dgemv_symbol != NULL || ddot_symbol != NULL || dger_symbol != NULL) {
+            if (dgemm_symbol != NULL) {
+                omni_tensor_cblas_dgemm = (omni_cblas_dgemm_fn)dgemm_symbol;
+            }
             if (dgemv_symbol != NULL) {
                 omni_tensor_cblas_dgemv = (omni_cblas_dgemv_fn)dgemv_symbol;
             }
@@ -103,17 +169,22 @@ static int omni_tensor_blas_resolve(void) {
             if (dger_symbol != NULL) {
                 omni_tensor_cblas_dger = (omni_cblas_dger_fn)dger_symbol;
             }
-            return 1;
+            omni_tensor_blas_handle = handle;
+            return;
         }
 
         dlclose(handle);
     }
+}
 
-    return 0;
+static int omni_tensor_blas_resolve(void) {
+    if (omni_tensor_blas_handle != NULL) return 1;
+    (void)pthread_once(&omni_tensor_blas_resolve_once, &omni_tensor_blas_resolve_once_fn);
+    return omni_tensor_blas_handle != NULL;
 }
 
 int omni_tensor_backend_blas_available(void) {
-    return omni_tensor_blas_resolve();
+    return omni_tensor_blas_resolve() && omni_tensor_cblas_dgemm != NULL;
 }
 
 int omni_tensor_backend_blas_dgemv_available(void) {
@@ -129,19 +200,45 @@ int omni_tensor_backend_blas_dger_available(void) {
 }
 
 long omni_tensor_backend_blas_dgemm_call_count(void) {
-    return omni_tensor_blas_dgemm_calls;
+    return atomic_load_explicit(&omni_tensor_blas_dgemm_calls, memory_order_relaxed);
 }
 
 long omni_tensor_backend_blas_dgemv_call_count(void) {
-    return omni_tensor_blas_dgemv_calls;
+    return atomic_load_explicit(&omni_tensor_blas_dgemv_calls, memory_order_relaxed);
 }
 
 long omni_tensor_backend_blas_ddot_call_count(void) {
-    return omni_tensor_blas_ddot_calls;
+    return atomic_load_explicit(&omni_tensor_blas_ddot_calls, memory_order_relaxed);
 }
 
 long omni_tensor_backend_blas_dger_call_count(void) {
-    return omni_tensor_blas_dger_calls;
+    return atomic_load_explicit(&omni_tensor_blas_dger_calls, memory_order_relaxed);
+}
+
+int omni_tensor_backend_blas_partial_symbol_table_for_tests(void) {
+    void* saved_handle = omni_tensor_blas_handle;
+    omni_cblas_dgemm_fn saved_dgemm = omni_tensor_cblas_dgemm;
+    omni_cblas_dgemv_fn saved_dgemv = omni_tensor_cblas_dgemv;
+    omni_cblas_ddot_fn saved_ddot = omni_tensor_cblas_ddot;
+    omni_cblas_dger_fn saved_dger = omni_tensor_cblas_dger;
+
+    omni_tensor_blas_handle = (void*)1;
+    omni_tensor_cblas_dgemm = NULL;
+    omni_tensor_cblas_dgemv = omni_tensor_blas_noop_dgemv;
+    omni_tensor_cblas_ddot = omni_tensor_blas_noop_ddot;
+    omni_tensor_cblas_dger = omni_tensor_blas_noop_dger;
+
+    int ok = !omni_tensor_backend_blas_available() &&
+        omni_tensor_backend_blas_dgemv_available() &&
+        omni_tensor_backend_blas_ddot_available() &&
+        omni_tensor_backend_blas_dger_available();
+
+    omni_tensor_blas_handle = saved_handle;
+    omni_tensor_cblas_dgemm = saved_dgemm;
+    omni_tensor_cblas_dgemv = saved_dgemv;
+    omni_tensor_cblas_ddot = saved_ddot;
+    omni_tensor_cblas_dger = saved_dger;
+    return ok ? 1 : 0;
 }
 
 int omni_tensor_backend_blas_dgemm(
@@ -181,7 +278,7 @@ int omni_tensor_backend_blas_dgemm(
         c,
         (int)ldc
     );
-    omni_tensor_blas_dgemm_calls++;
+    atomic_fetch_add_explicit(&omni_tensor_blas_dgemm_calls, 1, memory_order_relaxed);
     return 1;
 }
 
@@ -213,7 +310,7 @@ int omni_tensor_backend_blas_dgemv(
         y,
         1
     );
-    omni_tensor_blas_dgemv_calls++;
+    atomic_fetch_add_explicit(&omni_tensor_blas_dgemv_calls, 1, memory_order_relaxed);
     return 1;
 }
 
@@ -228,7 +325,7 @@ int omni_tensor_backend_blas_ddot(
     if (!omni_tensor_blas_resolve() || omni_tensor_cblas_ddot == NULL) return 0;
 
     *out = omni_tensor_cblas_ddot((int)n, x, 1, y, 1);
-    omni_tensor_blas_ddot_calls++;
+    atomic_fetch_add_explicit(&omni_tensor_blas_ddot_calls, 1, memory_order_relaxed);
     return 1;
 }
 
@@ -243,9 +340,10 @@ int omni_tensor_backend_blas_dger(
     if (x == NULL || y == NULL || out == NULL) return 0;
     if (m == 0 || n == 0) return 0;
     if (m > INT_MAX || n > INT_MAX || lda > INT_MAX) return 0;
+    if (lda != n) return 0;
     if (!omni_tensor_blas_resolve() || omni_tensor_cblas_dger == NULL) return 0;
 
-    size_t count = m * lda;
+    size_t count = m * n;
     for (size_t i = 0; i < count; i++) out[i] = 0.0;
     omni_tensor_cblas_dger(
         OMNI_CBLAS_ROW_MAJOR,
@@ -259,6 +357,6 @@ int omni_tensor_backend_blas_dger(
         out,
         (int)lda
     );
-    omni_tensor_blas_dger_calls++;
+    atomic_fetch_add_explicit(&omni_tensor_blas_dger_calls, 1, memory_order_relaxed);
     return 1;
 }

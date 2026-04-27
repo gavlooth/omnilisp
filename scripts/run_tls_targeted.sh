@@ -17,6 +17,8 @@ CLIENT_SCRIPT="$(mktemp "$ROOT_DIR/.tmp_tls_client_XXXXXX.omni")"
 SERVER_OUT="$(mktemp "$ROOT_DIR/.tmp_tls_server_out_XXXXXX.log")"
 SERVER_ERR="$(mktemp "$ROOT_DIR/.tmp_tls_server_err_XXXXXX.log")"
 CLIENT_OUT="$(mktemp "$ROOT_DIR/.tmp_tls_client_out_XXXXXX.log")"
+READY_FILE="$(mktemp "$ROOT_DIR/.tmp_tls_ready_XXXXXX")"
+rm -f "$READY_FILE"
 SERVER_PID=""
 STOP_SERVER_RC=0
 
@@ -25,13 +27,13 @@ cleanup() {
     kill "$SERVER_PID" >/dev/null 2>&1 || true
     wait "$SERVER_PID" >/dev/null 2>&1 || true
   fi
-  rm -f "$CLIENT_SCRIPT" "$SERVER_OUT" "$SERVER_ERR" "$CLIENT_OUT"
+  rm -f "$CLIENT_SCRIPT" "$SERVER_OUT" "$SERVER_ERR" "$CLIENT_OUT" "$READY_FILE"
 }
 trap cleanup EXIT
 
 cat >"$CLIENT_SCRIPT" <<'OMNI'
 (block
-  (define p (string->number (default (getenv "OMNI_TLS_TEST_PORT") "45101")))
+  (define p (parse-number (default (getenv "OMNI_TLS_TEST_PORT") "45101")))
   (define host (default (getenv "OMNI_TLS_CLIENT_HOST") "localhost"))
   (define expect-mode (default (getenv "OMNI_TLS_EXPECT_MODE") "pong"))
   (define ca (default (getenv "OMNI_TLS_CA") "tests/lib/tls/ca.cert.pem"))
@@ -87,15 +89,30 @@ start_server() {
       OMNI_TLS_TEST_PORT="$port" \
       OMNI_TLS_TEST_CERT="$cert" \
       OMNI_TLS_TEST_KEY="$key" \
+      OMNI_TLS_READY_FILE="$READY_FILE" \
       LD_LIBRARY_PATH=/usr/local/lib \
       "$MAIN_BIN" "$SERVER_SCRIPT" >"$SERVER_OUT" 2>"$SERVER_ERR" &
   else
     ASAN_OPTIONS=detect_leaks=0 \
       OMNI_TLS_TEST_PORT="$port" \
+      OMNI_TLS_READY_FILE="$READY_FILE" \
       LD_LIBRARY_PATH=/usr/local/lib \
       "$MAIN_BIN" "$SERVER_SCRIPT" >"$SERVER_OUT" 2>"$SERVER_ERR" &
   fi
   SERVER_PID=$!
+}
+
+wait_for_server_ready() {
+  for _ in $(seq 1 300); do
+    if [[ -s "$READY_FILE" ]]; then
+      return 0
+    fi
+    if [[ -n "${SERVER_PID:-}" ]] && ! kill -0 "$SERVER_PID" >/dev/null 2>&1; then
+      return 1
+    fi
+    sleep 0.01
+  done
+  return 1
 }
 
 stop_server() {
@@ -104,7 +121,7 @@ stop_server() {
     return
   fi
 
-  for _ in $(seq 1 100); do
+  for _ in $(seq 1 300); do
     if ! kill -0 "$SERVER_PID" >/dev/null 2>&1; then
       wait "$SERVER_PID" || STOP_SERVER_RC=$?
       SERVER_PID=""
@@ -132,9 +149,18 @@ run_case() {
   : >"$SERVER_OUT"
   : >"$SERVER_ERR"
   : >"$CLIENT_OUT"
+  rm -f "$READY_FILE"
 
   start_server "$port" "$server_cert" "$server_key"
-  sleep 0.30
+  if ! wait_for_server_ready; then
+    stop_server
+    echo "[FAIL] $name (server did not report readiness)"
+    if [[ -s "$SERVER_ERR" ]]; then
+      echo "  server stderr:"
+      sed 's/^/    /' "$SERVER_ERR" || true
+    fi
+    return 1
+  fi
 
   local client_rc=0
   local -a client_env=(

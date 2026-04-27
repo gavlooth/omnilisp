@@ -74,6 +74,8 @@ fn SymbolId explain_dispatch_failure_symbol(Interp* interp, DispatchMatchFailure
             return interp.symbols.intern("type-mismatch");
         case DISPATCH_MATCH_FAIL_CONSTRAINT:
             return interp.symbols.intern("constraint-mismatch");
+        case DISPATCH_MATCH_FAIL_INVALID_LITERAL:
+            return interp.symbols.intern("invalid-literal");
     }
 }
 
@@ -94,7 +96,7 @@ fn Value* explain_literal_value(Interp* interp, ValueLiteralKey* literal) {
             return make_string(interp, text);
         }
         default:
-            return make_nil(interp);
+            return make_symbol(interp, interp.symbols.intern("invalid-literal"));
     }
 }
 

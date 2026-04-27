@@ -206,6 +206,7 @@ fn bool register_regular_primitives_collections(Interp* interp) {
         { "read-string", &prim_read_string, 1 },
         // Type system
         { "^", &prim_ctor_type_apply, 2 },
+        { "Literal", &prim_literal_type, 1 },
         { "type-of", &prim_type_of, 1 },
         { "is?", &prim_is_type, 2 },
         { "instance?", &prim_is_instance, 1 }, { "type-args", &prim_type_args, 1 },

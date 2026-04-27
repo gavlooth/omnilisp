@@ -1,6 +1,4 @@
-static void omni_tensor_vulkan_probe(void) {
-    if (omni_tensor_vulkan_probe_attempted) return;
-    omni_tensor_vulkan_probe_attempted = 1;
+static void omni_tensor_vulkan_probe_once_fn(void) {
     omni_tensor_vulkan_available_cached = 0;
     omni_tensor_vulkan_float64_cached = 0;
     omni_tensor_vulkan_int64_cached = 0;
@@ -31,6 +29,10 @@ static void omni_tensor_vulkan_probe(void) {
     }
 
     omni_vulkan_destroy_instance(instance, NULL);
+}
+
+static void omni_tensor_vulkan_probe(void) {
+    (void)pthread_once(&omni_tensor_vulkan_probe_once, &omni_tensor_vulkan_probe_once_fn);
 }
 
 int omni_tensor_backend_vulkan_available(void) {
@@ -71,6 +73,29 @@ static void omni_tensor_vulkan_test_destroy_device(OmniVulkanDevice device, cons
     (void)allocator;
 }
 
+static int omni_tensor_vulkan_context_mutex_is_locked_for_tests(void) {
+    if (pthread_mutex_trylock(&omni_tensor_vulkan_context_mutex) == 0) {
+        pthread_mutex_unlock(&omni_tensor_vulkan_context_mutex);
+        return 0;
+    }
+    return 1;
+}
+
+static int omni_tensor_vulkan_test_destroy_device_saw_locked = 0;
+static int omni_tensor_vulkan_test_destroy_instance_saw_locked = 0;
+
+static void omni_tensor_vulkan_test_destroy_instance_requires_locked(OmniVulkanInstance instance, const void* allocator) {
+    (void)instance;
+    (void)allocator;
+    omni_tensor_vulkan_test_destroy_instance_saw_locked = omni_tensor_vulkan_context_mutex_is_locked_for_tests();
+}
+
+static void omni_tensor_vulkan_test_destroy_device_requires_locked(OmniVulkanDevice device, const void* allocator) {
+    (void)device;
+    (void)allocator;
+    omni_tensor_vulkan_test_destroy_device_saw_locked = omni_tensor_vulkan_context_mutex_is_locked_for_tests();
+}
+
 void omni_tensor_backend_vulkan_context_retain(OmniTensorVulkanContext* context) {
     if (context == NULL) return;
     if (pthread_mutex_lock(&omni_tensor_vulkan_context_mutex) != 0) return;
@@ -89,10 +114,10 @@ void omni_tensor_backend_vulkan_context_release(OmniTensorVulkanContext* context
     if (omni_tensor_vulkan_shared_context == context) {
         omni_tensor_vulkan_shared_context = NULL;
     }
-    pthread_mutex_unlock(&omni_tensor_vulkan_context_mutex);
     if (context->device != NULL) omni_vulkan_destroy_device(context->device, NULL);
     if (context->instance != NULL) omni_vulkan_destroy_instance(context->instance, NULL);
     free(context);
+    pthread_mutex_unlock(&omni_tensor_vulkan_context_mutex);
 }
 
 void omni_tensor_backend_vulkan_destroy_buffer_handle(OmniTensorVulkanBuffer* handle) {
@@ -497,6 +522,62 @@ int omni_tensor_backend_vulkan_shared_context_release_clears_global_for_tests(vo
     omni_tensor_backend_vulkan_context_release(context);
 
     int result = OMNI_TENSOR_VULKAN_SUCCESS;
+    if (pthread_mutex_lock(&omni_tensor_vulkan_context_mutex) != 0) {
+        result = OMNI_TENSOR_VULKAN_EXECUTION_FAILED;
+    } else {
+        if (omni_tensor_vulkan_shared_context != NULL) {
+            omni_tensor_vulkan_shared_context = NULL;
+            result = OMNI_TENSOR_VULKAN_INVALID;
+        }
+        pthread_mutex_unlock(&omni_tensor_vulkan_context_mutex);
+    }
+
+    omni_vulkan_destroy_instance = saved_destroy_instance;
+    omni_vulkan_destroy_device = saved_destroy_device;
+    return result;
+}
+
+int omni_tensor_backend_vulkan_shared_context_release_teardown_locked_for_tests(void) {
+    if (pthread_mutex_lock(&omni_tensor_vulkan_context_mutex) != 0) return OMNI_TENSOR_VULKAN_EXECUTION_FAILED;
+    if (omni_tensor_vulkan_shared_context != NULL) {
+        pthread_mutex_unlock(&omni_tensor_vulkan_context_mutex);
+        return OMNI_TENSOR_VULKAN_UNSUPPORTED;
+    }
+    pthread_mutex_unlock(&omni_tensor_vulkan_context_mutex);
+
+    omni_vulkan_destroy_instance_fn saved_destroy_instance = omni_vulkan_destroy_instance;
+    omni_vulkan_destroy_device_fn saved_destroy_device = omni_vulkan_destroy_device;
+    omni_tensor_vulkan_test_destroy_instance_saw_locked = 0;
+    omni_tensor_vulkan_test_destroy_device_saw_locked = 0;
+    omni_vulkan_destroy_instance = omni_tensor_vulkan_test_destroy_instance_requires_locked;
+    omni_vulkan_destroy_device = omni_tensor_vulkan_test_destroy_device_requires_locked;
+
+    OmniTensorVulkanContext* context = (OmniTensorVulkanContext*)calloc(1, sizeof(OmniTensorVulkanContext));
+    if (context == NULL) {
+        omni_vulkan_destroy_instance = saved_destroy_instance;
+        omni_vulkan_destroy_device = saved_destroy_device;
+        return OMNI_TENSOR_VULKAN_ALLOCATION_FAILED;
+    }
+    context->instance = (OmniVulkanInstance)(uintptr_t)1u;
+    context->device = (OmniVulkanDevice)(uintptr_t)2u;
+    context->ref_count = 1u;
+
+    if (pthread_mutex_lock(&omni_tensor_vulkan_context_mutex) != 0) {
+        free(context);
+        omni_vulkan_destroy_instance = saved_destroy_instance;
+        omni_vulkan_destroy_device = saved_destroy_device;
+        return OMNI_TENSOR_VULKAN_EXECUTION_FAILED;
+    }
+    omni_tensor_vulkan_shared_context = context;
+    pthread_mutex_unlock(&omni_tensor_vulkan_context_mutex);
+
+    omni_tensor_backend_vulkan_context_release(context);
+
+    int result = OMNI_TENSOR_VULKAN_SUCCESS;
+    if (!omni_tensor_vulkan_test_destroy_device_saw_locked ||
+        !omni_tensor_vulkan_test_destroy_instance_saw_locked) {
+        result = OMNI_TENSOR_VULKAN_INVALID;
+    }
     if (pthread_mutex_lock(&omni_tensor_vulkan_context_mutex) != 0) {
         result = OMNI_TENSOR_VULKAN_EXECUTION_FAILED;
     } else {

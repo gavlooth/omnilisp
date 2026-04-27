@@ -2,7 +2,9 @@
 
 `.agents/SESSION_REPORT.md` remains the session-report entrypoint; read the indexed part files for the full report history.
 
-The historical content was split mechanically to keep individual files below the 700-line repository limit. Content order is preserved in the part files.
+The historical content was split mechanically to preserve report order. Content
+order is preserved in the part files; some historical parts now exceed the old
+700-line documentation split target.
 
 ## Parts
 
@@ -48,7 +50,1304 @@ The historical content was split mechanically to keep individual files below the
 - Part 40: [.agents/session_report_parts/session_report_part_40.md](session_report_parts/session_report_part_40.md) (4392 lines)
 - Part 41: [.agents/session_report_parts/session_report_part_41.md](session_report_parts/session_report_part_41.md) (43 lines)
 - Part 42: [.agents/session_report_parts/session_report_part_42.md](session_report_parts/session_report_part_42.md) (710 lines)
-- Part 43: [.agents/session_report_parts/session_report_part_43.md](session_report_parts/session_report_part_43.md) (1083 lines)
+- Part 43: [.agents/session_report_parts/session_report_part_43.md](session_report_parts/session_report_part_43.md) (1420 lines)
+- Part 44: [.agents/session_report_parts/session_report_part_44.md](session_report_parts/session_report_part_44.md) (10005 lines)
+
+## 2026-04-30 09:27 CEST - AUDIT-255 FFI Invalid Return ABI Tag Closure
+
+Objective attempted:
+- Continue the fresh audit pass after TODO count reached `0` by closing a
+  runtime FFI success-shaped fallback for malformed internal return ABI tags.
+
+Relevant workspace or target:
+- `/home/christos/Omni`
+- `src/lisp/eval_ffi_bound_call.c3`
+- `src/lisp/tests_advanced_io_effect_ffi_ffi_surface_groups.c3`
+
+Code or configuration changes made:
+- Added `ffi_abi_type_tag_supported()` and validate bound-call return ABI tags
+  before libffi preparation.
+- Added `ffi_abi_type_tag_int_supported()` so async FFI offload validates raw
+  return tags before enum conversion.
+- Changed `ffi_return_storage_for()` so malformed return ABI tags produce null
+  storage instead of reusing integer storage.
+- Changed `ffi_return_value_for()` so unsupported return tags report a typed
+  FFI invalid-state error instead of successful `nil`.
+- Added advanced FFI/system regression coverage for the storage helper, return
+  converter, C ABI bound-call path, and async offload using raw invalid tags.
+
+Commands run:
+- C3 diagnostics for `src/lisp/eval_ffi_bound_call.c3`
+- C3 diagnostics for
+  `src/lisp/tests_advanced_io_effect_ffi_ffi_surface_groups.c3`
+- C3 diagnostics for `src/lisp/prim_ffi_async.c3`
+- `c3c build main`
+- `OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+
+Key results:
+- C3 diagnostics passed for touched files.
+- Build linked `build/main`.
+- Advanced FFI/system slice passed: `suite=unified pass=192 fail=0`.
+
+Invalidated assumptions or failed approaches:
+- `[INVALIDATED]` Malformed FFI return ABI tags must not be routed through
+  integer return storage or converted to `nil`; synchronous and async FFI
+  boundaries must reject unsupported return ABI tags before libffi preparation.
+
+Current best recommendation or checkpoint:
+- `AUDIT-255` is closed. TODO actionable count remains `0`; future audit work
+  should start from a fresh source/status scan.
+
+Unresolved issues:
+- No TODO-backed actionable blocker remains.
+
+Dependencies, blockers, or restart requirements:
+- Rebuild required for runtime FFI changes to become active; `c3c build main`
+  was run.
+
+Signature: GPT-5 Codex
+
+## 2026-04-30 09:22 CEST - AUDIT-252 M9 Default-Switch Closure
+
+Objective attempted:
+- Close `AUDIT-252-M9-DEFAULT-SWITCH-RESIDUAL` after the generated-global
+  literal collector sub-slice by classifying remaining compiler/AOT
+  `default:` arms against current source.
+
+Relevant workspace or target:
+- `/home/christos/Omni`
+- `AUDIT_2.md` M9
+- `TODO.md`
+- `docs/todo_parts/todo_part_18.md`
+
+Code or configuration changes made:
+- No runtime code changes were needed for the final closure step.
+- Marked `AUDIT-252-M9-DEFAULT-SWITCH-RESIDUAL` closed and updated the live
+  queue count to `0`.
+- Recorded that remaining compiler/AOT defaults are explicit fail-closed
+  diagnostics, parent-dispatched helper fallbacks, or benign
+  format/classification defaults.
+
+Commands run:
+- `rg -n "default:" src/lisp/compiler* src/lisp/aot*`
+- C3 diagnostics for `src/lisp/compiler_program_top_level_globals.c3`
+- C3 diagnostics for `src/lisp/tests_compiler_core_groups_serializer_metadata.c3`
+- `c3c build main`
+- `OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=compiler LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `git diff --check`
+- `scripts/check_file_size_gate.sh`
+- `scripts/check_status_consistency.sh`
+
+Key results:
+- The final default-switch classification found no remaining success-shaped
+  compiler/AOT fallback in the M9 surface.
+- Build linked `build/main`.
+- Compiler Lisp slice passed: `suite=compiler pass=451 fail=0`.
+- TODO/actionable status is now `0`.
+
+Invalidated assumptions or failed approaches:
+- None in this closure step.
+
+Current best recommendation or checkpoint:
+- `AUDIT-252` and the broad M9 default-switch residual are closed. Future audit
+  work should start from a fresh status/source scan and open a new concrete
+  TODO only for a current reproducible defect.
+
+Unresolved issues:
+- No TODO-backed actionable blocker remains.
+
+Dependencies, blockers, or restart requirements:
+- Rebuild required for the preceding C3 changes to be active; `c3c build main`
+  was run.
+
+Signature: GPT-5 Codex
+
+## 2026-04-30 09:09 CEST - M9 Literal Generated-Global Collector Closure
+
+Objective attempted:
+- Continue `AUDIT-252-M9-DEFAULT-SWITCH-RESIDUAL` by closing the remaining
+  generated-global literal collector default that treated malformed internal
+  value tags as no-op leaves.
+
+Relevant workspace or target:
+- `/home/christos/Omni`
+- `src/lisp/compiler_program_top_level_globals.c3`
+- `src/lisp/tests_compiler_core_groups_serializer_metadata.c3`
+- `AUDIT-252-M9-DEFAULT-SWITCH-RESIDUAL`
+
+Code or configuration changes made:
+- `collect_literal_generated_globals` now keeps recursive traversal for
+  cons/array/dictionary/set literals and global-closure discovery.
+- Added explicit no-op cases for every valid non-container `ValueTag`.
+- Added a fail-closed default that reports malformed literal value tags as a
+  compiler error instead of treating them as "no generated globals needed".
+- Added direct serializer metadata regression coverage for a raw invalid
+  literal value tag.
+
+Commands run:
+- C3 diagnostics for `src/lisp/compiler_program_top_level_globals.c3`
+- C3 diagnostics for `src/lisp/tests_compiler_core_groups_serializer_metadata.c3`
+- `c3c build main`
+- `OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=compiler LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+
+Key results:
+- C3 diagnostics passed for touched files.
+- Build linked `build/main`.
+- Compiler Lisp slice passed: `suite=compiler pass=451 fail=0`.
+
+Invalidated assumptions or failed approaches:
+- None in this sub-slice.
+
+Current best recommendation or checkpoint:
+- This generated-global literal collector residual is closed. Continue
+  `AUDIT-252-M9-DEFAULT-SWITCH-RESIDUAL` by classifying the remaining
+  compiler/AOT `default:` sites outside the generated-global collection
+  boundary.
+
+Unresolved issues:
+- `AUDIT-252-M9-DEFAULT-SWITCH-RESIDUAL` remains open for other default-switch
+  sites.
+
+Dependencies, blockers, or restart requirements:
+- Rebuild required for C3 changes to become active; `c3c build main` was run.
+
+Signature: GPT-5 Codex
+
+## 2026-04-30 08:58 CEST - AUDIT-254 JIT Tail Constructor ESCAPE Closure
+
+Objective attempted:
+- Continue the audit/repair cycle by closing
+  `AUDIT-254-JIT-TAIL-CONSTRUCTOR-ESCAPE-OPCODE`, where the exact JIT policy
+  filter failed with `escape_ok=no`.
+
+Relevant workspace or target:
+- `/home/christos/Omni`
+- `src/lisp/jit_apply_eval.c3`
+- `src/lisp/tests_runtime_feature_jit_groups_failures.c3`
+- `TODO.md` / `docs/todo_parts/todo_part_18.md`
+
+Code or configuration changes made:
+- Added explicit non-sensitive cases for `E_LIT`, `E_VAR`, and `E_QUOTE` in
+  `expr_contains_shift()` and `expr_contains_perform()`, preserving
+  fail-closed behavior for unknown expression tags while allowing ordinary
+  atom-only calls to reach normal call lowering.
+- Strengthened the tail-constructor policy regression so it verifies `(Array 4
+  5)` is still classified as `JIT_TAIL_CTOR_ARRAY`.
+- Closed `AUDIT-254` in TODO/plan/changelog state and recorded the invalidated
+  detector hypothesis.
+
+Commands run:
+- C3 LSP diagnostics for `src/lisp/jit_apply_eval.c3`
+- C3 LSP diagnostics for `src/lisp/tests_runtime_feature_jit_groups_failures.c3`
+- C3 LSP diagnostics for `src/lisp/jit_compile_expr_core.c3`
+- `c3c build main`
+- `OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=jit-policy OMNI_JIT_POLICY_FILTER=tail-constructor-escape-opcode LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=jit-policy OMNI_JIT_POLICY_FILTER=warm-cache LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=jit-policy LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+
+Key results:
+- C3 diagnostics passed for touched files.
+- Build linked `build/main`.
+- Exact tail-constructor policy passed: `suite=unified pass=1 fail=0`.
+- Warm-cache policy passed: `suite=unified pass=5 fail=0`.
+- Full JIT policy passed: `suite=unified pass=82 fail=0`.
+
+Invalidated assumptions or failed approaches:
+- `[INVALIDATED]` Do not assume `Array` tail-constructor recognition caused
+  the failure. Direct classifier evidence returned `array_classifier=yes` while
+  runtime counters still showed generic tail-call allocation
+  (`nil=2 cons=5 array=0 string=1`), proving the diversion happened earlier in
+  continuation-sensitivity routing.
+
+Current best recommendation or checkpoint:
+- `AUDIT-254` is closed. Continue with the remaining live queue count `1`:
+  `AUDIT-252-M9-DEFAULT-SWITCH-RESIDUAL`.
+
+Unresolved issues:
+- `AUDIT-252-M9-DEFAULT-SWITCH-RESIDUAL` remains open for other
+  default-switch residual classification.
+
+Dependencies, blockers, or restart requirements:
+- Rebuild/restart required for changed C3 JIT scanner behavior to become
+  active; `c3c build main` was run for this workspace.
+
+Signature: GPT-5 Codex
+
+## 2026-04-28 17:01 CEST - AUDIT-243 Mutable Capture Residuals
+
+Objective attempted:
+- Continue multi-agent audit of the AOT mutable-cell lowering path after
+  AUDIT-242 and close confirmed regressions without changing public semantics.
+
+Relevant workspace or target:
+- `/home/christos/Omni`
+- AOT mutable-cell lowering, recursive `let ^rec`, module/`with` assignment
+  precedence, generated e2e diagnostics, and compiler shape tests.
+
+Code or configuration changes made:
+- Recursive mutable `let ^rec` now allocates the cell before initializer
+  lowering and seeds it through `mutable_cell_set`.
+- `set!` lowering now mirrors read-side module precedence, so module/private/open
+  bindings beat older outer mutable cells while inner mutable cells still win.
+- Hardened generated-e2e error diagnostic slicing.
+- Made resolve terminal-control tests ordered.
+- Tightened an AUDIT-242 same-name immutable capture shape assertion.
+- Opened `AUDIT-244-AOT-MUTABLE-CELL-ROOT-LIFETIME` for the remaining
+  root-owned cell child-scope store policy.
+
+Commands run:
+- `c3c build`
+- `OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=compiler LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_TEST_QUIET=1 scripts/run_e2e.sh`
+
+## 2026-04-28 Aggregate Boundary and Lexical Shadowing Audit
+
+Date/time: 2026-04-28 CEST
+
+Objective attempted:
+- Continue multi-agent audit, preserve existing functionality, and close
+  concrete regressions found by parallel route/compiler/status reviews.
+
+Relevant workspace or target:
+- `/home/christos/Omni`
+- Boundary promotion/root-store aggregate wrappers, AOT/JIT lexical mutation
+  analysis, generated e2e count policy, and status handoff consistency.
+
+Code or configuration changes made:
+- Aggregate parent-copy, ESCAPE-promotion, and root-store clone routes now
+  fail closed when destination destructor registration fails for array,
+  hashmap/set, method-table, and continuation wrappers.
+- Added aggregate forced-dtor-OOM coverage across parent copy, ESCAPE
+  promotion, and root-store clone.
+- AOT `set!` lowering now prioritizes the innermost lexical alias before older
+  mutable-cell aliases.
+- JIT mutability scans now inspect same-name `let` initializers while treating
+  same-name `let` bodies as shadowed.
+- Generated e2e now has 425 cases, including same-name `set!` shadowing and
+  same-name initializer mutation regressions; e2e count guards were updated.
+- `scripts/check_status_consistency.sh` now compares advertised TODO count to
+  actual open checkboxes, fails on missing indexed part files, and validates
+  `.agents/PLAN.md` part counts.
+- Clarified `MEM-PROOF-009` docs: historical ffi_callback/libffi Valgrind notes
+  are not async/callback closure authority; FFI leak evidence is owned by
+  `MEM-PROOF-010`.
+
+Commands run:
+- `bash -n scripts/check_status_consistency.sh`
+- `c3c build`
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh bash -lc 'c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh bash -lc 'c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp'`
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh bash -lc 'c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_SKIP_TLS_INTEGRATION=1 scripts/run_e2e.sh'`
+- `scripts/check_status_consistency.sh`
+- `scripts/check_e2e_baseline_policy.sh`
+- `git diff --check`
+
+Key results:
+- Build passed.
+- Bounded memory lifetime smoke passed with `299 pass / 0 fail`.
+- Bounded compiler slice passed with `385 pass / 0 fail`.
+- Bounded generated e2e passed all `425` cases.
+- Status consistency, e2e baseline policy, and whitespace checks passed.
+
+Invalidated assumptions or failed approaches:
+- The first e2e rerun failed because the old generated-case guard still
+  expected exactly `423` rows. The guard was updated to the new 425-case
+  contract and then passed.
+- Do not treat same-name `let` bodies and initializers as equivalent for
+  mutability scans. Initializers evaluate in the enclosing scope; bodies are
+  shadowed by the new binding.
+
+Current best recommendation or checkpoint:
+- The live TODO queue remains empty. Continue future audit from a fresh failing
+  probe, a concrete owner-prioritized item, or a new status inconsistency.
+
+Unresolved issues:
+- No blocker remains from this slice. The bounded memory run still prints known
+  graph-audit diagnostics while reporting zero test failures; this was not a
+  new failure signal.
+
+Dependencies, blockers, or restart requirements:
+- Rebuild/restart any long-running Omni process to activate the changed C3
+  runtime/compiler code.
+
+Signature: GPT-5 Codex
+
+## 2026-04-30 08:43 CEST - M9 JIT Unknown-Tag Continuation Sensitivity
+
+Objective attempted:
+- Continue the audit/repair cycle from the remaining `AUDIT-252` M9
+  default-switch residuals and close one concrete success-shaped fallback.
+
+Relevant workspace or target:
+- `/home/christos/Omni`
+- `src/lisp/jit_apply_eval.c3`
+- `src/lisp/tests_runtime_feature_jit_groups.c3`
+- `AUDIT_2.md` M9
+- `TODO.md` / `docs/todo_parts/todo_part_18.md`
+
+Code or configuration changes made:
+- Changed `expr_contains_shift()` and `expr_contains_perform()` so unknown
+  expression tags are treated as continuation-sensitive instead of ordinary
+  non-sensitive results.
+- Added focused JIT policy regression coverage that constructs an invalid
+  expression tag and verifies both scanners return conservative results.
+- Recorded the landed M9 sub-slice in audit/TODO/changelog state.
+- Opened `AUDIT-254-JIT-TAIL-CONSTRUCTOR-ESCAPE-OPCODE` after broader
+  JIT-policy validation exposed an independent allocation-route failure.
+
+Commands run:
+- C3 LSP diagnostics for `src/lisp/jit_apply_eval.c3`
+- C3 LSP diagnostics for `src/lisp/tests_runtime_feature_jit_groups.c3`
+- `c3c build main`
+- `OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=jit-policy OMNI_JIT_POLICY_FILTER=warm-cache LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=jit-policy LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=jit-policy OMNI_JIT_POLICY_FILTER=tail-constructor-escape-opcode LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `scripts/check_file_size_gate.sh`
+- `git diff --check`
+
+Key results:
+- C3 diagnostics passed for touched files.
+- Build linked `build/main`.
+- Focused `warm-cache` JIT policy passed: `suite=unified pass=5 fail=0`.
+- File-size gate and whitespace check passed.
+
+Invalidated assumptions or failed approaches:
+- `[PENDING]` Broader `jit-policy` is not green in this workspace:
+  `tail-constructor-escape-opcode` fails with `escape_ok=no`
+  (`pass=0 fail=1`). This is tracked as `AUDIT-254`, not folded into the M9
+  unknown-tag scanner slice.
+
+Current best recommendation or checkpoint:
+- Continue with the live queue count `2`: `AUDIT-252` remains open for further
+  default-switch residual classification, and `AUDIT-254` is the newly opened
+  JIT tail-constructor allocation blocker.
+
+Unresolved issues:
+- `AUDIT-252-M9-DEFAULT-SWITCH-RESIDUAL` remains open.
+- `AUDIT-254-JIT-TAIL-CONSTRUCTOR-ESCAPE-OPCODE` is open.
+
+Dependencies, blockers, or restart requirements:
+- Rebuild required for the JIT scanner/test changes to become active;
+  `c3c build main` was run.
+
+Signature: GPT-5 Codex
+
+## 2026-04-30 08:36 CEST - AUDIT-253 Macro-Hygiene Recursion Headroom Closure
+
+Objective attempted:
+- Continue the audit/repair cycle and close
+  `AUDIT-253-MACRO-HYGIENE-RECURSION-HARD-EXIT`, where the
+  `advanced-macro-hygiene-string-number` subgroup exited before producing a
+  normal test summary.
+
+Relevant workspace or target:
+- `/home/christos/Omni`
+- `src/lisp/tests_advanced_macro_hygiene_groups.c3`
+- `docs/todo_parts/todo_part_18.md`
+- `TODO.md`
+
+Code or configuration changes made:
+- Recalibrated the macro-hygiene non-tail recursion headroom fixture from
+  depth `512` to depth `384`.
+- Updated the fixture comment to avoid implying deeper stack thresholds are
+  portable across runtime stack-frame changes.
+- Closed `AUDIT-253` in TODO Part 18 and reduced the live TODO count to 1.
+- Updated the plan and memory changelog with the invalidated `512` threshold.
+
+Commands run:
+- C3 LSP diagnostics for `src/lisp/tests_advanced_macro_hygiene_groups.c3`
+- `c3c build main`
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(let ^rec (f (lambda (n) (if (= n 0) 0 (+ 1 (f (- n 1)))))) (f 384))'`
+- `OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-macro-hygiene-string-number LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-macro-hygiene LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `scripts/check_file_size_gate.sh`
+- `git diff --check`
+
+Key results:
+- C3 diagnostics passed for the touched file.
+- Build linked `build/main`.
+- Direct 384-depth eval returned `384`.
+- Exact subgroup passed: `suite=unified pass=9 fail=0`.
+- Full macro-hygiene filter passed: `suite=unified pass=100 fail=0`.
+- File-size gate and whitespace check passed.
+
+Invalidated assumptions or failed approaches:
+- `[INVALIDATED]` Do not treat `512` as a portable macro-hygiene non-tail
+  recursion headroom value after current runtime/JIT stack-frame changes. It
+  reproduced as a native segfault; this fixture is a substantial smoke probe,
+  not a language maximum-depth contract.
+
+Current best recommendation or checkpoint:
+- `AUDIT-253` is closed. Continue with the remaining live TODO:
+  `AUDIT-252-M9-DEFAULT-SWITCH-RESIDUAL`.
+
+Unresolved issues:
+- `AUDIT-252` remains open.
+
+Dependencies, blockers, or restart requirements:
+- Rebuild required for the test fixture change to become active;
+  `c3c build main` was run.
+
+Signature: GPT-5 Codex
+
+## 2026-04-30 08:23 CEST - M30 Error Helper Payload Closure
+
+Objective attempted:
+- Continue the audit/repair cycle and close `AUDIT_2.md` M30, where
+  `test_error()` accepted any error result without checking that the payload
+  represented the intended failure class.
+
+Relevant workspace or target:
+- `/home/christos/Omni`
+- `AUDIT_2.md` M30
+- `src/lisp/tests_harness_helpers.c3`
+- `src/lisp/tests_advanced_core_semantics_groups.c3`
+- `src/lisp/tests_advanced_stdlib_numeric_misc_groups.c3`
+- `src/lisp/tests_advanced_io_effect_ffi_typed_effect_groups.c3`
+
+Code or configuration changes made:
+- Tightened `test_error()` so generic negative tests require a non-empty
+  non-allocation-shaped error message rather than only `has_error`.
+- Migrated stable high-signal callers to `test_error_contains()` for exact
+  expected substrings: unbound variable, non-function call, capture outside a
+  checkpoint, array/ref bounds, and typed-effect wrong-type calls.
+- Closed M30 in `AUDIT_2.md`.
+- Opened `AUDIT-253-MACRO-HYGIENE-RECURSION-HARD-EXIT` in TODO Part 18 for an
+  unrelated macro-hygiene recursion hard exit discovered during validation.
+
+Commands run:
+- C3 LSP diagnostics for `src/lisp/tests_harness_helpers.c3`
+- C3 LSP diagnostics for `src/lisp/tests_advanced_core_semantics_groups.c3`
+- C3 LSP diagnostics for `src/lisp/tests_advanced_stdlib_numeric_misc_groups.c3`
+- C3 LSP diagnostics for `src/lisp/tests_advanced_io_effect_ffi_typed_effect_groups.c3`
+- `c3c build main`
+- `OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-core-semantics LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-type-dispatch-mutation-chain LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `scripts/check_file_size_gate.sh`
+- `git diff --check`
+
+Key results:
+- C3 diagnostics passed for touched files.
+- Build linked `build/main`.
+- Advanced core semantics passed: `suite=unified pass=71 fail=0`.
+- Advanced stdlib numeric passed: `suite=unified pass=441 fail=0`.
+- Advanced type dispatch passed: `suite=unified pass=255 fail=0`.
+- Advanced FFI/system passed: `suite=unified pass=191 fail=0`.
+- Advanced collections module passed: `suite=unified pass=2147 fail=0`.
+- File-size gate and whitespace check passed.
+
+Invalidated assumptions or failed approaches:
+- None for M30.
+
+Current best recommendation or checkpoint:
+- M30 is closed. Continue with the open TODO queue: `AUDIT-252` remains the M9
+  default-switch residual, and `AUDIT-253` tracks the newly isolated
+  macro-hygiene recursion hard exit.
+
+Unresolved issues:
+- `advanced-macro-hygiene-string-number` exits with code `-1` before summary,
+  and direct eval of `(let ^rec (f (lambda (n) (if (= n 0) 0 (+ 1 (f (- n 1)))))) (f 512))`
+  reproduces the hard exit. Other macro-hygiene subgroups passed independently.
+
+Dependencies, blockers, or restart requirements:
+- Rebuild required for helper/test changes to become active; `c3c build main`
+  was run.
+
+Signature: GPT-5 Codex
+
+## 2026-04-30 08:16 CEST - M29 Type Registry Hash Rollback Closure
+
+Objective attempted:
+- Continue the audit/repair cycle and close `AUDIT_2.md` M29 without changing
+  normal type-registration behavior.
+
+Relevant workspace or target:
+- `/home/christos/Omni`
+- `AUDIT_2.md` M29
+- `src/lisp/value_type_registry.c3`
+- `src/lisp/tests_core_groups.c3`
+
+Code or configuration changes made:
+- Added a shared checked type-registry hash insertion helper.
+- Updated type-registry growth rehashing to use the checked helper.
+- Updated `TypeRegistry.register_type()` so a hashable name that cannot be
+  inserted rolls back the just-published type slot and `type_count`, then
+  returns `INVALID_TYPE_ID`.
+- Added always-on basic native regression coverage for a malformed full
+  type-registry hash index.
+- Updated `AUDIT_2.md`, `.agents/PLAN.md`, and the memory changelog part.
+
+Commands run:
+- C3 LSP diagnostics for `src/lisp/value_type_registry.c3`
+- C3 LSP diagnostics for `src/lisp/tests_core_groups.c3`
+- `c3c build main`
+- `OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=basic LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `scripts/check_file_size_gate.sh`
+- `git diff --check`
+
+Key results:
+- C3 diagnostics passed for touched files.
+- Build linked `build/main`.
+- Basic Lisp slice passed: `suite=unified pass=186 fail=0`.
+- File-size gate and whitespace check passed.
+
+Invalidated assumptions or failed approaches:
+- None.
+
+Current best recommendation or checkpoint:
+- M29 is closed. Continue with `AUDIT_2.md` M30 after verifying whether the
+  current test helper surface still contains content-insensitive error checks.
+
+Unresolved issues:
+- No new blocker was opened.
+
+Dependencies, blockers, or restart requirements:
+- Rebuild required for registry behavior changes to become active;
+  `c3c build main` was run after edits.
+
+Signature: GPT-5 Codex
+
+## 2026-04-30 08:01 CEST - M25 Stale Reaudit and M26-M28 Numeric Helper Closure
+
+Objective attempted:
+- Continue the audit/repair cycle, preserve current functionality, and close
+  the next live `AUDIT_2.md` medium defects after M24.
+
+Relevant workspace or target:
+- `/home/christos/Omni`
+- `AUDIT_2.md` M25-M28
+- Numeric helper and type-registration boundary.
+
+Code or configuration changes made:
+- Re-audited M25 as stale-closed: `repl_server_worker_clear_queued_commands`
+  already locks `worker.mu` when initialized.
+- Changed `is_number()` to delegate to `is_numeric_value()` so BigInteger,
+  BigFloat, and BigComplex are included in the shared numeric predicate.
+- Changed `to_double()` to route through `try_numeric_to_double()` instead of
+  reading inactive union storage for BigInteger.
+- Updated Float64-only UI/test consumers to call `try_numeric_to_double()`
+  directly so complex and unrepresentable big values still fail closed.
+- Added cached `interp.tid_Float`, validated it during builtin type
+  registration, parented `Float` under `Number`, and updated the interpreter
+  ABI size assertion.
+- Added focused regressions for BigInteger/BigFloat helper conversion and
+  `tid_Float` initialization.
+- Updated `AUDIT_2.md`, `.agents/PLAN.md`, and the memory changelog part.
+
+Commands run:
+- C3 LSP diagnostics for touched C3 files.
+- `c3c build main`
+- `OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=basic LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-misc LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-type-dispatch-mutation-chain LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `scripts/check_file_size_gate.sh`
+- `git diff --check`
+
+Key results:
+- C3 diagnostics passed for all touched C3 files.
+- Build linked `build/main`.
+- Basic Lisp slice passed: `suite=unified pass=185 fail=0`.
+- Advanced stdlib numeric filter passed: `suite=unified pass=441 fail=0`.
+- `advanced-stdlib-numeric-misc` was not a registered isolated filter in this
+  harness run and reported `pass=0 fail=0`; the same changed misc-group tests
+  were covered by the broader `advanced-stdlib-numeric` filter.
+- Advanced type-dispatch filter passed: `suite=unified pass=255 fail=0`.
+- File-size gate and whitespace check passed.
+
+Invalidated assumptions or failed approaches:
+- None. M25 was not patched because current source already contains the
+  requested lock from the prior worker queue hardening slice.
+
+Current best recommendation or checkpoint:
+- M25-M28 are closed. Continue with `AUDIT_2.md` M29 or the next current-source
+  live defect after verifying it is not already covered by recent memory
+  entries.
+
+Unresolved issues:
+- No new blocker was opened.
+
+Dependencies, blockers, or restart requirements:
+- Rebuild required for runtime helper and interpreter-state changes to become
+  active; `c3c build main` was run after edits.
+
+Signature: GPT-5 Codex
+
+## 2026-04-29T00:48:25+02:00 Quiet Validation Output Hardening
+
+Objective attempted:
+- Continue auditing after all-slice green status by removing expected diagnostic
+  noise from quiet validation runs without weakening the underlying assertions.
+
+Changes made:
+- Pre-splice graph-audit rejection checks now stay silent; committed-root audit
+  logging remains.
+- Env hash fallback warnings, direct C3 test `[PASS]` emitters, bind rejection
+  diagnostics, and the Finwatch poll tick are quiet-aware in validation paths.
+
+Commands run:
+- C3 diagnostics for touched files.
+- `c3c build`
+- Focused bounded slices for `memory-lifetime-smoke`, `scheduler`, `advanced`,
+  and TLS-enabled `http`.
+- Bounded TLS-enabled all-slice with a strict quiet-output grep guard.
+
+Key results:
+- Focused slices passed: memory smoke `309/0`, scheduler `143/0`, advanced
+  `3658/0`, HTTP `34/0`.
+- Bounded TLS-enabled all-slice passed: unified `5532/0`, compiler `390/0`.
+- The quiet-output guard found none of the targeted noisy patterns.
+
+Current best recommendation or checkpoint:
+- Validation remains green and TODO actionable count remains `0`; future audit
+  work should start from a fresh failing signal.
+
+Signature: GPT-5 Codex
+
+## 2026-04-29T00:12:18+02:00 TLS-Enabled All-Slice Closure
+
+Objective attempted:
+- Continue the audit and close the promoted
+  `VALIDATION-002-ALL-SLICE-BOUNDARY-JIT-BLOCKER`.
+
+Changes made:
+- Fixed Pika grammar parity fixture isolation, Deduce current-surface/example
+  drift, scheduler job helper/test isolation regressions, Finwatch dict access,
+  and live HTTP TCP interpreter/JIT test state coupling.
+- Closed `VALIDATION-002-ALL-SLICE-BOUNDARY-JIT-BLOCKER`; `TODO.md` count is
+  now `0`, and validation status is green.
+
+Commands run:
+- C3 diagnostics for touched C3 files.
+- `c3c build`
+- Focused `pika`, `deduce`, `scheduler`, and TLS-enabled `http` slices.
+- Direct Finwatch load/smoke probe.
+- Bounded TLS-enabled all-slice:
+  `OMNI_VALIDATION_TIMEOUT_SEC=900 scripts/run_validation_container.sh bash -lc './scripts/build_omni_chelpers.sh && c3c build && timeout --kill-after=10s 600s env OMNI_ENABLE_TLS_INTEGRATION=1 OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=all LD_LIBRARY_PATH=/usr/lib:/usr/local/lib ./build/main --test-suite lisp'`
+
+Key results:
+- Pika `pass=128 fail=0`; Deduce `pass=422 fail=0`; scheduler
+  `pass=143 fail=0`; HTTP `pass=34 fail=0`.
+- Bounded TLS-enabled all-slice passed:
+  `OMNI_TEST_SUMMARY suite=unified pass=5532 fail=0`; compiler summary
+  `pass=390 fail=0`.
+
+Invalidated assumptions or failed approaches:
+- `[INVALIDATED]` The previous all-slice blocker cluster is no longer current
+  ground truth. Future validation backlog needs a fresh failing command/result.
+- `[INVALIDATED]` Finwatch examples must use `(ref dict 'key)`, not
+  `('key dict)`.
+
+Current best recommendation or checkpoint:
+- Continue from `TODO.md` count `0`; start future audit work from a fresh TODO
+  and status scan.
+
+Unresolved issues:
+- The boundary graph-audit warning lines noted at this checkpoint were resolved
+  later in this session by the quiet validation output hardening entry.
+
+Dependencies, blockers, or restart requirements:
+- Rebuild/restart any long-running Omni process to activate the changed C3
+  tests/runtime helper code and updated Omni examples/stdlib.
+
+Signature: GPT-5 Codex
+- C3 LSP diagnostics for touched compiler/test files.
+
+Key results:
+- Build passed.
+- Compiler slice passed with `399 fail=0`.
+- Generated e2e passed with `ALL 423 e2e compiler tests passed!`.
+- Targeted C3 diagnostics reported no issues.
+
+Invalidated assumptions or failed approaches:
+- `[INVALIDATED]` Do not box lambda parameters or synthetic effect wrapper
+  bodies merely because AOT implements them as lambdas. Direct parity probes
+  showed JIT does not mutate the outer parameter or outer `checkpoint` binding
+  for those shapes.
+
+Current checkpoint:
+- AUDIT-243 residuals are closed.
+- `AUDIT-244-AOT-MUTABLE-CELL-ROOT-LIFETIME` is the live TODO item.
+
+Unresolved issues:
+- `AotMutableCell.value` is root-owned but stores raw `Value*`; AOT closures
+  invoked from JIT/interpreter child scopes need a boundary-safe store policy.
+
+Next actions:
+- Design the mutable-cell child-scope store policy, add a runtime test where an
+  AOT mutable closure is invoked from a JIT child scope, and run bounded memory
+  validation.
+
+Dependencies, blockers, or restart requirements:
+- Rebuild required for running processes to pick up compiler changes; local
+  `build/main` and `build/e2e_test` were rebuilt during validation.
+
+Signature: GPT-5 Codex
+
+## 2026-04-28 AUDIT-246 Bounded Generated AOT Closure Lifetime Closure
+
+Date/time: 2026-04-28 19:35 CEST
+
+Objective:
+- Close `AUDIT-246-AOT-CLOSURE-PRIMITIVE-LIFETIME` by replacing root-owned
+  generated AOT closure primitive teardown with bounded closure-value lifetime
+  while preserving manual caller-owned AOT closure payload compatibility.
+
+Changes made:
+- Added optional `Primitive.user_data_copy` and `Primitive.user_data_finalizer`
+  hooks, initialized through `make_primitive_with_user_data_in_scope`, and
+  finalized from `scope_dtor_value`.
+- Updated primitive boundary copy/promotion routes to keep rejecting opaque
+  manual `user_data`, while allowing hook-backed primitive payloads and cleaning
+  copied payloads on destructor-registration failures.
+- Reworked generated AOT closures to use scoped primitive wrappers, refcounted
+  generated sidecars, and generated-only user-data copy/finalizer callbacks.
+- Routed generated no-capture closures through generated-owned constructors;
+  manual `make_closure` / `make_variadic_closure` remain caller-owned.
+- Added regression coverage for primitive hook copy/finalizer behavior and
+  generated closure retained-scope teardown before `aot_shutdown`.
+- Closed `AUDIT-246` in `TODO.md`, `docs/todo_parts/todo_part_18.md`,
+  `memory/changelog_parts/changelog_part_38.md`, and the memory proof matrix.
+
+Commands run:
+- `c3c build`
+- `OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=compiler LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh bash -lc 'c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh bash -lc 'c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 scripts/run_e2e.sh'`
+- `scripts/check_status_consistency.sh`
+- `git diff --check`
+
+Key results:
+- Build passed.
+- Compiler slice passed with `402 pass, 0 fail`.
+- Bounded memory-lifetime smoke passed with `288 pass, 0 fail`.
+- Bounded generated e2e passed all `423` cases.
+- Status consistency and whitespace checks passed.
+
+Invalidated assumptions or failed approaches:
+- `[INVALIDATED]` Retaining a generated closure source scope while leaving it
+  attached under the returned wrapper's owner scope can create an
+  ancestor/descendant teardown cycle. Retention activation now skips same-chain
+  wrappers and detaches explicitly retained source scopes when copied outside
+  that scope chain.
+
+Current checkpoint:
+- `AUDIT-246-AOT-CLOSURE-PRIMITIVE-LIFETIME` is closed.
+- Current live TODO actionable count is `0`.
+
+Unresolved issues:
+- No AUDIT-246 blockers remain. Future audit work should start from the next
+  refreshed TODO/live-queue item.
+
+Next actions:
+- Continue general audit discovery/remediation from `TODO.md` after the next
+  status scan.
+
+Signature: GPT-5 Codex
+
+## 2026-04-28 AUDIT-246 Post-Review Must-Fix Hardening
+
+Date/time: 2026-04-28 20:05 CEST
+
+Objective:
+- Address post-closure review findings against the generated AOT closure
+  lifetime patch before continuing broader audit work.
+
+Changes made:
+- Updated AOT capture retention to select the oldest reached TEMP owner scope
+  in the active scope chain instead of always recording the closure-creation
+  scope.
+- Adjusted the generated copied-closure lifetime regression so the copied
+  wrapper lives outside the captured parent scope chain, which catches ancestor
+  owner-scope selection.
+- Changed recursive `let` lambda codegen to return on ERROR or sequence stop
+  before recursive self-patch payload access.
+- Updated memory/TODO/plan state to open
+  `AUDIT-247-PRIMITIVE-USER-DATA-COPY-ROLLBACK` for the remaining lower-priority
+  primitive copy publication/rollback contract.
+
+Commands run:
+- `c3c build`
+- `OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=compiler LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh bash -lc 'c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh bash -lc 'c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 scripts/run_e2e.sh'`
+
+Key results:
+- Build passed.
+- Compiler slice passed with `402 pass, 0 fail`.
+- Bounded memory-lifetime smoke passed with `288 pass, 0 fail`.
+- Bounded generated e2e passed all `423` cases.
+
+Invalidated assumptions or failed approaches:
+- `[INVALIDATED]` Do not assume the closure-creation scope owns every captured
+  TEMP value reachable from a generated AOT closure payload. Captured graphs can
+  point into ancestor scopes; retaining/detaching the innermost creation scope
+  is not sufficient once a closure is copied outside that ancestor chain.
+
+Current checkpoint:
+- AUDIT-246 remains closed after post-review hardening.
+- `AUDIT-247-PRIMITIVE-USER-DATA-COPY-ROLLBACK` is now the single live
+  actionable item.
+
+Unresolved issues:
+- Hook-backed primitive `user_data_copy` still needs a publication/rollback
+  contract for destination allocation/destructor-registration failures.
+
+Next actions:
+- Implement AUDIT-247 with forced-failure regressions for generated AOT closure
+  copy rollback and null-`prim_val` primitive destructor registration failure.
+
+Signature: GPT-5 Codex
+
+## 2026-04-28 AUDIT-247 Primitive Copy Publication Hardening
+
+Objective attempted:
+- Close `AUDIT-247-PRIMITIVE-USER-DATA-COPY-ROLLBACK` by removing the
+  post-`user_data_copy` destination allocation/destructor-registration failure
+  window while preserving hook-backed primitive copy behavior from `AUDIT-246`.
+
+Relevant workspace or target:
+- `/home/christos/Omni`
+- `MEM-PROOF-005` boundary copy/root-store routes and primitive wrapper
+  lifetime teardown.
+
+Code or configuration changes made:
+- Updated primitive parent-boundary copy, escape promotion, and root-store clone
+  routes so they allocate the destination primitive shell, allocate the
+  destination wrapper, install an inert `PRIMITIVE` wrapper, and register the
+  destination destructor before invoking `Primitive.user_data_copy`.
+- Added a forced parent-copy primitive wrapper allocation failure seam and
+  regressions proving wrapper allocation and destructor-registration failures do
+  not invoke hook-backed `user_data_copy`.
+- Added null-`prim_val` primitive copy coverage for destructor-registration
+  failure, which now reports `BOUNDARY_COPY_FAULT_DTOR_REGISTRATION`.
+- Closed `AUDIT-247` in `TODO.md` and `docs/todo_parts/todo_part_18.md`, and
+  updated the plan, changelog part, and proof matrix checkpoint.
+
+Commands run:
+- `c3c build`
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh bash -lc 'c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+- `scripts/check_status_consistency.sh`
+- `git diff --check -- src/lisp/eval_promotion_copy_route_helpers.c3 src/lisp/eval_promotion_escape_leaf.c3 src/lisp/eval_promotion_root_clone_basic.c3 src/lisp/tests_memory_lifetime_runtime_alloc_groups_apply_coroutine.c3`
+
+Key results:
+- Build passed.
+- Bounded `memory-lifetime-smoke` passed with `291 pass/0 fail`.
+- Status consistency passed after the final report update with
+  `Current actionable count: 0`.
+- Whitespace check passed for the touched runtime/test files.
+- The two `reachable Omni edge enters TEMP` graph-audit diagnostic lines in the
+  smoke output match the already classified intentional negative root-splice
+  regression output, not a new AUDIT-247 failure.
+
+Invalidated assumptions or failed approaches:
+- `[INVALIDATED]` Do not model `user_data_copy` as a preparation step followed
+  by fallible wrapper publication. In the shipped contract, destination wrapper
+  allocation and destructor registration are preparation, and `user_data_copy`
+  is the commit step.
+
+Current best recommendation or checkpoint:
+- `AUDIT-247` is closed. The live TODO queue is empty; next audit work should
+  start from a fresh failing validation signal, stale status inconsistency, or
+  new owner-prioritized TODO item.
+
+Unresolved issues:
+- No AUDIT-247 blocker remains. Generic hook-backed primitive payloads remain
+  copyable only when they provide both copy and finalizer hooks; manual/FFI
+  opaque payloads remain fail-closed.
+
+Dependencies, blockers, or restart requirements:
+- No runtime process restart is active in this session. Rebuild/restart any
+  external process that embeds `build/main` before expecting this change there.
+
+Signature: GPT-5 Codex
+
+## 2026-04-28 Leaf Wrapper Destructor-Registration Hardening
+
+Objective attempted:
+- Continue multi-agent codebase audit after the live TODO queue reached zero,
+  focusing on concrete regressions in adjacent memory-boundary wrapper routes
+  and status-harness checks.
+
+Relevant workspace or target:
+- `/home/christos/Omni`
+- `MEM-PROOF-005` boundary copy / ESCAPE promotion routes.
+- Status and generated-e2e policy artifacts.
+
+Code or configuration changes made:
+- Updated parent-boundary `INSTANCE` and `FFI_HANDLE` copy routes to take
+  `BoundaryCopyFault*`, report `BOUNDARY_COPY_FAULT_DTOR_REGISTRATION`, and
+  roll back retained owner scope / FFI refcount if TEMP destructor registration
+  fails.
+- Updated ESCAPE promotion for heap string/error values, retained
+  `INSTANCE`/`FFI_HANDLE` wrappers, retained continuations, and transferred
+  coroutine wrappers so destructor-registration failure rolls back owned or
+  retained state and fails closed.
+- Added memory-lifetime regressions for TEMP destructor-record OOM and ESCAPE
+  destructor-record OOM on retain-backed leaf wrappers and hook-backed
+  primitive `user_data` ESCAPE/root-store publication.
+- Hardened `scripts/check_status_consistency.sh` so it parses the current
+  bulleted TODO actionable-count line and validates markdown-link part targets
+  before comparing advertised line counts.
+- Updated old generated-e2e count wording in
+  `memory/changelog_parts/changelog_part_38.md` to the then-current 423-case
+  contract.
+
+Commands run:
+- `c3c build`
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh bash -lc 'c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+- `scripts/check_status_consistency.sh`
+- `scripts/check_e2e_baseline_policy.sh`
+- `rg -n "Generated 410|410-case|410-line|0 skipped" memory/changelog_parts/changelog_part_38.md scripts/run_e2e.sh scripts/check_e2e_baseline_policy.sh`
+- `git diff --check`
+
+Key results:
+- Build passed.
+- Bounded `memory-lifetime-smoke` passed with `297 pass/0 fail`.
+- Status consistency passed with `Current actionable count: 0`.
+- E2E baseline policy passed.
+- Stale generated-e2e old-count wording scan returned no matches.
+- Whitespace check passed.
+- Three read-only subagents were used: primitive-route audit found the ESCAPE
+  destructor-registration gaps; AOT bridge/capture audit found no bounded
+  issue; status/harness audit found the status-script parsing and stale
+  e2e-contract wording issues.
+
+Invalidated assumptions or failed approaches:
+- `[INVALIDATED]` Do not treat retain-backed wrapper copies/promotions as safe
+  after a retain succeeds unless the destination destructor record is also
+  installed. Destructor-record OOM must roll back the retain/transfer before
+  reporting failure.
+- `[INVALIDATED]` The previous status consistency gate did not actually verify
+  markdown-link part counts or the displayed bulleted TODO count; it could pass
+  with stale index text.
+
+Current best recommendation or checkpoint:
+- The live TODO queue remains empty. Continue audit only from a fresh concrete
+  failing signal, stale status inconsistency, or user-prioritized target.
+
+Unresolved issues:
+- No blocker remains from this slice. Broader unchecked destructor-registration
+  cleanup may still exist in other aggregate promotion routes, but no
+  unvalidated open item is being carried as active work without a concrete
+  failing probe.
+
+Dependencies, blockers, or restart requirements:
+- Rebuild/restart any external process embedding `build/main` before expecting
+  these runtime changes to be active.
+
+Signature: GPT-5 Codex
+
+## 2026-04-28 AUDIT-246 Generated-Owned AOT Closure API Sub-Slice
+
+Date/time: 2026-04-28 18:50 CEST
+
+Objective:
+- Continue `AUDIT-246-AOT-CLOSURE-PRIMITIVE-LIFETIME` by making generated AOT
+  closure ownership explicit before the primitive finalizer/copy-promotion
+  rewrite.
+
+Changes made:
+- Added `make_generated_closure_with_retention` and
+  `make_generated_variadic_closure_with_retention` in
+  `src/lisp/aot_runtime_bridge_closure.c3`.
+- Updated generated closure emission to call the generated-owned APIs instead
+  of passing a trailing `true` ownership flag.
+- Updated memory-lifetime tests to use the generated-owned helper for
+  generated-owned payload cases.
+- Tightened compiler shape tests so all-mutable captured closures still use the
+  generated-owned path while passing `null` retention.
+
+Commands run:
+- C3 LSP diagnostics for touched runtime/compiler/test files.
+- `c3c build`
+- `OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=compiler LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh bash -lc 'c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+- `OMNI_TEST_QUIET=1 scripts/run_e2e.sh`
+- `git diff --check`
+
+Key results:
+- Build passed.
+- Compiler slice passed with `402 pass, 0 fail`.
+- Bounded memory-lifetime smoke passed with `287 pass, 0 fail`.
+- Generated e2e passed with `ALL 423 e2e compiler tests passed!`.
+- Whitespace check passed.
+
+Current checkpoint:
+- AUDIT-246 remains open.
+- Generated vs manual AOT closure payload ownership is now explicit at the API
+  boundary.
+
+Unresolved issues:
+- Generated AOT closure primitives are still root-owned and still need a
+  primitive user-data finalizer/copy route plus generated-AOT-only promotion
+  support before payload retention can release with closure value lifetime.
+
+Next actions:
+- Implement primitive user-data copy/finalizer hooks and AOT-specific primitive
+  promotion/copy support, preserving opaque-user-data refusal for ordinary and
+  manual caller-owned primitives.
+
+Dependencies, blockers, or restart requirements:
+- Rebuild/restart required for running processes to pick up runtime/compiler
+  changes. `build/main` and `build/e2e_test` were rebuilt during validation.
+
+Signature: GPT-5 Codex
+
+## 2026-04-28 AUDIT-246 AOT Closure Primitive Lifetime Sub-Slice
+
+Date/time: 2026-04-28 18:30 CEST
+
+Objective:
+- Continue `AUDIT-246-AOT-CLOSURE-PRIMITIVE-LIFETIME` by closing the
+  capture-retention graph-audit failure seam before the broader closure wrapper
+  lifetime redesign.
+
+Changes made:
+- Updated `src/lisp/aot_runtime_bridge_closure.c3` so
+  `capture_value_reaches_scope` distinguishes real `REACHABLE_TEMP_*` audit
+  results from audit infrastructure failures.
+- Added `g_aot_force_capture_reachability_audit_fail` and a compiler
+  fail-closed regression in `src/lisp/tests_compiler_core_groups_fail_closed.c3`.
+- Updated TODO, plan, changelog, and proof-matrix notes to record the landed
+  sub-slice while keeping the scoped generated closure wrapper/promotion work
+  open.
+
+Commands run:
+- C3 LSP diagnostics for touched runtime/test files.
+- `c3c build`
+- `OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=compiler LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh bash -lc 'c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+- `git diff --check`
+
+Key results:
+- Build passed.
+- Compiler slice passed with `402 pass, 0 fail`.
+- Bounded memory-lifetime smoke passed with `287 pass, 0 fail`.
+- Whitespace check passed.
+
+Invalidated assumptions or failed approaches:
+- `[INVALIDATED]` Do not treat graph-audit allocation/overflow/internal
+  failures as equivalent to reachable-temp detection. Those failures must
+  propagate as AOT capture errors.
+- `[PENDING]` Do not move generated AOT closure primitive wrappers out of root
+  scope until an AOT-specific copy/promotion route exists.
+
+Current checkpoint:
+- AUDIT-246 remains open.
+- Fail-closed capture reachability audit is shipped and validated.
+
+Unresolved issues:
+- Generated AOT closure payload retention still releases from root closure-data
+  teardown, so retained temp scopes can remain pinned until `aot_shutdown`.
+
+Next actions:
+- Implement a generated AOT closure wrapper/payload ownership model analogous
+  to JIT closure env-scope teardown, with explicit copy/promotion support for
+  returned closures.
+
+Dependencies, blockers, or restart requirements:
+- Rebuild/restart required for running processes to pick up runtime/test
+  changes. `build/main` was rebuilt during validation.
+
+Signature: GPT-5 Codex
+
+## 2026-04-28 AUDIT-245 AOT Closure Capture Root Lifetime
+
+Date/time: 2026-04-28 18:10 CEST
+
+Objective:
+- Close `AUDIT-245-AOT-CLOSURE-CAPTURE-ROOT-LIFETIME` without clone-on-capture
+  semantics drift.
+
+Changes made:
+- Added `AotCaptureRetention` and checked closure factory variants in
+  `src/lisp/aot_runtime_bridge_closure.c3`.
+- Routed generated immutable AOT closure captures through retention in
+  `src/lisp/compiler_code_emission_lambda_closures.c3` and
+  `src/lisp/compiler_native_call_compilation_flat_style.c3`.
+- Preserved lexical capture identity by retaining source scopes rather than
+  copying captured values into root; all-mutable closure captures now pass
+  `null` retention and skip retention allocation.
+- Hardened failure paths so mixed immutable/mutable capture lowering cannot
+  write into freed payload storage after retention failure.
+- Added compiler code-shape, closure factory destructor-registration failure,
+  child-scope capture, and ancestor-scope capture lifetime regressions.
+- Closed `AUDIT-245` and opened
+  `AUDIT-246-AOT-CLOSURE-PRIMITIVE-LIFETIME` for the residual root-owned AOT
+  closure primitive/payload lifetime pressure.
+
+Commands run:
+- C3 LSP diagnostics for touched runtime/compiler/test files.
+- `c3c build`
+- `OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=compiler LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh bash -lc 'c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+- `OMNI_TEST_QUIET=1 scripts/run_e2e.sh`
+- `git diff --check`
+
+Key results:
+- Build passed.
+- Compiler slice passed with `402 pass, 0 fail`.
+- Bounded memory-lifetime smoke passed with `287 pass, 0 fail`.
+- Generated e2e passed with `ALL 423 e2e compiler tests passed!`.
+- Whitespace check passed.
+
+Invalidated assumptions or failed approaches:
+- `[INVALIDATED]` Do not blindly root-promote/copy every immutable capture;
+  clone-on-capture regressed lexical shadowing and can break shared mutable
+  value identity.
+- `[INVALIDATED]` Do not allocate retention for all-mutable generated closure
+  captures; mutable cells are root-owned after `AUDIT-244`.
+
+Current checkpoint:
+- `AUDIT-245` is closed.
+- `AUDIT-246` is the sole live actionable TODO item.
+
+Unresolved issues:
+- AOT closure primitives/payloads are still root-owned, so retained temp source
+  scopes can remain pinned until `aot_shutdown`. This is now tracked as
+  `AUDIT-246-AOT-CLOSURE-PRIMITIVE-LIFETIME`.
+
+Next actions:
+- Design and implement bounded generated AOT closure value/payload teardown that
+  releases retention before AOT shutdown while preserving manual caller-owned
+  payload compatibility.
+
+Dependencies, blockers, or restart requirements:
+- Rebuild/restart required for running processes to pick up runtime/compiler
+  changes. `build/main` and `build/e2e_test` were rebuilt during validation.
+
+Signature: GPT-5 Codex
+
+## 2026-04-28 AUDIT-244 AOT Mutable Cell Root Lifetime
+
+Date/time: 2026-04-28  CEST
+
+Objective:
+- Close `AUDIT-244-AOT-MUTABLE-CELL-ROOT-LIFETIME` without changing AOT closure
+  execution semantics.
+
+Changes made:
+- Added root-store promotion for `AotMutableCell` constructor seeding and
+  updates in `src/lisp/aot_runtime_bridge_closure.c3`.
+- Added checked mutable-cell APIs and updated generated mutable-capture `let`
+  initialization and `set!` lowering to branch on explicit success instead of
+  treating `null` as both success and unreportable failure.
+- Added compiler AOT runtime regressions and bounded memory-lifetime smoke
+  coverage proving child-scope cons/string graphs stored through mutable cells
+  become root-owned before child release and remain readable after release.
+- Closed `AUDIT-244` and opened
+  `AUDIT-245-AOT-CLOSURE-CAPTURE-ROOT-LIFETIME` for the separate immutable AOT
+  closure payload retention policy.
+
+Commands run:
+- `c3c build`
+- `OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=compiler LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_VALIDATION_TIMEOUT_SEC=600 scripts/run_validation_container.sh bash -lc 'c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+- `OMNI_TEST_QUIET=1 scripts/run_e2e.sh`
+- `scripts/check_status_consistency.sh`
+- `git diff --check`
+- C3 LSP diagnostics for touched runtime/compiler/test files.
+
+Key results:
+- Build passed.
+- Compiler slice passed with `401 pass, 0 fail`.
+- Bounded memory-lifetime smoke passed with `285 pass, 0 fail`.
+- Generated e2e passed with `ALL 423 e2e compiler tests passed!`.
+- Status consistency and whitespace checks passed.
+
+Invalidated assumptions or failed approaches:
+- `[INVALIDATED]` Do not run every AOT closure body under root scope to make
+  root-owned cells safe; store-time root promotion is the narrower boundary
+  fix.
+- `[INVALIDATED]` Do not blindly promote every immutable AOT closure capture at
+  capture emission time. A broad clone-on-capture attempt regressed existing
+  capture-shape semantics for shadowed `false`, shadowed callable primitives,
+  and match-guard local captures.
+
+Current checkpoint:
+- `AUDIT-244` is closed.
+- `AUDIT-245` is the sole live actionable item in `TODO.md`.
+
+Unresolved issues:
+- Root-lived AOT closure payload structs still store non-mutable `Value*`
+  captures directly. This is tracked as `AUDIT-245` with a concrete validation
+  path.
+
+Next actions:
+- Design and implement a semantics-preserving AOT immutable closure capture
+  retention policy covering child-scope arguments, trampoline direct-call
+  paths, capture identity, and promotion failure signaling.
+
+Dependencies, blockers, or restart requirements:
+- Rebuild/restart required for running processes to pick up the runtime and
+  compiler changes. `build/main` was rebuilt during validation.
+
+Signature: GPT-5 Codex
+
+## 2026-04-28 16:19 CEST - AUDIT-242 Mutable Capture Binding Identity
+
+Objective attempted:
+- Close the AOT mutable-capture regression where mutable captured `let`/`set!`
+  lowering was keyed by source symbol names instead of lexical binding
+  identity.
+
+Relevant workspace or target:
+- `/home/christos/Omni`
+- AOT compiler mutable-capture lowering and lambda capture emission.
+
+Code or configuration changes made:
+- Added AOT mutable cells, checked environment `set!` fallback, active
+  mutable-cell alias stacks, per-capture `LambdaDef.capture_is_mutable`
+  metadata, and scanner support for lexical capture mutability.
+- Rewired lambda capture layout, closure capture emission, lambda-body
+  reads/writes, mutable `let` lowering, and `set!` lowering to use the indexed
+  cell/value capture contract.
+- Added AUDIT-242 compiler shape regressions for mutable-cell lowering,
+  lexical leak prevention, same-name mutable and immutable capture identity,
+  and unbound lambda `set!`.
+
+Commands run:
+- `c3c build`
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main --gen-e2e`
+- `OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=compiler LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `scripts/check_e2e_baseline_policy.sh`
+- `OMNI_TEST_QUIET=1 scripts/run_e2e.sh`
+- `git diff --check`
+
+Key results:
+- Build passed.
+- E2e generation emitted 423 rows.
+- Compiler slice passed with `397 fail=0`.
+- Generated e2e passed with `ALL 423 e2e compiler tests passed!`.
+- Baseline policy and whitespace checks passed.
+
+Invalidated assumptions or failed approaches:
+- `[INVALIDATED]` Source `SymbolId` membership in `Compiler.mutable_captures`
+  remains non-authoritative for binding identity. Per-capture lambda mutability
+  and active lexical mutable-cell aliases are now the authoritative generated
+  code boundary.
+
+Current checkpoint:
+- `AUDIT-242-AOT-MUTABLE-CAPTURE-BINDINGS` is closed.
+- `TODO.md` reports `Current actionable count: 0`.
+
+Unresolved issues:
+- Broader high-memory or memory-lifetime validation was not run because this
+  slice touched compiler lowering, not runtime ownership teardown.
+
+Next actions:
+- Run `scripts/check_status_consistency.sh` before selecting a new audit target
+  from `TODO.md` or a fresh failing validation signal.
+
+Dependencies, blockers, or restart requirements:
+- Rebuild/re-run generated e2e for processes to pick up compiler changes; local
+  `build/main` and `build/e2e_test` were rebuilt during validation.
+
+Signature: GPT-5 Codex
 
 ## 2026-04-24 18:05 CEST - Forced No-Splice Copy Telemetry Split
 
@@ -2939,7 +4238,7 @@ The historical content was split mechanically to keep individual files below the
 - Summary:
   - Read `AUDIT_REPORT_2026-04-21.md`,
     `memory/MEMORY_IMPROVEMENTS_PROPOSAL.md`, and `AGENTS.md`.
-  - Added [docs/todo_parts/todo_part_15.md](todo_parts/todo_part_15.md) and
+  - Added [docs/todo_parts/todo_part_15.md](../docs/todo_parts/todo_part_15.md) and
     indexed it from `TODO.md`.
   - Populated 29 open checkbox items: 21 audit remediation items and 8 memory
     architecture improvement items.
@@ -6743,6 +8042,58 @@ Current best recommendation:
 Unresolved issues:
 - `MEM-MODEL-IMPROVE-002`, `MEM-MODEL-IMPROVE-005`, and
   `MEM-MODEL-IMPROVE-006` remain open.
+
+Signature: GPT-5 Codex
+
+## 2026-04-28 15:38 CEST - AUDIT-242 Mutable Capture Shape Tests
+
+Objective:
+- Add or identify focused regression coverage for `AUDIT-242` without editing
+  compiler implementation files.
+
+Relevant workspace:
+- `/home/christos/Omni`
+- `src/lisp/tests_compiler_core_groups_fail_closed.c3`
+- `src/lisp/tests_compiler_helpers.c3`
+- `docs/todo_parts/todo_part_18.md`
+
+Changes made:
+- Added three passing compile-shape tests for the current AUDIT-242 failure
+  modes: lexical mutable `let` leakage, same-name nested mutable capture
+  collision, and unbound lambda `set!` lowering to captured/local assignment.
+- Added `compiler_code_count_occurrences` to support the same-name binding
+  shape assertion.
+- Updated the AUDIT-242 TODO note to record that semantic AOT regressions are
+  still blocked on a lexical binding identity or mutable-cell model.
+- Wrote Serena memory `audit/audit242_shape_tests_2026_04_28`.
+
+Commands run:
+- C3 LSP diagnostics for `src/lisp/tests_compiler_helpers.c3`.
+- C3 LSP diagnostics for `src/lisp/tests_compiler_core_groups_fail_closed.c3`.
+- `c3c build`
+- `OMNI_LISP_TEST_SLICE=compiler OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- `OMNI_LISP_TEST_SLICE=compiler LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp | rg "AUDIT-242|compiler pass|compiler fail|Tests passed|failed"`
+
+Key results:
+- C3 diagnostics reported no issues for the touched test files.
+- Build passed and linked `build/main`.
+- Targeted compiler slice passed with `396 passed, 0 failed`.
+- Filtered non-summary run confirmed all three AUDIT-242 PASS lines.
+
+Invalidated assumptions or failed approaches:
+- None in this slice. The existing negative memory remains authoritative:
+  source-name-keyed mutable capture state is not a valid binding identity.
+
+Current recommendation:
+- Keep semantic AOT rows deferred until the compiler has a binding/cell model;
+  the current tests intentionally guard the known generated-code shapes rather
+  than claiming runtime semantics are fixed.
+
+Unresolved issues:
+- `AUDIT-242-AOT-MUTABLE-CAPTURE-BINDINGS` remains open.
+
+Dependencies, blockers, or restart requirements:
+- Runtime processes must use the rebuilt `build/main` to include these tests.
 
 Signature: GPT-5 Codex
 

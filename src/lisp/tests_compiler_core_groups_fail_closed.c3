@@ -1,6 +1,7 @@
 module lisp;
 
 import std::collections::list;
+import std::core::mem;
 import std::io;
 import main;
 import lisp::aot;
@@ -175,12 +176,159 @@ fn void run_compiler_group_allocation_failure_seam_tests(Interp* interp, usz* pa
     }
 
     {
+        Compiler compiler;
+        compiler.init(interp);
+        Value malformed_literal = {};
+        malformed_literal.tag = FFI_HANDLE;
+        compiler.compile_literal(&malformed_literal);
+        bool ok = compiler.has_error &&
+            str_contains(compiler.error_message, "runtime object literal value");
+        compiler.free();
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: runtime object native literal lowering fails closed"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: runtime object native literal lowering fails closed"); }
+    }
+
+    {
         char[] code = compile_to_c3("(let (x 1) (block (define f (lambda () x)) (set! x 2) (f)))", interp);
-        bool ok = str_contains(code, " = aot::define_var(\"x\", ")
-            && str_contains(code, "if (_r")
-            && str_contains(code, " != null) {");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: mutable-capture AOT define_var result is observed"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: mutable-capture AOT define_var result is observed"); }
+        bool ok = compiler_code_contains_all(code, {
+            "aot::make_mutable_cell_checked(",
+            "aot::mutable_cell_set_checked(",
+            "aot::mutable_cell_get(",
+            "aot::AotCaptureRetention* _closure_retention_",
+            " = null;",
+            "aot::make_generated_closure_with_retention("
+        }) && !str_contains(code, "aot::define_var(\"x\"")
+            && !str_contains(code, ", true)");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: mutable-capture AOT cell path is observed"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: mutable-capture AOT cell path is observed"); }
+    }
+
+    {
+        char[] code = compile_to_c3(
+            "(let (x 1) "
+            "  (let (y 2) "
+            "    (lambda () (block x (set! y 3) y))))",
+            interp
+        );
+        bool ok = str_contains(code, "aot::capture_retention_retain_value(")
+            && str_contains(code, "if (_closure_capture_ok_")
+            && str_contains(code, ".captured_y")
+            && str_contains(code, "aot::mutable_cell_set_checked(")
+            && !str_contains(code, "unsupported");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: mixed closure captures guard mutable writes after retention failure"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: mixed closure captures guard mutable writes after retention failure"); }
+    }
+
+    {
+        char[] code = compile_to_c3(
+            "(block "
+            "  (let (audit242_leak 1) "
+            "    (let (f (lambda () (block (set! audit242_leak 2) audit242_leak))) "
+            "      (f))) "
+            "  audit242_leak)",
+            interp
+        );
+        bool ok = compiler_code_contains_all(code, {
+            "aot::make_mutable_cell_checked(",
+            "aot::mutable_cell_set_checked(",
+            "aot::mutable_cell_get("
+        }) && compiler_code_contains_none(code, {
+            "aot::define_var(\"audit242_leak\"",
+            "aot::set_var(\"audit242_leak\"",
+            "captured_audit242_leak = aot::lookup_var(\"audit242_leak\")"
+        });
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: AUDIT-242 lexical mutable let leak uses cells"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: AUDIT-242 lexical mutable let leak uses cells"); }
+    }
+
+    {
+        char[] code = compile_to_c3(
+            "(let (audit242_shadow 10) "
+            "  (block "
+            "    (let (audit242_shadow 1) "
+            "      (let (f (lambda () (block (set! audit242_shadow 2) audit242_shadow))) "
+            "        (f))) "
+            "    audit242_shadow))",
+            interp
+        );
+        bool ok = compiler_code_count_occurrences(code, "aot::make_mutable_cell_checked(") >= 1
+            && str_contains(code, "aot::mutable_cell_set_checked(")
+            && !str_contains(code, "aot::define_var(\"audit242_shadow\"")
+            && !str_contains(code, "aot::set_var(\"audit242_shadow\"");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: AUDIT-242 same-name mutable capture uses cell identity"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: AUDIT-242 same-name mutable capture uses cell identity"); }
+    }
+
+    {
+        char[] code = compile_to_c3(
+            "(block "
+            "  (let (audit242_mix 1) "
+            "    (let (f (lambda () (block (set! audit242_mix 2) audit242_mix))) "
+            "      (f))) "
+            "  (let (audit242_mix 10) "
+            "    (lambda () audit242_mix)))",
+            interp
+        );
+        bool ok = str_contains(code, "aot::make_mutable_cell_checked(")
+            && str_contains(code, "aot::AotMutableCell* captured_audit242_mix")
+            && str_contains(code, "lisp::Value* captured_audit242_mix")
+            && compiler_code_contains_none(code, {"unsupported expr type", "aot::lookup_var(\"audit242_mix\""});
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: AUDIT-242 same-name immutable capture remains value capture"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: AUDIT-242 same-name immutable capture remains value capture"); }
+    }
+
+    {
+        char[] code = compile_to_c3("(lambda () (set! audit242_unbound 1))", interp);
+        bool ok = str_contains(code, "aot::set_var_result(\"audit242_unbound\"")
+            && !str_contains(code, "captured_audit242_unbound")
+            && !str_contains(code, "audit242_unbound = _r");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: AUDIT-242 unbound lambda set! fails closed through env set"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: AUDIT-242 unbound lambda set! fails closed through env set"); }
+    }
+
+    {
+        char[] code = compile_to_c3(
+            "(let ^rec (audit243_rec "
+            "  (lambda (n) "
+            "    (if (= n 0) "
+            "        0 "
+            "        (block "
+            "          (set! audit243_rec (lambda (m) 99)) "
+            "          (audit243_rec 0))))) "
+            "  (audit243_rec 1))",
+            interp
+        );
+        bool ok = str_contains(code, "aot::make_mutable_cell_checked(aot::make_nil()")
+            && str_contains(code, "aot::AotMutableCell* captured_audit243_rec")
+            && str_contains(code, "aot::mutable_cell_set_checked(")
+            && str_contains(code, "aot::mutable_cell_get(")
+            && !str_contains(code, "captured_audit243_rec = _aot_let_")
+            && !str_contains(code, "aot::set_var_result(\"audit243_rec\"");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: AUDIT-243 recursive mutable self-capture uses cell"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: AUDIT-243 recursive mutable self-capture uses cell"); }
+    }
+
+    {
+        char[] code = compile_to_c3(
+            "(let (audit243_x 0) "
+            "  (block "
+            "    (let (audit243_f (lambda () (set! audit243_x 9))) "
+            "      (block "
+            "        (module audit243_m (export audit243_x) "
+            "          (block "
+            "            (define audit243_x 1) "
+            "            (with audit243_m (set! audit243_x 2)) "
+            "            audit243_x)) "
+            "        audit243_x))))",
+            interp
+        );
+        bool ok = str_contains(code, "aot::AotMutableCell* captured_audit243_x")
+            && str_contains(code, "aot::mutable_cell_set_checked(")
+            && str_contains(code, "_aot_mod_")
+            && str_contains(code, " = _r")
+            && !str_contains(code, "aot::set_var_result(\"audit243_x\"");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: AUDIT-243 module set beats older mutable cell"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: AUDIT-243 module set beats older mutable cell"); }
     }
 
     {
@@ -192,7 +340,7 @@ fn void run_compiler_group_allocation_failure_seam_tests(Interp* interp, usz* pa
             interp
         );
         bool ok = str_contains(code, " = aot::define_var(\"imported_value\", _aot_mod_")
-            && str_contains(code, "tag == lisp::ValueTag.ERROR");
+            && str_contains(code, "aot::is_error(_r");
         if (ok) { (*pass)++; compiler_print_pass("Compiler: import AOT define_var result is observed"); }
         else    { (*fail)++; io::printn("[FAIL] Compiler: import AOT define_var result is observed"); }
     }
@@ -202,8 +350,10 @@ fn void run_compiler_group_allocation_failure_seam_tests(Interp* interp, usz* pa
         bool ok = compiler_code_contains_all(code, {
             "mem::malloc(Lambda_",
             "if (_closure_data == null) return aot::make_error(\"compiler: out of memory while allocating closure capture data\");",
-            "if (_result != null && _result.tag == lisp::ValueTag.ERROR) mem::free(_closure_data);"
-        });
+            "aot::capture_retention_begin()",
+            "aot::capture_retention_retain_value(_closure_retention, _capture_source_",
+            "aot::make_generated_closure_with_retention((void*)_closure_data, &invoke_lambda_"
+        }) && !str_contains(code, ".tag == lisp::ValueTag.ERROR) mem::free(_closure_data");
         if (ok) { (*pass)++; compiler_print_pass("Compiler: closure capture emission guards allocation failure"); }
         else    { (*fail)++; io::printn("[FAIL] Compiler: closure capture emission guards allocation failure"); }
     }
@@ -250,10 +400,92 @@ fn void run_compiler_group_allocation_failure_seam_tests(Interp* interp, usz* pa
             Value* variadic_prim_fail = aot::make_variadic_closure(null, &compiler_aot_test_variadic_invoke);
             aot::g_aot_force_variadic_closure_primitive_alloc_fail = false;
 
+            aot::AotCaptureRetention* dtor_registration_retention = aot::capture_retention_begin();
+            bool saved_dtor_oom = main::g_scope_force_dtor_alloc_oom;
+            main::g_scope_force_dtor_alloc_oom = true;
+            Value* closure_dtor_registration_fail = aot::make_closure_with_retention(
+                null,
+                &compiler_aot_test_unary_invoke,
+                dtor_registration_retention,
+                false);
+            main::g_scope_force_dtor_alloc_oom = saved_dtor_oom;
+
+            void* owned_closure_dtor_data = mem::malloc(8);
+            int owned_dtor_free_before = aot::g_aot_owned_data_free_count;
+            saved_dtor_oom = main::g_scope_force_dtor_alloc_oom;
+            main::g_scope_force_dtor_alloc_oom = true;
+            Value* owned_closure_dtor_fail = owned_closure_dtor_data != null
+                ? aot::make_closure_with_retention(
+                    owned_closure_dtor_data,
+                    &compiler_aot_test_unary_invoke,
+                    null,
+                    true)
+                : null;
+            main::g_scope_force_dtor_alloc_oom = saved_dtor_oom;
+            int owned_dtor_free_after = aot::g_aot_owned_data_free_count;
+
+            void* owned_closure_data = mem::malloc(8);
+            int owned_data_free_before = aot::g_aot_owned_data_free_count;
+            aot::g_aot_force_closure_primitive_alloc_fail = true;
+            Value* owned_closure_prim_fail = owned_closure_data != null
+                ? aot::make_closure_with_retention(
+                    owned_closure_data,
+                    &compiler_aot_test_unary_invoke,
+                    null,
+                    true)
+                : null;
+            aot::g_aot_force_closure_primitive_alloc_fail = false;
+            int owned_data_free_after = aot::g_aot_owned_data_free_count;
+
+            void* owned_variadic_data = mem::malloc(8);
+            int owned_variadic_free_before = aot::g_aot_owned_data_free_count;
+            aot::g_aot_force_variadic_closure_primitive_alloc_fail = true;
+            Value* owned_variadic_prim_fail = owned_variadic_data != null
+                ? aot::make_variadic_closure_with_retention(
+                    owned_variadic_data,
+                    &compiler_aot_test_variadic_invoke,
+                    null,
+                    true)
+                : null;
+            aot::g_aot_force_variadic_closure_primitive_alloc_fail = false;
+            int owned_variadic_free_after = aot::g_aot_owned_data_free_count;
+
+            void* owned_variadic_dtor_data = mem::malloc(8);
+            int owned_variadic_dtor_free_before = aot::g_aot_owned_data_free_count;
+            saved_dtor_oom = main::g_scope_force_dtor_alloc_oom;
+            main::g_scope_force_dtor_alloc_oom = true;
+            Value* owned_variadic_dtor_fail = owned_variadic_dtor_data != null
+                ? aot::make_variadic_closure_with_retention(
+                    owned_variadic_dtor_data,
+                    &compiler_aot_test_variadic_invoke,
+                    null,
+                    true)
+                : null;
+            main::g_scope_force_dtor_alloc_oom = saved_dtor_oom;
+            int owned_variadic_dtor_free_after = aot::g_aot_owned_data_free_count;
+
+            Interp* aot_interp = aot::aot_interp();
+            main::ScopeRegion* saved_scope = null;
+            main::ScopeRegion* child_scope = aot_interp != null ? boundary_push_child_scope(aot_interp, &saved_scope) : null;
+            Value* capture_audit_fail = null;
+            if (child_scope != null) {
+                Value* captured = aot::lookup_prim("+");
+                aot::AotCaptureRetention* capture_audit_retention = aot::capture_retention_begin();
+                aot::g_aot_force_capture_reachability_audit_fail = true;
+                capture_audit_fail = aot::capture_retention_retain_value(capture_audit_retention, captured);
+                aot::g_aot_force_capture_reachability_audit_fail = false;
+                aot::capture_retention_release(capture_audit_retention);
+                boundary_pop_child_scope(aot_interp, saved_scope, child_scope);
+                child_scope = null;
+            }
+            if (child_scope != null && aot_interp != null) {
+                boundary_pop_child_scope(aot_interp, saved_scope, child_scope);
+            }
+            aot::g_aot_force_capture_reachability_audit_fail = false;
+
             Value* closure_missing_invoke = aot::make_closure(null, null);
             Value* variadic_missing_invoke = aot::make_variadic_closure(null, null);
 
-            Interp* aot_interp = aot::aot_interp();
             void* saved_prim_user_data = aot_interp.prim_user_data;
             aot_interp.prim_user_data = null;
             Value*[] no_args = {};
@@ -270,12 +502,17 @@ fn void run_compiler_group_allocation_failure_seam_tests(Interp* interp, usz* pa
             Value* invoke_tail_dispatch_interp_unavailable = null;
             Value* apply_multi_tail_dispatch_interp_unavailable = null;
             Value* apply_multi_tail_negative_argc = null;
+            Value* match_guard_null_result = null;
+            Value* lookup_prim_missing = null;
             Value* lookup_prim_bridge_interp_unavailable = null;
             Value* define_var_success = null;
             Value* define_var_lookup = null;
+            Value* define_var_error_input = null;
             Value* define_var_bridge_interp_unavailable = null;
             Value* define_var_barrier_fail = null;
+            Value* lookup_var_missing = null;
             Value* lookup_var_bridge_interp_unavailable = null;
+            Value* lookup_module_export_missing_binding = null;
             Value* import_bridge_interp_unavailable = null;
             Value* field_access_bridge_interp_unavailable = null;
             Value* explain_dispatch_bridge_interp_unavailable = null;
@@ -319,6 +556,10 @@ fn void run_compiler_group_allocation_failure_seam_tests(Interp* interp, usz* pa
                 apply_multi_negative_argc = aot::apply_multi(invoke_variadic, multi_list, -1);
                 apply_multi_tail_negative_argc = aot::apply_multi_tail(invoke_variadic, multi_list, -1);
             }
+            Value* null_guard = aot::make_closure(null, &compiler_aot_test_null_invoke);
+            if (null_guard != null && null_guard.tag == ValueTag.PRIMITIVE) {
+                match_guard_null_result = aot::match_guard_eval(null_guard, aot::make_int(1));
+            }
 
             aot::g_aot_force_bridge_interp_unavailable = true;
             lookup_prim_bridge_interp_unavailable = aot::lookup_prim("+");
@@ -345,6 +586,42 @@ fn void run_compiler_group_allocation_failure_seam_tests(Interp* interp, usz* pa
 
             define_var_success = aot::define_var("__aot_define_var_success", aot::make_int(314));
             define_var_lookup = aot::lookup_var("__aot_define_var_success");
+            lookup_prim_missing = aot::lookup_prim("__aot_missing_primitive_for_fail_closed_test");
+            lookup_var_missing = aot::lookup_var("__aot_missing_var_for_fail_closed_test");
+            define_var_error_input = aot::define_var(
+                "__aot_define_var_error_input",
+                lookup_var_missing);
+
+            SymbolId malformed_module_name = aot_interp.symbols.intern("__aot_malformed_module_for_fail_closed_test");
+            SymbolId malformed_export_name = aot_interp.symbols.intern("__aot_missing_export_for_fail_closed_test");
+            usz malformed_mod_idx = usz.max;
+            if (malformed_module_name != INVALID_SYMBOL_ID &&
+                malformed_export_name != INVALID_SYMBOL_ID &&
+                find_module(malformed_module_name, aot_interp) == null &&
+                aot_interp.ensure_module_capacity(aot_interp.module_count + 1)) {
+                malformed_mod_idx = aot_interp.module_count;
+                Module* malformed_mod = &aot_interp.modules[malformed_mod_idx];
+                *malformed_mod = {};
+                malformed_mod.name = malformed_module_name;
+                malformed_mod.loaded = true;
+                malformed_mod.env = boundary_make_env_in_root(aot_interp, aot_interp.global_env);
+                malformed_mod.exports = jit_alloc_module_exports(1);
+                if (malformed_mod.env != null && malformed_mod.exports != null) {
+                    malformed_mod.export_capacity = 1;
+                    malformed_mod.export_count = 1;
+                    malformed_mod.exports[0] = malformed_export_name;
+                    aot_interp.module_count++;
+                    if (interp_module_hash_insert(aot_interp, malformed_module_name, malformed_mod_idx)) {
+                        lookup_module_export_missing_binding = aot::lookup_module_export(
+                            "__aot_malformed_module_for_fail_closed_test",
+                            "__aot_missing_export_for_fail_closed_test");
+                    }
+                    rollback_module_publication(aot_interp, malformed_mod_idx);
+                } else {
+                    module_release_storage(malformed_mod);
+                    malformed_mod_idx = usz.max;
+                }
+            }
 
             bool saved_barrier_promote_failure = g_env_force_barrier_promote_failure;
             g_env_force_barrier_promote_failure = true;
@@ -397,6 +674,20 @@ fn void run_compiler_group_allocation_failure_seam_tests(Interp* interp, usz* pa
                 && closure_prim_fail != null && closure_prim_fail.tag == ValueTag.ERROR
                 && variadic_data_fail != null && variadic_data_fail.tag == ValueTag.ERROR
                 && variadic_prim_fail != null && variadic_prim_fail.tag == ValueTag.ERROR
+                && closure_dtor_registration_fail != null && closure_dtor_registration_fail.tag == ValueTag.ERROR
+                && owned_closure_dtor_data != null
+                && owned_closure_dtor_fail != null && owned_closure_dtor_fail.tag == ValueTag.ERROR
+                && owned_dtor_free_after == owned_dtor_free_before + 1
+                && owned_closure_data != null
+                && owned_closure_prim_fail != null && owned_closure_prim_fail.tag == ValueTag.ERROR
+                && owned_data_free_after == owned_data_free_before + 1
+                && owned_variadic_data != null
+                && owned_variadic_prim_fail != null && owned_variadic_prim_fail.tag == ValueTag.ERROR
+                && owned_variadic_free_after == owned_variadic_free_before + 1
+                && owned_variadic_dtor_data != null
+                && owned_variadic_dtor_fail != null && owned_variadic_dtor_fail.tag == ValueTag.ERROR
+                && owned_variadic_dtor_free_after == owned_variadic_dtor_free_before + 1
+                && capture_audit_fail != null && capture_audit_fail.tag == ValueTag.ERROR
                 && closure_missing_invoke != null && closure_missing_invoke.tag == ValueTag.ERROR
                 && variadic_missing_invoke != null && variadic_missing_invoke.tag == ValueTag.ERROR;
 
@@ -412,15 +703,20 @@ fn void run_compiler_group_allocation_failure_seam_tests(Interp* interp, usz* pa
                 && apply_multi_negative_argc != null && apply_multi_negative_argc.tag == ValueTag.ERROR
                 && invoke_tail_dispatch_interp_unavailable != null && invoke_tail_dispatch_interp_unavailable.tag == ValueTag.ERROR
                 && apply_multi_tail_dispatch_interp_unavailable != null && apply_multi_tail_dispatch_interp_unavailable.tag == ValueTag.ERROR
-                && apply_multi_tail_negative_argc != null && apply_multi_tail_negative_argc.tag == ValueTag.ERROR;
+                && apply_multi_tail_negative_argc != null && apply_multi_tail_negative_argc.tag == ValueTag.ERROR
+                && compiler_error_value_contains(match_guard_null_result, "callable guard returned null");
 
             bool bridge_interp_errors_ok =
                 lookup_prim_bridge_interp_unavailable != null && lookup_prim_bridge_interp_unavailable.tag == ValueTag.ERROR
+                && compiler_error_value_contains(lookup_prim_missing, "primitive '__aot_missing_primitive_for_fail_closed_test' not found")
                 && define_var_success == null
                 && define_var_lookup != null && define_var_lookup.tag == ValueTag.INT && define_var_lookup.int_val == 314
+                && compiler_error_value_contains(lookup_var_missing, "unbound variable '__aot_missing_var_for_fail_closed_test'")
+                && define_var_error_input == lookup_var_missing
                 && define_var_bridge_interp_unavailable != null && define_var_bridge_interp_unavailable.tag == ValueTag.ERROR
                 && compiler_error_value_contains(define_var_barrier_fail, "out of memory while defining binding")
                 && lookup_var_bridge_interp_unavailable != null && lookup_var_bridge_interp_unavailable.tag == ValueTag.ERROR
+                && compiler_error_value_contains(lookup_module_export_missing_binding, "exported symbol '__aot_missing_export_for_fail_closed_test' is not bound")
                 && import_bridge_interp_unavailable != null && import_bridge_interp_unavailable.tag == ValueTag.ERROR
                 && field_access_bridge_interp_unavailable != null && field_access_bridge_interp_unavailable.tag == ValueTag.ERROR
                 && explain_dispatch_bridge_interp_unavailable != null && explain_dispatch_bridge_interp_unavailable.tag == ValueTag.ERROR
@@ -456,6 +752,12 @@ fn void run_compiler_group_allocation_failure_seam_tests(Interp* interp, usz* pa
         }
         if (ok) { (*pass)++; compiler_print_pass("Compiler: AOT closure factory allocation failures fail closed"); }
         else    { (*fail)++; io::printn("[FAIL] Compiler: AOT closure factory allocation failures fail closed"); }
+    }
+
+    {
+        bool ok = compiler_fail_closed_aot_no_interp_diagnostic_test();
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: AOT helpers emit diagnostics without runtime interpreter"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: AOT helpers emit diagnostics without runtime interpreter"); }
     }
 
     {
@@ -538,6 +840,10 @@ fn void run_compiler_group_allocation_failure_seam_tests(Interp* interp, usz* pa
         else    { (*fail)++; io::printn("[FAIL] Compiler: parser symbol interning fails closed on overlong symbol"); }
     }
 
+    compiler_test_finish_bool(compiler_fail_closed_datum_root_alloc_tests(interp),
+        "Compiler: parser datum root allocation failures fail closed",
+        "[FAIL] Compiler: parser datum root allocation failures fail closed", pass, fail);
+
     {
         Compiler compiler;
         compiler.init(interp);
@@ -560,12 +866,28 @@ fn void run_compiler_group_allocation_failure_seam_tests(Interp* interp, usz* pa
         else    { (*fail)++; io::printn("[FAIL] Compiler: emit_usz preserves max-width usz values"); }
     }
 
+    compiler_test_finish_bool(compiler_fail_closed_symbol_name_mangling_test(interp), "Compiler: emitted symbol names are capped and hash-disambiguated", "[FAIL] Compiler: emitted symbol names are capped and hash-disambiguated", pass, fail);
+
+    compiler_test_finish_bool(compiler_fail_closed_generated_name_bounds_tests(interp), "Compiler: generated names fail closed on fixed-buffer overflow", "[FAIL] Compiler: generated names fail closed on fixed-buffer overflow", pass, fail);
+
     {
         List{Expr*} exprs = parse_program("1 2.[", interp);
         defer exprs.free();
         bool ok = exprs.len() == 0;
         if (ok) { (*pass)++; compiler_print_pass("Compiler: parse_program fails closed on malformed postfix partial expr"); }
         else    { (*fail)++; io::printn("[FAIL] Compiler: parse_program fails closed on malformed postfix partial expr"); }
+    }
+
+    {
+        bool ok = compiler_fail_closed_direct_program_expr_limit_test(interp);
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: parse_program rejects too many top-level expressions"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: parse_program rejects too many top-level expressions"); }
+    }
+
+    {
+        bool ok = compiler_fail_closed_compile_program_expr_limit_test(interp);
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: parser rejects too many top-level expressions"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: parser rejects too many top-level expressions"); }
     }
 
     {
@@ -627,113 +949,5 @@ fn void run_compiler_group_allocation_failure_seam_tests(Interp* interp, usz* pa
         else    { (*fail)++; io::printn("[FAIL] Compiler: lexer token buffer growth allocation failure fails closed"); }
     }
 
-    {
-        g_compiler_force_lambda_lookup_miss = true;
-        char[] err = "";
-        char[] code = compile_to_c3("(lambda (x) x)", interp, &err);
-        g_compiler_force_lambda_lookup_miss = false;
-        bool ok = code.len == 0 && str_contains(err, "missing lambda definition during AOT lambda lowering");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: lambda lookup miss fails closed without panic"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: lambda lookup miss fails closed without panic"); }
-    }
-
-    {
-        g_compiler_force_lambda_emit_lookup_miss = true;
-        char[] err = "";
-        char[] code = compile_to_c3("(lambda (x) x)", interp, &err);
-        g_compiler_force_lambda_emit_lookup_miss = false;
-        bool ok = code.len == 0 && str_contains(err, "missing lambda definition during closure emission");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: lambda closure emission lookup miss fails closed"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: lambda closure emission lookup miss fails closed"); }
-    }
-
-    {
-        Lexer lex;
-        lex.init("(+ 1 2)");
-        defer lex.destroy();
-        lex.expect(T_RPAREN, "expected ')'");
-        bool ok = lex.current.type == T_ERROR && lex.current.text_len > 0;
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: lexer expect mismatch fails closed without panic"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: lexer expect mismatch fails closed without panic"); }
-    }
-
-    {
-        g_compiler_force_module_exports_alloc_fail = true;
-        char[] err = "";
-        char[] code = compile_to_c3("(module oom-mod (export v) (define v 1))", interp, &err);
-        g_compiler_force_module_exports_alloc_fail = false;
-        bool ok = code.len == 0 && str_contains(err, "allocating module export table");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: module export allocation failure fails closed"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: module export allocation failure fails closed"); }
-    }
-
-    {
-        g_compiler_force_module_exports_size_overflow = true;
-        char[] err = "";
-        char[] code = compile_to_c3("(module oom-mod (export v) (define v 1))", interp, &err);
-        g_compiler_force_module_exports_size_overflow = false;
-        bool ok = code.len == 0 && str_contains(err, "module export table size overflow");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: module export size overflow fails closed"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: module export size overflow fails closed"); }
-    }
-
-    {
-        g_compiler_force_module_registry_alloc_fail = true;
-        char[] err = "";
-        char[] code = compile_to_c3(
-            "(module m0 (export v0) (define v0 0)) "
-            "(module m1 (export v1) (define v1 1)) "
-            "(module m2 (export v2) (define v2 2)) "
-            "(module m3 (export v3) (define v3 3)) "
-            "(module m4 (export v4) (define v4 4)) "
-            "(module m5 (export v5) (define v5 5)) "
-            "(module m6 (export v6) (define v6 6)) "
-            "(module m7 (export v7) (define v7 7)) "
-            "(module m8 (export v8) (define v8 8)) "
-            "(module m9 (export v9) (define v9 9)) "
-            "(module m10 (export v10) (define v10 10)) "
-            "(module m11 (export v11) (define v11 11)) "
-            "(module m12 (export v12) (define v12 12)) "
-            "(module m13 (export v13) (define v13 13)) "
-            "(module m14 (export v14) (define v14 14)) "
-            "(module m15 (export v15) (define v15 15)) "
-            "(module m16 (export v16) (define v16 16))",
-            interp,
-            &err
-        );
-        g_compiler_force_module_registry_alloc_fail = false;
-        bool ok = code.len == 0 && str_contains(err, "growing compiled module registry");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: module registry growth allocation failure fails closed"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: module registry growth allocation failure fails closed"); }
-    }
-
-    {
-        g_compiler_force_module_registry_growth_overflow = true;
-        char[] err = "";
-        char[] code = compile_to_c3(
-            "(module m0 (export v0) (define v0 0)) "
-            "(module m1 (export v1) (define v1 1)) "
-            "(module m2 (export v2) (define v2 2)) "
-            "(module m3 (export v3) (define v3 3)) "
-            "(module m4 (export v4) (define v4 4)) "
-            "(module m5 (export v5) (define v5 5)) "
-            "(module m6 (export v6) (define v6 6)) "
-            "(module m7 (export v7) (define v7 7)) "
-            "(module m8 (export v8) (define v8 8)) "
-            "(module m9 (export v9) (define v9 9)) "
-            "(module m10 (export v10) (define v10 10)) "
-            "(module m11 (export v11) (define v11 11)) "
-            "(module m12 (export v12) (define v12 12)) "
-            "(module m13 (export v13) (define v13 13)) "
-            "(module m14 (export v14) (define v14 14)) "
-            "(module m15 (export v15) (define v15 15)) "
-            "(module m16 (export v16) (define v16 16))",
-            interp,
-            &err
-        );
-        g_compiler_force_module_registry_growth_overflow = false;
-        bool ok = code.len == 0 && str_contains(err, "compiled module registry capacity overflow");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: module registry growth overflow fails closed"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: module registry growth overflow fails closed"); }
-    }
+    run_compiler_group_module_fail_closed_tail_tests(interp, pass, fail);
 }

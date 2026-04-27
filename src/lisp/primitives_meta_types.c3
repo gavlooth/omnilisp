@@ -1,6 +1,7 @@
 module lisp;
 
 import std::core::mem;
+import std::io;
 import main;
 
 /// =============================================================================
@@ -98,6 +99,110 @@ fn Value* prim_type_args(Value*[] args, Env* env, Interp* interp) {
         }
     }
     return result;
+}
+
+fn bool literal_type_name(Value* value, Interp* interp, DString* out_name) {
+    if (value == null || out_name == null) return false;
+
+    switch (value.tag) {
+        case NIL:
+            out_name.append_string("(Literal nil)");
+            return true;
+        case INT:
+            char[64] buf;
+            if (try rendered = io::bprintf(&buf, "(Literal %d)", value.int_val)) {
+                out_name.append_string((String)rendered);
+                return true;
+            }
+            return false;
+        case STRING:
+            out_name.append_string("(Literal \"");
+            out_name.append_string((String)value.str_chars[:value.str_len]);
+            out_name.append_string("\")");
+            return true;
+        case SYMBOL:
+            if ((uint)value.sym_val == (uint)interp.sym_true ||
+                (uint)value.sym_val == (uint)interp.sym_false) {
+                out_name.append_string("(Literal ");
+                out_name.append_string((String)interp.symbols.get_name(value.sym_val));
+                out_name.append_char(')');
+                return true;
+            }
+            out_name.append_string("(Literal '");
+            out_name.append_string((String)interp.symbols.get_name(value.sym_val));
+            out_name.append_char(')');
+            return true;
+        default:
+            return false;
+    }
+}
+
+fn Value* literal_type_descriptor_for(Value* value, Interp* interp) {
+    DString type_name;
+    type_name.init(mem);
+    defer type_name.free();
+
+    if (!literal_type_name(value, interp, &type_name)) {
+        return meta_raise(interp, "type/arg-mismatch",
+            "Literal: expected int/string/symbol/bool/nil literal");
+    }
+
+    char[] type_name_slice = type_name.str_view();
+    SymbolId name = interp.symbols.intern(type_name_slice);
+    if (name == INVALID_SYMBOL_ID) {
+        return meta_raise(interp, "type/allocation-failed",
+            "Literal: failed to intern literal type name");
+    }
+
+    TypeId existing = interp.types.lookup(name, &interp.symbols);
+    TypeId tid = existing;
+    if (tid == INVALID_TYPE_ID) {
+        TypeInfo info;
+        info.name = name;
+        info.kind = TK_BUILTIN;
+        TypeId parent = interp.types.lookup(value_type_name(value, interp), &interp.symbols);
+        info.parent = parent != INVALID_TYPE_ID ? parent : interp.tid_Literal;
+        info.fields = null;
+        info.field_count = 0;
+        info.type_params = null;
+        info.type_param_count = 0;
+        info.constraints = null;
+        info.constraint_count = 0;
+        info.variants = null;
+        info.variant_count = 0;
+        info.alias_target = INVALID_TYPE_ID;
+        tid = interp.types.register_type(info, &interp.symbols);
+        if (tid == INVALID_TYPE_ID) {
+            return meta_raise(interp, "type/allocation-failed",
+                "Literal: failed to register literal singleton type");
+        }
+    }
+
+    Value* out = interp.alloc_value();
+    if (out == null) {
+        return meta_raise(interp, "type/allocation-failed",
+            "Literal: failed to allocate type descriptor");
+    }
+    out.tag = TYPE_INFO;
+    out.type_info_val = &interp.types.types[(usz)tid];
+    return out;
+}
+
+/**
+ * (Literal datum) -> singleton literal type descriptor.
+ *
+ * This is a type-level constructor, not a boxed runtime value. For example,
+ * (Literal 3) returns #<type (Literal 3)> and ordinary value 3 remains an
+ * Integer value.
+ */
+<*
+@require interp != null
+*>
+fn Value* prim_literal_type(Value*[] args, Env* env, Interp* interp) {
+    if (args.len != 1) {
+        return meta_raise(interp, "type/arity", "Literal: expected 1 literal argument");
+    }
+    return literal_type_descriptor_for(args[0], interp);
 }
 
 // --- Memory reclamation ---

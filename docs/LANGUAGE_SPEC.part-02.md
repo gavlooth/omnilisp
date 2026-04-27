@@ -387,11 +387,12 @@ None                    ; nullary variant
 ```lisp
 ^Integer                ; simple type
 ^(List Integer)         ; compound type
-^(Value 42)             ; canonical value-level constructor
-^(Value bind)           ; symbol literal
-^(Value "open")         ; string literal
-^(Value true)           ; boolean literal (true/false symbols)
-^(Value nil)            ; nil literal
+^#42                      ; canonical singleton literal shorthand
+^#'bind                    ; symbol literal
+^#"open"                  ; string literal
+^#true                    ; boolean literal (true/false symbols)
+^#nil                     ; nil literal
+^(Literal 42)             ; explicit long form
 ```
 
 Meta/abstract symbols `Any`, `Number`, and `Collection` participate in
@@ -400,8 +401,10 @@ descriptors (`#<type Any>`, `#<type Number>`, `#<type Collection>`). They are
 not constructor/coercion call surfaces (`(Any ...)`, `(Number ...)`,
 `(Collection ...)` still error).
 
-`Value` remains the dedicated value-literal annotation surface:
-`^(Value literal)`. It is not a callable value-position constructor.
+`^#datum` is shorthand for `^(Literal datum)`. `(Literal datum)` is a
+type-level constructor that returns a singleton literal type descriptor; it does
+not box or wrap the runtime value. Removed spellings `^(Value datum)` and
+`^(Val datum)` are hard errors.
 
 ### 4.6 Type Introspection
 
@@ -423,6 +426,8 @@ Printing/introspection contract:
   `#<type Integer>`, `#<type Dictionary>`, etc.
 - Abstract/meta type descriptors for `Any`, `Number`, and `Collection` follow
   the same canonical `#<type Name>` rendering.
+- User-defined `[abstract]`, `[union]` head, and `[alias]` type descriptors
+  follow the same canonical `#<type Name>` rendering and are non-callable.
 - constructor aliases (`Dict` -> `Dictionary`) normalize to canonical type
   identity in introspection (`type-of`, descriptor rendering).
 - Ordinary callable primitives keep primitive rendering (`#<primitive +>`).
@@ -476,13 +481,13 @@ Define multiple implementations with typed parameters. Best match wins:
 ### 5.3 Value Dispatch (Value-Level Matching)
 
 ```lisp
-(define (fib (^(Value 0) n)) 0)
-(define (fib (^(Value 1) n)) 1)
+(define (fib (^#0 n)) 0)
+(define (fib (^#1 n)) 1)
 (define (fib (^Integer n)) (+ (fib (- n 1)) (fib (- n 2))))
 
-(define (udp (^(Value open) cmd)) (io/udp-open))
-(define (udp (^(Value bind) cmd) h host port) (io/udp-bind h host port))
-(define (udp (^(Value send) cmd) h host port payload) (io/udp-send h host port payload))
+(define (udp (^#'open cmd)) (io/udp-open))
+(define (udp (^#'bind cmd) h host port) (io/udp-bind h host port))
+(define (udp (^#'send cmd) h host port payload) (io/udp-send h host port payload))
 
 (fib 10)    ; => 55
 ```
@@ -494,7 +499,7 @@ Command-style facades like `udp` are valid API shape, but core operations remain
 
 | Match Type | Score | Description |
 |------------|-------|-------------|
-| Value literal | 1000 | `^(Value 42)`, `^(Value open)`, `^(Value "open")`, `^(Value true)`, `^(Value nil)` |
+| Literal singleton | 1000 | `^#42`, `^#'open`, `^#"open"`, `^#true`, `^#nil`; long form `^(Literal datum)` |
 | Exact type | 100 | `^Integer` matches INT value |
 | Subtype | 10 | `^Shape` matches Circle (Shape child) |
 | Any type | 1 | Untyped parameter matches anything |

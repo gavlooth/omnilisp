@@ -31,7 +31,9 @@ fn Value* matrix_cuda_complex_structural_tensor_result(
     }
     result.tag = TENSOR;
     result.tensor_val = tensor;
-    main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
+    if (!scope_register_value_dtor_or_cleanup(interp.current_scope, result)) {
+        return make_runtime_out_of_memory_error(interp, "Tensor: failed to register result destructor");
+    }
     return result;
 }
 fn Value* matrix_transpose_try_cuda_value(TensorVal* matrix, usz[] result_shape, Interp* interp) {
@@ -179,7 +181,9 @@ fn Value* matrix_cuda_tensor_value_from_device(
     }
     result.tag = TENSOR;
     result.tensor_val = tensor;
-    main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
+    if (!scope_register_value_dtor_or_cleanup(interp.current_scope, result)) {
+        return make_runtime_out_of_memory_error(interp, "Tensor: failed to register result destructor");
+    }
     return result;
 }
 fn int matrix_cuda_svd_complex_devices(
@@ -750,7 +754,9 @@ fn Value* matrix_cholesky_try_vulkan_value(TensorVal* matrix, usz[] result_shape
     }
     result.tag = TENSOR;
     result.tensor_val = tensor;
-    main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
+    if (!scope_register_value_dtor_or_cleanup(interp.current_scope, result)) {
+        return make_runtime_out_of_memory_error(interp, "Tensor: failed to register result destructor");
+    }
     return result;
 }
 fn Value* matrix_qr_try_vulkan_value(TensorVal* matrix, usz rows, usz cols, Interp* interp) {
@@ -837,7 +843,10 @@ fn Value* matrix_qr_try_vulkan_value(TensorVal* matrix, usz rows, usz cols, Inte
     }
     q_value.tag = TENSOR;
     q_value.tensor_val = q_tensor;
-    main::scope_register_dtor(interp.current_scope, (void*)q_value, &scope_dtor_value);
+    if (!scope_register_value_dtor_or_cleanup(interp.current_scope, q_value)) {
+        if (r_device != null) omni_tensor_backend_vulkan_free(r_device);
+        return make_runtime_out_of_memory_error(interp, "Tensor: failed to register result destructor");
+    }
     bool keep_q_value = false;
     defer if (!keep_q_value) {
         boundary_cleanup_materialized_value(null, q_value, interp.current_scope);
@@ -859,7 +868,9 @@ fn Value* matrix_qr_try_vulkan_value(TensorVal* matrix, usz rows, usz cols, Inte
     }
     r_value.tag = TENSOR;
     r_value.tensor_val = r_tensor;
-    main::scope_register_dtor(interp.current_scope, (void*)r_value, &scope_dtor_value);
+    if (!scope_register_value_dtor_or_cleanup(interp.current_scope, r_value)) {
+        return make_runtime_out_of_memory_error(interp, "Tensor: failed to register result destructor");
+    }
     bool keep_r_value = false;
     defer if (!keep_r_value) {
         boundary_cleanup_materialized_value(null, r_value, interp.current_scope);

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import fnmatch
 import re
 import sys
@@ -263,8 +264,12 @@ def default_files() -> list[Path]:
     return sorted((ROOT / "src").glob("**/*.c3"))
 
 
-def main(argv: list[str]) -> int:
-    files = [Path(p) for p in argv] if argv else default_files()
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Verify memory-sensitive ownership surfaces are classified by manifest.")
+    parser.add_argument("files", nargs="*", help="Optional C3 files to scan. Defaults to all src/**/*.c3 files.")
+    args = parser.parse_args(argv)
+
+    files = [Path(p) for p in args.files] if args.files else default_files()
     if not files:
         print("OK: no files provided; ownership inventory guard skipped.")
         return 0
@@ -303,4 +308,4 @@ def main(argv: list[str]) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    sys.exit(main())

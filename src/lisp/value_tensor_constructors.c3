@@ -67,8 +67,8 @@ fn Value* copy_tensor_to_parent(Value* v, Interp* interp, BoundaryCopyFault* fau
     }
     result.tag = TENSOR;
     result.tensor_val = dst;
-    if (!scope_register_value_dtor_or_cleanup(interp.current_scope, result)) {
-        if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
+    if (!scope_register_tensor_value_dtor_or_cleanup_edges(interp.current_scope, result, v.tensor_val, interp.current_scope)) {
+        if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_DTOR_REGISTRATION;
         return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to register tensor copy destructor");
     }
     return result;
@@ -95,7 +95,7 @@ fn Value* promote_escape_tensor_shared_wrapper(Value* v, Interp* interp, Promoti
     }
     result.tag = TENSOR;
     result.tensor_val = dst;
-    if (!scope_register_escape_value_dtor_or_cleanup(interp.current_scope, result)) {
+    if (!scope_register_escape_tensor_value_dtor_or_cleanup_edges(interp.current_scope, result, v.tensor_val, interp.current_scope)) {
         return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to register tensor escape destructor");
     }
     return result;
@@ -133,6 +133,8 @@ fn Value* root_store_clone_tensor_to_scope(
     }
     result.tag = TENSOR;
     result.tensor_val = dst;
-    if (!scope_register_escape_value_dtor_or_cleanup(target_scope, result)) return null;
+    if (!scope_register_escape_tensor_value_dtor_or_cleanup_edges(target_scope, result, src.tensor_val, target_scope)) {
+        return runtime_raise(interp, "runtime/out-of-memory", "root-store: failed to register tensor clone destructor");
+    }
     return result;
 }

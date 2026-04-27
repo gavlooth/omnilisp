@@ -55,7 +55,7 @@ fn void Compiler.compile_pattern_bindings(Compiler* self, Pattern* pat, char[] v
                 self.emit(";\n");
 
                 char[24] elem_name;
-                char[] elem_name_s = compiler_format_generated_name_id(elem_name[..], "_r", (long)elem_r);
+                char[] elem_name_s = self.generated_name_id(elem_name[..], "_r", (long)elem_r);
                 self.compile_pattern_bindings(pat.elements[i], elem_name_s);
             }
 
@@ -77,7 +77,7 @@ fn void Compiler.compile_pattern_bindings(Compiler* self, Pattern* pat, char[] v
             self.emit(val_name);
             self.emit(");\n");
             char[24] car_name;
-            char[] car_name_s = compiler_format_generated_name_id(car_name[..], "_r", (long)car_r);
+            char[] car_name_s = self.generated_name_id(car_name[..], "_r", (long)car_r);
             self.compile_pattern_bindings(pat.car_pat, car_name_s);
 
             usz cdr_r = self.next_result();
@@ -86,7 +86,7 @@ fn void Compiler.compile_pattern_bindings(Compiler* self, Pattern* pat, char[] v
             self.emit(val_name);
             self.emit(");\n");
             char[24] cdr_name;
-            char[] cdr_name_s = compiler_format_generated_name_id(cdr_name[..], "_r", (long)cdr_r);
+            char[] cdr_name_s = self.generated_name_id(cdr_name[..], "_r", (long)cdr_r);
             self.compile_pattern_bindings(pat.cdr_pat, cdr_name_s);
 
         case PAT_CONSTRUCTOR:
@@ -100,7 +100,7 @@ fn void Compiler.compile_pattern_bindings(Compiler* self, Pattern* pat, char[] v
                 self.emit(");\n");
 
                 char[24] field_name;
-                char[] field_name_s = compiler_format_generated_name_id(field_name[..], "_r", (long)field_r);
+                char[] field_name_s = self.generated_name_id(field_name[..], "_r", (long)field_r);
                 self.compile_pattern_bindings(pat.ctor_sub_patterns[i], field_name_s);
             }
 
@@ -127,7 +127,13 @@ fn void Compiler.compile_pattern_bindings(Compiler* self, Pattern* pat, char[] v
                 self.emit(");\n");
             }
 
+        case PAT_WILDCARD:
+        case PAT_LIT:
+        case PAT_QUOTE:
+            return;
+
         default:
+            self.set_compile_error("compiler: unknown pattern tag in AOT match binding lowering");
             return;
     }
 }

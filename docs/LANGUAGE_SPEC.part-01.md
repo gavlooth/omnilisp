@@ -119,11 +119,11 @@ behavior in larger systems.
 
 #### 0.4.2 Multiple Dispatch and Typed Annotations
 
-- Type annotations (`^Type`, `^(Value ...)`) define method applicability and
+- Type annotations (`^Type`, `^(Literal ...)`) define method applicability and
   specificity, not just documentation.
 - Dispatch picks the highest-scoring applicable method; equal-best results are
   ambiguous and rejected.
-- Value-literal dispatch (`^(Value ...)`) is the most specific tier and is
+- Literal-singleton dispatch (`^(Literal ...)`) is the most specific tier and is
   useful for command-style APIs, while untyped parameters remain the broad
   fallback.
 - Handler bodies can delegate type-specific behavior to dispatched functions

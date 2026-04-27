@@ -1,3 +1,5 @@
+    [sym__form] = STATE(33),
+    [sym_form_comment] = STATE(41),
     [sym_quote] = STATE(42),
     [sym_quasiquote] = STATE(42),
     [sym_unquote] = STATE(42),
@@ -653,5 +655,3 @@
     [sym_float] = ACTIONS(109),
     [sym_string] = ACTIONS(109),
     [sym_regex_literal] = ACTIONS(109),
-  },
-};

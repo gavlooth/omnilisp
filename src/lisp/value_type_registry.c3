@@ -125,6 +125,22 @@ fn usz type_registry_symbol_hash(SymbolTable* syms, SymbolId id) @inline {
     return h;
 }
 
+fn bool type_registry_hash_insert(TypeId* hash_index, usz hash_capacity, SymbolTable* syms, TypeId id, SymbolId name) {
+    if (hash_index == null || hash_capacity == 0 || syms == null) return false;
+    if (!type_registry_symbol_hashable(syms, name)) return false;
+
+    usz h = type_registry_symbol_hash(syms, name);
+    usz mask = hash_capacity - 1;
+    for (usz probe = 0; probe < hash_capacity; probe++) {
+        usz slot = (h + probe) & mask;
+        if (hash_index[slot] == INVALID_TYPE_ID) {
+            hash_index[slot] = id;
+            return true;
+        }
+    }
+    return false;
+}
+
 fn bool TypeRegistry.init(TypeRegistry* self) {
     if (self == null) return false;
     self.type_count = 0;
@@ -187,20 +203,9 @@ fn bool TypeRegistry.grow(TypeRegistry* self, SymbolTable* syms) {
     for (usz i = 0; i < self.type_count; i++) new_types[i] = self.types[i];
     for (usz i = 0; i < new_hash_cap; i++) new_hash[i] = INVALID_TYPE_ID;
 
-    usz mask = new_hash_cap - 1;
     for (usz i = 0; i < self.type_count; i++) {
         if (!type_registry_symbol_hashable(syms, new_types[i].name)) continue;
-        usz h = type_registry_symbol_hash(syms, new_types[i].name);
-        bool placed = false;
-        for (usz probe = 0; probe < new_hash_cap; probe++) {
-            usz slot = (h + probe) & mask;
-            if (new_hash[slot] == INVALID_TYPE_ID) {
-                new_hash[slot] = (TypeId)i;
-                placed = true;
-                break;
-            }
-        }
-        if (!placed) {
+        if (!type_registry_hash_insert(new_hash, new_hash_cap, syms, (TypeId)i, new_types[i].name)) {
             mem::free(new_types);
             mem::free(new_hash);
             return false;
@@ -249,14 +254,11 @@ fn TypeId TypeRegistry.register_type(TypeRegistry* self, TypeInfo info, SymbolTa
 
     // Insert into hash table
     if (!type_registry_symbol_hashable(syms, info.name)) return id;
-    usz h = type_registry_symbol_hash(syms, info.name);
-    usz mask = self.hash_capacity - 1;
-    for (usz probe = 0; probe < self.hash_capacity; probe++) {
-        usz slot = (h + probe) & mask;
-        if (self.type_hash_index[slot] == INVALID_TYPE_ID) {
-            self.type_hash_index[slot] = id;
-            break;
-        }
+    if (!type_registry_hash_insert(self.type_hash_index, self.hash_capacity, syms, id, info.name)) {
+        type_registry_destroy_type_info(&self.types[(usz)id]);
+        self.types[(usz)id] = {};
+        self.type_count--;
+        return INVALID_TYPE_ID;
     }
     return id;
 }
@@ -266,17 +268,9 @@ fn void TypeRegistry.rebuild_hash(TypeRegistry* self, SymbolTable* syms) {
     if (self.hash_capacity == 0) return;
     for (usz i = 0; i < self.hash_capacity; i++) self.type_hash_index[i] = INVALID_TYPE_ID;
 
-    usz mask = self.hash_capacity - 1;
     for (usz i = 0; i < self.type_count; i++) {
         if (!type_registry_symbol_hashable(syms, self.types[i].name)) continue;
-        usz h = type_registry_symbol_hash(syms, self.types[i].name);
-        for (usz probe = 0; probe < self.hash_capacity; probe++) {
-            usz slot = (h + probe) & mask;
-            if (self.type_hash_index[slot] == INVALID_TYPE_ID) {
-                self.type_hash_index[slot] = (TypeId)i;
-                break;
-            }
-        }
+        (void)type_registry_hash_insert(self.type_hash_index, self.hash_capacity, syms, (TypeId)i, self.types[i].name);
     }
 }
 

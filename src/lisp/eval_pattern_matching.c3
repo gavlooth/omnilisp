@@ -41,7 +41,7 @@ fn MatchResult match_pattern(Pattern* pat, Value* val, Interp* interp) {
             return match_pattern_guard(pat, val, interp);
 
         default:
-            return match_fail();
+            return match_error(runtime_raise(interp, "runtime/invalid-state", "match: unknown pattern tag"));
     }
 }
 
@@ -177,6 +177,7 @@ fn MatchResult match_seq_pattern(Pattern* pat, Value* val, Interp* interp) {
             break;
 
         default:
+            seq_result = match_error(runtime_raise(interp, "runtime/invalid-state", "match: unknown sequence rest position"));
             break;
     }
 

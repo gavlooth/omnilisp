@@ -383,7 +383,9 @@ fn Value* root_store_clone_method_table_to_scope(
         if (result == null) return null;
         result.tag = METHOD_TABLE;
         result.method_table_val = null;
-        main::scope_register_dtor_escape(target_scope, (void*)result, &scope_dtor_value);
+        if (!main::scope_register_dtor_escape(target_scope, (void*)result, &scope_dtor_value)) {
+            return runtime_raise(interp, "runtime/out-of-memory", "root-store: failed to register method table clone destructor");
+        }
         return result;
     }
 
@@ -467,6 +469,16 @@ fn Value* root_store_clone_method_table_to_scope(
     }
     result.tag = METHOD_TABLE;
     result.method_table_val = dst_mt;
-    main::scope_register_dtor_escape(target_scope, (void*)result, &scope_dtor_value);
+    if (!main::scope_register_dtor_escape(target_scope, (void*)result, &scope_dtor_value)) {
+        boundary_cleanup_partial_method_table_copy(
+            src_mt,
+            dst_mt,
+            dst_mt.entry_count,
+            true,
+            target_scope
+        );
+        result.method_table_val = null;
+        return runtime_raise(interp, "runtime/out-of-memory", "root-store: failed to register method table clone destructor");
+    }
     return result;
 }

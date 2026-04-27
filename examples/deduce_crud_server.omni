@@ -78,52 +78,57 @@
 (define (crud/write-end)
   (atomic-cas! crud-write-busy 1 0))
 
+(define (crud/return-or-raise payload)
+  (if (dict? payload)
+      (raise payload)
+      payload))
+
 (define (repo/create body)
   (if (validate 'item-write body)
       (if (crud/write-begin)
-          (block
-            (defer (crud/write-end))
-            (if (> (atomic-read crud-write-hold-ms) 0)
-                (async-sleep (atomic-read crud-write-hold-ms))
-                nil)
-            (let (outcome (handle
-                            (block
-                              (deduce 'fact! items (ref body 'id) (ref body 'name) (ref body 'qty))
-                              nil)
-                            (raise payload payload)))
-              (match outcome
-                (nil (Ok (item->row body)))
-                (payload
-                  (if (and (dict? payload)
-                           (= (ref payload 'code) 'deduce/integrity-key-conflict))
-                      (Err "item already exists")
-                      (raise payload))))))
+          (let (result (handle
+                         (block
+                           (if (> (atomic-read crud-write-hold-ms) 0)
+                               (async-sleep (atomic-read crud-write-hold-ms))
+                               nil)
+                           (deduce 'fact! items (ref body 'id) (ref body 'name) (ref body 'qty))
+                           (Ok (item->row body)))
+                         (raise payload payload)))
+            (crud/write-end)
+            (if (and (dict? result)
+                     (= (ref result 'code) 'deduce/integrity-key-conflict))
+                (Err "item already exists")
+                (crud/return-or-raise result)))
           (Err "crud write already in progress"))
       (Err "validation failed")))
 
 (define (repo/update body)
   (if (validate 'item-write body)
       (if (crud/write-begin)
-          (block
-            (defer (crud/write-end))
-            (match (repo/get-by-id (ref body 'id))
-              (nil (Err "item not found"))
-              (existing (block
-                          (deduce 'retract! items existing.id existing.name existing.qty)
-                          (deduce 'fact! items (ref body 'id) (ref body 'name) (ref body 'qty))
-                          (Ok (item->row body))))))
+          (let (result (handle
+                         (match (repo/get-by-id (ref body 'id))
+                           (nil (Err "item not found"))
+                           (existing (block
+                                       (deduce 'retract! items existing.id existing.name existing.qty)
+                                       (deduce 'fact! items (ref body 'id) (ref body 'name) (ref body 'qty))
+                                       (Ok (item->row body)))))
+                         (raise payload payload)))
+            (crud/write-end)
+            (crud/return-or-raise result))
           (Err "crud write already in progress"))
       (Err "validation failed")))
 
 (define (repo/delete body)
   (if (crud/write-begin)
-      (block
-        (defer (crud/write-end))
-        (match (repo/get-by-id (ref body 'id))
-          (nil (Err "item not found"))
-          (existing (block
-                      (deduce 'retract! items existing.id existing.name existing.qty)
-                      (Ok existing)))))
+      (let (result (handle
+                     (match (repo/get-by-id (ref body 'id))
+                       (nil (Err "item not found"))
+                       (existing (block
+                                   (deduce 'retract! items existing.id existing.name existing.qty)
+                                   (Ok existing))))
+                     (raise payload payload)))
+        (crud/write-end)
+        (crud/return-or-raise result))
       (Err "crud write already in progress")))
 
 (define (pipeline/execute req)

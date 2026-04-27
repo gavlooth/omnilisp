@@ -7,7 +7,8 @@ fn Expr* Parser.parse_int_literal_expr(Parser* self) {
     self.lexer.advance();
 
     e.tag = E_LIT;
-    e.lit.value = self.interp.alloc_value_root();
+    e.lit.value = self.alloc_root_value_or_error("out of memory while parsing root literal");
+    if (e.lit.value == null) return null;
     e.lit.value.tag = INT;
     e.lit.value.int_val = val;
     return self.parse_postfix_index(e);
@@ -20,7 +21,8 @@ fn Expr* Parser.parse_float_literal_expr(Parser* self) {
     self.lexer.advance();
 
     e.tag = E_LIT;
-    e.lit.value = self.interp.alloc_value_root();
+    e.lit.value = self.alloc_root_value_or_error("out of memory while parsing root literal");
+    if (e.lit.value == null) return null;
     e.lit.value.tag = DOUBLE;
     e.lit.value.double_val = dval;
     return self.parse_postfix_index(e);
@@ -30,7 +32,8 @@ fn Expr* Parser.parse_string_literal_expr(Parser* self) {
     Expr* e = self.alloc_expr_here();
     if (e == null) return null;
     e.tag = E_LIT;
-    e.lit.value = self.interp.alloc_value_root();
+    e.lit.value = self.alloc_root_value_or_error("out of memory while parsing string literal");
+    if (e.lit.value == null) return null;
     e.lit.value.tag = STRING;
 
     StringVal* builder = strval_new_from_slice(self.lexer.current.text[:self.lexer.current.text_len]);

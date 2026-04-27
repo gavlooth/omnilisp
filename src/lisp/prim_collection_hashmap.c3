@@ -6,6 +6,7 @@ import main;
 bool g_hashmap_force_struct_alloc_fail = false;
 bool g_hashmap_force_entries_alloc_fail = false;
 bool g_hashmap_force_grow_entries_alloc_fail = false;
+bool g_hashmap_force_rehash_insert_fail = false;
 
 fn bool hashmap_is_pow2(uint value) @inline {
     return value != 0 && (value & (value - 1)) == 0;
@@ -78,6 +79,7 @@ fn Value* prim_length(Value*[] args, Env* env, Interp* interp) {
     // Dictionary / Set count
     if (is_hashmap_backed(args[0])) {
         if (args[0].hashmap_val == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "length: dict/set backing storage is missing");
+        if (!hashmap_storage_valid(args[0].hashmap_val)) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "length: dict/set backing entries are missing");
         return make_int(interp, (long)args[0].hashmap_val.count);
     }
 
@@ -140,7 +142,14 @@ fn void hashmap_free_payload(HashMap* map) {
     mem::free(map);
 }
 
+fn bool hashmap_storage_valid(HashMap* map) @inline {
+    return map != null &&
+        map.entries != null &&
+        hashmap_is_pow2(map.capacity);
+}
+
 fn Value* hashmap_get(HashMap* map, Value* key) {
+    if (!hashmap_storage_valid(map)) return null;
     uint h = hash_value(key) & map.mask;
     for (uint i = 0; i < map.capacity; i++) {
         uint idx = (h + i) & map.mask;
@@ -206,6 +215,21 @@ fn bool hashmap_set_symbol(HashMap* map, SymbolId key, Value* value, Interp* int
     return hashmap_set_symbol_checked(map, key, value, interp);
 }
 
+fn bool hashmap_insert_rehashed_entry(HashEntry* entries, uint capacity, uint mask, HashEntry* source) @inline {
+    if (g_hashmap_force_rehash_insert_fail) return false;
+    if (entries == null || source == null || source.key == null || !hashmap_is_pow2(capacity)) return false;
+    uint h = hash_value(source.key) & mask;
+    for (uint i = 0; i < capacity; i++) {
+        uint idx = (h + i) & mask;
+        if (entries[idx].key == null) {
+            entries[idx].key = source.key;
+            entries[idx].value = source.value;
+            return true;
+        }
+    }
+    return false;
+}
+
 fn bool hashmap_grow_checked(HashMap* map, Interp* interp) {
     if (map == null || map.entries == null || !hashmap_is_pow2(map.capacity)) return false;
     uint old_cap = map.capacity;
@@ -217,26 +241,20 @@ fn bool hashmap_grow_checked(HashMap* map, Interp* interp) {
     HashEntry* new_entries = hashmap_alloc_entries(new_cap, g_hashmap_force_grow_entries_alloc_fail);
     if (new_entries == null) return false;
 
+    uint new_count = 0;
+    for (uint i = 0; i < old_cap; i++) {
+        if (old_entries[i].key != null) {
+            if (!hashmap_insert_rehashed_entry(new_entries, new_cap, new_mask, &old_entries[i])) {
+                mem::free(new_entries);
+                return false;
+            }
+            new_count++;
+        }
+    }
     map.entries = new_entries;
     map.capacity = new_cap;
     map.mask = new_mask;
-    map.count = 0;
-
-    // Rehash
-    for (uint i = 0; i < old_cap; i++) {
-        if (old_entries[i].key != null) {
-            uint h = hash_value(old_entries[i].key) & new_mask;
-            for (uint j = 0; j < new_cap; j++) {
-                uint idx = (h + j) & new_mask;
-                if (new_entries[idx].key == null) {
-                    new_entries[idx].key = old_entries[i].key;
-                    new_entries[idx].value = old_entries[i].value;
-                    map.count++;
-                    break;
-                }
-            }
-        }
-    }
+    map.count = new_count;
     mem::free(old_entries);
     stable_graph_note_mutation_ptr((void*)map);
     boundary_value_shape_note_hashmap_growth((usz)old_cap, (usz)new_cap);
@@ -362,6 +380,7 @@ fn bool hashmap_set(HashMap* map, Value* key, Value* value, Interp* interp) {
 }
 
 fn bool hashmap_remove(HashMap* map, Value* key) {
+    if (!hashmap_storage_valid(map)) return false;
     uint h = hash_value(key) & map.mask;
     for (uint i = 0; i < map.capacity; i++) {
         uint idx = (h + i) & map.mask;
@@ -482,6 +501,7 @@ fn Value* prim_dict_set(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 3) return collection_raise(interp, "type/arity", "set!: expected collection, key, value");
     if (args[0].tag != HASHMAP) return runtime_raise(interp, "runtime/evaluation-error", "set!: generic form expects array or dict target");
     if (args[0].hashmap_val == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "set!: dict backing storage is missing");
+    if (!hashmap_storage_valid(args[0].hashmap_val)) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "set!: dict backing entries are missing");
     if (!hashmap_set(args[0].hashmap_val, args[1], args[2], interp)) {
         return raise_error_with_payload_names(
             interp,

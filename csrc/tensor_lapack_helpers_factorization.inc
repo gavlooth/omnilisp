@@ -25,7 +25,7 @@ int omni_tensor_backend_lapack_dsyev(
         for (size_t i = 0; i < n; i++) {
             if (eigenvalues[i] > -1e-12 && eigenvalues[i] < 1e-12) eigenvalues[i] = 0.0;
         }
-        omni_tensor_lapack_dsyev_calls++;
+        atomic_fetch_add_explicit(&omni_tensor_lapack_dsyev_calls, 1, memory_order_relaxed);
         return OMNI_TENSOR_LAPACK_SUCCESS;
     }
     if (info > 0) return OMNI_TENSOR_LAPACK_NO_CONVERGENCE;
@@ -121,7 +121,7 @@ int omni_tensor_backend_lapack_dgesvd(
         }
     }
 
-    omni_tensor_lapack_dgesvd_calls++;
+    atomic_fetch_add_explicit(&omni_tensor_lapack_dgesvd_calls, 1, memory_order_relaxed);
     return OMNI_TENSOR_LAPACK_SUCCESS;
 }
 
@@ -155,7 +155,7 @@ int omni_tensor_backend_lapack_dgeev(
         lapack_n
     );
     if (info == 0) {
-        omni_tensor_lapack_dgeev_calls++;
+        atomic_fetch_add_explicit(&omni_tensor_lapack_dgeev_calls, 1, memory_order_relaxed);
         return OMNI_TENSOR_LAPACK_SUCCESS;
     }
     if (info > 0) return OMNI_TENSOR_LAPACK_NO_CONVERGENCE;
@@ -192,7 +192,7 @@ int omni_tensor_backend_lapack_sgeev(
         lapack_n
     );
     if (info == 0) {
-        omni_tensor_lapack_sgeev_calls++;
+        atomic_fetch_add_explicit(&omni_tensor_lapack_sgeev_calls, 1, memory_order_relaxed);
         return OMNI_TENSOR_LAPACK_SUCCESS;
     }
     if (info > 0) return OMNI_TENSOR_LAPACK_NO_CONVERGENCE;
@@ -227,7 +227,7 @@ int omni_tensor_backend_lapack_zgeev(
         lapack_n
     );
     if (info == 0) {
-        omni_tensor_lapack_zgeev_calls++;
+        atomic_fetch_add_explicit(&omni_tensor_lapack_zgeev_calls, 1, memory_order_relaxed);
         return OMNI_TENSOR_LAPACK_SUCCESS;
     }
     if (info > 0) return OMNI_TENSOR_LAPACK_NO_CONVERGENCE;
@@ -262,7 +262,7 @@ int omni_tensor_backend_lapack_cgeev(
         lapack_n
     );
     if (info == 0) {
-        omni_tensor_lapack_cgeev_calls++;
+        atomic_fetch_add_explicit(&omni_tensor_lapack_cgeev_calls, 1, memory_order_relaxed);
         return OMNI_TENSOR_LAPACK_SUCCESS;
     }
     if (info > 0) return OMNI_TENSOR_LAPACK_NO_CONVERGENCE;
@@ -325,7 +325,7 @@ int omni_tensor_backend_lapack_dgetrf(
     free(ipiv);
 
     if (info == 0) {
-        omni_tensor_lapack_dgetrf_calls++;
+        atomic_fetch_add_explicit(&omni_tensor_lapack_dgetrf_calls, 1, memory_order_relaxed);
         return OMNI_TENSOR_LAPACK_SUCCESS;
     }
     return OMNI_TENSOR_LAPACK_SINGULAR;
@@ -355,7 +355,7 @@ int omni_tensor_backend_lapack_dpotrf(
                 a[row * n + col] = 0.0;
             }
         }
-        omni_tensor_lapack_dpotrf_calls++;
+        atomic_fetch_add_explicit(&omni_tensor_lapack_dpotrf_calls, 1, memory_order_relaxed);
         return OMNI_TENSOR_LAPACK_SUCCESS;
     }
     if (info > 0) return OMNI_TENSOR_LAPACK_SINGULAR;

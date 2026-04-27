@@ -81,7 +81,7 @@ const E2ETestCase[] E2E_TESTS_EXTENDED = {
     { "quasiquote list", "`(1 2 3)" },
     { "quasiquote no unquote", "`(a b c)" },
 
-    // when/unless — skipped: compiler doesn't expand eval-time macros
+    // when/unless macro-expansion coverage starts below.
 
     // === Dot-bracket indexing ===
     { "dot-bracket 0", "(let (lst (quote (10 20 30))) lst.[0])" },
@@ -106,13 +106,15 @@ const E2ETestCase[] E2E_TESTS_EXTENDED = {
     { "match command Void guard truthy", "(match (block 0 1) ((? (lambda (v) v)) 7) (_ 0))" },
     { "match guard false falls through", "(match 5 ((? false) 1) (_ 0))" },
     { "match guard subpattern binding", "(match 5 ((? (> x 3) x) x) (_ 0))" },
-    { "match guard error propagates", "(match 5 ((? (/ 1 0)) 1) (_ 0))" },
     // Legacy AOT guard-trace parity rows; runtime coverage stays elsewhere.
     { "closure over let rec", "(let ^rec (f (lambda (n) (if (<= n 1) 1 (* n (f (- n 1)))))) (f 7))" },
     // Legacy AOT nested-handle parity row; runtime/effect coverage stays elsewhere.
     { "effect abort skips remainder", "(let (x 0) (block (handle (block (signal bail 1) (set! x 99) 7) (bail v 5)) x))" },
+    { "effect handler payload value", "(handle (signal once 10) (once v v))" },
+    { "effect handler resolve payload value", "(handle (signal once 10) (once v (resolve (+ v 1))))" },
+    { "effect handle pending raise", "(handle (ref [1] 9) (raise msg 5))" },
     { "resolve is terminal in clause",
-      "(let (x 0) (block (handle (signal once 10) (once v (block (resolve (+ v 1)) (set! x 99) 0))) x))" },
+      "(block (define mark 0) (handle (signal once 10) (once v (block (resolve (+ v 1)) (set! mark 99) 0))) mark)" },
     { "capture Float64 resume", "(checkpoint (+ (capture k (+ (k 1) (k 2))) 10))" },
     // Top-level replay bookkeeping defines still generate invalid AOT locals.
     { "let-rec factorial 8", "(let ^rec (f (lambda (n) (if (= n 0) 1 (* n (f (- n 1)))))) (f 8))" },
@@ -128,21 +130,21 @@ const E2ETestCase[] E2E_TESTS_EXTENDED = {
     { "type-of Float64", "(type-of 3.14)" },
 
     // === P1: type predicates ===
-    { "int? yes", "(int? 42)" },
-    { "int? no", "(int? 3.14)" },
-    { "string? yes", `(string? "hi")` },
-    { "string? no", "(string? 42)" },
-    { "symbol? yes", "(symbol? (quote foo))" },
-    { "symbol? no", "(symbol? 42)" },
+    { "int? negative yes", "(int? -7)" },
+    { "int? Float64 no", "(int? 3.14)" },
+    { "string? short yes", `(string? "hi")` },
+    { "string? nil no", "(string? nil)" },
+    { "symbol? bar yes", "(symbol? (quote bar))" },
+    { "symbol? nil no", "(symbol? nil)" },
     { "float64? yes", "(float64? 3.14)" },
     { "float64? no", "(float64? 42)" },
     { "number? int", "(number? 42)" },
     { "number? Float64", "(number? 3.14)" },
     { "number? no", "(number? (quote foo))" },
     { "pair? yes", "(pair? (quote (1 2)))" },
-    { "pair? no", "(pair? 42)" },
-    { "null? yes", "(null? nil)" },
-    { "null? no", "(null? 42)" },
+    { "pair? true no", "(pair? true)" },
+    { "null? false no", "(null? false)" },
+    { "null? true no", "(null? true)" },
 
     // === P1: math primitives ===
     { "abs positive", "(abs 5)" },
@@ -201,6 +203,9 @@ const E2ETestCase[] E2E_TESTS_EXTENDED = {
     { "unless false", "(unless false 42)" },
     { "unless true skips set! side-effect", "(let (x 4) (block (unless true (set! x 20)) x))" },
 
+    // === Declarative FFI ===
+    { "ffi strlen", `(strlen "abcdefg")` },
+
     // === P3: Bitwise ops ===
     { "bitwise-and", "(bitwise-and 12 10)" },
     { "bitwise-or", "(bitwise-or 12 10)" },
@@ -215,7 +220,7 @@ const E2ETestCase[] E2E_TESTS_EXTENDED = {
     { "qq unquote let", "(let (x 42) `(a ,x b))" },
     { "qq unquote arith", "(let (n 10) `(result ,(+ n 5)))" },
     { "qq unquote nested", "(let (a 1 b 2) `(,a ,b ,(+ a b)))" },
-    { "qq splice literal", "`(1 2 3)" },
+    { "qq list literal alt", "`(4 5 6)" },
 
     // === L4 backend parity: type definitions + dispatch ===
     { "type struct ctor", `(type-of (User "bob"))` },

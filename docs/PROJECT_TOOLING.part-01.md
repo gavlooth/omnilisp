@@ -65,14 +65,14 @@ Tree-sitter grammar sanity check:
 
 ```bash
 cd tooling/tree-sitter-omni
-tree-sitter generate
-tree-sitter parse examples/sample.omni
+npm run generate
+npm run parse
 ```
 
 Run the first-party LSP server over stdio:
 
 ```bash
-cd /home/heefoo/Documents/code/Omni
+cd /path/to/Omni
 python3 tooling/omni-lsp/omni_lsp.py
 ```
 
@@ -80,7 +80,7 @@ Neovim plugin wiring:
 
 ```lua
 {
-  dir = "/home/heefoo/Documents/code/Omni/tooling/omni-nvim",
+  dir = "/path/to/Omni/tooling/omni-nvim",
   init = function()
     vim.filetype.add({
       extension = {
@@ -408,6 +408,9 @@ Runs a local REPL server over a Unix domain socket using newline-delimited JSON.
 Current phase-1 behavior:
 
 - binds a filesystem Unix socket at the requested path,
+- makes the filesystem Unix socket owner read/write only (`0600`) before
+  listening, so other local users cannot attach to unauthenticated socket
+  sessions through a permissive parent directory,
 - emits one machine-readable startup error object on stdout when CLI/preflight
   setup fails before any client attaches; invalid invocation uses `cli/usage`
   and bind failure uses `io/listen-failed`,

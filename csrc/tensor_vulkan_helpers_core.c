@@ -43,11 +43,11 @@ omni_vulkan_cmd_dispatch_fn omni_vulkan_cmd_dispatch = NULL;
 omni_vulkan_cmd_pipeline_barrier_fn omni_vulkan_cmd_pipeline_barrier = NULL;
 omni_vulkan_queue_submit_fn omni_vulkan_queue_submit = NULL;
 omni_vulkan_queue_wait_idle_fn omni_vulkan_queue_wait_idle = NULL;
-int omni_tensor_vulkan_resolution_attempted = 0;
-int omni_tensor_vulkan_probe_attempted = 0;
-int omni_tensor_vulkan_available_cached = 0;
-int omni_tensor_vulkan_float64_cached = 0;
-int omni_tensor_vulkan_int64_cached = 0;
+static pthread_once_t omni_tensor_vulkan_resolve_once = PTHREAD_ONCE_INIT;
+static pthread_once_t omni_tensor_vulkan_probe_once = PTHREAD_ONCE_INIT;
+static int omni_tensor_vulkan_available_cached = 0;
+static int omni_tensor_vulkan_float64_cached = 0;
+static int omni_tensor_vulkan_int64_cached = 0;
 // Process-lifetime backend context so independently placed buffers can bind
 // together in binary Vulkan kernels.
 OmniTensorVulkanContext* omni_tensor_vulkan_shared_context = NULL;
@@ -213,6 +213,10 @@ int omni_tensor_vulkan_select_physical_device(
     *out_queue_family_index = 0;
     omni_vulkan_get_physical_device_features_fn get_features = NULL;
     omni_vulkan_get_physical_device_memory_properties_fn get_memory_properties = NULL;
+    if (omni_vulkan_enumerate_physical_devices == NULL ||
+        omni_vulkan_get_queue_family_properties == NULL) {
+        return 0;
+    }
     if (!omni_tensor_vulkan_physical_device_query_functions_load(&get_features, &get_memory_properties)) return 0;
 
     uint32_t device_count = 0;
@@ -366,7 +370,30 @@ static void omni_tensor_vulkan_noop_get_physical_device_memory_properties(
     if (memory_properties != NULL) memset(memory_properties, 0, sizeof(*memory_properties));
 }
 
+static OmniVulkanResult omni_tensor_vulkan_noop_enumerate_physical_devices(
+    OmniVulkanInstance instance,
+    uint32_t* physical_device_count,
+    OmniVulkanPhysicalDevice* physical_devices
+) {
+    (void)instance;
+    if (physical_device_count != NULL) *physical_device_count = 0u;
+    (void)physical_devices;
+    return OMNI_VULKAN_SUCCESS;
+}
+
+static void omni_tensor_vulkan_noop_get_queue_family_properties(
+    OmniVulkanPhysicalDevice physical_device,
+    uint32_t* queue_family_property_count,
+    OmniVulkanQueueFamilyProperties* queue_family_properties
+) {
+    (void)physical_device;
+    if (queue_family_property_count != NULL) *queue_family_property_count = 0u;
+    (void)queue_family_properties;
+}
+
 int omni_tensor_backend_vulkan_physical_device_query_null_guard_for_tests(void) {
+    omni_vulkan_enumerate_physical_devices_fn saved_enumerate = omni_vulkan_enumerate_physical_devices;
+    omni_vulkan_get_queue_family_properties_fn saved_queue_properties = omni_vulkan_get_queue_family_properties;
     omni_vulkan_get_physical_device_features_fn saved_features = omni_vulkan_get_physical_device_features;
     omni_vulkan_get_physical_device_memory_properties_fn saved_memory_properties = omni_vulkan_get_physical_device_memory_properties;
 
@@ -377,6 +404,30 @@ int omni_tensor_backend_vulkan_physical_device_query_null_guard_for_tests(void) 
     OmniVulkanPhysicalDevice fake_device = (OmniVulkanPhysicalDevice)(uintptr_t)2u;
     int ok = 1;
 
+    omni_vulkan_enumerate_physical_devices = NULL;
+    omni_vulkan_get_queue_family_properties = omni_tensor_vulkan_noop_get_queue_family_properties;
+    omni_vulkan_get_physical_device_features = omni_tensor_vulkan_noop_get_physical_device_features;
+    omni_vulkan_get_physical_device_memory_properties = omni_tensor_vulkan_noop_get_physical_device_memory_properties;
+    if (omni_tensor_vulkan_select_physical_device(fake_instance, &selected_device, &selected_queue) != 0 ||
+        selected_device != NULL ||
+        selected_queue != 0u) {
+        ok = 0;
+    }
+
+    selected_device = (OmniVulkanPhysicalDevice)(uintptr_t)1u;
+    selected_queue = 77u;
+    omni_vulkan_enumerate_physical_devices = omni_tensor_vulkan_noop_enumerate_physical_devices;
+    omni_vulkan_get_queue_family_properties = NULL;
+    if (omni_tensor_vulkan_select_physical_device(fake_instance, &selected_device, &selected_queue) != 0 ||
+        selected_device != NULL ||
+        selected_queue != 0u) {
+        ok = 0;
+    }
+
+    selected_device = (OmniVulkanPhysicalDevice)(uintptr_t)1u;
+    selected_queue = 77u;
+    omni_vulkan_enumerate_physical_devices = saved_enumerate;
+    omni_vulkan_get_queue_family_properties = saved_queue_properties;
     omni_vulkan_get_physical_device_features = NULL;
     omni_vulkan_get_physical_device_memory_properties = omni_tensor_vulkan_noop_get_physical_device_memory_properties;
     if (omni_tensor_vulkan_select_physical_device(fake_instance, &selected_device, &selected_queue) != 0 ||
@@ -401,6 +452,8 @@ int omni_tensor_backend_vulkan_physical_device_query_null_guard_for_tests(void) 
         ok = 0;
     }
 
+    omni_vulkan_enumerate_physical_devices = saved_enumerate;
+    omni_vulkan_get_queue_family_properties = saved_queue_properties;
     omni_vulkan_get_physical_device_features = saved_features;
     omni_vulkan_get_physical_device_memory_properties = saved_memory_properties;
     return ok ? OMNI_TENSOR_VULKAN_SUCCESS : OMNI_TENSOR_VULKAN_INVALID;
@@ -432,8 +485,8 @@ int omni_tensor_vulkan_find_host_visible_memory_type(
     return 0;
 }
 
-static int omni_tensor_vulkan_resolve(void) {
-    if (omni_vulkan_create_instance != NULL &&
+static int omni_tensor_vulkan_symbols_ready(void) {
+    return omni_vulkan_create_instance != NULL &&
         omni_vulkan_destroy_instance != NULL &&
         omni_vulkan_enumerate_physical_devices != NULL &&
         omni_vulkan_get_queue_family_properties != NULL &&
@@ -474,12 +527,10 @@ static int omni_tensor_vulkan_resolve(void) {
         omni_vulkan_cmd_dispatch != NULL &&
         omni_vulkan_cmd_pipeline_barrier != NULL &&
         omni_vulkan_queue_submit != NULL &&
-        omni_vulkan_queue_wait_idle != NULL) {
-        return 1;
-    }
-    if (omni_tensor_vulkan_resolution_attempted) return 0;
-    omni_tensor_vulkan_resolution_attempted = 1;
+        omni_vulkan_queue_wait_idle != NULL;
+}
 
+static void omni_tensor_vulkan_resolve_once_fn(void) {
     const char* candidates[] = {
         "libvulkan.so.1",
         "libvulkan.so",
@@ -574,7 +625,6 @@ static int omni_tensor_vulkan_resolve(void) {
             cmd_pipeline_barrier_symbol != NULL &&
             queue_submit_symbol != NULL &&
             queue_wait_idle_symbol != NULL) {
-            omni_tensor_vulkan_handle = handle;
             omni_vulkan_create_instance = (omni_vulkan_create_instance_fn)create_instance_symbol;
             omni_vulkan_destroy_instance = (omni_vulkan_destroy_instance_fn)destroy_instance_symbol;
             omni_vulkan_enumerate_physical_devices = (omni_vulkan_enumerate_physical_devices_fn)enumerate_physical_devices_symbol;
@@ -617,13 +667,17 @@ static int omni_tensor_vulkan_resolve(void) {
             omni_vulkan_cmd_pipeline_barrier = (omni_vulkan_cmd_pipeline_barrier_fn)cmd_pipeline_barrier_symbol;
             omni_vulkan_queue_submit = (omni_vulkan_queue_submit_fn)queue_submit_symbol;
             omni_vulkan_queue_wait_idle = (omni_vulkan_queue_wait_idle_fn)queue_wait_idle_symbol;
-            return 1;
+            omni_tensor_vulkan_handle = handle;
+            return;
         }
 
         dlclose(handle);
     }
+}
 
-    return 0;
+static int omni_tensor_vulkan_resolve(void) {
+    (void)pthread_once(&omni_tensor_vulkan_resolve_once, &omni_tensor_vulkan_resolve_once_fn);
+    return omni_tensor_vulkan_symbols_ready();
 }
 
 

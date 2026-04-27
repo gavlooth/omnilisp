@@ -45,14 +45,16 @@ fn Value* jit_reset_value(Interp* interp, Value* body) {
     save_interp_state(interp, &saved);
     main::StackContext parent_ctx;
     main::stack_ctx_switch_to(ctx, &parent_ctx);
-    if (!jit_continuation_drive_blocked_fiber(ctx, interp, &parent_ctx)) {
+    JitBlockedFiberDriveStatus drive_status = jit_continuation_drive_blocked_fiber(ctx, interp, &parent_ctx);
+    if (jit_blocked_fiber_drive_failed(drive_status)) {
+        restore_interp_state_preserve_raise(interp, &saved);
         interp.current_reset_state = saved_state;
         main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
-        return raise_error_with_payload_names(
+        return jit_blocked_fiber_drive_raise(
             interp,
-            "runtime",
-            "runtime/fiber-yield-failed",
-            "checkpoint: failed to yield blocked scheduler fiber"
+            drive_status,
+            "checkpoint: failed to yield blocked scheduler fiber",
+            "checkpoint: async yield propagation limit exceeded"
         );
     }
     restore_interp_state_preserve_raise(interp, &saved);
@@ -115,6 +117,11 @@ fn Value* jit_shift_value(Interp* interp, Value* body) {
     }
     k.ctx = current;
     k.is_coroutine_based = true;
+    Value* snapshot_error = null;
+    if (!continuation_attach_aot_snapshot_if_active(k, &snapshot_error)) {
+        interp_discard_lisp_continuation(interp, k);
+        return snapshot_error != null ? snapshot_error : make_error(interp, "capture: failed to snapshot continuation state");
+    }
     Value* k_val = make_continuation(interp, k);
     if (k_val == null || k_val.tag == ERROR) {
         interp_discard_lisp_continuation(interp, k);

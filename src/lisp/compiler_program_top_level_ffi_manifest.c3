@@ -3,36 +3,57 @@ module lisp;
 import std::collections::list;
 import main;
 
-fn char[] ffi_manifest_type_name(FfiTypeTag tag) {
+fn char[] ffi_manifest_type_name(int tag) {
     switch (tag) {
-        case FFI_TYPE_VOID:
+        case 0:
             return "Void";
-        case FFI_TYPE_INT:
+        case 1:
             return "Integer";
-        case FFI_TYPE_DOUBLE:
+        case 2:
             return "Float64";
-        case FFI_TYPE_FLOAT32:
-            return "Float32";
-        case FFI_TYPE_INT32:
-            return "Int32";
-        case FFI_TYPE_INT64:
-            return "Int64";
-        case FFI_TYPE_UINT32:
-            return "UInt32";
-        case FFI_TYPE_UINT64:
-            return "UInt64";
-        case FFI_TYPE_PTR:
+        case 3:
             return "ForeignHandle";
-        case FFI_TYPE_BUFFER:
-            return "Buffer";
-        case FFI_TYPE_STRUCT:
-            return "Struct";
-        case FFI_TYPE_BOOL:
+        case 4:
             return "Boolean";
-        case FFI_TYPE_STRING:
+        case 5:
             return "String";
+        case 6:
+            return "Float32";
+        case 7:
+            return "Int32";
+        case 8:
+            return "Int64";
+        case 9:
+            return "UInt32";
+        case 10:
+            return "UInt64";
+        case 11:
+            return "Buffer";
+        case 12:
+            return "Struct";
         default:
-            return "Void";
+            return "Invalid";
+    }
+}
+
+fn bool ffi_manifest_type_tag_is_valid(int tag) @inline {
+    switch (tag) {
+        case 0:
+        case 1:
+        case 2:
+        case 3:
+        case 4:
+        case 5:
+        case 6:
+        case 7:
+        case 8:
+        case 9:
+        case 10:
+        case 11:
+        case 12:
+            return true;
+        default:
+            return false;
     }
 }
 
@@ -82,11 +103,19 @@ fn void Compiler.emit_ffi_manifest_signature_json(
     self.emit("        \"params\": [");
     for (usz i = 0; i < param_count; i++) {
         if (i > 0) self.emit(", ");
-        self.emit_json_string(ffi_manifest_type_name((FfiTypeTag)param_tags[i]));
+        int param_tag = param_tags[i];
+        if (!ffi_manifest_type_tag_is_valid(param_tag)) {
+            self.set_compile_error("compiler: invalid FFI type tag in contract manifest");
+        }
+        self.emit_json_string(ffi_manifest_type_name(param_tag));
     }
     self.emit("],\n");
     self.emit("        \"return\": ");
-    self.emit_json_string(ffi_manifest_type_name((FfiTypeTag)(has_return_type ? return_tag : (int)FfiTypeTag.FFI_TYPE_VOID)));
+    int manifest_return_tag = has_return_type ? return_tag : (int)FfiTypeTag.FFI_TYPE_VOID;
+    if (!ffi_manifest_type_tag_is_valid(manifest_return_tag)) {
+        self.set_compile_error("compiler: invalid FFI type tag in contract manifest");
+    }
+    self.emit_json_string(ffi_manifest_type_name(manifest_return_tag));
     self.emit("\n      }");
 }
 
@@ -166,6 +195,25 @@ fn void Compiler.emit_ffi_manifest_lib_entries(Compiler* self, Expr* expr, bool*
     if (expr == null) return;
 
     switch (expr.tag) {
+        case E_FFI_LIB:
+            break;
+        case E_FFI_FN:
+        case E_LIT:
+        case E_VAR:
+        case E_QUOTE:
+        case E_QUASIQUOTE:
+        case E_UNQUOTE:
+        case E_UNQUOTE_SPLICING:
+        case E_PATH:
+        case E_DEFMACRO:
+        case E_IMPORT:
+        case E_EXPORT_FROM:
+        case E_DEFTYPE:
+        case E_DEFABSTRACT:
+        case E_DEFUNION:
+        case E_DEFALIAS:
+        case E_DEFEFFECT:
+            return;
         case E_LAMBDA:
             if (expr.lambda != null) self.emit_ffi_manifest_lib_entries(expr.lambda.body, first);
             return;
@@ -262,6 +310,8 @@ fn void Compiler.emit_ffi_manifest_lib_entries(Compiler* self, Expr* expr, bool*
             self.emit_ffi_manifest_lib_entries(expr.define.value, first);
             return;
         default:
+            self.set_compile_error("compiler: unknown expression tag in FFI manifest library discovery");
+            return;
     }
     self.emit_ffi_manifest_lib_entry(expr, first);
 }
@@ -270,6 +320,25 @@ fn void Compiler.emit_ffi_manifest_fn_entries(Compiler* self, Expr* expr, bool* 
     if (expr == null) return;
 
     switch (expr.tag) {
+        case E_FFI_FN:
+            break;
+        case E_FFI_LIB:
+        case E_LIT:
+        case E_VAR:
+        case E_QUOTE:
+        case E_QUASIQUOTE:
+        case E_UNQUOTE:
+        case E_UNQUOTE_SPLICING:
+        case E_PATH:
+        case E_DEFMACRO:
+        case E_IMPORT:
+        case E_EXPORT_FROM:
+        case E_DEFTYPE:
+        case E_DEFABSTRACT:
+        case E_DEFUNION:
+        case E_DEFALIAS:
+        case E_DEFEFFECT:
+            return;
         case E_LAMBDA:
             if (expr.lambda != null) self.emit_ffi_manifest_fn_entries(expr.lambda.body, first);
             return;
@@ -366,6 +435,8 @@ fn void Compiler.emit_ffi_manifest_fn_entries(Compiler* self, Expr* expr, bool* 
             self.emit_ffi_manifest_fn_entries(expr.define.value, first);
             return;
         default:
+            self.set_compile_error("compiler: unknown expression tag in FFI manifest function discovery");
+            return;
     }
     self.emit_ffi_manifest_fn_entry(expr, first);
 }
@@ -381,7 +452,7 @@ fn void Compiler.emit_ffi_contract_manifest(Compiler* self, List{Expr*}* exprs) 
     }
     if (!has_ffi) return;
 
-    self.emit("const char[] __omni_ffi_contract_json = `{\n");
+    self.emit("const char[] OMNI_FFI_CONTRACT_JSON = `{\n");
     self.emit("  \"format\": \"omni.ffi-contract/v1\",\n");
     self.emit("  \"libraries\": [\n");
     bool first_lib = true;

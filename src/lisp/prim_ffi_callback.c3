@@ -95,6 +95,10 @@ fn bool ffi_symbol_value_to_tag(Value* v, Interp* interp, FfiTypeTag* out_tag) {
     return ffi_callback_value_to_type_tag(v, interp, out_tag, &ignored_policy);
 }
 
+fn bool ffi_callback_parameter_type_supported(FfiTypeTag tag) @inline {
+    return tag != FFI_TYPE_VOID;
+}
+
 // Convert a single C argument (pointed to by arg_ptr) to an Omni Value.
 fn Value* ffi_callback_arg_to_value(void* arg_ptr, FfiTypeTag tag, Interp* interp) {
     switch (tag) {
@@ -372,7 +376,8 @@ fn Value* prim_ffi_callback(Value*[] args, Env* env, Interp* interp) {
                 Value* cur = type_list;
                 usz i = 0;
                 while (is_cons(cur)) {
-                    if (!ffi_symbol_value_to_tag(cur.cons_val.car, interp, &param_types[i])) {
+                    if (!ffi_symbol_value_to_tag(cur.cons_val.car, interp, &param_types[i]) ||
+                        !ffi_callback_parameter_type_supported(param_types[i])) {
                         mem::free(param_types);
                         return ffi_raise(interp, "ffi/type-mismatch", "ffi-callback: unsupported parameter type (expected symbol like 'Integer)");
                     }
@@ -381,7 +386,8 @@ fn Value* prim_ffi_callback(Value*[] args, Env* env, Interp* interp) {
                 }
             } else {
                 for (usz i = 0; i < param_count; i++) {
-                    if (!ffi_symbol_value_to_tag(type_list.array_val.items[i], interp, &param_types[i])) {
+                    if (!ffi_symbol_value_to_tag(type_list.array_val.items[i], interp, &param_types[i]) ||
+                        !ffi_callback_parameter_type_supported(param_types[i])) {
                         mem::free(param_types);
                         return ffi_raise(interp, "ffi/type-mismatch", "ffi-callback: unsupported parameter type (expected symbol like 'Integer)");
                     }
@@ -412,7 +418,8 @@ fn Value* prim_ffi_callback(Value*[] args, Env* env, Interp* interp) {
                 return ffi_raise(interp, "ffi/out-of-memory", "ffi-callback: out of memory");
             }
             for (usz i = 0; i < param_count; i++) {
-                if (!ffi_symbol_value_to_tag(args[i + 1], interp, &param_types[i])) {
+                if (!ffi_symbol_value_to_tag(args[i + 1], interp, &param_types[i]) ||
+                    !ffi_callback_parameter_type_supported(param_types[i])) {
                     mem::free(param_types);
                     return ffi_raise(interp, "ffi/type-mismatch", "ffi-callback: unsupported parameter type (expected symbol like 'Integer)");
                 }

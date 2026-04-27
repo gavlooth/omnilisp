@@ -13,7 +13,7 @@
 ## Current Status
 
 Status: `green`
-As of: 2026-04-27
+As of: 2026-04-30
 
 The C ABI / `ForeignHandle` runtime path is shipped, validated, and now has
 lane-level proof closure for the wrapper families in scope. The only non-C
@@ -32,6 +32,12 @@ Already-landed core behavior:
 - `ForeignHandle` as the single user-facing foreign abstraction.
 - Stable C ABI grouped syntax and descriptor flow (`[ffi module]` over `[ffi lib]` +
   `[ffi λ]`).
+- Generated FFI programs use C3-valid embedded contract metadata
+  (`OMNI_FFI_CONTRACT_JSON`) and keep final tail-position block FFI
+  declarations, branch-local FFI declarations, and match-clause FFI
+  declarations bound to the direct AOT bridge results. The direct-result sync
+  now lives at the FFI helper lowering boundary, so `let`, lambda-tail, module,
+  block, branch, and match paths share one binding rule.
 - Internal adapter boundary for `foreign-describe`, `foreign-release`, and C ABI
   bound-call dispatch.
 - Shared metadata and capability model (`'runtime`, `'parameters`, `'returns`,

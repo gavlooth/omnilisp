@@ -61,7 +61,9 @@ fn Value* promote_escape_array_shared_wrapper(Value* v, Interp* interp, Promotio
         }
         result.tag = ARRAY;
         result.array_val = null;
-        main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value);
+        if (!main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value)) {
+            return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to register array escape copy destructor");
+        }
         return result;
     }
 
@@ -109,7 +111,9 @@ fn Value* promote_escape_array_shared_wrapper(Value* v, Interp* interp, Promotio
     }
     result.tag = ARRAY;
     result.array_val = dst_arr;
-    main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value);
+    if (!main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value)) {
+        return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to register array escape copy destructor");
+    }
     dst_arr_committed = true;
     return result;
 }
@@ -125,7 +129,9 @@ fn Value* promote_escape_hashmap_backed_shared_wrapper(Value* v, Interp* interp,
         }
         result.tag = v.tag;
         result.hashmap_val = null;
-        main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value);
+        if (!main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value)) {
+            return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to register hashmap escape copy destructor");
+        }
         return result;
     }
 
@@ -185,7 +191,9 @@ fn Value* promote_escape_hashmap_backed_shared_wrapper(Value* v, Interp* interp,
     }
     result.tag = v.tag;
     result.hashmap_val = dst_map;
-    main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value);
+    if (!main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value)) {
+        return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to register hashmap escape copy destructor");
+    }
     dst_map_committed = true;
     return result;
 }
@@ -201,7 +209,9 @@ fn Value* promote_escape_method_table_shared_wrapper(Value* v, Interp* interp, P
         }
         result.tag = METHOD_TABLE;
         result.method_table_val = null;
-        main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value);
+        if (!main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value)) {
+            return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to register method table escape copy destructor");
+        }
         return result;
     }
 
@@ -272,7 +282,9 @@ fn Value* promote_escape_method_table_shared_wrapper(Value* v, Interp* interp, P
     }
     result.tag = METHOD_TABLE;
     result.method_table_val = dst_mt;
-    main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value);
+    if (!main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value)) {
+        return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to register method table escape copy destructor");
+    }
     dst_mt_committed = true;
     return result;
 }

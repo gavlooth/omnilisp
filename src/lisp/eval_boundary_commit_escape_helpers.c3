@@ -400,6 +400,34 @@ fn void boundary_commit_escape_handle_releasing_scope(
                 return;
             }
             if (destination_promotion.fault_code != BOUNDARY_COMMIT_FAULT_NONE) {
+                if (plan.compatibility_candidate) {
+                    PromotionContext compatibility_ctx = {};
+                    boundary_promotion_context_begin(interp, &compatibility_ctx);
+                    defer boundary_promotion_context_end(interp, &compatibility_ctx);
+                    BoundaryCommitDestinationPromotion compatibility_promotion =
+                        boundary_commit_try_destination_promotion(
+                            result,
+                            interp,
+                            target_scope,
+                            releasing_scope,
+                            &compatibility_ctx,
+                            BOUNDARY_PLAN_ROUTE_COMPATIBILITY_DESTINATION,
+                            false
+                        );
+                    if (compatibility_promotion.committed) {
+                        committed.value = compatibility_promotion.value;
+                        committed.outcome = compatibility_promotion.outcome;
+                        committed.compatibility_path_used = true;
+                        boundary_commit_set_selected_plan(
+                            committed,
+                            BOUNDARY_PLAN_ROUTE_COMPATIBILITY_DESTINATION,
+                            BOUNDARY_PLAN_REASON_DESTINATION_COMMITTED_COMPATIBILITY
+                        );
+                        boundary_txn_commit(txn);
+                        if (commit_succeeded != null) *commit_succeeded = true;
+                        return;
+                    }
+                }
                 boundary_commit_escape_fail_closed(committed, interp, txn, destination_promotion.fault_code);
                 return;
             }

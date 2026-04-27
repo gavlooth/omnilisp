@@ -5,6 +5,7 @@ module lisp;
 // safe-point GC cannot run until execution unwinds.
 const usz JIT_STATE_POOL_SIZE = 16384;
 const usz JIT_STATE_GC_THRESHOLD = JIT_STATE_POOL_SIZE * 3 / 4;  // GC when pool reaches 75%
+const usz JIT_STATE_SPILL_MAX = 4096;
 
 struct JitTrackedState {
     void* state;

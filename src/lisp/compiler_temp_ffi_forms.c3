@@ -225,7 +225,7 @@ fn void Compiler.emit_ffi_fn_support_decls(
         self.emit(";\n");
         for (usz i = 0; i < param_count; i++) {
             char[96] policy_buf;
-            char[] entry = compiler_format_generated_name_index(policy_buf[..], param_policies_name, (long)i);
+            char[] entry = self.generated_name_index(policy_buf[..], param_policies_name, (long)i);
             self.emit_ffi_policy_spec_init(entry, &param_policies[i]);
         }
     }
@@ -292,6 +292,31 @@ fn void Compiler.emit_ffi_fn_call_expr_prepared(
     self.emit(")");
 }
 
+fn bool Compiler.emit_ffi_direct_result_binding_sync(Compiler* self, SymbolId local_name, usz result_id) {
+    SymbolId backing = INVALID_SYMBOL_ID;
+    if (self.find_active_module_private_backing(local_name, &backing)) {
+        self.emit_indent();
+        self.emit_symbol_name(backing);
+        self.emit(" = ");
+        self.emit_temp_ref(result_id);
+        self.emit(";\n");
+        return true;
+    }
+    if (self.module_private_symbols.len() > 0) {
+        self.set_compile_error("compiler: inline module ffi binding missing private backing");
+        return false;
+    }
+    if (self.is_global(local_name)) {
+        self.emit_indent();
+        self.emit_symbol_name(local_name);
+        self.emit(" = ");
+        self.emit_temp_ref(result_id);
+        self.emit(";\n");
+        return true;
+    }
+    return true;
+}
+
 fn usz Compiler.compile_ffi_lib_direct(Compiler* self, Expr* expr) {
     ExprFfiLib* fl = &expr.ffi_lib;
     if (fl.path_expr == null
@@ -311,6 +336,7 @@ fn usz Compiler.compile_ffi_lib_direct(Compiler* self, Expr* expr) {
     self.emit(" = ");
     self.emit_ffi_lib_call(expr, false);
     self.emit(";\n");
+    self.emit_ffi_direct_result_binding_sync(fl.name, id);
     return id;
 }
 
@@ -353,12 +379,12 @@ fn usz Compiler.compile_ffi_fn_direct(Compiler* self, Expr* expr) {
     }
     usz tags_id = self.next_result();
     char[64] tags_name_buf;
-    char[] tags_name = compiler_format_generated_name_id(tags_name_buf[..], "_ffi_param_tags_", (long)tags_id);
+    char[] tags_name = self.generated_name_id(tags_name_buf[..], "_ffi_param_tags_", (long)tags_id);
     usz policies_id = self.next_result();
     char[64] param_policies_name_buf;
-    char[] param_policies_name = compiler_format_generated_name_id(param_policies_name_buf[..], "_ffi_param_policies_", (long)policies_id);
+    char[] param_policies_name = self.generated_name_id(param_policies_name_buf[..], "_ffi_param_policies_", (long)policies_id);
     char[64] return_policy_name_buf;
-    char[] return_policy_name = compiler_format_generated_name_id(return_policy_name_buf[..], "_ffi_return_policy_", (long)policies_id);
+    char[] return_policy_name = self.generated_name_id(return_policy_name_buf[..], "_ffi_return_policy_", (long)policies_id);
     bool emit_policy_specs = compiler_ffi_prepared_needs_aot_policy_specs(param_policies, param_count, &return_policy);
 
     self.emit_ffi_fn_support_decls(param_tags, param_policies, param_count, &return_policy,
@@ -368,8 +394,9 @@ fn usz Compiler.compile_ffi_fn_direct(Compiler* self, Expr* expr) {
     self.emit(" = ");
     self.emit_ffi_fn_call_expr_prepared(lib_name, fn_name, c_symbol, tags_name, param_count,
         ff.has_return_type, return_tag, false, param_policies_name, return_policy_name, emit_policy_specs);
+    self.emit(";\n");
+    self.emit_ffi_direct_result_binding_sync(ff.fn_name, id);
     if (param_tags != null) mem::free(param_tags);
     if (param_policies != null) mem::free(param_policies);
-    self.emit(";\n");
     return id;
 }

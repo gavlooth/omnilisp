@@ -28,17 +28,16 @@ fn void Compiler.find_free_vars_var(Compiler* self, Expr* expr, List{SymbolId}* 
     // Check if it's a global primitive (for delegation, only skip builtins)
     if (self.for_delegation) {
         if (self.is_builtin_primitive(name)) return;
+        // Delegation uses free-vars as an injection list for non-builtin globals.
+        foreach (f : *free_vars) {
+            if ((uint)f == (uint)name) return;
+        }
+        free_vars.push(name);
+        return;
     } else {
         if (self.is_primitive(name)) return;
     }
-    // Check if it's a mutable-captured variable (accessed via interpreter env)
-    if (self.is_mutable_captured_var(name)) return;
-    // Check if already in free vars
-    foreach (f : *free_vars) {
-        if ((uint)f == (uint)name) return;
-    }
-    // It's a free variable
-    free_vars.push(name);
+    // Unknown non-enclosing names are runtime lookups, not closure captures.
 }
 
 fn void Compiler.find_free_vars_lambda(Compiler* self, Expr* expr, List{SymbolId}* bound_vars, List{SymbolId}* free_vars, List{SymbolId}* enclosing_scope) {

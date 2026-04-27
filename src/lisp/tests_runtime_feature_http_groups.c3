@@ -20,24 +20,82 @@ fn bool http_test_slice_equals(char[] actual, char[] expected) {
     return true;
 }
 
+fn bool http_test_truthy_value(Value* value, Interp* interp) @inline {
+    return value != null &&
+        !is_nil(value) &&
+        !(is_symbol(value) && value.sym_val == interp.sym_false) &&
+        value.tag != ERROR;
+}
+
+fn void http_test_truthy_interp_jit(
+    Interp* interp,
+    char[] name,
+    char[] interp_expr,
+    char[] jit_expr,
+    int* pass,
+    int* fail
+) {
+    EvalResult ri = run(interp_expr, interp);
+    bool interp_ok = !ri.error.has_error && http_test_truthy_value(ri.value, interp);
+
+    bool jit_ok = !jit_checks_enabled();
+    char[] jit_stage = "disabled";
+    Value* jit_value = null;
+    if (jit_checks_enabled()) {
+        JitTopLevelEval jit_eval = eval_jit_top_level(interp, jit_expr);
+        jit_stage = jit_eval.stage;
+        jit_value = jit_eval.value;
+        jit_ok = jit_eval.ok && http_test_truthy_value(jit_value, interp);
+    }
+
+    if (interp_ok && jit_ok) {
+        emit_pass(name);
+        (*pass)++;
+    } else {
+        io::printfn("[FAIL] %s (interp=%s, jit=%s)", (ZString)name, interp_ok ? "ok" : "FAIL", jit_ok ? "ok" : "FAIL");
+        if (!jit_ok && jit_checks_enabled()) print_jit_failure_debug(interp, name, jit_stage, jit_value);
+        (*fail)++;
+    }
+}
+
 fn void run_http_request_fiber_path_test(Interp* interp, int* pass, int* fail) {
-    test_truthy(interp, "http-request in fiber via libuv tcp path",
-        "(block "
-        "  (define hf (spawn (lambda () "
-        "    (define p (+ 36300 (% (time-ms) 20000))) "
-        "    (define listener (tcp-listen \"127.0.0.1\" p 8)) "
-        "    (define sf (spawn (lambda () "
-        "      (define c (tcp-accept listener)) "
-        "      (try (lambda (ignored) (tcp-read-timeout c 1000)) (lambda (e) \"\")) "
-        "      (tcp-write c \"HTTP/1.1 201 Created\\r\\nContent-Length: 3\\r\\nConnection: close\\r\\n\\r\\nyes\") "
-        "      (tcp-close c)))) "
-        "    (define cf (spawn (lambda () "
-        "      (http-request \"GET\" (string-append \"http://127.0.0.1:\" (String p) \"/q\") \"\" \"\")))) "
-        "    (define res (await cf)) "
-        "    (await sf) "
-        "    (tcp-close listener) "
-        "    (and (= res.status 201) (= res.body \"yes\"))))) "
-        "  (await hf))",
+    http_test_truthy_interp_jit(
+        interp,
+        "http-request in fiber via libuv tcp path",
+        "(let (http-req-p (+ 36300 (% (time-ms) 8000))) "
+        "  (let (http-req-hf (spawn (lambda () "
+        "    (let (http-req-listener (tcp-listen \"127.0.0.1\" http-req-p 8)) "
+        "      (let (http-req-sf (spawn (lambda () "
+        "              (let (http-req-c (tcp-accept http-req-listener)) "
+        "                (block "
+        "                  (try (lambda (ignored) (tcp-read-timeout http-req-c 1000)) (lambda (e) \"\")) "
+        "                  (tcp-write http-req-c \"HTTP/1.1 201 Created\\r\\nContent-Length: 3\\r\\nConnection: close\\r\\n\\r\\nyes\") "
+        "                  (tcp-close http-req-c))))) "
+        "            http-req-cf (spawn (lambda () "
+        "              (http-request \"GET\" (string-append \"http://127.0.0.1:\" (String http-req-p) \"/q\") \"\" \"\")))) "
+        "        (let (http-req-res (await http-req-cf)) "
+        "          (block "
+        "            (await http-req-sf) "
+        "            (tcp-close http-req-listener) "
+        "            (and (= (ref http-req-res 'status) 201) (= (ref http-req-res 'body) \"yes\"))))))))) "
+        "    (await http-req-hf)))",
+        "(let (http-req-p (+ 46300 (% (time-ms) 8000))) "
+        "  (let (http-req-hf (spawn (lambda () "
+        "    (let (http-req-listener (tcp-listen \"127.0.0.1\" http-req-p 8)) "
+        "      (let (http-req-sf (spawn (lambda () "
+        "              (let (http-req-c (tcp-accept http-req-listener)) "
+        "                (block "
+        "                  (try (lambda (ignored) (tcp-read-timeout http-req-c 1000)) (lambda (e) \"\")) "
+        "                  (tcp-write http-req-c \"HTTP/1.1 201 Created\\r\\nContent-Length: 3\\r\\nConnection: close\\r\\n\\r\\nyes\") "
+        "                  (tcp-close http-req-c))))) "
+        "            http-req-cf (spawn (lambda () "
+        "              (http-request \"GET\" (string-append \"http://127.0.0.1:\" (String http-req-p) \"/q\") \"\" \"\")))) "
+        "        (let (http-req-res (await http-req-cf)) "
+        "          (block "
+        "            (await http-req-sf) "
+        "            (tcp-close http-req-listener) "
+        "            (and (= (ref http-req-res 'status) 201) (= (ref http-req-res 'body) \"yes\"))))))))) "
+        "    (await http-req-hf)))",
         pass, fail);
 }
 
@@ -379,22 +437,43 @@ fn void run_http_tests(Interp* interp, int* pass, int* fail) {
         "  (and (string? msg) (string-contains? msg \"resolution failed\")))",
         pass, fail);
 
-    test_truthy(interp, "http-get in fiber via libuv tcp path",
-        "(block "
-        "  (define hf (spawn (lambda () "
-        "    (define p (+ 36200 (% (time-ms) 20000))) "
-        "    (define listener (tcp-listen \"127.0.0.1\" p 8)) "
-        "    (define sf (spawn (lambda () "
-        "      (define c (tcp-accept listener)) "
-        "      (try (lambda (ignored) (tcp-read-timeout c 1000)) (lambda (e) \"\")) "
-        "      (tcp-write c \"HTTP/1.1 200 OK\\r\\nContent-Length: 2\\r\\nConnection: close\\r\\n\\r\\nok\") "
-        "      (tcp-close c)))) "
-        "    (define cf (spawn (lambda () (http-get (string-append \"http://127.0.0.1:\" (String p) \"/\"))))) "
-        "    (define res (await cf)) "
-        "    (await sf) "
-        "    (tcp-close listener) "
-        "    (and (= res.status 200) (= res.body \"ok\"))))) "
-        "  (await hf))",
+    http_test_truthy_interp_jit(
+        interp,
+        "http-get in fiber via libuv tcp path",
+        "(let (http-get-p (+ 36200 (% (time-ms) 8000))) "
+        "  (let (http-get-hf (spawn (lambda () "
+        "    (let (http-get-listener (tcp-listen \"127.0.0.1\" http-get-p 8)) "
+        "      (let (http-get-sf (spawn (lambda () "
+        "              (let (http-get-c (tcp-accept http-get-listener)) "
+        "                (block "
+        "                  (try (lambda (ignored) (tcp-read-timeout http-get-c 1000)) (lambda (e) \"\")) "
+        "                  (tcp-write http-get-c \"HTTP/1.1 200 OK\\r\\nContent-Length: 2\\r\\nConnection: close\\r\\n\\r\\nok\") "
+        "                  (tcp-close http-get-c))))) "
+        "            http-get-cf (spawn (lambda () "
+        "              (http-get (string-append \"http://127.0.0.1:\" (String http-get-p) \"/\"))))) "
+        "        (let (http-get-res (await http-get-cf)) "
+        "          (block "
+        "            (await http-get-sf) "
+        "            (tcp-close http-get-listener) "
+        "            (and (= (ref http-get-res 'status) 200) (= (ref http-get-res 'body) \"ok\"))))))))) "
+        "    (await http-get-hf)))",
+        "(let (http-get-p (+ 46200 (% (time-ms) 8000))) "
+        "  (let (http-get-hf (spawn (lambda () "
+        "    (let (http-get-listener (tcp-listen \"127.0.0.1\" http-get-p 8)) "
+        "      (let (http-get-sf (spawn (lambda () "
+        "              (let (http-get-c (tcp-accept http-get-listener)) "
+        "                (block "
+        "                  (try (lambda (ignored) (tcp-read-timeout http-get-c 1000)) (lambda (e) \"\")) "
+        "                  (tcp-write http-get-c \"HTTP/1.1 200 OK\\r\\nContent-Length: 2\\r\\nConnection: close\\r\\n\\r\\nok\") "
+        "                  (tcp-close http-get-c))))) "
+        "            http-get-cf (spawn (lambda () "
+        "              (http-get (string-append \"http://127.0.0.1:\" (String http-get-p) \"/\"))))) "
+        "        (let (http-get-res (await http-get-cf)) "
+        "          (block "
+        "            (await http-get-sf) "
+        "            (tcp-close http-get-listener) "
+        "            (and (= (ref http-get-res 'status) 200) (= (ref http-get-res 'body) \"ok\"))))))))) "
+        "    (await http-get-hf)))",
         pass, fail);
 
     {
@@ -439,7 +518,9 @@ fn void run_http_tests(Interp* interp, int* pass, int* fail) {
             "  (define (feed/fetch-fx) (Ok nil)) "
             "  (define (feed/fetch-crypto) (Ok nil)) "
             "  (define (feed/fetch-news) (Ok nil)) "
-            "  (await (spawn (lambda () (block (server-poll-once!) true)))))",
+            "  (await (spawn (lambda () "
+            "    (handle (block (server-poll-once!) true) "
+            "      (io/println msg (resolve nil)))))))",
             interp
         );
         if (!r.error.has_error && r.value != null && r.value.tag != NIL) {

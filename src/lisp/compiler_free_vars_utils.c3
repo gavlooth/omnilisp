@@ -44,7 +44,13 @@ fn void Compiler.collect_pattern_bindings(Compiler* self, Pattern* pat, List{Sym
                 bindings.push(pat.dict_keys[i]);
             }
 
+        case PAT_WILDCARD:
+        case PAT_LIT:
+        case PAT_QUOTE:
+            return;
+
         default:
+            self.set_compile_error("compiler: unknown pattern tag in free-variable binding collection");
             return;
     }
 }

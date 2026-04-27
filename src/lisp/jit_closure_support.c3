@@ -209,15 +209,31 @@ fn MethodSignature* jit_build_lambda_type_sig(Interp* interp, Expr* expr) {
 // Mirrors eval_lambda from eval.c3: creates a closure value from an E_LAMBDA Expr*.
 // Phase 4b: Closures allocated in current_scope (not root_scope). Env copied to a
 // standalone env_scope (refcounted). Temporary closures freed when scope releases.
+fn Value* jit_require_constructed_closure(Interp* interp, Value* closure) @inline {
+    if (closure == null) {
+        return jit_raise(interp, "runtime/out-of-memory", "jit: failed to construct closure");
+    }
+    if (closure.tag == ERROR) return closure;
+    if (closure.tag != CLOSURE || closure.closure_val == null) {
+        return jit_raise(interp, "runtime/invalid-state", "jit: malformed closure constructor result");
+    }
+    return closure;
+}
+
 fn Value* jit_make_closure_from_expr(Interp* interp, Expr* expr, Env* env) {
     interp = jit_resolve_interp(interp);
     if (interp == null) return null;
+    if (expr == null || expr.tag != E_LAMBDA || expr.lambda == null || expr.lambda.body == null) {
+        return jit_raise(interp, "runtime/invalid-state", "jit: malformed lambda expression");
+    }
     bool need_env_copy = (interp.current_scope != interp.root_scope);
     BoundaryEnvCopyFault copy_fault = BOUNDARY_ENV_COPY_FAULT_NONE;
 
     // Check for zero-arg lambda (sentinel param)
     if (expr.lambda.param == INVALID_SYMBOL_ID && !expr.lambda.has_rest) {
         Value* closure = make_closure_no_param(interp, expr.lambda.body, env);
+        closure = jit_require_constructed_closure(interp, closure);
+        if (closure == null || closure.tag == ERROR) return closure;
         if (!jit_copy_closure_env_if_needed(interp, closure, env, need_env_copy, &copy_fault)) {
             return jit_raise(interp, "boundary/copy-fault", (String)jit_env_copy_fault_message(copy_fault));
         }
@@ -226,6 +242,8 @@ fn Value* jit_make_closure_from_expr(Interp* interp, Expr* expr, Env* env) {
 
     // Create closure in current_scope
     Value* closure = make_closure(interp, expr.lambda.param, expr.lambda.body, env);
+    closure = jit_require_constructed_closure(interp, closure);
+    if (closure == null || closure.tag == ERROR) return closure;
 
     jit_copy_lambda_variadic_info(interp, closure, expr);
 

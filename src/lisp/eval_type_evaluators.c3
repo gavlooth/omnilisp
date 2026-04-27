@@ -3,6 +3,24 @@ module lisp;
 import std::io;
 import main;
 
+fn Value* eval_make_type_descriptor_value_root(Interp* interp, TypeId type_id) {
+    if (interp == null) return null;
+    TypeInfo* info = interp.types.get(type_id);
+    if (info == null) return null;
+    Value* descriptor = boundary_alloc_value_in_root(interp, true);
+    if (descriptor == null) return null;
+    descriptor.tag = TYPE_INFO;
+    descriptor.type_info_val = info;
+    return descriptor;
+}
+
+fn bool eval_bind_type_descriptor_value(Interp* interp, SymbolId name, TypeId type_id) {
+    if (interp == null || interp.global_env == null) return false;
+    Value* descriptor = eval_make_type_descriptor_value_root(interp, type_id);
+    if (descriptor == null) return false;
+    return env_define_with_barrier_checked(interp.global_env, name, descriptor, interp);
+}
+
 fn EvalResult eval_defabstract(Expr* expr, Env* env, Interp* interp) {
     ExprDefAbstract* da = &expr.defabstract;
 
@@ -34,9 +52,14 @@ fn EvalResult eval_defabstract(Expr* expr, Env* env, Interp* interp) {
         info.parent = INVALID_TYPE_ID;
     }
 
+    TypeId existing_type_id = interp.types.lookup(da.name, &interp.symbols);
     TypeId type_id = interp.types.register_type(info, &interp.symbols);
     if (type_id == INVALID_TYPE_ID) {
         return eval_error("out of memory while registering abstract type");
+    }
+    if (!eval_bind_type_descriptor_value(interp, da.name, type_id)) {
+        if (existing_type_id == INVALID_TYPE_ID) interp.types.rollback_recent_new_type(type_id, &interp.symbols);
+        return eval_error("out of memory while publishing abstract type descriptor");
     }
 
     // Return type name as symbol
@@ -135,10 +158,15 @@ fn EvalResult eval_defunion(Expr* expr, Env* env, Interp* interp) {
         return eval_error("out of memory while registering union type");
     }
 
+    TypeId existing_union_id = interp.types.lookup(du.name, &interp.symbols);
     TypeId union_id = interp.types.register_type(union_info, &interp.symbols);
     if (union_id == INVALID_TYPE_ID) {
         type_registry_destroy_type_info(&union_info);
         return eval_error("out of memory while registering union type");
+    }
+    if (!eval_bind_type_descriptor_value(interp, du.name, union_id)) {
+        if (existing_union_id == INVALID_TYPE_ID) interp.types.rollback_recent_new_type(union_id, &interp.symbols);
+        return eval_error("out of memory while publishing union type descriptor");
     }
 
     // Register each variant as its own type (with union as parent)
@@ -181,9 +209,14 @@ fn EvalResult eval_defalias(Expr* expr, Env* env, Interp* interp) {
         info.alias_target = INVALID_TYPE_ID;
     }
 
+    TypeId existing_type_id = interp.types.lookup(da.name, &interp.symbols);
     TypeId type_id = interp.types.register_type(info, &interp.symbols);
     if (type_id == INVALID_TYPE_ID) {
         return eval_error("out of memory while registering type alias");
+    }
+    if (!eval_bind_type_descriptor_value(interp, da.name, type_id)) {
+        if (existing_type_id == INVALID_TYPE_ID) interp.types.rollback_recent_new_type(type_id, &interp.symbols);
+        return eval_error("out of memory while publishing type alias descriptor");
     }
 
     Value* result = make_symbol(interp, da.name);

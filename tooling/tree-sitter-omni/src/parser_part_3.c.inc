@@ -1,3 +1,5 @@
+};
+
 static const uint16_t ts_parse_table[LARGE_STATE_COUNT][SYMBOL_COUNT] = {
   [STATE(0)] = {
     [ts_builtin_sym_end] = ACTIONS(1),
@@ -696,5 +698,3 @@ static const uint16_t ts_parse_table[LARGE_STATE_COUNT][SYMBOL_COUNT] = {
     [sym_regex_literal] = ACTIONS(29),
   },
   [STATE(22)] = {
-    [sym__form] = STATE(33),
-    [sym_form_comment] = STATE(41),

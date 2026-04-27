@@ -3,12 +3,43 @@ module lisp;
 import std::core::mem;
 import main;
 
+fn void primitive_release_user_data(Primitive* prim) @inline {
+    if (prim == null) return;
+    if (prim.user_data != null && prim.user_data_finalizer != null) {
+        prim.user_data_finalizer(prim.user_data);
+    }
+    prim.user_data = null;
+    prim.user_data_copy = null;
+    prim.user_data_finalizer = null;
+}
+
+fn void primitive_destroy_payload(Primitive* prim) @inline {
+    if (prim == null) return;
+    primitive_release_user_data(prim);
+    mem::free(prim);
+}
+
 // Scope destructor for Values with heap-allocated backing data.
 // Mirrors destroy_value in eval.c3 but called from scope_region lifecycle.
 fn void scope_dtor_value(void* ptr) {
     // Dtors re-enabled after fixing use-after-free (parser literals, module env)
     Value* v = (Value*)ptr;
     switch (v.tag) {
+        case NIL:
+        case INT:
+        case SYMBOL:
+        case CONS:
+        case PARTIAL_PRIM:
+        case DOUBLE:
+        case FLOAT32:
+        case COMPLEX128:
+        case COMPLEX64:
+        case TYPE_INFO:
+        case MODULE:
+        case ITERATOR:
+        case TIME_POINT:
+        case VOID:
+            break;
         case STRING:
         case ERROR:
             if (v.string_heap_owned && v.str_chars != null) {
@@ -21,7 +52,7 @@ fn void scope_dtor_value(void* ptr) {
             break;
         case PRIMITIVE:
             if (v.prim_val != null) {
-                mem::free(v.prim_val);
+                primitive_destroy_payload(v.prim_val);
                 v.prim_val = null;
             }
         case ARRAY:
@@ -96,23 +127,74 @@ fn void scope_dtor_value(void* ptr) {
                 continuation_release_handle_state_for_boundary(v.cont_val);
                 v.continuation_boundary_owned = false;
             }
-        case VOID:
             break;
-        // CONTINUATION lifetime remains managed by reset/shift/handle paths.
-        default: {}
     }
 }
 
 fn bool scope_register_value_dtor_or_cleanup(main::ScopeRegion* scope, Value* value) {
-    if (scope == null || value == null) return false;
+    if (value == null) return false;
+    if (scope == null) {
+        scope_dtor_value((void*)value);
+        return false;
+    }
     if (main::scope_register_dtor(scope, (void*)value, &scope_dtor_value)) return true;
     scope_dtor_value((void*)value);
     return false;
 }
 
 fn bool scope_register_escape_value_dtor_or_cleanup(main::ScopeRegion* scope, Value* value) {
-    if (scope == null || value == null) return false;
+    if (value == null) return false;
+    if (scope == null) {
+        scope_dtor_value((void*)value);
+        return false;
+    }
     if (main::scope_register_dtor_escape(scope, (void*)value, &scope_dtor_value)) return true;
+    scope_dtor_value((void*)value);
+    return false;
+}
+
+fn bool scope_register_tensor_value_dtor_or_cleanup_edges(
+    main::ScopeRegion* scope,
+    Value* value,
+    TensorVal* source_tensor,
+    main::ScopeRegion* target_scope,
+    bool escape_lane = false
+) {
+    if (value == null) return false;
+    if (scope == null) {
+        if (value.tag == TENSOR) {
+            tensor_cleanup_materialized_expr_edges(source_tensor, value.tensor_val, target_scope, escape_lane);
+        }
+        scope_dtor_value((void*)value);
+        return false;
+    }
+    if (main::scope_register_dtor(scope, (void*)value, &scope_dtor_value)) return true;
+    if (value.tag == TENSOR) {
+        tensor_cleanup_materialized_expr_edges(source_tensor, value.tensor_val, target_scope, escape_lane);
+    }
+    scope_dtor_value((void*)value);
+    return false;
+}
+
+fn bool scope_register_escape_tensor_value_dtor_or_cleanup_edges(
+    main::ScopeRegion* scope,
+    Value* value,
+    TensorVal* source_tensor,
+    main::ScopeRegion* target_scope,
+    bool escape_lane = true
+) {
+    if (value == null) return false;
+    if (scope == null) {
+        if (value.tag == TENSOR) {
+            tensor_cleanup_materialized_expr_edges(source_tensor, value.tensor_val, target_scope, escape_lane);
+        }
+        scope_dtor_value((void*)value);
+        return false;
+    }
+    if (main::scope_register_dtor_escape(scope, (void*)value, &scope_dtor_value)) return true;
+    if (value.tag == TENSOR) {
+        tensor_cleanup_materialized_expr_edges(source_tensor, value.tensor_val, target_scope, escape_lane);
+    }
     scope_dtor_value((void*)value);
     return false;
 }

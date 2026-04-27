@@ -50,7 +50,8 @@ fn ZString primitive_type_descriptor_name(Primitive* prim) {
         zstr_eq(name, "Set") ||
         zstr_eq(name, "Iterator") ||
         zstr_eq(name, "Coroutine") ||
-        zstr_eq(name, "TimePoint")) {
+        zstr_eq(name, "TimePoint") ||
+        zstr_eq(name, "Literal")) {
         return (ZString)name;
     }
     return null;
@@ -91,6 +92,7 @@ fn ZString symbol_type_descriptor_name(char* name) {
         zstr_eq(name, "Iterator") ||
         zstr_eq(name, "Coroutine") ||
         zstr_eq(name, "TimePoint") ||
+        zstr_eq(name, "Literal") ||
         zstr_eq(name, "Any") ||
         zstr_eq(name, "Number") ||
         zstr_eq(name, "Collection")) {
@@ -150,11 +152,15 @@ fn void print_closure_value(Value* v, SymbolTable* syms) {
 }
 
 fn void print_hashmap_value(Value* v, SymbolTable* syms) {
-    io::print("{");
     if (v.hashmap_val == null) {
-        io::print("}");
+        io::print("{}");
         return;
     }
+    if (!hashmap_storage_valid(v.hashmap_val)) {
+        io::print("#<dict:invalid>");
+        return;
+    }
+    io::print("{");
     uint printed = 0;
     for (uint hi = 0; hi < v.hashmap_val.capacity; hi++) {
         if (v.hashmap_val.entries[hi].key != null) {
@@ -169,11 +175,15 @@ fn void print_hashmap_value(Value* v, SymbolTable* syms) {
 }
 
 fn void print_set_value(Value* v, SymbolTable* syms) {
-    io::print("(Set");
     if (v.hashmap_val == null) {
-        io::print(")");
+        io::print("(Set)");
         return;
     }
+    if (!hashmap_storage_valid(v.hashmap_val)) {
+        io::print("#<set:invalid>");
+        return;
+    }
+    io::print("(Set");
     uint printed = 0;
     for (uint hi = 0; hi < v.hashmap_val.capacity; hi++) {
         if (v.hashmap_val.entries[hi].key != null) {

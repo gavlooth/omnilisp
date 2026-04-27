@@ -18,6 +18,9 @@ mkdir -p \
   "$(dirname "$summary_json")" \
   "$(dirname "$OMNI_BOUNDARY_PROFILE_MONITOR_LOG")"
 
+stdout_log="${log_file}.stdout"
+stderr_log="${log_file}.stderr"
+
 OMNI_VALIDATION_MONITOR_LOG="$OMNI_BOUNDARY_PROFILE_MONITOR_LOG" \
 scripts/run_validation_container.sh env \
   LD_LIBRARY_PATH="$ld_library_path" \
@@ -28,7 +31,11 @@ scripts/run_validation_container.sh env \
   OMNI_BOUNDARY_TRAVERSAL_SUMMARY="${OMNI_BOUNDARY_TRAVERSAL_SUMMARY:-1}" \
   OMNI_BOUNDARY_BENCH="${OMNI_BOUNDARY_BENCH:-1}" \
   OMNI_LISP_TEST_SLICE="$OMNI_BOUNDARY_PROFILE_SLICE" \
-  ./build/main 2>&1 | tee "$log_file"
+  ./build/main --test-suite lisp \
+  > "$stdout_log" \
+  2> "$stderr_log"
+
+cat "$stdout_log" "$stderr_log" | tee "$log_file"
 
 scripts/parse_boundary_profile_summary.sh "$log_file" "$summary_json"
 scripts/check_boundary_profile_thresholds.sh "$log_file"

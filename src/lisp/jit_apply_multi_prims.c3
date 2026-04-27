@@ -35,6 +35,9 @@ fn Value* jit_null_callable_error(Interp* interp) {
 }
 
 fn Value* jit_apply_multi_args_zeroarg_closure(Interp* interp, Value* func) {
+    if (!jit_value_has_closure_payload_and_body(func)) {
+        return jit_invalid_closure_state_error(interp);
+    }
     if (zeroarg_closure_trace_enabled()) {
         io::printfn(
             "OMNI_MULTI_TRACE zeroarg-enter body_tag=%d env_scope=%d env_is_global=%d",
@@ -47,7 +50,7 @@ fn Value* jit_apply_multi_args_zeroarg_closure(Interp* interp, Value* func) {
     if (zeroarg_closure_trace_enabled()) {
         io::printfn("OMNI_MULTI_TRACE zeroarg-exit body_tag=%d", (int)func.closure_val.body.tag);
     }
-    return result;
+    return jit_apply_normalize_result(result, interp);
 }
 
 fn Value* jit_check_closure_typed_prefix_args(Interp* interp, Closure* closure, Value* arg_list, usz arg_count) {
@@ -83,6 +86,9 @@ fn Value* jit_check_closure_typed_prefix_args(Interp* interp, Closure* closure, 
 }
 
 fn Value* jit_apply_multi_args_variadic_closure(Interp* interp, Value* func, Value* arg_list, usz arg_count) {
+    if (!jit_value_has_closure_payload_and_body(func)) {
+        return jit_invalid_closure_state_error(interp);
+    }
     if (zeroarg_closure_trace_enabled()) {
         io::printfn(
             "OMNI_MULTI_TRACE variadic-enter param_count=%d arg_count=%d env_scope=%d env_is_global=%d",
@@ -119,10 +125,13 @@ fn Value* jit_apply_multi_args_variadic_closure(Interp* interp, Value* func, Val
     if (zeroarg_closure_trace_enabled()) {
         io::printfn("OMNI_MULTI_TRACE variadic-exit body_tag=%d", (int)func.closure_val.body.tag);
     }
-    return result;
+    return jit_apply_normalize_result(result, interp);
 }
 
 fn Value* jit_apply_multi_args_primitive(Interp* interp, Value* func, Value* arg_list, usz arg_count) {
+    if (func == null || func.tag != PRIMITIVE || func.prim_val == null || func.prim_val.func == null) {
+        return jit_raise(interp, "type/arg-mismatch", "invalid primitive application state");
+    }
     interp.constructor_type_id = func.prim_val.tag;
     interp.prim_user_data = func.prim_val.user_data;
     int arity = func.prim_val.arity;
@@ -147,10 +156,13 @@ fn Value* jit_apply_multi_args_primitive(Interp* interp, Value* func, Value* arg
     }
     Value* result = func.prim_val.func(args[:actual_count], null, interp);
     if (is_error(result)) return raise_error_with_payload_names(interp, "runtime", "runtime/evaluation-error", (String)result.str_chars[:result.str_len], null);
-    return result;
+    return jit_apply_normalize_result(result, interp);
 }
 
 fn Value* jit_apply_multi_args_closure_multi(Interp* interp, Value* func, Value* arg_list, usz arg_count) {
+    if (!jit_value_has_closure_payload_and_body(func)) {
+        return jit_invalid_closure_state_error(interp);
+    }
     if (zeroarg_closure_trace_enabled()) {
         io::printfn(
             "OMNI_MULTI_TRACE closure-multi-enter param_count=%d arg_count=%d env_scope=%d env_is_global=%d",
@@ -178,6 +190,7 @@ fn Value* jit_apply_multi_args_closure_multi(Interp* interp, Value* func, Value*
         curr = curr.cons_val.cdr;
     }
     Value* result = jit_eval_in_single_scope(func.closure_val.body, call_env, interp);
+    result = jit_apply_normalize_result(result, interp);
     if (arg_count > pc && result != null && result.tag != ERROR) {
         usz remaining = arg_count - pc;
         if (zeroarg_closure_trace_enabled()) {
@@ -192,6 +205,9 @@ fn Value* jit_apply_multi_args_closure_multi(Interp* interp, Value* func, Value*
 }
 
 fn Value* jit_apply_multi_args_method_table(Interp* interp, Value* func, Value* arg_list, usz arg_count) {
+    if (!jit_value_has_method_table_payload(func)) {
+        return jit_raise(interp, "runtime/evaluation-error", "jit: invalid method table state");
+    }
     Value** args = jit_alloc_multi_arg_buffer(interp, arg_count);
     if (arg_count > 0 && args == null) return jit_raise(interp, "runtime/out-of-memory", "out of memory while preparing call arguments");
     Value* curr = arg_list;
@@ -219,7 +235,9 @@ fn Value* jit_apply_multi_args_iterative(Value* func, Value* arg_list, usz arg_c
         Value* arg = curr.cons_val.car;
         curr = curr.cons_val.cdr;
         result = jit_apply_value(result, arg, interp);
-        if (result != null && result.tag == ERROR) return result;
+        result = jit_apply_normalize_result(result, interp);
+        if (result == null) return result;
+        if (result.tag == ERROR) return result;
     }
     return result;
 }
@@ -236,6 +254,9 @@ fn Value* jit_apply_multi_args(Interp* interp, Value* func, Value* arg_list, usz
 
     if (func == null) return jit_null_callable_error(interp);
     if (func.tag == ERROR) return func;
+    if (func.tag == CLOSURE && !jit_value_has_closure_payload_and_body(func)) {
+        return jit_invalid_closure_state_error(interp);
+    }
 
     if (arg_count == 0 && func.tag == CLOSURE && !func.closure_val.has_param && !func.closure_val.has_rest) {
         if (zeroarg_closure_trace_enabled()) {

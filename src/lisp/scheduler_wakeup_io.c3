@@ -74,12 +74,18 @@ fn Value* scheduler_value_from_offload_completion(OffloadCompletion* completion,
     switch (completion.kind) {
         case OFFLOAD_RES_NIL:
             return make_nil(interp);
+        case OFFLOAD_RES_VOID:
+            return make_void(interp);
         case OFFLOAD_RES_INT:
             return scheduler_domain_consume_sendable_int(
                 scheduler_current_domain(),
                 completion.int_result,
                 interp
             );
+        case OFFLOAD_RES_BOOL:
+            return make_symbol(interp, completion.int_result != 0 ? interp.sym_true : interp.sym_false);
+        case OFFLOAD_RES_FLOAT32:
+            return make_float32(interp, (float)completion.double_result);
         case OFFLOAD_RES_DOUBLE:
             return make_double(interp, completion.double_result);
         case OFFLOAD_RES_BYTES:

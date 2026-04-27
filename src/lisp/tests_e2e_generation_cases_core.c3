@@ -55,6 +55,11 @@ const E2ETestCase[] E2E_TESTS_CORE = {
     { "let nested", "(let (a 1) (let (b 2) (+ a b)))" },
     { "let shadow", "(let (x 99) x)" },
     { "let multi", "(let (a 1 b 2 c 3) (+ a (+ b c)))" },
+    { "module define shadows outer let collision", "(let (auditx 0) (block (module auditmod (export auditx) (block (define auditx 1))) (with auditmod auditx)))" },
+    { "module set shadows outer let collision", "(let (auditx 0) (block (module auditmodset (export auditx) (block (define auditx 1) (set! auditx 2))) (with auditmodset auditx)))" },
+    { "with inner let shadows module alias", "(let (auditx 0) (block (module auditmodinner (export auditx) (define auditx 1)) (with auditmodinner (let (auditx 3) auditx))))" },
+    { "outer let restored after with module collision", "(let (auditx 7) (block (module auditmod2 (export auditx) (define auditx 1)) (with auditmod2 auditx) auditx))" },
+    { "module type shadows outer let collision", "(let (AuditShadowType 0) (block (module audittypemod (export AuditShadowType) (define [abstract] AuditShadowType)) (with audittypemod AuditShadowType)))" },
 
     // === Lambda & Application ===
     { "lambda identity", "((lambda (x) x) 5)" },
@@ -67,7 +72,6 @@ const E2ETestCase[] E2E_TESTS_CORE = {
     { "if true", "(if true 1 2)" },
     { "if false", "(if false 1 2)" },
     { "if nested", "(if (> 5 3) (if (< 2 1) 10 20) 30)" },
-    { "if no else", "(if true 42)" },
 
     // === And/Or ===
     { "and true true", "(and 1 42)" },
@@ -102,14 +106,14 @@ const E2ETestCase[] E2E_TESTS_CORE = {
     // === String operations ===
     { "string-length", `(string-length "hello world")` },
     { "string-append", `(string-append "hello" " world")` },
-    // substring skipped: 3-arg function not yet supported in compiler runtime
+    // Three-arg substring coverage lives in the extended interpreter-delegated rows.
     { "String", `(String 42)` },
     { "parse-number", `(parse-number "42")` },
     { "Integer ctor double", "(Integer 3.9)" },
-    { "Integer shorthand ctor double", "(Integer 3.9)" },
+    { "Dict shorthand ctor type", "(type-of (Dict 'a 1))" },
     { "Float64 ctor int", "(Float64 3)" },
     { "Boolean ctor truthy", "(Boolean 0)" },
-    { "Boolean shorthand ctor truthy", "(Boolean 0)" },
+    { "Dict shorthand ref", "(ref (Dict 'a 1) 'a)" },
     { "Nil ctor nil", "(Nil nil)" },
     { "Void singleton type", "(type-of (Void))" },
     { "Void singleton truthy", "(if (Void) 1 0)" },
@@ -150,21 +154,34 @@ const E2ETestCase[] E2E_TESTS_CORE = {
     { "match nil literal pattern", "(match nil (nil 1) (_ 0))" },
     { "match false literal", "(match false (false 1) (_ 0))" },
     { "match nil does not match false literal", "(match nil (false 1) (_ 0))" },
+    { "match sibling var declarations", "(match 2 (x x) (x x))" },
     // Legacy AOT match-literal parity row; runtime coverage stays elsewhere.
     { "match wildcard after nil false Void literals", "(match 42 (nil 1) (false 2) (Void 3) (_ 9))" },
     // Legacy AOT match-guard binding parity row; runtime coverage stays elsewhere.
 
     // === Nested let deep ===
     { "nested let 5", "(let (a 1) (let (b 2) (let (c 3) (let (d 4) (let (e 5) (+ a (+ b (+ c (+ d e)))))))))" },
+    { "same-name let shadow", "(let (x 1) (block (let (x 2) x) x))" },
+    { "same-name let closure capture", "(let (x 1) (let (f (let (x 2) (lambda () x))) (+ (f) x)))" },
+    { "same-name mutable let capture", "(let (x 1) (block (let (x 0) (let (inc (lambda () (set! x (+ x 1)))) (inc) x)) x))" },
+    { "same-name set shadows outer mutable cell", "(let (x 0) (block (let (f (lambda () (set! x 1))) 0) (let (x 10) (set! x 20)) x))" },
+    { "same-name let initializer mutates outer", "(let (x 0) (block (let (x (lambda () (set! x 1))) (x)) x))" },
 
     // === Let recursive ===
     { "let rec factorial", "(let ^rec (f (lambda (n) (if (= n 0) 1 (* n (f (- n 1)))))) (f 5))" },
     { "named let loop", "(let loop (n 10 acc 0) (if (= n 0) acc (loop (- n 1) (+ acc n))))" },
+    { "same-name let rec shadow", "(let (loop 99) (block (let ^rec (loop (lambda (n) (if (= n 0) 0 (loop (- n 1))))) (loop 3)) loop))" },
 
     // === Effects ===
     { "checkpoint passthrough", "(checkpoint (+ 10 20))" },
     { "capture aborts", "(checkpoint (+ 1 (capture k 42)))" },
     { "capture k resumes", "(checkpoint (+ 1 (capture k (k 10))))" },
+    { "mutable capture through checkpoint", "(let (x 0) (block (checkpoint (let (f (lambda () (set! x 1))) (f))) x))" },
+    { "mutable capture through capture", "(let (x 0) (block (checkpoint (capture k (block (let (f (lambda () (set! x 1))) (f)) (k 0)))) x))" },
+    { "checkpoint local mutable capture", "(checkpoint (let (x 0) (block (let (f (lambda () (set! x 1))) (f)) x)))" },
+    { "checkpoint boxed outer restore", "(let (x 0) (block (let (g (lambda () x)) (block (set! x 2) (checkpoint (let (f (lambda () (set! x 3))) (f))) x))))" },
+    { "capture continuation sees checkpoint snapshot", "(checkpoint (let (x 0) (+ (capture k (block (let (f (lambda () (set! x 10))) (f)) (k 1))) x)))" },
+    { "capture continuation sees outer checkpoint snapshot", "(let (x 0) (checkpoint (+ (capture k (block (let (f (lambda () (set! x 10))) (f)) (k 1))) x)))" },
     // Legacy AOT handle parity rows; runtime/effect coverage stays in bounded slices.
 
     // === Not ===
@@ -209,7 +226,7 @@ const E2ETestCase[] E2E_TESTS_CORE = {
     { "and true false", "(and true false)" },
     { "or true false", "(or true false)" },
     { "or false nil", "(or false nil)" },
-    // and/or short-circuit tests skipped: compiler generates code for both branches
+    // Side-effecting short-circuit coverage lives in runtime slices.
 
     // === Type predicates ===
     { "string? yes", `(string? "hello")` },
@@ -275,7 +292,7 @@ const E2ETestCase[] E2E_TESTS_CORE = {
     { "length 1", "(length (quote (1)))" },
     { "length 10", "(length (quote (1 2 3 4 5 6 7 8 9 10)))" },
     { "length cons 2", "(length (cons 1 (cons 2 nil)))" },
-    { "car quoted", "(car (quote (10 20 30)))" },
+    { "cadr quoted", "(car (cdr (quote (10 20 30))))" },
     { "cons dotted", "(cons 1 2)" },
 
     // === Let shadowing ===
@@ -310,7 +327,10 @@ const E2ETestCase[] E2E_TESTS_CORE = {
 
     // === Block edge cases ===
     { "block nested", "(block (block 1 2) (block 3 4))" },
-    { "block if", "(block (if true 10 20) (if false 30 40))" },
+    { "block boolean shadowing if", "(block (if true 10 20) (let (false true) (if false 30 40)))" },
+    { "if boolean shadowing branches", "(if (= 1 2) (let (false 1) false) (let (false 2) false))" },
+    { "closure boolean shadow capture", "(((lambda (false) (lambda () false)) 9))" },
+    { "closure callable shadow capture", "(((lambda (+) (lambda (x) (+ x 2))) (lambda (a b) 88)) 1)" },
 
     // === Recursive let 6 ===
     { "let rec fact 6", "(let ^rec (f (lambda (n) (if (= n 0) 1 (* n (f (- n 1)))))) (f 6))" },

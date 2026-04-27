@@ -279,6 +279,15 @@ uint64_t omni_ffi_test_return_u64_above_long_max(void) {
     return ((uint64_t)INT64_MAX) + 1u;
 }
 
+int64_t omni_ffi_test_return_bool_true(void) {
+    return 1;
+}
+
+void* omni_ffi_test_return_static_ptr(void) {
+    static int payload = 42;
+    return &payload;
+}
+
 int omni_ffi_call_null_arg_vectors_guard_for_tests(void) {
     long ret = 0;
     return omni_ffi_call((void*)1, 1, NULL, NULL, OMNI_FFI_INT, &ret);

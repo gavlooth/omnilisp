@@ -82,6 +82,6 @@ fn void Compiler.serialize_pattern_to_buf(Compiler* self, Pattern* pat, List{cha
             buf.push(')');
 
         default:
-            buf.push('_');
+            self.set_compile_error("compiler: cannot serialize unknown pattern tag");
     }
 }

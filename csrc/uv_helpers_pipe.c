@@ -388,6 +388,11 @@ int omni_unix_socket_listen_fd(char* path, int backlog, int* out_fd) {
         close(fd);
         return UV_EIO;
     }
+    if (chmod(path, S_IRUSR | S_IWUSR) < 0) {
+        close(fd);
+        omni_uv_pipe_unlink_owned_socket_path(path);
+        return uv_translate_sys_error(errno);
+    }
     if (listen(fd, backlog) < 0) {
         close(fd);
         omni_uv_pipe_unlink_owned_socket_path(path);

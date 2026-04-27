@@ -49,6 +49,26 @@ fn Value* jit_make_method_table_value(Interp* interp, MethodTable* mt) {
     return mt_val;
 }
 
+fn bool jit_value_has_closure_payload(Value* value) @inline {
+    return value != null && value.tag == CLOSURE && value.closure_val != null;
+}
+
+fn bool jit_value_has_closure_payload_and_body(Value* value) @inline {
+    return jit_value_has_closure_payload(value) && value.closure_val.body != null;
+}
+
+fn Value* jit_invalid_closure_state_error(Interp* interp) @inline {
+    return jit_raise(interp, "runtime/evaluation-error", "jit: invalid closure state");
+}
+
+fn bool jit_value_has_method_table_payload(Value* value) @inline {
+    return value != null && value.tag == METHOD_TABLE && value.method_table_val != null;
+}
+
+fn bool jit_value_has_typed_method_signature(Value* value) @inline {
+    return jit_value_has_closure_payload(value) && value.closure_val.type_sig != null;
+}
+
 fn bool jit_method_sigs_equal(MethodSignature* a, MethodSignature* b) @inline {
     if (a.param_count != b.param_count) return false;
     if (a.constraint_count != b.constraint_count) return false;
@@ -99,7 +119,7 @@ fn bool jit_method_table_append_entry_with_sig(MethodTable* mt, MethodSignature*
 }
 
 fn bool jit_method_table_append_entry(MethodTable* mt, Value* impl) {
-    if (impl == null || impl.closure_val == null) return false;
+    if (!jit_value_has_typed_method_signature(impl)) return false;
     MethodSignature* new_sig = impl.closure_val.type_sig;
     return jit_method_table_append_entry_with_sig(mt, new_sig, impl);
 }
@@ -127,6 +147,7 @@ fn MethodTable* jit_new_method_table_with_sig(SymbolId name, MethodSignature* si
 }
 
 fn MethodTable* jit_new_method_table(SymbolId name, Value* impl, Value* fallback) {
+    if (!jit_value_has_typed_method_signature(impl)) return null;
     return jit_new_method_table_with_sig(name, impl.closure_val.type_sig, impl, fallback);
 }
 
@@ -154,6 +175,9 @@ fn Value* jit_eval_define_typed_callable(Interp* interp, SymbolId name, Value* s
 }
 
 fn Value* jit_eval_define_typed_closure(Interp* interp, SymbolId name, Value* stored_val) {
+    if (!jit_value_has_typed_method_signature(stored_val)) {
+        return jit_raise(interp, "runtime/evaluation-error", "jit: typed define requires closure method implementation");
+    }
     return jit_eval_define_typed_callable(interp, name, stored_val, stored_val.closure_val.type_sig);
 }
 
@@ -172,19 +196,26 @@ fn Value* jit_eval_define(Interp* interp, SymbolId name, Value* value) {
     if (stored_val != null && stored_val.tag == ERROR) return stored_val;
 
     // Check for typed closure → method table dispatch
-    if (stored_val != null && stored_val.tag == CLOSURE && stored_val.closure_val.has_typed_params) {
+    if (stored_val != null && stored_val.tag == CLOSURE && !jit_value_has_closure_payload(stored_val)) {
+        return runtime_raise(interp, "runtime/evaluation-error", "jit: closure binding is missing closure payload");
+    }
+
+    if (jit_value_has_closure_payload(stored_val) && stored_val.closure_val.has_typed_params) {
         return jit_eval_define_typed_closure(interp, name, stored_val);
     }
 
     // Check if we're adding an untyped fallback to an existing method table
     Value* existing_for_fallback = interp.global_env.lookup_local(name);
     if (existing_for_fallback != null && existing_for_fallback.tag == METHOD_TABLE) {
+        if (existing_for_fallback.method_table_val == null) {
+            return runtime_raise(interp, "runtime/evaluation-error", "jit: invalid method table binding");
+        }
         existing_for_fallback.method_table_val.fallback = stored_val;
         return existing_for_fallback;
     }
 
     // Tag closure with its bound name for display
-    if (stored_val != null && stored_val.tag == CLOSURE) {
+    if (jit_value_has_closure_payload(stored_val)) {
         stored_val.closure_val.name = name;
     }
 

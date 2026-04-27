@@ -410,7 +410,27 @@ fn void run_advanced_effect_continuation_tests(Interp* interp, int* pass, int* f
         "(let (x 0) (block (handle (block (signal bail 1) (set! x 99) 7) (bail v 5)) x))", 0, pass, fail);
     test_eq(interp, "signal/resolve double", "(handle (signal double 7) (double x (resolve (* x 2))))", 14, pass, fail);
     test_eq(interp, "resolve is terminal in clause",
-        "(let (x 0) (block (handle (signal once 10) (once v (block (resolve (+ v 1)) (set! x 99) 0))) x))", 0, pass, fail);
+        "(block (define mark 0) (handle (signal once 10) (once v (block (resolve (+ v 1)) (set! mark 99) 0))) mark)", 0, pass, fail);
+    test_eq(interp, "resolve is terminal before call sibling",
+        "(handle (signal once 0) (once v (+ (resolve 1) 2)))", 1, pass, fail);
+    test_eq(interp, "resolve is terminal in if test",
+        "(if (= (handle (signal once 0) (once v (if (resolve true) 2 3))) true) 1 0)", 1, pass, fail);
+    test_eq(interp, "resolve is terminal in app func",
+        "(handle (signal once 0) (once v ((resolve 1) 2)))", 1, pass, fail);
+    test_eq(interp, "resolve is terminal in app arg",
+        "(handle (signal once 0) (once v ((lambda (x) 9) (resolve 1))))", 1, pass, fail);
+    test_eq(interp, "resolve is terminal in let init",
+        "(handle (signal once 0) (once v (let (x (resolve 1)) 7)))", 1, pass, fail);
+    test_eq(interp, "resolve is terminal in set value",
+        "(let (x false) (block (handle (signal once 0) (once v (set! x (resolve true)))) (if x 1 0)))", 0, pass, fail);
+    test_eq(interp, "resolve is terminal in nested resolve value",
+        "(handle (signal once 0) (once v (resolve (resolve 7))))", 7, pass, fail);
+    test_truthy(interp, "resolve is terminal in index collection",
+        "(array? (handle (signal once 0) (once v (ref (resolve [1]) 0))))", pass, fail);
+    test_eq(interp, "resolve is terminal in index key",
+        "(handle (signal once 0) (once v (ref [1] (resolve 0))))", 0, pass, fail);
+    test_eq(interp, "resolve is terminal in quasiquote unquote",
+        "(handle (signal once 0) (once v `(a ,(resolve 9) b)))", 9, pass, fail);
     test_eq(interp, "signal no trigger", "(handle (+ 10 20) (unused x 999))", 30, pass, fail);
     test_eq(interp, "signal multi-resume", "(handle (+ (signal bounce 10) (signal bounce 20)) (bounce x (resolve x)))", 30, pass, fail);
     test_error_contains(interp, "resolve outside handler", "(resolve 42)", "resolve", pass, fail);

@@ -34,7 +34,11 @@ fn Value* ffi_async_own_string_arg(FfiAsyncCallCtx* ctx, Value* arg, usz arg_ind
     if (ctx == null || arg_index >= FFI_ASYNC_MAX_ARGS) {
         return ffi_raise(interp, "ffi/invalid-state", "ffi-async-call: internal argument ownership error");
     }
-    if ((FfiTypeTag)ctx.arg_types[arg_index] != FFI_TYPE_STRING) return null;
+    int raw_arg_type = ctx.arg_types[arg_index];
+    if (!ffi_abi_arg_type_tag_int_supported(raw_arg_type)) {
+        return ffi_raise(interp, "ffi/invalid-state", "ffi-async-call: unsupported argument ABI type");
+    }
+    if (raw_arg_type != (int)FfiTypeTag.FFI_TYPE_STRING) return null;
     if (arg == null || arg.tag == NIL) {
         ctx.ptr_storage[arg_index] = null;
         ctx.arg_values[arg_index] = (void*)&ctx.ptr_storage[arg_index];
@@ -117,14 +121,32 @@ fn bool ffi_async_set_string_result(OffloadCompletion* completion, char* text) {
     );
 }
 
+fn OffloadCompletion* ffi_async_error_completion(char[] message) {
+    OffloadCompletion* completion = (OffloadCompletion*)mem::malloc(OffloadCompletion.sizeof);
+    if (completion == null) return null;
+    *completion = {};
+    scheduler_set_offload_error(completion, message);
+    return completion;
+}
+
 fn OffloadCompletion* ffi_async_offload_callback(OffloadWork work) {
     FfiAsyncCallCtx* ctx = (FfiAsyncCallCtx*)work.custom_ctx;
     if (ctx == null || ctx.fn_ptr == null) {
-        OffloadCompletion* completion = (OffloadCompletion*)mem::malloc(OffloadCompletion.sizeof);
-        if (completion == null) return null;
-        *completion = {};
-        scheduler_set_offload_error(completion, "ffi-async: invalid call context");
-        return completion;
+        return ffi_async_error_completion("ffi-async: invalid call context");
+    }
+    if (ctx.nargs < 0 || (usz)ctx.nargs > FFI_ASYNC_MAX_ARGS) {
+        return ffi_async_error_completion("ffi-async: invalid argument count");
+    }
+    for (usz i = 0; i < (usz)ctx.nargs; i++) {
+        if (!ffi_abi_arg_type_tag_int_supported(ctx.arg_types[i])) {
+            return ffi_async_error_completion("ffi-async: unsupported argument ABI type");
+        }
+        if (ctx.arg_values[i] == null) {
+            return ffi_async_error_completion("ffi-async: invalid argument storage");
+        }
+    }
+    if (!ffi_abi_type_tag_int_supported(ctx.ret_type)) {
+        return ffi_async_error_completion("ffi-async: unsupported return ABI type");
     }
 
     long ret_int = 0;
@@ -134,7 +156,11 @@ fn OffloadCompletion* ffi_async_offload_callback(OffloadWork work) {
     double ret_dbl = 0.0;
     void* ret_ptr = null;
     void* ret_storage;
-    switch ((FfiTypeTag)ctx.ret_type) {
+    FfiTypeTag ret_tag = (FfiTypeTag)ctx.ret_type;
+    switch (ret_tag) {
+        case FFI_TYPE_VOID:
+            ret_storage = (void*)&ret_int;
+            break;
         case FFI_TYPE_INT:
         case FFI_TYPE_BOOL:
         case FFI_TYPE_INT32:
@@ -156,10 +182,14 @@ fn OffloadCompletion* ffi_async_offload_callback(OffloadWork work) {
         case FFI_TYPE_PTR:
         case FFI_TYPE_STRING:
         case FFI_TYPE_BUFFER:
+        case FFI_TYPE_STRUCT:
             ret_storage = (void*)&ret_ptr;
             break;
         default:
-            ret_storage = (void*)&ret_int;
+            ret_storage = null;
+    }
+    if (ret_storage == null) {
+        return ffi_async_error_completion("ffi-async: unsupported return ABI type");
     }
 
     int rc = omni_ffi_call(ctx.fn_ptr, ctx.nargs, &ctx.arg_types[0], &ctx.arg_values[0],
@@ -174,9 +204,9 @@ fn OffloadCompletion* ffi_async_offload_callback(OffloadWork work) {
         return completion;
     }
 
-    switch ((FfiTypeTag)ctx.ret_type) {
+    switch (ret_tag) {
         case FFI_TYPE_VOID:
-            completion.kind = OFFLOAD_RES_NIL;
+            completion.kind = OFFLOAD_RES_VOID;
             break;
         case FFI_TYPE_INT:
         case FFI_TYPE_INT32:
@@ -197,11 +227,11 @@ fn OffloadCompletion* ffi_async_offload_callback(OffloadWork work) {
             }
             break;
         case FFI_TYPE_BOOL:
-            completion.kind = OFFLOAD_RES_INT;
+            completion.kind = OFFLOAD_RES_BOOL;
             completion.int_result = ret_int != 0 ? 1 : 0;
             break;
         case FFI_TYPE_FLOAT32:
-            completion.kind = OFFLOAD_RES_DOUBLE;
+            completion.kind = OFFLOAD_RES_FLOAT32;
             completion.double_result = (double)ret_f32;
             break;
         case FFI_TYPE_DOUBLE:
@@ -217,7 +247,7 @@ fn OffloadCompletion* ffi_async_offload_callback(OffloadWork work) {
             scheduler_set_offload_error(completion, "ffi-async: pointer-like return types are not supported");
             break;
         default:
-            completion.kind = OFFLOAD_RES_NIL;
+            scheduler_set_offload_error(completion, "ffi-async: unsupported return ABI type");
     }
 
     return completion;

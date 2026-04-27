@@ -4,444 +4,7 @@ import std::io;
 import main;
 
 fn void run_compiler_group_type_dispatch_bridge_tests(Interp* interp, usz* pass, usz* fail) {
-    // Type forms should lower to direct AOT helpers and still sync generated globals.
-    {
-        char[] code = compile_to_c3("(define [type] Box (^Integer value)) (define b (Box 1))", interp);
-        bool ok = str_contains(code, "aot::define_type(")
-            && str_contains(code, "Box = aot::lookup_var(\"Box\")")
-            && !str_contains(code, "aot::eval_serialized_expr")
-            && !str_contains(code, "unsupported expr type");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: [type] lowers directly and syncs constructor global"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: [type] lowers directly and syncs constructor global"); }
-    }
-
-    // Dict metadata annotations have no base type; the AOT bridge must keep the metadata payload.
-    {
-        char[] code = compile_to_c3("(define [type] (NumBox T) (^{'T Number} value))", interp);
-        bool ok = str_contains(code, "aot::define_type(")
-            && str_contains(code, ".is_dict = true")
-            && str_contains(code, ".base_type = \"\"")
-            && !str_contains(code, "aot::eval_serialized_expr")
-            && !str_contains(code, "unsupported expr type");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: [type] lowers dict metadata annotations without a base type"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: [type] lowers dict metadata annotations without a base type"); }
-    }
-
-    // Union forms must lower directly and sync generated variant constructors into AOT globals.
-    {
-        char[] code = compile_to_c3("(define [union] Maybe None (Some Integer)) (Some 1)", interp);
-        bool ok = str_contains(code, "aot::define_union(")
-            && str_contains(code, "None = aot::lookup_var(\"None\")")
-            && str_contains(code, "Some = aot::lookup_var(\"Some\")")
-            && !str_contains(code, "aot::eval_serialized_expr")
-            && !str_contains(code, "unsupported expr type");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: [union] lowers directly and syncs variant globals"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: [union] lowers directly and syncs variant globals"); }
-    }
-
-    // Abstract forms should lower directly through the dedicated helper.
-    {
-        char[] code = compile_to_c3("(define [abstract] Entity)", interp);
-        bool ok = str_contains(code, "aot::define_abstract(")
-            && !str_contains(code, "aot::eval_serialized_expr")
-            && !str_contains(code, "unsupported expr type");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: [abstract] lowers directly"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: [abstract] lowers directly"); }
-    }
-
-    // Alias forms should lower directly through the dedicated helper.
-    {
-        char[] code = compile_to_c3("(define [alias] UserAlias User)", interp);
-        bool ok = str_contains(code, "aot::define_alias(")
-            && !str_contains(code, "aot::eval_serialized_expr")
-            && !str_contains(code, "unsupported expr type");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: [alias] lowers directly"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: [alias] lowers directly"); }
-    }
-
-    // Effect forms should lower directly through the dedicated helper.
-    {
-        char[] code = compile_to_c3("(define [effect] (test/ping (^String msg)))", interp);
-        bool ok = str_contains(code, "aot::define_effect(")
-            && !str_contains(code, "aot::eval_serialized_expr")
-            && !str_contains(code, "unsupported expr type");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: [effect] lowers directly"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: [effect] lowers directly"); }
-    }
-
-    // Typed define should install dispatch entries directly through the typed-method helper.
-    {
-        char[] code = compile_to_c3("(define (describe (^Integer x)) \"int\")", interp);
-        bool ok = str_contains(code, "aot::define_typed_method(")
-            && !str_contains(code, "aot::eval_serialized_expr")
-            && !str_contains(code, "unsupported expr type");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: typed define lowers through typed-method helper"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: typed define lowers through typed-method helper"); }
-    }
-
-    // Typed define should compile captures normally rather than injecting globals into eval.
-    {
-        char[] code = compile_to_c3(
-            "(define y 10) (define (describe (^Integer x)) (+ x y))",
-            interp
-        );
-        bool ok = str_contains(code, "aot::define_typed_method(")
-            && !str_contains(code, "aot::define_var(\"y\", y);")
-            && !str_contains(code, "aot::eval_serialized_expr");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: typed define no longer uses eval injection"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: typed define no longer uses eval injection"); }
-    }
-
-    // Repeated typed define names should not emit duplicate global declarations.
-    {
-        char[] code = compile_to_c3(
-            "(define (describe (^Integer x)) \"int\") (define (describe (^String x)) \"str\")",
-            interp
-        );
-        bool dup = str_contains(code, "lisp::Value* describe;\nlisp::Value* describe;");
-        bool ok = !dup;
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: typed define globals are deduplicated"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: typed define globals are deduplicated"); }
-    }
-
-    // Value-literal nil annotations should stay nil literals through AOT metadata emission.
-    {
-        char[] code = compile_to_c3("(define (nil-route (^(Value nil) x)) 1)", interp);
-        bool ok = str_contains(code, ".has_val_literal = true")
-            && str_contains(code, ".val_tag = lisp::ValueTag.NIL")
-            && str_contains(code, ".val_sym = \"\"");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: Value nil literal metadata emits as NIL"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: Value nil literal metadata emits as NIL"); }
-    }
-
-    // Repeated typed methods should all stay on direct helper lowering (no eval fallback path).
-    {
-        char[] code = compile_to_c3(
-            "(define (route (^Integer x)) (+ x 1)) "
-            "(define (route (^String x)) x) "
-            "(define (route (^Float64 x)) (+ x 1.0))",
-            interp
-        );
-        usz typed_calls = compiler_str_count(code, "aot::define_typed_method(\"route\"");
-        bool ok = typed_calls == 3
-            && !str_contains(code, "aot::eval_serialized_expr")
-            && !str_contains(code, "unsupported expr type");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: typed define multi-method extension stays direct"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: typed define multi-method extension stays direct"); }
-    }
-
-    // Typed + untyped mix should preserve direct typed registration and plain fallback define.
-    {
-        char[] code = compile_to_c3(
-            "(define delta 7) "
-            "(define (mix (^Integer x)) (+ x delta)) "
-            "(define (mix (^String x)) x) "
-            "(define (mix x) x)",
-            interp
-        );
-        usz typed_calls = compiler_str_count(code, "aot::define_typed_method(\"mix\"");
-        bool ok = typed_calls == 2
-            && str_contains(code, "mix = ")
-            && !str_contains(code, "aot::define_var(\"delta\", delta);")
-            && !str_contains(code, "aot::eval_serialized_expr")
-            && !str_contains(code, "unsupported expr type");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: typed define fallback mix avoids eval injection"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: typed define fallback mix avoids eval injection"); }
-    }
-
-    // Explain dispatch should lower directly instead of delegating through eval.
-    {
-        char[] code = compile_to_c3("(ref (ref (explain 'dispatch (+ 1 2)) 'decision) 'reason)", interp);
-        bool ok = str_contains(code, "aot::explain_dispatch(")
-            && !str_contains(code, "aot::eval_serialized_expr");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: explain dispatch lowers directly"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: explain dispatch lowers directly"); }
-    }
-
-    // Explain dispatch direct path: explicit multi-arg call target should stay on helper lowering.
-    {
-        char[] code = compile_to_c3(
-            "(ref (ref (explain 'dispatch (route3 1 2 3)) 'decision) 'reason)",
-            interp
-        );
-        bool ok = str_contains(code, "aot::explain_dispatch(")
-            && !str_contains(code, "aot::eval_serialized_expr");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: explain dispatch multi-arg call lowers directly"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: explain dispatch multi-arg call lowers directly"); }
-    }
-
-    // Explain dispatch direct path: explicit zero-arg call target should stay on helper lowering.
-    {
-        char[] code = compile_to_c3(
-            "(ref (ref (explain 'dispatch (route0)) 'decision) 'reason)",
-            interp
-        );
-        bool ok = str_contains(code, "aot::explain_dispatch(")
-            && !str_contains(code, "aot::eval_serialized_expr");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: explain dispatch zero-arg call lowers directly"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: explain dispatch zero-arg call lowers directly"); }
-    }
-
-    // Explain effect should also lower directly for signal forms.
-    {
-        char[] code = compile_to_c3("(ref (explain 'effect (signal io/print \"x\")) 'status)", interp);
-        bool ok = str_contains(code, "aot::explain_effect_signal(")
-            && !str_contains(code, "aot::eval_serialized_expr")
-            && !str_contains(code, "unsupported expr type");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: explain effect lowers directly"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: explain effect lowers directly"); }
-    }
-
-    // Explain effect should lower directly for perform call-surface spelling.
-    {
-        char[] code = compile_to_c3("(ref (explain 'effect (perform io/print \"x\")) 'status)", interp);
-        bool ok = str_contains(code, "aot::explain_effect_signal(")
-            && !str_contains(code, "aot::eval_serialized_expr")
-            && !str_contains(code, "unsupported expr type");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: explain effect perform call-surface lowers directly"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: explain effect perform call-surface lowers directly"); }
-    }
-
-    // Explain effect should lower directly for resolve forms.
-    {
-        char[] code = compile_to_c3("(ref (explain 'effect (resolve 42)) 'status)", interp);
-        bool ok = str_contains(code, "aot::explain_effect_resolve(")
-            && !str_contains(code, "aot::eval_serialized_expr")
-            && !str_contains(code, "unsupported expr type");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: explain effect resolve lowers directly"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: explain effect resolve lowers directly"); }
-    }
-
-    // Compiler output should not emit serialized-eval bridge calls in normal lowering paths.
-    {
-        char[] code = compile_to_c3(
-            "(define [type] Box (^Integer value)) "
-            "(define (render (^Integer x)) (+ x 1)) "
-            "(define (render x) x) "
-            "(ref (ref (explain 'dispatch (render 1)) 'decision) 'reason)",
-            interp
-        );
-        bool ok = !str_contains(code, "aot::eval_serialized_expr")
-            && !str_contains(code, "unsupported expr type");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: serialized-eval bridge is quarantined from normal lowering"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: serialized-eval bridge is quarantined from normal lowering"); }
-    }
-
-    // Compiled module forms are static: body lowers inline and form returns Void.
-    {
-        char[] code = compile_to_c3(
-            "(module cmod (export add) (define (add x y) (+ x y)))",
-            interp
-        );
-        bool ok = str_contains(code, "_aot_mod_")
-            && str_contains(code, "aot::make_void()")
-            && !str_contains(code, "lisp::Value* add;")
-            && !str_contains(code, "add =")
-            && !str_contains(code, "aot::eval_serialized_expr")
-            && !str_contains(code, "unsupported expr type");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: module lowers as static inline form"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: module lowers as static inline form"); }
-    }
-
-    // Compiled import form is intentionally static no-op and returns Void.
-    {
-        char[] code = compile_to_c3(
-            "(module imod (export v) (define v 1)) (import imod)",
-            interp
-        );
-        bool ok = str_contains(code, "import: inline module")
-            && str_contains(code, "aot::make_void()")
-            && !str_contains(code, "aot::eval_serialized_expr")
-            && !str_contains(code, "unsupported expr type");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: import lowers as static no-op"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: import lowers as static no-op"); }
-    }
-
-    // Plain import should keep runtime bridge lowering when module is not compiled inline.
-    {
-        char[] code = compile_to_c3("(import external_mod)", interp);
-        bool ok = str_contains(code, "aot::import_module(\"external_mod\", \"\", false, false)")
-            && !str_contains(code, "import: inline module")
-            && !str_contains(code, "aot::eval_serialized_expr")
-            && !str_contains(code, "unsupported expr type");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: plain import keeps runtime bridge lowering"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: plain import keeps runtime bridge lowering"); }
-    }
-
-    // Plain import 'all keeps runtime bridge lowering and propagates import-all flag.
-    {
-        char[] code = compile_to_c3("(import external_mod 'all)", interp);
-        bool ok = str_contains(code, "aot::import_module(\"external_mod\", \"\", false, true)")
-            && !str_contains(code, "import: inline module")
-            && !str_contains(code, "aot::eval_serialized_expr")
-            && !str_contains(code, "unsupported expr type");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: plain import all keeps runtime bridge lowering"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: plain import all keeps runtime bridge lowering"); }
-    }
-
-    // Path import 'all keeps runtime bridge lowering and propagates import-all flag.
-    {
-        char[] code = compile_to_c3("(import \"pkg/math.omni\" 'all)", interp);
-        bool ok = str_contains(code, "aot::import_module(\"pkg/math.omni\", \"pkg/math.omni\", true, true)")
-            && !str_contains(code, "aot::eval_serialized_expr")
-            && !str_contains(code, "unsupported expr type");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: path import all keeps runtime bridge lowering"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: path import all keeps runtime bridge lowering"); }
-    }
-
-    // Path selective import keeps import-all disabled and still performs symbol binding.
-    {
-        char[] code = compile_to_c3("(import \"pkg/math.omni\" (sum))", interp);
-        bool ok = str_contains(code, "aot::import_module(\"pkg/math.omni\", \"pkg/math.omni\", true, false)")
-            && str_contains(code, "sum = aot::lookup_var(\"sum\")")
-            && !str_contains(code, "aot::eval_serialized_expr")
-            && !str_contains(code, "unsupported expr type");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: path selective import keeps symbol binding"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: path selective import keeps symbol binding"); }
-    }
-
-    // Plain selective alias import keeps alias target binding and original symbol lookup.
-    {
-        char[] code = compile_to_c3("(import external_mod (sum 'as plus))", interp);
-        bool ok = str_contains(code, "aot::import_module(\"external_mod\", \"\", false, false)")
-            && str_contains(code, "plus = aot::lookup_var(\"sum\")")
-            && !str_contains(code, "aot::eval_serialized_expr")
-            && !str_contains(code, "unsupported expr type");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: plain selective alias import keeps symbol binding"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: plain selective alias import keeps symbol binding"); }
-    }
-
-    // Path selective alias import keeps alias target binding and original symbol lookup.
-    {
-        char[] code = compile_to_c3("(import \"pkg/math.omni\" (sum 'as plus))", interp);
-        bool ok = str_contains(code, "aot::import_module(\"pkg/math.omni\", \"pkg/math.omni\", true, false)")
-            && str_contains(code, "plus = aot::lookup_var(\"sum\")")
-            && !str_contains(code, "aot::eval_serialized_expr")
-            && !str_contains(code, "unsupported expr type");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: path selective alias import keeps symbol binding"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: path selective alias import keeps symbol binding"); }
-    }
-
-    // Scoped module open lowers to local aliases and module-export lookups.
-    {
-        char[] code = compile_to_c3("(with math (< (abs (- (+ (sin 0.0) (cos 0.0)) 1.0)) 0.000001))", interp);
-        bool ok = str_contains(code, "aot::lookup_module_export(\"math\", \"abs\")")
-            && str_contains(code, "aot::lookup_module_export(\"math\", \"sin\")")
-            && str_contains(code, "aot::lookup_module_export(\"math\", \"cos\")")
-            && !str_contains(code, "lookup_prim(\"abs\")")
-            && !str_contains(code, "lookup_prim(\"sin\")")
-            && !str_contains(code, "lookup_prim(\"cos\")")
-            && !str_contains(code, "unsupported expr type");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: scoped module open lowers through local aliases"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: scoped module open lowers through local aliases"); }
-    }
-
-    // AOT control-flow lowering must propagate ERROR values before truthiness or later expressions.
-    {
-        char[] code = compile_to_c3("(if (audit232-missing-if 1) 2 3)", interp);
-        bool ok = str_contains(code, "if (aot::is_error(")
-            && !str_contains(code, "aot::eval_serialized_expr")
-            && !str_contains(code, "unsupported expr type");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: AOT if predicate errors bypass truthiness"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: AOT if predicate errors bypass truthiness"); }
-    }
-
-    {
-        char[] code = compile_to_c3("(and (audit232-missing-and 1) 2)", interp);
-        bool ok = str_contains(code, "if (aot::is_error(")
-            && !str_contains(code, "aot::eval_serialized_expr")
-            && !str_contains(code, "unsupported expr type");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: AOT and predicate errors short-circuit"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: AOT and predicate errors short-circuit"); }
-    }
-
-    {
-        char[] code = compile_to_c3("(or (audit232-missing-or 1) 2)", interp);
-        bool ok = str_contains(code, "if (aot::is_error(")
-            && !str_contains(code, "aot::eval_serialized_expr")
-            && !str_contains(code, "unsupported expr type");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: AOT or predicate errors short-circuit"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: AOT or predicate errors short-circuit"); }
-    }
-
-    {
-        char[] code = compile_to_c3("(block 1 (audit232-missing-block 2) 3)", interp);
-        bool ok = str_contains(code, "if (aot::is_error(")
-            && str_contains(code, "audit232-missing-block")
-            && !str_contains(code, "aot::eval_serialized_expr")
-            && !str_contains(code, "unsupported expr type");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: AOT block stops after non-final errors"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: AOT block stops after non-final errors"); }
-    }
-
-    {
-        char[] code = compile_to_c3("(with math (block (audit232-missing-with 1) 2))", interp);
-        bool ok = str_contains(code, "if (aot::is_error(")
-            && str_contains(code, "audit232-missing-with")
-            && !str_contains(code, "aot::eval_serialized_expr")
-            && !str_contains(code, "unsupported expr type");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: AOT scoped-open body stops after non-final errors"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: AOT scoped-open body stops after non-final errors"); }
-    }
-
-    // Inline import 'all binds exported globals from module-private backing storage.
-    {
-        char[] code = compile_to_c3(
-            "(module imod-all (export v) (define v 1)) (import imod-all 'all)",
-            interp
-        );
-        bool ok = str_contains(code, "import: inline module")
-            && str_contains(code, "v = _aot_mod_")
-            && !str_contains(code, "aot::import_module(\"imod-all\"")
-            && !str_contains(code, "aot::lookup_var(\"v\")")
-            && !str_contains(code, "aot::eval_serialized_expr")
-            && !str_contains(code, "unsupported expr type");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: inline import all binds private backing"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: inline import all binds private backing"); }
-    }
-
-    // Inline selective import binds requested names from module-private backing storage.
-    {
-        char[] code = compile_to_c3(
-            "(module imod-sel (export v) (define v 1)) (import imod-sel (v))",
-            interp
-        );
-        bool ok = str_contains(code, "v = _aot_mod_")
-            && str_contains(code, "import: inline module")
-            && !str_contains(code, "aot::import_module(\"imod-sel\"")
-            && !str_contains(code, "aot::lookup_var(\"v\")")
-            && !str_contains(code, "aot::eval_serialized_expr")
-            && !str_contains(code, "unsupported expr type");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: inline selective import binds private backing"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: inline selective import binds private backing"); }
-    }
-
-    // Inline selective alias import binds the alias target from module-private backing storage.
-    {
-        char[] code = compile_to_c3(
-            "(module imod-sel-alias (export v) (define v 1)) (import imod-sel-alias (v 'as vv))",
-            interp
-        );
-        bool ok = str_contains(code, "vv = _aot_mod_")
-            && str_contains(code, "import: inline module")
-            && !str_contains(code, "aot::import_module(\"imod-sel-alias\"")
-            && !str_contains(code, "aot::lookup_var(\"v\")")
-            && !str_contains(code, "aot::eval_serialized_expr")
-            && !str_contains(code, "unsupported expr type");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: inline selective alias import binds private backing"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: inline selective alias import binds private backing"); }
-    }
-
-    // Non-top-level import keeps runtime bridge side effects in expression lowering.
-    {
-        char[] code = compile_to_c3("(block (import external_mod) 0)", interp);
-        bool ok = str_contains(code, "aot::import_module(\"external_mod\", \"\", false, false)")
-            && !str_contains(code, "import: inline module")
-            && !str_contains(code, "aot::eval_serialized_expr")
-            && !str_contains(code, "unsupported expr type");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: non-top-level import keeps runtime bridge side effects"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: non-top-level import keeps runtime bridge side effects"); }
-    }
+    run_compiler_group_type_dispatch_bridge_core_tests(interp, pass, fail);
 
     // Non-top-level import 'all keeps runtime bridge side effects and import-all flag.
     {
@@ -575,6 +138,101 @@ fn void run_compiler_group_type_dispatch_bridge_tests(Interp* interp, usz* pass,
         else    { (*fail)++; io::printn("[FAIL] Compiler: export-from lowers through private backing"); }
     }
 
+    // Inline export-from re-exports become public module exports, not only private locals.
+    {
+        char[] code = compile_to_c3(
+            "(module reexp-src (export x) (define x 1)) "
+            "(module reexp-dst (export) (export-from reexp-src (x))) "
+            "(import reexp-dst (x)) x",
+            interp
+        );
+        bool ok = str_contains(code, "export-from: compiled inline bridge")
+            && str_contains(code, "x = _aot_mod_")
+            && !str_contains(code, "inline selective import could not resolve export backing")
+            && !str_contains(code, "inline module export has no compiled private backing")
+            && !str_contains(code, "unsupported expr type");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: export-from selected re-export is importable"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: export-from selected re-export is importable"); }
+    }
+
+    // Runtime-module export-from would otherwise compile as a successful no-op.
+    {
+        char[] err = "";
+        char[] code = compile_to_c3(
+            "(module runtime-reexp (export abs) (export-from math (abs))) "
+            "(with runtime-reexp (abs -4))",
+            interp,
+            &err
+        );
+        bool ok = code.len == 0
+            && str_contains(err, "export-from runtime modules is not supported in AOT");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: runtime export-from fails closed in AOT"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: runtime export-from fails closed in AOT"); }
+    }
+
+    // Module-local scanner must see definitions introduced inside module-body with forms.
+    {
+        char[] code = compile_to_c3(
+            "(module with-src (export x) (define x 7)) "
+            "(module with-dst (export y) (with with-src (define y x))) "
+            "(import with-dst (y))",
+            interp
+        );
+        bool ok = str_contains(code, "_aot_with_")
+            && str_contains(code, "y = _aot_mod_")
+            && !str_contains(code, "inline module export has no compiled private backing")
+            && !str_contains(code, "unsupported expr type");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: module with-body defines receive private backing"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: module with-body defines receive private backing"); }
+    }
+
+    // Selective imports inside module bodies bind module-private exported values.
+    {
+        char[] code = compile_to_c3(
+            "(module import-src (export x) (define x 7)) "
+            "(module import-dst (export x) (import import-src (x))) "
+            "(import import-dst (x))",
+            interp
+        );
+        bool ok = str_contains(code, "aot::define_var(\"x\"")
+            && str_contains(code, "x = _aot_mod_")
+            && !str_contains(code, "inline module export has no compiled private backing")
+            && !str_contains(code, "unsupported expr type");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: module import exports sync private backing"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: module import exports sync private backing"); }
+    }
+
+    // Runtime-module import-all inside an inline module is unsupported until AOT can enumerate exports.
+    {
+        char[] err = "";
+        char[] code = compile_to_c3(
+            "(module runtime-import-all (export abs) (import math 'all)) "
+            "(with runtime-import-all (abs -3))",
+            interp,
+            &err
+        );
+        bool ok = code.len == 0
+            && str_contains(err, "module-body import-all from runtime modules is not supported in AOT");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: runtime module import-all fails closed in AOT modules"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: runtime module import-all fails closed in AOT modules"); }
+    }
+
+    // Lexical effect declarations inside inline modules must not publish private bindings.
+    {
+        char[] err = "";
+        char[] code = compile_to_c3(
+            "(module module-lex-eff (export modLetEff) "
+            "  (let (x 1) (define [effect] (modLetEff (^Any p))))) "
+            "(with module-lex-eff modLetEff)",
+            interp,
+            &err
+        );
+        bool ok = code.len == 0
+            && str_contains(err, "lexical effect declarations are not supported in AOT");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: inline module lexical effect declaration fails closed"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: inline module lexical effect declaration fails closed"); }
+    }
+
     // Inline module bodies can contain nested definitions without leaking public globals.
     {
         char[] code = compile_to_c3(
@@ -618,18 +276,107 @@ fn void run_compiler_group_type_dispatch_bridge_tests(Interp* interp, usz* pass,
     {
         char[] code = compile_to_c3(
             "(module nested-effect-mod (export opened) "
-            "  (if true (define [effect] (opened (^Any payload))) nil)) "
+            "  (if true (block (define [effect] (opened (^Any payload)))) nil)) "
             "(with nested-effect-mod opened)",
             interp
         );
         bool ok = str_contains(code, "_aot_mod_")
             && str_contains(code, "_aot_with_")
             && str_contains(code, "aot::define_effect(\"opened\"")
+            && str_contains(code, "aot::lookup_var(\"opened\")")
             && !str_contains(code, "lisp::Value* opened;")
             && !str_contains(code, "opened =")
+            && !str_contains(code, "_aot_mod_0_0 = _r")
             && !str_contains(code, "unsupported expr type");
         if (ok) { (*pass)++; compiler_print_pass("Compiler: inline module nested effects use private backing"); }
         else    { (*fail)++; io::printn("[FAIL] Compiler: inline module nested effects use private backing"); }
+    }
+
+    // Nested module-body type forms sync helper-published bindings through private backing targets.
+    {
+        char[] code = compile_to_c3(
+            "(module nested-type-mod (export NestedShape NestedMaybe NestedSome) "
+            "  (if true "
+            "    (block "
+            "      (define [abstract] NestedShape) "
+            "      (define [union] NestedMaybe NestedNone (NestedSome Integer))) "
+            "    nil)) "
+            "(with nested-type-mod NestedShape)",
+            interp
+        );
+        bool ok = str_contains(code, "_aot_mod_")
+            && str_contains(code, "_aot_with_")
+            && str_contains(code, "aot::define_abstract(\"NestedShape\"")
+            && str_contains(code, "aot::define_union(\"NestedMaybe\"")
+            && str_contains(code, "aot::lookup_var(\"NestedShape\")")
+            && str_contains(code, "aot::lookup_var(\"NestedMaybe\")")
+            && str_contains(code, "aot::lookup_var(\"NestedSome\")")
+            && !str_contains(code, "lisp::Value* NestedShape;")
+            && !str_contains(code, "NestedShape =")
+            && !str_contains(code, "unsupported expr type");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: inline module nested type forms use private backing"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: inline module nested type forms use private backing"); }
+    }
+
+    // Direct module-body effect exports bind the published effect symbol, not the command return value.
+    {
+        char[] code = compile_to_c3(
+            "(module effect-export-mod (export openedM) "
+            "  (define [effect] (openedM (^Any payload)))) "
+            "(import effect-export-mod (openedM)) "
+            "openedM",
+            interp
+        );
+        bool ok = str_contains(code, "openedM = _aot_mod_")
+            && str_contains(code, "aot::define_effect(\"openedM\"")
+            && str_contains(code, "aot::lookup_var(\"openedM\")")
+            && !str_contains(code, "aot::eval_serialized_expr")
+            && !str_contains(code, "unsupported expr type");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: inline module effect export syncs symbol backing"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: inline module effect export syncs symbol backing"); }
+    }
+
+    // Inline modules execute helper-published declarations in an isolated runtime module env.
+    {
+        char[] code = compile_to_c3(
+            "(module isolated-effect-mod (export openedIso) "
+            "  (define [effect] (privateIso (^Any payload))) "
+            "  (define openedIso 1)) "
+            "(with isolated-effect-mod openedIso)",
+            interp
+        );
+        bool ok = compiler_code_contains_ordered(code, {
+                "aot::push_module_env()",
+                "defer aot::pop_module_env(",
+                "aot::define_effect(\"privateIso\"",
+                "aot::lookup_var(\"privateIso\")"
+            })
+            && str_contains(code, "_aot_mod_")
+            && !str_contains(code, "lisp::Value* privateIso;")
+            && !str_contains(code, "unsupported expr type");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: inline module helper declarations use isolated runtime env"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: inline module helper declarations use isolated runtime env"); }
+    }
+
+    // Terminal resolve in an inline module body must stop later module parent work.
+    {
+        char[] code = compile_to_c3(
+            "(handle (signal e 0) "
+            "  (e v (module terminal-mod (export x y) "
+            "         (define x (resolve 1)) "
+            "         (define y 2))))",
+            interp
+        );
+        bool ok = compiler_code_contains_ordered(code, {
+                "aot::push_module_env()",
+                "defer aot::pop_module_env(",
+                "aot::compiled_resolve(",
+                "aot::sequence_should_stop(",
+                "return _r"
+            })
+            && !str_contains(code, "unsupported expr type");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: inline module terminal resolve guards parent work"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: inline module terminal resolve guards parent work"); }
     }
 
     // Multi-export export-from all grows private backing storage and re-exports every name.
@@ -685,6 +432,238 @@ fn void run_compiler_group_type_dispatch_bridge_tests(Interp* interp, usz* pass,
             && !str_contains(code, "unsupported expr type");
         if (ok) { (*pass)++; compiler_print_pass("Compiler: nested inline modules declare private backing globals"); }
         else    { (*fail)++; io::printn("[FAIL] Compiler: nested inline modules declare private backing globals"); }
+    }
+
+    // Duplicate inline module names must fail closed instead of reusing the first backing table.
+    {
+        char[] err = "";
+        char[] code = compile_to_c3(
+            "(module dup-outer-a (export x) "
+            "  (module dup-inner (export v) (define v 1)) "
+            "  (define x (with dup-inner v))) "
+            "(module dup-outer-b (export y) "
+            "  (module dup-inner (export v) (define v 2)) "
+            "  (define y (with dup-inner v)))",
+            interp,
+            &err
+        );
+        bool ok = code.len == 0
+            && str_contains(err, "duplicate inline module name");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: duplicate inline module names fail closed"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: duplicate inline module names fail closed"); }
+    }
+
+    // Literal-dead branches do not define modules at runtime and should not trip duplicate detection.
+    {
+        char[] code = compile_to_c3(
+            "(block "
+            "  (if false (module dup-dead (export x) (define x 1)) nil) "
+            "  (module dup-dead (export x) (define x 2)) "
+            "  (import dup-dead (x)) "
+            "  x)",
+            interp
+        );
+        bool ok = str_contains(code, "import: inline module")
+            && str_contains(code, "aot::define_var(\"x\", _aot_mod_")
+            && !str_contains(code, "duplicate inline module name")
+            && !str_contains(code, "unsupported expr type");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: literal-dead inline module does not reserve duplicate metadata"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: literal-dead inline module does not reserve duplicate metadata"); }
+    }
+
+    // Primitive-shadow scopes must not poison later literal branch folding.
+    {
+        char[] code = compile_to_c3(
+            "(block "
+            "  (let (false true) 0) "
+            "  (if false (module dup-post-shadow (export x) (define x 1)) nil) "
+            "  (module dup-post-shadow (export x) (define x 2)) "
+            "  (with dup-post-shadow x))",
+            interp
+        );
+        bool ok = str_contains(code, "aot::push_module_env()")
+            && str_contains(code, "_aot_mod_")
+            && str_contains(code, "_aot_with_")
+            && !str_contains(code, "duplicate inline module name")
+            && !str_contains(code, "unsupported expr type");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: primitive shadow scope does not poison later literal module pruning"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: primitive shadow scope does not poison later literal module pruning"); }
+    }
+
+    // Branch-local primitive shadow declarations must not suppress sibling declarations.
+    {
+        char[] code = compile_to_c3(
+            "(if (= 1 2) (let (false 1) false) (let (false 2) false))",
+            interp
+        );
+        bool ok = str_contains(code, "lisp::Value* _aot_let_")
+            && !str_contains(code, "lisp::Value* _omni_false")
+            && !str_contains(code, "_omni_false =")
+            && !str_contains(code, "unsupported expr type");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: primitive shadow declarations are branch scoped"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: primitive shadow declarations are branch scoped"); }
+    }
+
+    // Let locals should not leak into later expressions in the same block.
+    {
+        char[] code = compile_to_c3("(block (let (x 1) x) x)", interp);
+        bool ok = str_contains(code, "aot::lookup_var(\"x\")")
+            && !str_contains(code, "unsupported expr type");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: let locals do not leak after lexical scope"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: let locals do not leak after lexical scope"); }
+    }
+
+    // Short-circuit branch-local lets should not leak to the following expression.
+    {
+        char[] code = compile_to_c3("(block (and (let (auditLetScope true) auditLetScope) (let (auditLetScope 2) auditLetScope)) auditLetScope)", interp);
+        bool ok = str_contains(code, "aot::lookup_var(\"auditLetScope\")")
+            && str_contains(code, "lisp::Value* _aot_let_")
+            && !str_contains(code, "lisp::Value* auditLetScope")
+            && !str_contains(code, "unsupported expr type");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: short-circuit let locals stay branch scoped"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: short-circuit let locals stay branch scoped"); }
+    }
+
+    // Match clause pattern locals are sibling C-scope declarations, not shared declarations.
+    {
+        char[] code = compile_to_c3("(match 2 (auditMatchScope auditMatchScope) (auditMatchScope auditMatchScope))", interp);
+        bool ok = compiler_str_count(code, "lisp::Value* auditMatchScope") == 2
+            && !str_contains(code, "} else {\n        auditMatchScope =")
+            && !str_contains(code, "unsupported expr type");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: match sibling pattern declarations are clause scoped"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: match sibling pattern declarations are clause scoped"); }
+    }
+
+    // Runtime-dependent module exports must fail closed instead of leaving nil backings.
+    {
+        char[] err;
+        char[] code = compile_to_c3(
+            "(block "
+            "  (define flag false) "
+            "  (module dynmod (export x) (if flag (define x 1) nil)) "
+            "  (with dynmod x))",
+            interp,
+            &err
+        );
+        bool ok = code.len == 0
+            && str_contains(err, "conditional inline module exports are not definitely assigned in AOT");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: conditional inline module exports fail closed"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: conditional inline module exports fail closed"); }
+    }
+
+    // Nested inline modules in executable containers are still usable by export-from.
+    {
+        char[] code = compile_to_c3(
+            "(block "
+            "  (module outerblk (export x) "
+            "    (block "
+            "      (module innerblk (export x) (define x 1)) "
+            "      (export-from innerblk (x)))) "
+            "  (with outerblk x))",
+            interp
+        );
+        bool ok = str_contains(code, "export-from: compiled inline bridge")
+            && !str_contains(code, "export-from runtime modules is not supported in AOT")
+            && !str_contains(code, "unsupported expr type");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: nested inline export-from source metadata is registered"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: nested inline export-from source metadata is registered"); }
+    }
+
+    // Checkpoint wrapper bodies cannot currently publish module exports safely in AOT.
+    {
+        char[] err;
+        char[] code = compile_to_c3(
+            "(module reset-type-mod (export out) "
+            "  (checkpoint (block (define [abstract] ResetShape) (define out ResetShape)))) "
+            "(with reset-type-mod out)",
+            interp,
+            &err
+        );
+        bool ok = code.len == 0
+            && str_contains(err, "checkpoint inline module exports are not supported in AOT");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: checkpoint inline module export publication fails closed"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: checkpoint inline module export publication fails closed"); }
+    }
+
+    // Checkpoint match guards cannot publish exports through runtime-dependent predicates.
+    {
+        char[] err;
+        char[] code = compile_to_c3(
+            "(block "
+            "  (module reset-guard-mod (export out) "
+            "    (checkpoint (match 1 ((? (block (define out 7) true)) out) (_ 0)))) "
+            "  (with reset-guard-mod out))",
+            interp,
+            &err
+        );
+        bool ok = code.len == 0
+            && str_contains(err, "checkpoint inline module exports are not supported in AOT");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: checkpoint guard export publication fails closed"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: checkpoint guard export publication fails closed"); }
+    }
+
+    // Short-circuit module exports must not publish a nil backing when the RHS does not run.
+    {
+        char[] err;
+        char[] code = compile_to_c3(
+            "(block "
+            "  (module and-export-mod (export x) (and false (define x 1))) "
+            "  (with and-export-mod x))",
+            interp,
+            &err
+        );
+        bool ok = code.len == 0
+            && str_contains(err, "short-circuit inline module exports are not definitely assigned in AOT");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: and RHS inline module export fails closed"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: and RHS inline module export fails closed"); }
+    }
+
+    {
+        char[] err;
+        char[] code = compile_to_c3(
+            "(block "
+            "  (module or-export-mod (export x) (or true (define x 1))) "
+            "  (with or-export-mod x))",
+            interp,
+            &err
+        );
+        bool ok = code.len == 0
+            && str_contains(err, "short-circuit inline module exports are not definitely assigned in AOT");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: or RHS inline module export fails closed"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: or RHS inline module export fails closed"); }
+    }
+
+    // Match clause exports are runtime-dependent until AOT models definite assignment per clause.
+    {
+        char[] err;
+        char[] code = compile_to_c3(
+            "(block "
+            "  (module match-export-mod (export x) (match 0 (1 (define x 1)) (_ nil))) "
+            "  (with match-export-mod x))",
+            interp,
+            &err
+        );
+        bool ok = code.len == 0
+            && str_contains(err, "match inline module exports are not definitely assigned in AOT");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: match clause inline module export fails closed"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: match clause inline module export fails closed"); }
+    }
+
+    // Handle clauses cannot currently publish module exports safely through the AOT bridge.
+    {
+        char[] err;
+        char[] code = compile_to_c3(
+            "(block "
+            "  (module handle-clause-mod (export out) "
+            "    (handle (signal make 0) (make v (block (define out 7) out)))) "
+            "  (with handle-clause-mod out))",
+            interp,
+            &err
+        );
+        bool ok = code.len == 0
+            && str_contains(err, "handle inline module exports are not supported in AOT");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: handle clause inline module export fails closed"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: handle clause inline module export fails closed"); }
     }
 
     // Strict handles must thread the strict bit through the AOT bridge.

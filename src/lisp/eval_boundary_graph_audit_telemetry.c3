@@ -12,7 +12,7 @@ fn void boundary_dump_decision_stats_verbose(char[] label = "runtime") @noinline
     BoundaryDecisionStats stats = boundary_decision_stats_snapshot();
 
     io::eprintfn(
-        "[boundary][telemetry][%s] splice_attempted=%d splice_succeeded=%d promotion_attempted=%d copy_fallback_total=%d materialization_success=%d materialization_nodes=%d materialization_copy_bytes=%d materialization_copy_bytes_optimizer=%d materialization_copy_bytes_forced_no_splice=%d scope_chain_scan_total=%d scope_chain_scan_with_hint=%d scope_chain_scan_fallback=%d scope_chain_scan_suppressed=%d graph_audit_invoked=%d graph_audit_skipped_rate=%d graph_audit_skipped_max_roots=%d",
+        "[boundary][telemetry][%s] splice_attempted=%ld splice_succeeded=%ld promotion_attempted=%ld copy_fallback_total=%ld materialization_success=%ld materialization_nodes=%ld materialization_copy_bytes=%ld materialization_copy_bytes_optimizer=%ld materialization_copy_bytes_forced_no_splice=%ld scope_chain_scan_total=%ld scope_chain_scan_with_hint=%ld scope_chain_scan_fallback=%ld scope_chain_scan_suppressed=%ld graph_audit_invoked=%ld graph_audit_skipped_rate=%ld graph_audit_skipped_max_roots=%ld",
         (ZString)label,
         (long)stats.splice_attempted,
         (long)stats.splice_succeeded,
@@ -34,7 +34,7 @@ fn void boundary_dump_decision_stats_verbose(char[] label = "runtime") @noinline
 
     for (usz i = 0; i < BOUNDARY_SCOPE_TRANSFER_REASON_COUNT; i++) {
         io::eprintfn(
-            "[boundary][telemetry][%s] splice_fail reason=%s count=%d",
+            "[boundary][telemetry][%s] splice_fail reason=%s count=%ld",
             (ZString)label,
             boundary_scope_transfer_reason_name((BoundaryScopeTransferReason)i),
             (long)stats.splice_failed_by_reason[i]
@@ -42,7 +42,7 @@ fn void boundary_dump_decision_stats_verbose(char[] label = "runtime") @noinline
     }
     for (usz i = 0; i < BOUNDARY_PROMOTION_ABORT_REASON_COUNT; i++) {
         io::eprintfn(
-            "[boundary][telemetry][%s] promotion_abort reason=%s count=%d",
+            "[boundary][telemetry][%s] promotion_abort reason=%s count=%ld",
             (ZString)label,
             boundary_promotion_abort_reason_name((BoundaryPromotionAbortReason)i),
             (long)stats.promotion_aborted_by_reason[i]
@@ -50,7 +50,7 @@ fn void boundary_dump_decision_stats_verbose(char[] label = "runtime") @noinline
     }
     for (usz i = 0; i < BOUNDARY_PLAN_ROUTE_COUNT; i++) {
         io::eprintfn(
-            "[boundary][telemetry][%s] route route=%s planned=%d selected=%d",
+            "[boundary][telemetry][%s] route route=%s planned=%ld selected=%ld",
             (ZString)label,
             boundary_plan_route_name((BoundaryPlanRoute)i),
             (long)stats.planned_route_by_route[i],
@@ -67,7 +67,7 @@ fn void boundary_dump_decision_stats_verbose(char[] label = "runtime") @noinline
             ];
             if (planned == 0 && selected == 0) continue;
             io::eprintfn(
-                "[boundary][telemetry][%s] route_tag route=%s tag=%s planned=%d selected=%d",
+                "[boundary][telemetry][%s] route_tag route=%s tag=%s planned=%ld selected=%ld",
                 (ZString)label,
                 boundary_plan_route_name((BoundaryPlanRoute)route_idx),
                 boundary_value_tag_name((ValueTag)tag_idx),
@@ -82,7 +82,7 @@ fn void boundary_dump_decision_stats_verbose(char[] label = "runtime") @noinline
         usz bytes = stats.stable_materialization_copy_bytes_by_tag[tag_idx];
         if (success == 0 && nodes == 0 && bytes == 0) continue;
         io::eprintfn(
-            "[boundary][telemetry][%s] materialization_tag tag=%s success=%d nodes=%d copy_bytes=%d optimizer_copy_bytes=%d forced_no_splice_copy_bytes=%d",
+            "[boundary][telemetry][%s] materialization_tag tag=%s success=%ld nodes=%ld copy_bytes=%ld optimizer_copy_bytes=%ld forced_no_splice_copy_bytes=%ld",
             (ZString)label,
             boundary_value_tag_name((ValueTag)tag_idx),
             (long)success,
@@ -94,7 +94,7 @@ fn void boundary_dump_decision_stats_verbose(char[] label = "runtime") @noinline
     }
     for (usz i = 0; i < BOUNDARY_PLAN_REASON_COUNT; i++) {
         io::eprintfn(
-            "[boundary][telemetry][%s] route_failure reason=%s count=%d",
+            "[boundary][telemetry][%s] route_failure reason=%s count=%ld",
             (ZString)label,
             boundary_plan_reason_name((BoundaryPlanReason)i),
             (long)stats.route_failure_by_reason[i]

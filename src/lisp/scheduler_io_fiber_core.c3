@@ -7,22 +7,42 @@ import std::thread;
 import main;
 
 // Scheduler core: pending I/O, wakeups, fiber state transitions.
-fn usz scheduler_add_fiber(Value* coroutine, usz parent_id, Interp* interp, bool* out_promotion_failed = null) {
+fn bool scheduler_parent_accepts_child(usz parent_id, Interp* interp, bool* out_owner_mismatch = null) @inline {
+    if (out_owner_mismatch != null) *out_owner_mismatch = false;
+    if (parent_id == NO_FIBER) return true;
+    if (parent_id >= g_scheduler.fiber_count) return false;
+    FiberEntry* parent = &g_scheduler.fibers[parent_id];
+    if (parent.state == FIBER_DONE) return false;
+    Interp* parent_owner = parent.owner_interp;
+    if (parent_owner != null && parent_owner != interp) {
+        if (out_owner_mismatch != null) *out_owner_mismatch = true;
+        return false;
+    }
+    return true;
+}
+
+fn usz scheduler_add_fiber(
+    Value* coroutine,
+    usz parent_id,
+    Interp* interp,
+    bool* out_promotion_failed = null,
+    bool* out_parent_invalid = null
+) {
     scheduler_init();
     if (g_scheduler.fiber_count >= MAX_FIBERS) return MAX_FIBERS;
 
     if (out_promotion_failed != null) *out_promotion_failed = false;
+    if (out_parent_invalid != null) *out_parent_invalid = false;
 
     if (coroutine == null || coroutine.tag != COROUTINE || coroutine.coroutine_val == null) {
         return MAX_FIBERS;
     }
     if (interp == null) return MAX_FIBERS;
-    if (parent_id < g_scheduler.fiber_count) {
-        Interp* parent_owner = g_scheduler.fibers[parent_id].owner_interp;
-        if (parent_owner != null && parent_owner != interp) {
-            if (out_promotion_failed != null) *out_promotion_failed = true;
-            return MAX_FIBERS;
-        }
+    bool owner_mismatch = false;
+    if (!scheduler_parent_accepts_child(parent_id, interp, &owner_mismatch)) {
+        if (out_parent_invalid != null) *out_parent_invalid = true;
+        if (owner_mismatch && out_promotion_failed != null) *out_promotion_failed = true;
+        return MAX_FIBERS;
     }
 
     coroutine = boundary_promote_to_root(coroutine, interp);
@@ -126,6 +146,15 @@ fn bool scheduler_all_done() @inline {
     return true;
 }
 
+fn void scheduler_release_fiber_coroutine(usz fiber_id, Interp* interp) {
+    if (fiber_id >= g_scheduler.fiber_count) return;
+    FiberEntry* f = &g_scheduler.fibers[fiber_id];
+    Value* coroutine = f.coroutine;
+    if (coroutine == null || coroutine.tag != COROUTINE || coroutine.coroutine_val == null) return;
+    Interp* owner_interp = f.owner_interp != null ? f.owner_interp : interp;
+    coroutine_ctx_cleanup(coroutine, coroutine.coroutine_val, owner_interp);
+}
+
 fn Value* scheduler_make_root_error(Interp* interp, char[] msg) {
     main::ScopeRegion* saved_scope = interp.current_scope;
     interp.current_scope = interp.root_scope;
@@ -174,7 +203,7 @@ fn void scheduler_mark_done(usz fiber_id, Value* result, Interp* interp) {
     // so late completions cannot target a recycled fiber slot.
     scheduler_clear_thread_task_waiters_for_fiber(fiber_id);
 
-    if (f.parent_id < g_scheduler.fiber_count) {
+    if (f.parent_id != NO_FIBER && scheduler_parent_accepts_child(f.parent_id, owner_interp)) {
         FiberEntry* parent = &g_scheduler.fibers[f.parent_id];
         if (parent.live_children > 0) parent.live_children--;
 

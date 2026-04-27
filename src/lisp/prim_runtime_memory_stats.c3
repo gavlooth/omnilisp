@@ -33,7 +33,7 @@ fn Value* runtime_memory_dict_set_symbol(Value* dict, Interp* interp, char[] key
 fn Value* runtime_memory_scope_stats(Interp* interp) {
     Value* out = runtime_memory_make_dict(interp, 112);
     if (out == null || out.tag == ERROR) return out;
-    main::ScopeMemoryTelemetryStats stats = main::g_scope_memory_telemetry_stats;
+    main::ScopeMemoryTelemetryStats stats = main::scope_memory_telemetry_stats_snapshot();
     if (Value* err = runtime_memory_dict_set_usz(out, interp, "temp-bytes-allocated", stats.total_temp_bytes_allocated)) return err;
     if (Value* err = runtime_memory_dict_set_usz(out, interp, "escape-bytes-allocated", stats.total_escape_bytes_allocated)) return err;
     if (Value* err = runtime_memory_dict_set_usz(out, interp, "temp-chunk-bytes-allocated", stats.temp_chunk_bytes_allocated)) return err;
@@ -124,7 +124,7 @@ fn Value* runtime_memory_scope_stats(Interp* interp) {
 fn Value* runtime_memory_transfer_stats(Interp* interp) {
     Value* out = runtime_memory_make_dict(interp, 16);
     if (out == null || out.tag == ERROR) return out;
-    main::ScopeTransferStats stats = main::g_scope_transfer_stats;
+    main::ScopeTransferStats stats = main::scope_transfer_stats_snapshot();
     if (Value* err = runtime_memory_dict_set_usz(out, interp, "splice-calls", stats.splice_calls)) return err;
     if (Value* err = runtime_memory_dict_set_usz(out, interp, "escape-bytes-spliced", stats.splice_escape_chunk_bytes)) return err;
     if (Value* err = runtime_memory_dict_set_usz(out, interp, "temp-bytes-freed-by-splice", stats.splice_temp_chunk_bytes_freed)) return err;
@@ -136,13 +136,13 @@ fn Value* runtime_memory_transfer_stats(Interp* interp) {
 fn Value* runtime_memory_fiber_temp_stats(Interp* interp) {
     Value* out = runtime_memory_make_dict(interp, 32);
     if (out == null || out.tag == ERROR) return out;
-    main::FiberTempPoolStats stats = main::g_fiber_temp_pool_stats;
+    main::FiberTempPoolStats stats = main::fiber_temp_pool_stats_snapshot();
     if (Value* err = runtime_memory_dict_set_usz(out, interp, "take-hits", stats.take_hits)) return err;
     if (Value* err = runtime_memory_dict_set_usz(out, interp, "take-misses", stats.take_misses)) return err;
     if (Value* err = runtime_memory_dict_set_usz(out, interp, "return-count", stats.return_count)) return err;
     if (Value* err = runtime_memory_dict_set_usz(out, interp, "drop-frees", stats.drop_frees)) return err;
     if (Value* err = runtime_memory_dict_set_usz(out, interp, "peak-pool-count", stats.peak_pool_count)) return err;
-    if (Value* err = runtime_memory_dict_set_usz(out, interp, "current-pool-count", main::g_fiber_temp_chunk_pool_count)) return err;
+    if (Value* err = runtime_memory_dict_set_usz(out, interp, "current-pool-count", main::fiber_temp_chunk_pool_count_snapshot())) return err;
     if (Value* err = runtime_memory_dict_set_usz(out, interp, "ctx-take-hits", stats.ctx_take_hits)) return err;
     if (Value* err = runtime_memory_dict_set_usz(out, interp, "ctx-return-count", stats.ctx_return_count)) return err;
     if (Value* err = runtime_memory_dict_set_usz(out, interp, "ctx-pool-created", stats.ctx_pool_created)) return err;
@@ -350,9 +350,9 @@ fn bool runtime_memory_telemetry_enabled() @inline {
 
 fn void runtime_memory_print_telemetry() {
     if (!runtime_memory_telemetry_enabled()) return;
-    main::ScopeMemoryTelemetryStats scope_stats = main::g_scope_memory_telemetry_stats;
-    main::ScopeTransferStats transfer_stats = main::g_scope_transfer_stats;
-    main::FiberTempPoolStats fiber_stats = main::g_fiber_temp_pool_stats;
+    main::ScopeMemoryTelemetryStats scope_stats = main::scope_memory_telemetry_stats_snapshot();
+    main::ScopeTransferStats transfer_stats = main::scope_transfer_stats_snapshot();
+    main::FiberTempPoolStats fiber_stats = main::fiber_temp_pool_stats_snapshot();
     CopyToParentStats copy_stats = copy_to_parent_stats_snapshot();
     BoundaryEscapeShapeStats shape_stats = boundary_escape_shape_stats_snapshot();
     BoundaryDecisionStats boundary_stats = boundary_decision_stats_snapshot();
@@ -436,7 +436,7 @@ fn void runtime_memory_print_telemetry() {
         fiber_stats.take_misses,
         fiber_stats.return_count,
         fiber_stats.drop_frees,
-        main::g_fiber_temp_chunk_pool_count,
+        main::fiber_temp_chunk_pool_count_snapshot(),
         fiber_stats.take_hit_chunk_bytes,
         fiber_stats.return_chunk_bytes,
         fiber_stats.drop_free_chunk_bytes,

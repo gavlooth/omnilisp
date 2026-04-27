@@ -23,8 +23,8 @@ fn void run_advanced_stdlib_numeric_array_set_tests(Interp* interp, int* pass, i
     test_tag_interp(interp, "push! returns void", "(push! push-arr 3)", VOID, pass, fail);
     test_eq(interp, "push!", "(length push-arr)", 3, pass, fail);
     test_eq(interp, "push! val", "(ref push-arr 2)", 3, pass, fail);
-    test_error(interp, "ref oob", "(ref (Array 1) 5)", pass, fail);
-    test_error(interp, "set! array oob", "(set! (Array 1) 5 0)", pass, fail);
+    test_error_contains(interp, "ref oob", "(ref (Array 1) 5)", "array index out of bounds", pass, fail);
+    test_error_contains(interp, "set! array oob", "(set! (Array 1) 5 0)", "array index out of range", pass, fail);
     test_eq(interp, "empty Array", "(length (Array))", 0, pass, fail);
 
     // === SET TESTS (Phase 9) ===
@@ -113,6 +113,29 @@ fn void run_advanced_stdlib_sort_bitwise_hof_tests(Interp* interp, int* pass, in
         "(lshift 1 (BigInteger \"9223372036854775808\"))", "shift count out of range", pass, fail);
     test_error_contains(interp, "Integer shift count allocation cap",
         "(lshift 1 1048577)", "shift count out of range", pass, fail);
+    {
+        Value malformed = {};
+        malformed.tag = BIG_INTEGER;
+        malformed.big_integer_val = null;
+        Value* one = make_int(interp, 1);
+        Value* int_over_cap = big_integer_shift_value(
+            interp, one, (ulong)BIG_INTEGER_MAX_SHIFT_BITS + (ulong)1, true, true, "direct shift");
+        Value* big_over_cap = big_integer_shift_value(
+            interp, make_big_integer_from_string(interp, "1"), (ulong)BIG_INTEGER_MAX_SHIFT_BITS + (ulong)1, false, false, "direct shift");
+        Value* malformed_shift = big_integer_shift_value(
+            interp, &malformed, 1, true, false, "malformed BigInteger shift");
+        bool ok =
+            advanced_numeric_error_value_contains(int_over_cap, "shift count out of range") &&
+            advanced_numeric_error_value_contains(big_over_cap, "shift count out of range") &&
+            advanced_numeric_error_value_contains(malformed_shift, "malformed BigInteger shift");
+        if (ok) {
+            (*pass)++;
+            emit_pass_literal("[PASS] BigInteger shift helper enforces bounds and payload validity");
+        } else {
+            (*fail)++;
+            io::printn("[FAIL] BigInteger shift helper enforces bounds and payload validity");
+        }
+    }
 
     // === STDLIB HOFs (Phase 3) ===
     test_eq(interp, "flatten", "(length (flatten (quote ((1 2) (3 4) (5)))))", 5, pass, fail);
@@ -154,6 +177,10 @@ fn void run_advanced_stdlib_string_predicate_format_tests(Interp* interp, int* p
     test_nil(interp, "float64? no", "(float64? 42)", pass, fail);
     test_truthy(interp, "number? int", "(number? 42)", pass, fail);
     test_truthy(interp, "number? Float64", "(number? 3.14)", pass, fail);
+    test_double(interp, "numeric helper converts BigInteger through Float64 path",
+        "(BigInteger \"42\")", 42.0, pass, fail);
+    test_double(interp, "numeric helper converts BigFloat through Float64 path",
+        "(BigFloat \"1.25\")", 1.25, pass, fail);
     test_nil(interp, "number? string", "(number? \"hello\")", pass, fail);
     test_truthy(interp, "boolean? true", "(boolean? true)", pass, fail);
     test_nil(interp, "boolean? nil", "(boolean? nil)", pass, fail);

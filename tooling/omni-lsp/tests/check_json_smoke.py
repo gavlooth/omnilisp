@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import subprocess
@@ -77,7 +78,10 @@ def run_cli(*args: str, env_overrides: dict[str, str] | None = None) -> subproce
     )
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Run Omni JSON diagnostic CLI smoke tests.")
+    parser.parse_args(argv)
+
     expect(OMNI.exists(), f"missing Omni binary at {OMNI}")
 
     with tempfile.TemporaryDirectory(prefix="omni_check_json_") as tempdir:
@@ -93,7 +97,10 @@ def main() -> int:
         compile_syntax_path.write_text("(define answer 42", encoding="utf-8")
 
         lowering_path = temp_root / "lowering.omni"
-        lowering_path.write_text('(define [ffi lib] c "/tmp/libx.so")\n', encoding="utf-8")
+        lowering_path.write_text(
+            "(define [ffi lambda libc variadic] (printf (^String fmt)) ^Integer)\n",
+            encoding="utf-8",
+        )
 
         module_path = temp_root / "module_bad.omni"
         module_path.write_text("(module)\n", encoding="utf-8")
@@ -308,7 +315,8 @@ def main() -> int:
         expect(lowering_diagnostic["code"] == "compiler/lowering-error", "unexpected lowering diagnostic code")
         expect(lowering_diagnostic["severity"] == "error", "unexpected lowering severity")
         expect(
-            lowering_diagnostic["message"] == "compiler: [ffi lib] is not supported by AOT lowering",
+            "variadic" in lowering_diagnostic["message"]
+            and "not supported by AOT lowering" in lowering_diagnostic["message"],
             f"unexpected lowering diagnostic message: {lowering_diagnostic['message']!r}",
         )
         expect(

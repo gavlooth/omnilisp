@@ -12,8 +12,12 @@ fn EvalResult load_import_target_module_spec(ExprImport* spec, SymbolId name, In
         char[] rel_path = spec.path[:spec.path_len];
         char[512] resolved;
         usz rlen = 0;
-        if (!resolve_import_path_checked(rel_path, interp, &resolved, 512, &rlen)) {
-            return eval_error("module path too long");
+        ImportPathResolveStatus status = resolve_import_path_status(rel_path, interp, &resolved, 512, &rlen);
+        if (import_path_resolve_status_is_unsafe(status)) {
+            return eval_error("module import path must be relative and stay within source directory");
+        }
+        if (import_path_resolve_status_is_too_long(status)) {
+            return eval_error("resolved module import path too long");
         }
         char[] path = resolved[:rlen];
 
@@ -39,15 +43,26 @@ fn EvalResult load_import_target_module_spec(ExprImport* spec, SymbolId name, In
 
     char[256] rel_buf;
     usz rel_len = 0;
-    if (!build_default_module_rel_path(name, interp, &rel_buf, &rel_len)) {
-        return eval_error("module path too long");
+    if (!build_default_module_rel_path(name, interp, &rel_buf, rel_buf.len, &rel_len)) {
+        return eval_error("default module import path too long");
     }
     char[512] resolved;
     usz rlen = 0;
-    if (!resolve_import_path_checked(rel_buf[:rel_len], interp, &resolved, 512, &rlen)) {
-        return eval_error("module path too long");
+    ImportPathResolveStatus status = resolve_import_path_status(rel_buf[:rel_len], interp, &resolved, 512, &rlen);
+    if (import_path_resolve_status_is_unsafe(status)) {
+        return eval_error("module import path must be relative and stay within source directory");
+    }
+    if (import_path_resolve_status_is_too_long(status)) {
+        return eval_error("resolved module import path too long");
     }
     char[] path = resolved[:rlen];
+    Module* path_mod = find_module_by_path_any(path, interp);
+    if (path_mod != null) {
+        if (!path_mod.loaded) return eval_error("circular import detected");
+        *mod_out = path_mod;
+        return eval_ok(make_void(interp));
+    }
+
     EvalResult load_result = jit_load_module_from_file(path, name, interp);
     if (load_result.error.has_error) return load_result;
     *mod_out = resolve_loaded_module(name, path, interp);

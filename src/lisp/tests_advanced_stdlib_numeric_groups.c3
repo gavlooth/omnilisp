@@ -5,6 +5,10 @@ import main;
 
 alias AdvancedStdlibNumericGroupFn = fn void(Interp* interp, int* pass, int* fail);
 
+fn bool advanced_numeric_error_value_contains(Value* v, char[] needle) {
+    return v != null && v.tag == ERROR && str_contains(v.str_chars[:v.str_len], needle);
+}
+
 fn void trace_env_chain_state(char[] label, Interp* interp, Env* env) {
     if (!advanced_group_trace_enabled()) {
         return;
@@ -136,6 +140,11 @@ fn void run_advanced_stdlib_numeric_float_math_tests(Interp* interp, int* pass, 
     test_double(interp, "float -2.5", "-2.5", -2.5, pass, fail);
     test_double(interp, "float 1.0e3", "1.0e3", 1000.0, pass, fail);
     test_double(interp, "float 1.5e-2", "1.5e-2", 0.015, pass, fail);
+    test_truthy(interp, "float long fraction literal remains bounded and finite",
+        "(and (> 0.111111111111111111111111111111111111111111111111111111111111111111111111111111111 0.1) (< 0.111111111111111111111111111111111111111111111111111111111111111111111111111111111 0.2))",
+        pass, fail);
+    test_error_contains(interp, "float literal huge exponent fails closed",
+        "1.0e9999", "float literal exponent out of range", pass, fail);
     test_double(interp, "int+float", "(+ 1 2.0)", 3.0, pass, fail);
     test_double(interp, "float*int", "(* 2.5 4)", 10.0, pass, fail);
     test_double(interp, "float/int", "(/ 1.0 3)", 0.333333, pass, fail);
@@ -154,6 +163,8 @@ fn void run_advanced_stdlib_numeric_float_math_tests(Interp* interp, int* pass, 
     test_eq(interp, "Integer negative truncates toward zero", "(Integer -3.7)", -3, pass, fail);
     test_double(interp, "parse-number float", "(parse-number \"3.14\")", 3.14, pass, fail);
     test_double(interp, "parse-number exp", "(parse-number \"1.5e2\")", 150.0, pass, fail);
+    test_truthy(interp, "parse-number float overflow promotes to BigFloat",
+        "(= (type-of (parse-number \"1.0e309\")) 'BigFloat)", pass, fail);
     test_str_val(interp, "parse-number integer overflow => BigInteger",
         "(String (parse-number \"9223372036854775808\"))",
         "9223372036854775808", pass, fail);
@@ -255,6 +266,62 @@ fn void run_advanced_stdlib_numeric_float_math_tests(Interp* interp, int* pass, 
         "(< (BigComplex 1 2) (BigComplex 2 3))", "complex numbers are not ordered", pass, fail);
     test_error_contains(interp, "BigComplex division by zero",
         "(/ (BigComplex 1 2) (BigComplex 0 0))", "/: division by zero", pass, fail);
+    {
+        Value malformed_big_integer = {};
+        malformed_big_integer.tag = BIG_INTEGER;
+        malformed_big_integer.big_integer_val = null;
+        Value malformed_big_float = {};
+        malformed_big_float.tag = BIG_FLOAT;
+        malformed_big_float.big_float_val = null;
+        Value malformed_big_complex = {};
+        malformed_big_complex.tag = BIG_COMPLEX;
+        malformed_big_complex.big_complex_val = null;
+
+        Value* one = make_int(interp, 1);
+        void* integer_float_handle = big_float_handle_from_value(&malformed_big_integer);
+        void* null_float_handle = big_float_handle_from_value(&malformed_big_float);
+        void* null_complex_handle = big_complex_handle_from_value(&malformed_big_complex);
+        Value* float_binary = big_float_binary_values(
+            interp, &malformed_big_integer, one, BIG_FLOAT_OP_ADD, "malformed BigFloat conversion");
+        Value* complex_parts = big_complex_from_parts(
+            interp, &malformed_big_float, one, "malformed BigComplex parts");
+        Value* complex_real = big_complex_real_part_value(
+            interp, &malformed_big_complex, "malformed BigComplex real part");
+        Value* complex_imag = big_complex_imag_part_value(
+            interp, &malformed_big_complex, "malformed BigComplex imag part");
+        Value* complex_conjugate = big_complex_conjugate_value(
+            interp, &malformed_big_complex, "malformed BigComplex conjugate");
+        int compare_result = 0;
+        bool compare_rejected = !big_float_compare_values(&malformed_big_float, one, &compare_result);
+        bool ok =
+            integer_float_handle == null &&
+            null_float_handle == null &&
+            null_complex_handle == null &&
+            compare_rejected &&
+            advanced_numeric_error_value_contains(float_binary, "malformed BigFloat conversion") &&
+            advanced_numeric_error_value_contains(complex_parts, "malformed BigComplex parts") &&
+            advanced_numeric_error_value_contains(complex_real, "malformed BigComplex real part") &&
+            advanced_numeric_error_value_contains(complex_imag, "malformed BigComplex imag part") &&
+            advanced_numeric_error_value_contains(complex_conjugate, "malformed BigComplex conjugate");
+        if (integer_float_handle != null) omni_big_float_free(integer_float_handle);
+        if (null_float_handle != null) omni_big_float_free(null_float_handle);
+        if (null_complex_handle != null) omni_big_complex_free(null_complex_handle);
+        if (ok) {
+            (*pass)++;
+            emit_pass_literal("[PASS] BigFloat/BigComplex malformed payload helpers fail closed");
+        } else {
+            io::printfn(
+                "[FAIL] BigFloat/BigComplex malformed payload helpers fail closed (float=%d parts=%d real=%d imag=%d conjugate=%d compare=%d)",
+                float_binary != null ? (int)float_binary.tag : -1,
+                complex_parts != null ? (int)complex_parts.tag : -1,
+                complex_real != null ? (int)complex_real.tag : -1,
+                complex_imag != null ? (int)complex_imag.tag : -1,
+                complex_conjugate != null ? (int)complex_conjugate.tag : -1,
+                compare_rejected ? 1 : 0
+            );
+            (*fail)++;
+        }
+    }
     test_str_val(interp, "BigComplex sin zero",
         "(String (sin (BigComplex 0 0)))",
         "0+0i", pass, fail);
@@ -339,6 +406,38 @@ fn void run_advanced_stdlib_numeric_float_math_tests(Interp* interp, int* pass, 
     test_str_val(interp, "Integer lcm long-min boundary promotes",
         "(String (lcm (Integer \"-9223372036854775808\") 2))",
         "9223372036854775808", pass, fail);
+    {
+        Value malformed = {};
+        malformed.tag = BIG_INTEGER;
+        malformed.big_integer_val = null;
+        Value* one = make_int(interp, 1);
+        Value* int_left = big_integer_binary_values(
+            interp, one, &malformed, BIG_INTEGER_OP_ADD, "malformed BigInteger binary");
+        Value* int_right = big_integer_binary_values(
+            interp, &malformed, one, BIG_INTEGER_OP_SUB, "malformed BigInteger binary");
+        Value* both_big = big_integer_binary_values(
+            interp, &malformed, &malformed, BIG_INTEGER_OP_MUL, "malformed BigInteger binary");
+        Value* prefer_integer = big_integer_binary_values_or_integer(
+            interp, &malformed, one, BIG_INTEGER_OP_GCD, "malformed BigInteger binary");
+        bool ok =
+            advanced_numeric_error_value_contains(int_left, "malformed BigInteger binary") &&
+            advanced_numeric_error_value_contains(int_right, "malformed BigInteger binary") &&
+            advanced_numeric_error_value_contains(both_big, "malformed BigInteger binary") &&
+            advanced_numeric_error_value_contains(prefer_integer, "malformed BigInteger binary");
+        if (ok) {
+            (*pass)++;
+            emit_pass_literal("[PASS] BigInteger malformed binary payloads fail closed");
+        } else {
+            io::printfn(
+                "[FAIL] BigInteger malformed binary payloads fail closed (left=%d right=%d both=%d prefer=%d)",
+                int_left != null ? (int)int_left.tag : -1,
+                int_right != null ? (int)int_right.tag : -1,
+                both_big != null ? (int)both_big.tag : -1,
+                prefer_integer != null ? (int)prefer_integer.tag : -1
+            );
+            (*fail)++;
+        }
+    }
     test_error_contains(interp, "BigInteger division by zero",
         "(/ (BigInteger \"10\") 0)", "/: division by zero", pass, fail);
     test_error_contains(interp, "BigInteger modulo by zero",
@@ -423,6 +522,29 @@ fn void run_advanced_stdlib_numeric_float_math_tests(Interp* interp, int* pass, 
     test_double(interp, "log 1", "(log 1.0)", 0.0, pass, fail);
     test_double(interp, "sqrt 4", "(sqrt 4.0)", 2.0, pass, fail);
     test_double(interp, "pow 2 10", "(pow 2.0 10.0)", 1024.0, pass, fail);
+    test_error_contains(interp, "sin rejects trailing arg", "(sin 0.0 1.0)", "arity mismatch", pass, fail);
+    test_error_contains(interp, "pow rejects trailing arg", "(pow 2.0 10.0 99.0)", "arity mismatch", pass, fail);
+    test_error_contains(interp, "bitwise-and rejects trailing arg", "(bitwise-and 7 3 1)", "arity mismatch", pass, fail);
+    {
+        Value*[3] raw_args = { make_int(interp, 2), make_int(interp, 3), make_int(interp, 4) };
+        Value* raw_pow = prim_pow(raw_args[0:raw_args.len], interp.global_env, interp);
+        Value* raw_bitwise = prim_bitwise_and(raw_args[0:raw_args.len], interp.global_env, interp);
+        Value*[2] raw_sin_args = { make_double(interp, 0.0), make_double(interp, 1.0) };
+        Value* raw_sin = prim_sin(raw_sin_args[0:raw_sin_args.len], interp.global_env, interp);
+        bool ok = is_error(raw_pow) && is_error(raw_bitwise) && is_error(raw_sin);
+        if (ok) {
+            emit_pass_literal("[PASS] raw fixed-arity math primitive bodies reject trailing args");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] raw fixed-arity math primitive bodies reject trailing args (pow=%d bitwise=%d sin=%d)",
+                raw_pow != null ? (int)raw_pow.tag : -1,
+                raw_bitwise != null ? (int)raw_bitwise.tag : -1,
+                raw_sin != null ? (int)raw_sin.tag : -1
+            );
+            (*fail)++;
+        }
+    }
     test_double(interp, "math.lgamma 6", "(math.lgamma 6.0)", 4.78749174278, pass, fail);
     test_double(interp, "math.lgamma half", "(math.lgamma 0.5)", 0.57236494292, pass, fail);
     test_error_contains(interp, "math.lgamma pole domain error",

@@ -26,7 +26,8 @@ Policy:
 | Radix integer literals | `#x...`, `#b...`, `#o...` |
 | Grouped imports | `(import (mod (sym 'as alias)) (other 'all))`; quoted symbols remain the module markers |
 | Scoped module open | `(with mod body...)` opens exported module bindings only for the body |
-| Value dispatch constructor | `Value` |
+| Literal dispatch shorthand | `^#datum` |
+| Literal dispatch long form | `^(Literal datum)` |
 | Transaction command | `(deduce 'block db ['read|'write|'write-deferred])` |
 
 ## 2. Removed/Changed Forms
@@ -42,7 +43,7 @@ Policy:
 | callable quoted-symbol accessor: `('name dict)` | `(ref dict 'name)` or `dict.name` | no implicit accessor function values |
 | macro clause DSL forms | single-transformer `syntax-match` macro form | legacy clause macro definitions removed |
 | `with-handlers`, `handle-chain` | explicit `handle`/`resolve` composition or `handle/chain` where applicable | old helper spellings are non-canonical |
-| `Val` dispatch constructor | `Value` | parser/runtime diagnostics should point to `Value` |
+| `^(Value datum)`, `^(Val datum)` dispatch constructors | `^#datum` or `^(Literal datum)` | old spellings removed; diagnostics point to `Literal` / `^#datum` |
 | dict-shaped module selection | grouped import s-expressions | `{}` is reserved for dictionary literals/data |
 
 ## 3. Access Semantics Contract

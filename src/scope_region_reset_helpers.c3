@@ -17,6 +17,7 @@ fn ScopeChunk* scope_require_temp_baseline_chunk(ScopeRegion* scope) @inline {
  * O(1) amortized per loop iteration when no escapes occur.
  */
 fn void scope_reset(ScopeRegion* scope) {
+    if (scope == null) return;
     scope_guard_owner(scope, "scope_reset");
     assert(scope.refcount == 1, "scope_reset: refcount must be 1 (nothing escaped)");
     scope_assert_escape_tail_consistency(scope);
@@ -76,6 +77,7 @@ fn void scope_reset(ScopeRegion* scope) {
  * Safe only when RC == 1 (no external scope ownership changes during reset).
  */
 fn void scope_reset_temp_lane(ScopeRegion* scope) {
+    if (scope == null) return;
     scope_guard_owner(scope, "scope_reset_temp_lane");
     assert(scope.refcount == 1, "scope_reset_temp_lane: refcount must be 1");
     scope_assert_escape_tail_consistency(scope);

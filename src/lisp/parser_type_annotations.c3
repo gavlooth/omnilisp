@@ -15,13 +15,13 @@ fn void Parser.parse_compound_type_annotation(Parser* self, TypeAnnotation* ann)
     ann.base_type = parser_normalize_type_annotation_base(self, ann.base_type);
     self.lexer.advance();
 
-    if (parser_is_removed_val_ctor(self, ann.base_type)) {
-        self.set_error("Val constructor was removed; use Value");
+    if (parser_is_removed_value_literal_ctor(self, ann.base_type)) {
+        self.set_error("Value literal annotation was removed; use Literal or ^#datum");
         return;
     }
 
-    if (parser_is_value_literal_ctor(self, ann.base_type)) {
-        if (!self.parse_value_literal_annotation(ann)) return;
+    if (parser_is_literal_type_ctor(self, ann.base_type)) {
+        if (!self.parse_literal_annotation(ann)) return;
     } else {
         List{SymbolId} params;
         defer params.free();
@@ -91,6 +91,19 @@ fn TypeAnnotation Parser.parse_type_annotation(Parser* self) {
     if (self.lexer.current.text[0] != '^') return ann;
 
     if (self.lexer.current.text_len > 1) {
+        if (self.lexer.current.text_len >= 2 && self.lexer.current.text[1] == '#') {
+            ann.has_annotation = true;
+            ann.base_type = self.interp.sym_Literal;
+            bool has_inline_literal = self.lexer.current.text_len > 2;
+            if (has_inline_literal) {
+                if (!parser_parse_inline_literal_annotation_token(self, &ann, self.lexer.current.text, self.lexer.current.text_len)) return ann;
+                self.lexer.advance();
+            } else {
+                self.lexer.advance();
+                if (!self.parse_literal_annotation(&ann)) return ann;
+            }
+            return ann;
+        }
         // Form 1: ^TypeName — strip leading ^, intern rest as base_type
         ann.has_annotation = true;
         ann.base_type = self.intern_or_error(self.lexer.current.text[1..self.lexer.current.text_len - 1], "failed to intern type annotation");

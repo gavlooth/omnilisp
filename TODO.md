@@ -12,7 +12,7 @@ split gate applies to code files only.
 - Part 02: [docs/todo_parts/todo_part_02.md](docs/todo_parts/todo_part_02.md) (675 lines)
 - Part 03: [docs/todo_parts/todo_part_03.md](docs/todo_parts/todo_part_03.md) (322 lines)
 - Part 04: [docs/todo_parts/todo_part_04.md](docs/todo_parts/todo_part_04.md) (432 lines)
-- Part 05: [docs/todo_parts/todo_part_05.md](docs/todo_parts/todo_part_05.md) (352 lines)
+- Part 05: [docs/todo_parts/todo_part_05.md](docs/todo_parts/todo_part_05.md) (361 lines)
 - Part 06: [docs/todo_parts/todo_part_06.md](docs/todo_parts/todo_part_06.md) (317 lines)
 - Part 07: [docs/todo_parts/todo_part_07.md](docs/todo_parts/todo_part_07.md) (318 lines)
 - Part 08: [docs/todo_parts/todo_part_08.md](docs/todo_parts/todo_part_08.md) (319 lines)
@@ -24,13 +24,104 @@ split gate applies to code files only.
 - Part 14: [docs/todo_parts/todo_part_14.md](docs/todo_parts/todo_part_14.md) (1915 lines)
 - Part 15: [docs/todo_parts/todo_part_15.md](docs/todo_parts/todo_part_15.md) (951 lines)
 - Part 16: [docs/todo_parts/todo_part_16.md](docs/todo_parts/todo_part_16.md) (261 lines)
-- Part 17: [docs/todo_parts/todo_part_17.md](docs/todo_parts/todo_part_17.md) (149 lines)
-- Part 18: [docs/todo_parts/todo_part_18.md](docs/todo_parts/todo_part_18.md) (871 lines)
+- Part 17: [docs/todo_parts/todo_part_17.md](docs/todo_parts/todo_part_17.md) (166 lines)
+- Part 18: [docs/todo_parts/todo_part_18.md](docs/todo_parts/todo_part_18.md) (1483 lines)
 
 ## Live Queue
 
 - Current actionable count: 0.
 - none currently;
+- Live blocker queue closed by the 2026-04-30 AUDIT-252 M9 default-switch
+  classification.
+- `AUDIT-256-FFI-ASYNC-INVALID-ARG-ABI-TAG` in Part 18 is closed. Async FFI
+  string-argument ownership and worker callback paths now validate raw
+  argument ABI tags before enum conversion or native handoff, and malformed
+  tags report typed errors instead of relying on C-side rejection.
+- `AUDIT-257-FFI-ASYNC-VOID-RETURN-CONTRACT` in Part 18 is closed. Async FFI
+  now accepts valid `^Void` returns with dummy native storage and materializes
+  the language `Void` singleton through scheduler completion instead of
+  rejecting the call as unsupported or mapping it to `nil`.
+- `AUDIT-258-FFI-ASYNC-FLOAT32-RETURN-CONTRACT` in Part 18 is closed. Async
+  FFI now preserves `^Float32` returns as Omni `Float32` values through
+  scheduler completion instead of widening them to `Float64`.
+- `AUDIT-259-FFI-ASYNC-BOOLEAN-RETURN-CONTRACT` in Part 18 is closed. Async
+  FFI now preserves `^Boolean` returns as Omni Boolean singleton values through
+  scheduler completion instead of widening them to Integer `0`/`1`.
+- `AUDIT-260-FFI-STRUCT-RETURN-STORAGE` in Part 18 is closed. FFI `^Struct`
+  returns now use pointer-shaped return storage before the established sync
+  opaque-handle conversion or async pointer-like rejection boundary, instead of
+  being rejected early as an unsupported ABI tag.
+- `AUDIT-261-FFI-VOID-PARAMETER-DECLARATION` in Part 18 is closed. FFI
+  `^Void` remains a return-only ABI annotation and is now rejected at
+  interpreter/JIT and AOT declaration time when used as a parameter, instead of
+  surviving until call packing.
+- `AUDIT-262-FFI-CALLBACK-VOID-PARAMETER` in Part 18 is closed. FFI callback
+  `Void` remains valid as a return type but is now rejected as a parameter type
+  in both list/array and variadic callback forms.
+- `AUDIT-255-FFI-INVALID-RETURN-ABI-TAG` in Part 18 is closed. FFI bound-call
+  return ABI tags now fail closed before libffi preparation when malformed, and
+  return-value conversion plus async FFI offload report typed errors instead of
+  returning `nil`.
+- `AUDIT-254-JIT-TAIL-CONSTRUCTOR-ESCAPE-OPCODE` in Part 18 is closed. The
+  continuation-sensitivity scanners now explicitly classify inert atom forms
+  (`E_LIT`, `E_VAR`, and `E_QUOTE`) as non-sensitive while preserving
+  fail-closed unknown-tag behavior, restoring tail constructor ESCAPE lowering.
+- `AUDIT-253-MACRO-HYGIENE-RECURSION-HARD-EXIT` in Part 18 is closed. The
+  macro-hygiene non-tail recursion probe now uses depth `384` instead of the
+  no-longer-portable `512`, and the exact subgroup plus full macro-hygiene
+  filter complete with normal summaries.
+- `AUDIT-252-M9-DEFAULT-SWITCH-RESIDUAL` in Part 18 is closed. The M9
+  native/AOT literal-lowering, AOT helper lookup, match-guard null-result,
+  serializer nil-fallback, type-metadata literal-tag, quasiquote fail-closed,
+  match-pattern fail-closed, and FFI manifest invalid-tag sub-slices are
+  closed. Generated-global collection now also fails closed for malformed
+  expression/pattern tags and traverses inline-module `with` bodies. Lambda
+  scanning and free-variable analysis now also fail closed for malformed
+  expression/pattern tags; mutable-capture prescan does the same while
+  preserving module traversal; quasiquote free-variable analysis also fails
+  closed for malformed expression tags. AOT match binding, match guard
+  scan/lowering, inline-module metadata collection, and AOT type metadata
+  value-tag emission now reject malformed internal tags. Generated-global
+  literal collection now also rejects malformed internal `ValueTag` values
+  while preserving all valid non-container tags as no-op leaves. FFI preload and
+  contract-manifest discovery now also reject malformed expression tags while
+  preserving quasiquote templates as no-op forms. Runtime sequence-pattern
+  matching also now rejects malformed rest-position tags, and runtime
+  literal-dispatch matching now rejects malformed internal literal tags before
+  fallback. Final current-source classification found the remaining
+  compiler/AOT `default:` arms are explicit fail-closed diagnostics,
+  parent-dispatched helper fallbacks, or benign format/classification defaults.
+- `AUDIT-251-TELEMETRY-TEST-SNAPSHOT-READS` in Part 18 is closed. Remaining
+  test/runtime telemetry evidence reads now use snapshot/load helpers, including
+  the new fiber-temp global pool-count snapshot helper.
+- `AUDIT-250-SCOPE-TELEMETRY-SATURATING-COUNTERS` in Part 18 is closed. Scope,
+  transfer, and fiber-temp telemetry now use M46 saturating atomic add helpers,
+  guarded CAS decrement, and focused overflow regression coverage.
+- `VALIDATION-002-ALL-SLICE-BOUNDARY-JIT-BLOCKER` in Part 18 is closed.
+  TLS-targeted, TLS-enabled async, and bounded TLS-enabled all-slice validation
+  now pass without `OMNI_SKIP_TLS_INTEGRATION`.
+- `AUDIT-247-PRIMITIVE-USER-DATA-COPY-ROLLBACK` in Part 18 is closed.
+  Primitive copy, escape promotion, and root-store clone routes now prepare and
+  destructor-register the destination wrapper before running `user_data_copy`,
+  and null-`prim_val` primitive copies fail closed when destructor registration
+  fails.
+- `AUDIT-246-AOT-CLOSURE-PRIMITIVE-LIFETIME` in Part 18 is closed.
+  Generated AOT closure primitives now use scoped primitive `user_data`
+  copy/finalizer hooks, generated sidecar refcounts, and bounded retained-scope
+  activation. Generated no-capture closures route through the generated-owned
+  constructors; manual AOT closure helpers remain caller-owned and opaque across
+  boundary copies.
+- `AUDIT-245-AOT-CLOSURE-CAPTURE-ROOT-LIFETIME` in Part 18 is closed.
+  Generated immutable AOT closure captures now retain the current temp scope
+  chain when needed, preserve lexical capture identity instead of cloning, guard
+  mixed-capture failure paths, and skip retention allocation for all-mutable
+  captures.
+- `AUDIT-244-AOT-MUTABLE-CELL-ROOT-LIFETIME` in Part 18 is closed.
+  Root-owned AOT mutable cells now promote initial and assigned values through
+  root-store promotion and generated code uses a checked set API.
+- `AUDIT-242-AOT-MUTABLE-CAPTURE-BINDINGS` in Part 18 is closed. AOT mutable
+  captured `let`/`set!` lowering now uses lexical mutable cells and per-capture
+  lambda mutability instead of source-name keyed environment writes.
 - `MEM-PROOF-001` in Part 18 is closed under
   `docs/plans/memory-model-proof-matrix-2026-04-26.md`. The slice added a
   memory ownership inventory guard and manifest covering memory-sensitive
@@ -60,9 +151,10 @@ split gate applies to code files only.
   copy/materialization, rollback, known-capacity constructor OOM, benchmark,
   and Valgrind evidence. `MEM-PROOF-008` is closed with CPU/native tensor
   constructor cleanup plus CUDA/Vulkan destructor-registration failure
-  coverage and leak validation. `MEM-PROOF-010` is closed with the native
-  wrapper-family metadata sweep, targeted Valgrind, and leak-free release
-  validation.
+  coverage and leak validation. `MEM-PROOF-009` is closed with async,
+  scheduler, thread, and callback lifetime validation. `MEM-PROOF-010` is
+  closed with the native wrapper-family metadata sweep, targeted Valgrind, and
+  leak-free release validation.
 - `MEM-MODEL-IMPROVE-002` in Part 18 is closed under
   `docs/plans/memory-model-improvement-plan-2026-04-25.md`.
   The slice added slow-path slack histograms, per-scope slow-allocation

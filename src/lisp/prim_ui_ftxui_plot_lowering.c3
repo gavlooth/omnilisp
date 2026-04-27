@@ -66,8 +66,8 @@ fn Value* ui_ftxui_plot_copy_numbers(Value* seq, double* out_values, usz offset,
     if (out_values == null) return ftxui_raise(interp, "ui/out-of-memory", "ui-ftxui: missing plot buffer");
     for (usz i = 0; i < count; i++) {
         Value* item = tensor_container_nth(seq, i);
-        if (!is_number(item)) return ftxui_raise(interp, "ui/invalid-argument", message);
-        double value = to_double(item);
+        double value = 0.0;
+        if (!try_numeric_to_double(item, &value)) return ftxui_raise(interp, "ui/invalid-argument", message);
         if (!conversion_double_is_finite(value)) return ftxui_raise(interp, "ui/invalid-argument", "ui-ftxui: plot values must be finite");
         out_values[offset + i] = value;
     }
@@ -222,8 +222,8 @@ fn Value* ui_ftxui_plot_read_y_bound(Value* zoom, Interp* interp, char[] key, in
     if (zoom == null) return null;
     Value* value = ui_ftxui_dict_get(zoom, key, interp);
     if (value == null) return null;
-    if (!is_number(value)) return ftxui_raise(interp, "ui/invalid-argument", "ui-ftxui: plot y zoom bounds must be finite numbers");
-    double numeric = to_double(value);
+    double numeric = 0.0;
+    if (!try_numeric_to_double(value, &numeric)) return ftxui_raise(interp, "ui/invalid-argument", "ui-ftxui: plot y zoom bounds must be finite numbers");
     if (!conversion_double_is_finite(numeric)) return ftxui_raise(interp, "ui/invalid-argument", "ui-ftxui: plot y zoom bounds must be finite numbers");
     *has_value = 1;
     *out_value = numeric;

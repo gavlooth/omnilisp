@@ -18,7 +18,7 @@ fn bool boundary_scope_chain_scan_allowed() @inline {
 
     usz budget = boundary_scope_chain_scan_budget();
     if (budget == 0) return true;
-    if (g_boundary_decision_stats.scope_chain_scan_total >= budget) {
+    if (boundary_telemetry_load(&g_boundary_decision_stats.scope_chain_scan_total) >= budget) {
         boundary_telemetry_inc_scope_chain_scan_suppressed();
         return false;
     }
@@ -40,7 +40,7 @@ fn bool boundary_ptr_in_scope_chain_scan_unchecked(void* ptr, main::ScopeRegion*
     return false;
 }
 
-fn bool boundary_ptr_in_scope_chain_with_hint(void* ptr, main::ScopeRegion* scope, uint pinned_gen) @inline {
+fn bool boundary_ptr_in_scope_chain_with_hint(void* ptr, main::ScopeRegion* scope, ulong pinned_gen) @inline {
     return boundary_ptr_in_scope_chain_with_hint_no_cache(ptr, scope, pinned_gen);
 }
 
@@ -48,7 +48,7 @@ fn bool boundary_ptr_in_scope_chain_with_hint_cached(
     void* ptr,
     Interp* interp,
     main::ScopeRegion* target_scope,
-    uint pinned_gen
+    ulong pinned_gen
 ) @inline {
     if (ptr == null || target_scope == null) return false;
     PromotionContext* active_ctx = interp != null ? interp.active_promotion_ctx : null;
@@ -79,7 +79,7 @@ fn bool boundary_ptr_in_scope_chain_with_hint_cached(
     return result;
 }
 
-fn bool boundary_ptr_in_scope_chain_with_hint_no_cache(void* ptr, main::ScopeRegion* scope, uint pinned_gen) @inline {
+fn bool boundary_ptr_in_scope_chain_with_hint_no_cache(void* ptr, main::ScopeRegion* scope, ulong pinned_gen) @inline {
     if (!boundary_scope_chain_scan_allowed()) return false;
 
     boundary_telemetry_inc_scope_chain_scan();
@@ -103,7 +103,7 @@ fn bool boundary_ptr_in_scope_chain_with_hint_no_cache(void* ptr, main::ScopeReg
     return boundary_ptr_in_scope_chain_scan_unchecked(ptr, scope);
 }
 
-fn bool boundary_ptr_in_target_scope_chain_with_hint(void* ptr, Interp* interp, uint pinned_gen) @inline {
+fn bool boundary_ptr_in_target_scope_chain_with_hint(void* ptr, Interp* interp, ulong pinned_gen) @inline {
     if (ptr == null || interp == null) return false;
 
     if (interp.current_scope == null) return false;

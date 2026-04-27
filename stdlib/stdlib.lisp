@@ -42,11 +42,14 @@
 (define [effect] (io/dns-resolve (^String host)))
 (define [effect] (io/async-sleep (^Integer ms)))
 (define [effect] (io/offload (^Any job)))
+(define [effect] (io/offload-batch (^Any jobs)))
 (define [effect] (io/thread-spawn (^Any job)))
+(define [effect] (io/thread-spawn-batch (^Any jobs)))
 (define [effect] (io/thread-join (^Any thread-handle)))
 (define [effect] (io/thread-join-timeout (^Any args)))
 (define [effect] (io/thread-cancel (^Any thread-handle)))
 (define [effect] (io/task-spawn (^Any job)))
+(define [effect] (io/task-spawn-batch (^Any jobs)))
 (define [effect] (io/task-join (^Any task-handle)))
 (define [effect] (io/task-join-timeout (^Any args)))
 (define [effect] (io/task-cancel (^Any task-handle)))
@@ -394,15 +397,18 @@
 (define (offload (^Symbol op) .. args) (signal io/offload (cons op args)))
 ;; Keep untyped fallback so invalid op payloads still flow through io/offload canonical payload errors.
 (define (offload op .. args) (signal io/offload (cons op args)))
+(define (offload-batch jobs) (signal io/offload-batch jobs))
 (define (thread-spawn (^Symbol op) .. args) (signal io/thread-spawn (cons op args)))
 ;; Keep untyped fallback so invalid op payloads still flow through io/thread-spawn canonical payload errors.
 (define (thread-spawn op .. args) (signal io/thread-spawn (cons op args)))
+(define (thread-spawn-batch jobs) (signal io/thread-spawn-batch jobs))
 (define (thread-join thread-handle) (signal io/thread-join thread-handle))
 (define (thread-join-timeout thread-handle (^Integer timeout-ms)) (signal io/thread-join-timeout (cons thread-handle timeout-ms)))
 (define (thread-cancel thread-handle) (signal io/thread-cancel thread-handle))
 (define (task-spawn (^Symbol op) .. args) (signal io/task-spawn (cons op args)))
 ;; Keep untyped fallback so invalid op payloads still flow through io/task-spawn canonical payload errors.
 (define (task-spawn op .. args) (signal io/task-spawn (cons op args)))
+(define (task-spawn-batch jobs) (signal io/task-spawn-batch jobs))
 (define (task-join task-handle) (signal io/task-join task-handle))
 (define (task-join-timeout task-handle (^Integer timeout-ms)) (signal io/task-join-timeout (cons task-handle timeout-ms)))
 (define (task-cancel task-handle) (signal io/task-cancel task-handle))
@@ -459,12 +465,30 @@
                     'domain 'io
                     'message "job-spawn: kind must be 'task or 'thread"
                     'data {'kind kind} }))))
-(define (job-join ^(Value task) handle) (task-join handle))
-(define (job-join ^(Value thread) handle) (thread-join handle))
-(define (job-join-timeout ^(Value task) handle (^Integer timeout-ms)) (task-join-timeout handle timeout-ms))
-(define (job-join-timeout ^(Value thread) handle (^Integer timeout-ms)) (thread-join-timeout handle timeout-ms))
-(define (job-cancel ^(Value task) handle) (task-cancel handle))
-(define (job-cancel ^(Value thread) handle) (thread-cancel handle))
+(define (job-kind-invalid surface kind)
+  (signal raise
+          { 'code 'io/job-kind-invalid
+            'domain 'io
+            'message (format "%s: kind must be 'task or 'thread" surface)
+            'data {'kind kind} }))
+(define (job-join kind handle)
+  (if (= kind 'task)
+      (task-join handle)
+      (if (= kind 'thread)
+          (thread-join handle)
+          (job-kind-invalid "job-join" kind))))
+(define (job-join-timeout kind handle (^Integer timeout-ms))
+  (if (= kind 'task)
+      (task-join-timeout handle timeout-ms)
+      (if (= kind 'thread)
+          (thread-join-timeout handle timeout-ms)
+          (job-kind-invalid "job-join-timeout" kind))))
+(define (job-cancel kind handle)
+  (if (= kind 'task)
+      (task-cancel handle)
+      (if (= kind 'thread)
+          (thread-cancel handle)
+          (job-kind-invalid "job-cancel" kind))))
 
 (define (request (^String url)) (http-get url))
 (define (request (^String method) (^String url) (^String body) (^String headers)) (http-request method url body headers))
@@ -497,4 +521,4 @@
                         { 'code 'data/emit-format-unsupported
                           'domain 'data
                           'message "emit: unsupported format (supported: 'json, 'json-pretty, 'csv)"
-                          'data {'format f} })))))))
+                          'data {'format f} }))))))

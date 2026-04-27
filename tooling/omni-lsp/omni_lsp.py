@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import argparse
+
 from omni_lsp_shared import *
 from omni_lsp_actions_diagnostics import ActionsDiagnosticsMixin
 from omni_lsp_core import CoreMixin
@@ -27,7 +29,10 @@ class OmniLspServer(
     pass
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Run the Omni language server over stdio.")
+    parser.add_argument("--stdio", action="store_true", help="Run over stdio (the default transport).")
+    parser.parse_args(argv)
     return OmniLspServer().serve()
 
 

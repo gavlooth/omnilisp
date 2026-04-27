@@ -15,6 +15,11 @@ fn void Compiler.init(Compiler* self, Interp* interp) {
     self.lambda_counter = 0;
     self.has_error = false;
     self.error_message = "";
+    self.emits_value_return = false;
+    self.reject_lexical_defeffect_globals = false;
+    self.module_binding_lexical_alias_mark = 0;
+    self.module_binding_mutable_cell_mark = 0;
+    self.allow_symbol_literal_constant_folding = true;
     self.output.init(mem, 8192);
     init_prim_hash(interp);
     if (g_prim_hash_init_failed) {
@@ -50,6 +55,11 @@ fn void Compiler.free(Compiler* self) {
     self.lambda_defs.free();
     self.mutable_captures.free();
     self.declared_vars.free();
+    self.primitive_shadow_symbols.free();
+    self.lexical_alias_symbols.free();
+    self.lexical_alias_backings.free();
+    self.mutable_cell_symbols.free();
+    self.mutable_cell_backings.free();
     self.referenced_prims.free();
     self.module_open_exports.free();
     self.module_open_aliases.free();
@@ -75,6 +85,13 @@ fn void Compiler.free(Compiler* self) {
 fn bool Compiler.is_declared(Compiler* self, SymbolId sym) {
     foreach (v : self.declared_vars) {
         if (v == sym) return true;
+    }
+    return false;
+}
+
+fn bool Compiler.is_declared_since(Compiler* self, SymbolId sym, usz mark) {
+    for (usz i = mark; i < self.declared_vars.len(); i++) {
+        if (self.declared_vars.entries[i] == sym) return true;
     }
     return false;
 }
@@ -121,4 +138,66 @@ fn void Compiler.mark_declared(Compiler* self, SymbolId sym) {
     if (!self.is_declared(sym)) {
         self.declared_vars.push(sym);
     }
+}
+
+fn usz Compiler.mark_declared_scope(Compiler* self) {
+    return self.declared_vars.len();
+}
+
+fn void Compiler.restore_declared_scope(Compiler* self, usz mark) {
+    while (self.declared_vars.len() > mark) {
+        (void)self.declared_vars.pop();
+    }
+}
+
+fn bool Compiler.find_active_lexical_alias(Compiler* self, SymbolId name, SymbolId* backing_out) {
+    return self.find_active_lexical_alias_from(name, 0, backing_out);
+}
+
+fn bool Compiler.find_active_lexical_alias_from(Compiler* self, SymbolId name, usz start, SymbolId* backing_out) {
+    if (backing_out == null) return false;
+    if (start > self.lexical_alias_symbols.len()) return false;
+    for (usz i = self.lexical_alias_symbols.len(); i > start; i--) {
+        if ((uint)self.lexical_alias_symbols.entries[i - 1] == (uint)name) {
+            *backing_out = self.lexical_alias_backings.entries[i - 1];
+            return true;
+        }
+    }
+    return false;
+}
+
+fn void Compiler.push_lexical_alias(Compiler* self, SymbolId name, SymbolId backing) {
+    self.lexical_alias_symbols.push(name);
+    self.lexical_alias_backings.push(backing);
+}
+
+fn void Compiler.pop_lexical_alias(Compiler* self) {
+    if (self.lexical_alias_symbols.len() > 0) (void)self.lexical_alias_symbols.pop();
+    if (self.lexical_alias_backings.len() > 0) (void)self.lexical_alias_backings.pop();
+}
+
+fn bool Compiler.find_active_mutable_cell(Compiler* self, SymbolId name, SymbolId* cell_out) {
+    return self.find_active_mutable_cell_from(name, 0, cell_out);
+}
+
+fn bool Compiler.find_active_mutable_cell_from(Compiler* self, SymbolId name, usz start, SymbolId* cell_out) {
+    if (cell_out == null) return false;
+    if (start > self.mutable_cell_symbols.len()) return false;
+    for (usz i = self.mutable_cell_symbols.len(); i > start; i--) {
+        if ((uint)self.mutable_cell_symbols.entries[i - 1] == (uint)name) {
+            *cell_out = self.mutable_cell_backings.entries[i - 1];
+            return true;
+        }
+    }
+    return false;
+}
+
+fn void Compiler.push_mutable_cell_alias(Compiler* self, SymbolId name, SymbolId cell) {
+    self.mutable_cell_symbols.push(name);
+    self.mutable_cell_backings.push(cell);
+}
+
+fn void Compiler.pop_mutable_cell_alias(Compiler* self) {
+    if (self.mutable_cell_symbols.len() > 0) (void)self.mutable_cell_symbols.pop();
+    if (self.mutable_cell_backings.len() > 0) (void)self.mutable_cell_backings.pop();
 }

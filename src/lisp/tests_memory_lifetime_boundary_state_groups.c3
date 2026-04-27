@@ -1,7 +1,63 @@
 module lisp;
 
 import std::io;
+import std::thread;
 import main;
+
+const usz BOUNDARY_TELEMETRY_THREAD_WORKERS = 8;
+const usz BOUNDARY_TELEMETRY_THREAD_ITERS = 256;
+const usz BOUNDARY_TELEMETRY_THREAD_NODES = 2;
+const usz BOUNDARY_TELEMETRY_THREAD_COPY_BYTES = 32;
+const usz BOUNDARY_TELEMETRY_THREAD_ARRAY_CAP = 8;
+const usz BOUNDARY_TELEMETRY_THREAD_ARRAY_GROW = 16;
+const usz BOUNDARY_TELEMETRY_THREAD_STRING_BYTES = 11;
+const usz BOUNDARY_TELEMETRY_THREAD_ENV_DEPTH = 3;
+const usz BOUNDARY_TELEMETRY_THREAD_ENV_BINDINGS = 5;
+
+struct BoundaryTelemetryThreadState {
+    bool ok;
+}
+
+fn usz boundary_telemetry_test_delta(usz after, usz before) @inline {
+    return after >= before ? after - before : 0;
+}
+
+fn BoundaryCommitEscapeResult boundary_telemetry_test_commit() @inline {
+    BoundaryCommitEscapeResult committed = {};
+    committed.planned_route = BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION;
+    committed.planned_reason = BOUNDARY_PLAN_REASON_RELEASING_TEMP_STABLE_MATERIALIZATION;
+    committed.planned_value_tag = CONS;
+    committed.selected_route = BOUNDARY_PLAN_ROUTE_COMPATIBILITY_DESTINATION;
+    committed.selected_reason = BOUNDARY_PLAN_REASON_DESTINATION_COMMITTED_COMPATIBILITY;
+    committed.selected_value_tag = CONS;
+    return committed;
+}
+
+fn int boundary_telemetry_thread_worker(void* arg) {
+    BoundaryTelemetryThreadState* state = (BoundaryTelemetryThreadState*)arg;
+    if (state != null) state.ok = true;
+    BoundaryCommitEscapeResult committed = boundary_telemetry_test_commit();
+    for (usz i = 0; i < BOUNDARY_TELEMETRY_THREAD_ITERS; i++) {
+        boundary_note_commit_decision(committed);
+        boundary_note_materialization_copy_debt_by_tag(
+            CONS,
+            BOUNDARY_TELEMETRY_THREAD_NODES,
+            BOUNDARY_TELEMETRY_THREAD_COPY_BYTES,
+            true
+        );
+        boundary_value_shape_note_array_construct(BOUNDARY_TELEMETRY_THREAD_ARRAY_CAP);
+        boundary_value_shape_note_array_growth(
+            BOUNDARY_TELEMETRY_THREAD_ARRAY_CAP,
+            BOUNDARY_TELEMETRY_THREAD_ARRAY_GROW
+        );
+        boundary_value_shape_note_string_payload(BOUNDARY_TELEMETRY_THREAD_STRING_BYTES);
+        boundary_value_shape_note_env_copy_frame(
+            BOUNDARY_TELEMETRY_THREAD_ENV_DEPTH,
+            BOUNDARY_TELEMETRY_THREAD_ENV_BINDINGS
+        );
+    }
+    return 0;
+}
 
 fn void run_memory_lifetime_boundary_scope_restore_tests(Interp* interp, int* pass, int* fail) {
     // Invariant: boundary API helpers restore current/releasing scope state after temporary overrides.
@@ -577,4 +633,171 @@ fn void run_memory_lifetime_boundary_list_child_scope_alias_test(Interp* interp,
         io::printn("[FAIL] lifetime: boundary list child scope alias rejected");
         (*fail)++;
     }
+}
+
+fn void run_memory_lifetime_boundary_telemetry_saturation_tests(Interp* interp, int* pass, int* fail) {
+    (void)interp;
+    if (!boundary_telemetry_enabled()) {
+        emit_pass_literal("[PASS] lifetime: boundary telemetry saturation skipped when counters disabled");
+        (*pass)++;
+        return;
+    }
+
+    BoundaryDecisionStats saved_decisions = boundary_decision_stats_snapshot();
+    BoundaryValueShapeStats saved_shapes = boundary_value_shape_stats_snapshot();
+    defer boundary_restore_decision_stats(saved_decisions);
+    defer boundary_restore_value_shape_stats(saved_shapes);
+
+    BoundaryDecisionStats decision_seed = {};
+    decision_seed.copy_fallback_total = usz.max - (usz)1;
+    decision_seed.planned_route_by_route[(usz)BoundaryPlanRoute.BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION] = usz.max - (usz)1;
+    decision_seed.selected_route_by_route[(usz)BoundaryPlanRoute.BOUNDARY_PLAN_ROUTE_COMPATIBILITY_DESTINATION] = usz.max - (usz)1;
+    decision_seed.planned_route_by_tag[boundary_decision_route_tag_index(BoundaryPlanRoute.BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION, ValueTag.CONS)] = usz.max - (usz)1;
+    decision_seed.selected_route_by_tag[boundary_decision_route_tag_index(BoundaryPlanRoute.BOUNDARY_PLAN_ROUTE_COMPATIBILITY_DESTINATION, ValueTag.CONS)] = usz.max - (usz)1;
+    decision_seed.stable_materialization_node_count_total = usz.max - (usz)1;
+    decision_seed.stable_materialization_copy_bytes_total = usz.max - (usz)1;
+    decision_seed.stable_materialization_node_count_by_tag[(usz)ValueTag.CONS] = usz.max - (usz)1;
+    decision_seed.stable_materialization_copy_bytes_by_tag[(usz)ValueTag.CONS] = usz.max - (usz)1;
+    decision_seed.forced_no_splice_materialization_node_count_total = usz.max - (usz)1;
+    decision_seed.forced_no_splice_materialization_copy_bytes_total = usz.max - (usz)1;
+    decision_seed.forced_no_splice_materialization_node_count_by_tag[(usz)ValueTag.CONS] = usz.max - (usz)1;
+    decision_seed.forced_no_splice_materialization_copy_bytes_by_tag[(usz)ValueTag.CONS] = usz.max - (usz)1;
+    boundary_restore_decision_stats(decision_seed);
+
+    BoundaryValueShapeStats shape_seed = {};
+    shape_seed.array_capacity_total = usz.max - (usz)1;
+    shape_seed.array_growth_old_capacity_total = usz.max - (usz)1;
+    shape_seed.array_growth_new_capacity_total = usz.max - (usz)1;
+    shape_seed.string_payload_bytes_total = usz.max - (usz)1;
+    shape_seed.closure_env_copy_depth_total = usz.max - (usz)1;
+    shape_seed.closure_env_copy_binding_count_total = usz.max - (usz)1;
+    boundary_restore_value_shape_stats(shape_seed);
+
+    BoundaryCommitEscapeResult committed = boundary_telemetry_test_commit();
+    boundary_note_commit_decision(committed);
+    boundary_note_materialization_copy_debt_by_tag(ValueTag.CONS, 2, 2, true);
+    boundary_value_shape_note_array_construct(8);
+    boundary_value_shape_note_array_growth(3, 21);
+    boundary_value_shape_note_string_payload(13);
+    boundary_value_shape_note_env_copy_frame(5, 7);
+
+    BoundaryDecisionStats decisions = boundary_decision_stats_snapshot();
+    BoundaryValueShapeStats shapes = boundary_value_shape_stats_snapshot();
+    bool ok =
+        decisions.copy_fallback_total == usz.max &&
+        decisions.planned_route_by_route[(usz)BoundaryPlanRoute.BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION] == usz.max &&
+        decisions.selected_route_by_route[(usz)BoundaryPlanRoute.BOUNDARY_PLAN_ROUTE_COMPATIBILITY_DESTINATION] == usz.max &&
+        decisions.planned_route_by_tag[boundary_decision_route_tag_index(BoundaryPlanRoute.BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION, ValueTag.CONS)] == usz.max &&
+        decisions.selected_route_by_tag[boundary_decision_route_tag_index(BoundaryPlanRoute.BOUNDARY_PLAN_ROUTE_COMPATIBILITY_DESTINATION, ValueTag.CONS)] == usz.max &&
+        decisions.stable_materialization_node_count_total == usz.max &&
+        decisions.stable_materialization_copy_bytes_total == usz.max &&
+        decisions.stable_materialization_node_count_by_tag[(usz)ValueTag.CONS] == usz.max &&
+        decisions.stable_materialization_copy_bytes_by_tag[(usz)ValueTag.CONS] == usz.max &&
+        decisions.forced_no_splice_materialization_node_count_total == usz.max &&
+        decisions.forced_no_splice_materialization_copy_bytes_total == usz.max &&
+        decisions.forced_no_splice_materialization_node_count_by_tag[(usz)ValueTag.CONS] == usz.max &&
+        decisions.forced_no_splice_materialization_copy_bytes_by_tag[(usz)ValueTag.CONS] == usz.max &&
+        shapes.array_capacity_total == usz.max &&
+        shapes.array_growth_old_capacity_total == usz.max &&
+        shapes.array_growth_new_capacity_total == usz.max &&
+        shapes.string_payload_bytes_total == usz.max &&
+        shapes.closure_env_copy_depth_total == usz.max &&
+        shapes.closure_env_copy_binding_count_total == usz.max &&
+        shapes.array_capacity_peak == 8 &&
+        shapes.array_growth_new_capacity_peak == 21 &&
+        shapes.string_payload_bytes_peak == 13 &&
+        shapes.closure_env_copy_depth_peak == 5 &&
+        shapes.closure_env_copy_binding_count_peak == 7;
+
+    if (ok) {
+        emit_pass_literal("[PASS] lifetime: boundary telemetry counters saturate");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] lifetime: boundary telemetry counters saturate");
+        (*fail)++;
+    }
+}
+
+fn void run_memory_lifetime_boundary_threaded_telemetry_tests(Interp* interp, int* pass, int* fail) {
+    (void)interp;
+    if (!boundary_telemetry_enabled()) {
+        emit_pass_literal("[PASS] lifetime: threaded boundary telemetry skipped when counters disabled");
+        (*pass)++;
+        return;
+    }
+
+    BoundaryDecisionStats saved_decisions = boundary_decision_stats_snapshot();
+    BoundaryValueShapeStats saved_shapes = boundary_value_shape_stats_snapshot();
+    defer boundary_restore_decision_stats(saved_decisions);
+    defer boundary_restore_value_shape_stats(saved_shapes);
+
+    BoundaryDecisionStats zero_decisions = {};
+    BoundaryValueShapeStats zero_shapes = {};
+    boundary_restore_decision_stats(zero_decisions);
+    boundary_restore_value_shape_stats(zero_shapes);
+
+    Thread[BOUNDARY_TELEMETRY_THREAD_WORKERS] threads;
+    BoundaryTelemetryThreadState[BOUNDARY_TELEMETRY_THREAD_WORKERS] states;
+    bool[BOUNDARY_TELEMETRY_THREAD_WORKERS] created;
+    bool ok = true;
+
+    foreach (i, &t : threads) {
+        states[i].ok = false;
+        created[i] = false;
+        if (catch err = t.create(&boundary_telemetry_thread_worker, (void*)&states[i])) {
+            (void)err;
+            ok = false;
+        } else {
+            created[i] = true;
+        }
+    }
+
+    foreach (i, &t : threads) {
+        if (!created[i]) continue;
+        if (catch err = t.join()) {
+            (void)err;
+            ok = false;
+        }
+        ok = ok && states[i].ok;
+    }
+
+    BoundaryDecisionStats decisions = boundary_decision_stats_snapshot();
+    BoundaryValueShapeStats shapes = boundary_value_shape_stats_snapshot();
+    usz expected_ops = BOUNDARY_TELEMETRY_THREAD_WORKERS * BOUNDARY_TELEMETRY_THREAD_ITERS;
+    ok = ok &&
+        boundary_telemetry_test_delta(decisions.copy_fallback_total, (usz)0) == expected_ops &&
+        boundary_telemetry_test_delta(decisions.planned_route_by_route[(usz)BoundaryPlanRoute.BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION], (usz)0) == expected_ops &&
+        boundary_telemetry_test_delta(decisions.selected_route_by_route[(usz)BoundaryPlanRoute.BOUNDARY_PLAN_ROUTE_COMPATIBILITY_DESTINATION], (usz)0) == expected_ops &&
+        boundary_telemetry_test_delta(decisions.stable_materialization_node_count_total, (usz)0) == expected_ops * BOUNDARY_TELEMETRY_THREAD_NODES &&
+        boundary_telemetry_test_delta(decisions.stable_materialization_copy_bytes_total, (usz)0) == expected_ops * BOUNDARY_TELEMETRY_THREAD_COPY_BYTES &&
+        boundary_telemetry_test_delta(decisions.forced_no_splice_materialization_node_count_total, (usz)0) == expected_ops * BOUNDARY_TELEMETRY_THREAD_NODES &&
+        boundary_telemetry_test_delta(decisions.forced_no_splice_materialization_copy_bytes_total, (usz)0) == expected_ops * BOUNDARY_TELEMETRY_THREAD_COPY_BYTES &&
+        boundary_telemetry_test_delta(shapes.array_construct_count, (usz)0) == expected_ops &&
+        boundary_telemetry_test_delta(shapes.array_capacity_total, (usz)0) == expected_ops * BOUNDARY_TELEMETRY_THREAD_ARRAY_CAP &&
+        shapes.array_capacity_peak == BOUNDARY_TELEMETRY_THREAD_ARRAY_CAP &&
+        boundary_telemetry_test_delta(shapes.array_growth_count, (usz)0) == expected_ops &&
+        boundary_telemetry_test_delta(shapes.array_growth_old_capacity_total, (usz)0) == expected_ops * BOUNDARY_TELEMETRY_THREAD_ARRAY_CAP &&
+        boundary_telemetry_test_delta(shapes.array_growth_new_capacity_total, (usz)0) == expected_ops * BOUNDARY_TELEMETRY_THREAD_ARRAY_GROW &&
+        shapes.array_growth_new_capacity_peak == BOUNDARY_TELEMETRY_THREAD_ARRAY_GROW &&
+        boundary_telemetry_test_delta(shapes.string_payload_count, (usz)0) == expected_ops &&
+        boundary_telemetry_test_delta(shapes.string_payload_bytes_total, (usz)0) == expected_ops * BOUNDARY_TELEMETRY_THREAD_STRING_BYTES &&
+        shapes.string_payload_bytes_peak == BOUNDARY_TELEMETRY_THREAD_STRING_BYTES &&
+        boundary_telemetry_test_delta(shapes.closure_env_copy_frame_count, (usz)0) == expected_ops &&
+        boundary_telemetry_test_delta(shapes.closure_env_copy_depth_total, (usz)0) == expected_ops * BOUNDARY_TELEMETRY_THREAD_ENV_DEPTH &&
+        boundary_telemetry_test_delta(shapes.closure_env_copy_binding_count_total, (usz)0) == expected_ops * BOUNDARY_TELEMETRY_THREAD_ENV_BINDINGS &&
+        shapes.closure_env_copy_depth_peak == BOUNDARY_TELEMETRY_THREAD_ENV_DEPTH &&
+        shapes.closure_env_copy_binding_count_peak == BOUNDARY_TELEMETRY_THREAD_ENV_BINDINGS;
+
+    if (ok) {
+        emit_pass_literal("[PASS] lifetime: threaded boundary telemetry counters");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] lifetime: threaded boundary telemetry counters");
+        (*fail)++;
+    }
+}
+
+fn void run_memory_lifetime_boundary_telemetry_counter_tests(Interp* interp, int* pass, int* fail) {
+    run_memory_lifetime_boundary_telemetry_saturation_tests(interp, pass, fail);
+    run_memory_lifetime_boundary_threaded_telemetry_tests(interp, pass, fail);
 }

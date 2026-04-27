@@ -50,9 +50,9 @@ const usz PROMOTION_CONTEXT_SCOPE_CHAIN_CACHE_SIZE = 8;
 struct PromotionContextScopeChainCacheEntry {
     void*               ptr;
     main::ScopeRegion*  target_scope;
-    uint                target_generation;
-    uint                target_escape_generation;
-    uint                pinned_generation;
+    ulong               target_generation;
+    ulong               target_escape_generation;
+    ulong               pinned_generation;
     bool                in_scope_chain;
     bool                used;
 }
@@ -94,7 +94,7 @@ struct Env {
     EnvHashEntry*         hash_table;     // NULL if not using hash
     usz                   hash_capacity;  // Power of 2
     EnvLifetimeKind       lifetime_kind;  // Governs env copy semantics across scope boundaries
-    uint                  scope_gen;      // Scope generation stamp for O(1) membership check
+    ulong                 scope_gen;      // Scope generation stamp for O(1) membership check
     main::ScopeRegion*    owner_scope;    // Owning scope authority for barrier-targeted promotion/copy
     bool                  owner_escape_lane; // True when frame was allocated in owner_scope ESCAPE lane
     bool                  is_inline;
@@ -103,7 +103,7 @@ struct Env {
 
 // ABI/interop guard: Env frames are captured and copied across runtime/JIT
 // boundaries. Update helper bindings and this assertion together on layout change.
-$assert(Env.sizeof == 136);
+$assert(Env.sizeof == 144);
 
 fn bool Env.is_root_persistent_box(Env* self) @inline {
     return self != null && self.lifetime_kind == ENV_LIFETIME_ROOT_PERSISTENT_MUTABLE_BOX;
@@ -195,30 +195,34 @@ fn bool Env.build_hash_table(Env* self) {
 /**
  * Look up a SymbolId in the hash table. Returns index into bindings or ~(usz)0 if not found.
  */
-<* @require self.hash_table != null : "hash_lookup called without hash table" *>
 fn usz Env.hash_lookup(Env* self, SymbolId name) {
     if (name == INVALID_SYMBOL_ID) return ~(usz)0;
+    if (self == null || self.hash_table == null || self.hash_capacity == 0) return ~(usz)0;
     usz mask = self.hash_capacity - 1;
     usz slot = (usz)name & mask;
-    for (;;) {
+    for (usz probe = 0; probe < self.hash_capacity; probe++) {
         SymbolId k = self.hash_table[slot].key;
         if (k == name) return self.hash_table[slot].index;
         if (k == ENV_HASH_EMPTY) return ~(usz)0;
         slot = (slot + 1) & mask;
     }
+    return ~(usz)0;
 }
 
 /**
  * Insert into the hash table (must have space — caller ensures load factor).
  */
-<* @require self.hash_table != null : "hash_insert called without hash table" *>
 fn void Env.hash_insert(Env* self, SymbolId name, usz index) {
     if (name == INVALID_SYMBOL_ID) return;
+    if (self == null || self.hash_table == null || self.hash_capacity == 0) return;
     usz mask = self.hash_capacity - 1;
     usz slot = (usz)name & mask;
-    while (self.hash_table[slot].key != ENV_HASH_EMPTY && self.hash_table[slot].key != name) {
+    for (usz probe = 0; probe < self.hash_capacity &&
+        self.hash_table[slot].key != ENV_HASH_EMPTY &&
+        self.hash_table[slot].key != name; probe++) {
         slot = (slot + 1) & mask;
     }
+    if (self.hash_table[slot].key != ENV_HASH_EMPTY && self.hash_table[slot].key != name) return;
     self.hash_table[slot].key = name;
     self.hash_table[slot].index = index;
 }

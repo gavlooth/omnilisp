@@ -221,7 +221,7 @@ it does not contend with the main `build/obj` tree.
 `main-dev-nodeduce` supports the same loop, but `deduce`/`deduce/*` are not
 registered and evaluate as unbound names.
 
-Use the full [main](/home/heefoo/Documents/code/Omni/build/main) binary for
+Use the full `build/main` binary for
 `--test-suite`, `--gen-e2e`, `--stack-affinity-probe`, `--language-ref`,
 `--lang-ref`, `--manual`, `--init`, `--bind`, `--build`, and `--compile`.
 
@@ -232,7 +232,7 @@ binary.
 
 The fast target also omits the compiler/AOT/bindgen source families entirely.
 That is why it is materially faster, and also why the full
-[main](/home/heefoo/Documents/code/Omni/build/main) binary remains the required
+`build/main` binary remains the required
 integration build.
 
 ## Validation
@@ -262,11 +262,11 @@ omni --version
 
 # 2) optional: verify Tree-sitter grammar parses a sample
 cd tooling/tree-sitter-omni
-tree-sitter generate
-tree-sitter parse examples/sample.omni
+npm run generate
+npm run parse
 
 # 3) run first-party LSP server
-cd /home/heefoo/Documents/code/Omni
+cd /path/to/Omni
 python3 tooling/omni-lsp/omni_lsp.py
 ```
 

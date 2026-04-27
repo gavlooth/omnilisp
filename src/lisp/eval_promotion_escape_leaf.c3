@@ -34,7 +34,13 @@ fn Value* promote_escape_string_or_error(Value* v, Interp* interp, PromotionCont
     }
     result.str_chars[len] = 0;
     result.str_len = len;
-    main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value);
+    if (!main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value)) {
+        mem::free(chars);
+        result.str_chars = null;
+        result.str_len = 0;
+        result.string_heap_owned = false;
+        return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to register string/error escape copy destructor");
+    }
     return result;
 }
 
@@ -98,7 +104,9 @@ fn Value* promote_escape_shared_wrapper(Value* v, Interp* interp, PromotionConte
             }
             result.tag = PRIMITIVE;
             result.prim_val = null;
-            main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value);
+            if (!main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value)) {
+                return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to register primitive escape copy destructor");
+            }
             return result;
         }
         if (primitive_has_opaque_user_data(v)) {
@@ -107,10 +115,6 @@ fn Value* promote_escape_shared_wrapper(Value* v, Interp* interp, PromotionConte
 
         Primitive* dst_prim = (Primitive*)mem::malloc(Primitive.sizeof);
         if (dst_prim == null) return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate primitive escape copy");
-        if (!primitive_clone_plain_header(dst_prim, src_prim)) {
-            mem::free(dst_prim);
-            return boundary_raise(interp, "boundary/invalid-state", "boundary: refusing primitive escape promotion with opaque user_data");
-        }
 
         Value* result = boundary_alloc_value_in_current_escape(interp);
         if (result == null) {
@@ -119,8 +123,15 @@ fn Value* promote_escape_shared_wrapper(Value* v, Interp* interp, PromotionConte
         }
         result.tag = PRIMITIVE;
         result.prim_val = null;
+        if (!main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value)) {
+            mem::free(dst_prim);
+            return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to register primitive escape copy destructor");
+        }
+        if (!primitive_clone_plain_header(dst_prim, src_prim)) {
+            primitive_destroy_payload(dst_prim);
+            return boundary_raise(interp, "boundary/invalid-state", "boundary: refusing primitive escape promotion with opaque user_data");
+        }
         result.prim_val = dst_prim;
-        main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value);
         return result;
     }
     switch (v.tag) {
@@ -155,7 +166,11 @@ fn Value* promote_escape_instance(Value* v, Interp* interp, PromotionContext* ct
     result.scope_gen = interp.current_scope.escape_generation;
     result.instance_val = v.instance_val;
     instance_retain(v.instance_val);
-    main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value);
+    if (!main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value)) {
+        instance_release(result.instance_val);
+        result.instance_val = null;
+        return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to register instance escape destructor");
+    }
     return result;
 }
 
@@ -168,7 +183,11 @@ fn Value* promote_escape_ffi_handle(Value* v, Interp* interp, PromotionContext* 
     result.tag = FFI_HANDLE;
     result.ffi_val = v.ffi_val;
     ffi_handle_retain(result.ffi_val);
-    main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value);
+    if (!main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value)) {
+        ffi_handle_release(result.ffi_val);
+        result.ffi_val = null;
+        return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to register ffi handle escape destructor");
+    }
     return result;
 }
 
@@ -229,7 +248,12 @@ fn Value* promote_escape_continuation(Value* v, Interp* interp, PromotionContext
     result.cont_val = v.cont_val;
     result.continuation_boundary_owned = retained_now;
     if (retained_now) {
-        main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value);
+        if (!main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value)) {
+            continuation_release_handle_state_for_boundary(result.cont_val);
+            result.cont_val = null;
+            result.continuation_boundary_owned = false;
+            return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to register continuation escape destructor");
+        }
     }
     return result;
 }
@@ -271,7 +295,10 @@ fn Value* promote_escape_coroutine(Value* v, Interp* interp, PromotionContext* c
     }
     result.tag = COROUTINE;
     result.coroutine_val = v.coroutine_val;
-    main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value);
+    if (!main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value)) {
+        result.coroutine_val = null;
+        return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to register coroutine escape destructor");
+    }
     v.coroutine_val = null;
     return result;
 }

@@ -4,6 +4,6 @@
 
 ## Parts
 
-- Part 01: [docs/plans/fiber-temp-session-plan_parts/fiber-temp-session-plan_part_01.md](fiber-temp-session-plan_parts/fiber-temp-session-plan_part_01.md) (316 lines)
-- Part 02: [docs/plans/fiber-temp-session-plan_parts/fiber-temp-session-plan_part_02.md](fiber-temp-session-plan_parts/fiber-temp-session-plan_part_02.md) (323 lines)
+- Part 01: [docs/plans/fiber-temp-session-plan_parts/fiber-temp-session-plan_part_01.md](fiber-temp-session-plan_parts/fiber-temp-session-plan_part_01.md) (315 lines)
+- Part 02: [docs/plans/fiber-temp-session-plan_parts/fiber-temp-session-plan_part_02.md](fiber-temp-session-plan_parts/fiber-temp-session-plan_part_02.md) (322 lines)
 - Part 03: [docs/plans/fiber-temp-session-plan_parts/fiber-temp-session-plan_part_03.md](fiber-temp-session-plan_parts/fiber-temp-session-plan_part_03.md) (247 lines)

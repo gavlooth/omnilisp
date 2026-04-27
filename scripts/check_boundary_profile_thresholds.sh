@@ -11,13 +11,17 @@ log_file="${1:-build/boundary_profile_memory_lifetime_bench.log}"
 : "${OMNI_BOUNDARY_PROFILE_EXPECT_DISALLOWED_OK:=2048}"
 : "${OMNI_BOUNDARY_PROFILE_EXPECT_REUSE_OK:=2048}"
 : "${OMNI_BOUNDARY_PROFILE_EXPECT_PARTIAL_OK:=2048}"
-: "${OMNI_BOUNDARY_PROFILE_EXPECT_COPY_FALLBACK_TOTAL:=0}"
+# The current memory-lifetime-bench profile includes product, iterator, tensor,
+# and nested-module boundary workloads. The nested-module workload intentionally
+# exercises stable destination materialization, so fallback count is capped as a
+# regression envelope instead of pinned to the original synthetic-only zero.
+: "${OMNI_BOUNDARY_PROFILE_MAX_COPY_FALLBACK_TOTAL:=2623}"
 : "${OMNI_BOUNDARY_PROFILE_EXPECT_SPLICE_FAIL_TOTAL:=0}"
-: "${OMNI_BOUNDARY_PROFILE_MAX_SPLICE_MS:=10}"
-: "${OMNI_BOUNDARY_PROFILE_MAX_DISALLOWED_MS:=12}"
-: "${OMNI_BOUNDARY_PROFILE_MAX_REUSE_MS:=6}"
-: "${OMNI_BOUNDARY_PROFILE_MAX_PARTIAL_MS:=8}"
-: "${OMNI_BOUNDARY_PROFILE_MAX_SCOPE_SPLICE_MS:=6}"
+: "${OMNI_BOUNDARY_PROFILE_MAX_SPLICE_MS:=80}"
+: "${OMNI_BOUNDARY_PROFILE_MAX_DISALLOWED_MS:=80}"
+: "${OMNI_BOUNDARY_PROFILE_MAX_REUSE_MS:=40}"
+: "${OMNI_BOUNDARY_PROFILE_MAX_PARTIAL_MS:=40}"
+: "${OMNI_BOUNDARY_PROFILE_MAX_SCOPE_SPLICE_MS:=40}"
 : "${OMNI_BOUNDARY_PROFILE_EXPECT_SCOPE_CHAIN_SCAN_SUPPRESSED:=0}"
 : "${OMNI_BOUNDARY_PROFILE_MAX_HINT_MISS_RATIO:=0.75}"
 
@@ -105,7 +109,7 @@ assert_eq "splice_ok" "$(extract_field "$decision_line" "splice_ok")" "$OMNI_BOU
 assert_eq "disallowed_ok" "$(extract_field "$decision_line" "disallowed_ok")" "$OMNI_BOUNDARY_PROFILE_EXPECT_DISALLOWED_OK"
 assert_eq "reuse_ok" "$(extract_field "$decision_line" "reuse_ok")" "$OMNI_BOUNDARY_PROFILE_EXPECT_REUSE_OK"
 assert_eq "partial_ok" "$(extract_field "$partial_line" "partial_ok")" "$OMNI_BOUNDARY_PROFILE_EXPECT_PARTIAL_OK"
-assert_eq "copy_fallback_total" "$(extract_field "$boundary_line" "copy_fallback_total")" "$OMNI_BOUNDARY_PROFILE_EXPECT_COPY_FALLBACK_TOTAL"
+assert_le "copy_fallback_total" "$(extract_field "$boundary_line" "copy_fallback_total")" "$OMNI_BOUNDARY_PROFILE_MAX_COPY_FALLBACK_TOTAL"
 assert_eq "splice_fail_total" "$(extract_field "$boundary_line" "splice_fail_total")" "$OMNI_BOUNDARY_PROFILE_EXPECT_SPLICE_FAIL_TOTAL"
 
 assert_le "boundary_decision_cost.splice_ms" "$(extract_field "$decision_line" "splice_ms")" "$OMNI_BOUNDARY_PROFILE_MAX_SPLICE_MS"

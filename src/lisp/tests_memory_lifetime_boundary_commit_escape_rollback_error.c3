@@ -206,7 +206,7 @@ fn void run_memory_lifetime_boundary_commit_escape_rollback_error_tests(Interp* 
             io::printn("[FAIL] lifetime: boundary destination error escape OOM fails closed");
             (*fail)++;
         } else {
-            uint target_escape_gen = target_scope.escape_generation;
+            ulong target_escape_gen = target_scope.escape_generation;
             Value* source_error = make_error(interp, "boundary error escape oom");
             g_boundary_force_destination_error_escape_alloc_fail = true;
             Value* result = boundary_build_destination_error_escape(source_error, interp, target_scope);
@@ -246,7 +246,7 @@ fn void run_memory_lifetime_boundary_commit_escape_rollback_error_tests(Interp* 
             io::printn("[FAIL] lifetime: boundary destination error escape dtor OOM fails closed");
             (*fail)++;
         } else {
-            uint target_escape_gen = target_scope.escape_generation;
+            ulong target_escape_gen = target_scope.escape_generation;
             Value* source_error = make_error(interp, "boundary error escape dtor oom");
             bool setup_ok = source_error != null && source_error.tag == ERROR;
             bool saved_dtor_oom = main::g_scope_force_escape_dtor_alloc_oom;

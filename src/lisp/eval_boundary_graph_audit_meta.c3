@@ -12,26 +12,26 @@ fn bool boundary_scope_chain_contains(main::ScopeRegion* scope, main::ScopeRegio
     return false;
 }
 
-fn char[] boundary_scope_transfer_reason_name(BoundaryScopeTransferReason reason) @inline {
+fn ZString boundary_scope_transfer_reason_name(BoundaryScopeTransferReason reason) @inline {
     usz idx = (usz)reason;
     if (idx < BOUNDARY_SCOPE_TRANSFER_REASON_NAMES.len) {
-        return BOUNDARY_SCOPE_TRANSFER_REASON_NAMES[idx];
+        return (ZString)BOUNDARY_SCOPE_TRANSFER_REASON_NAMES[idx];
     }
     return "unknown";
 }
 
-fn char[] boundary_promotion_abort_reason_name(BoundaryPromotionAbortReason reason) @inline {
+fn ZString boundary_promotion_abort_reason_name(BoundaryPromotionAbortReason reason) @inline {
     usz idx = (usz)reason;
     if (idx < BOUNDARY_PROMOTION_ABORT_REASON_NAMES.len) {
-        return BOUNDARY_PROMOTION_ABORT_REASON_NAMES[idx];
+        return (ZString)BOUNDARY_PROMOTION_ABORT_REASON_NAMES[idx];
     }
     return "unknown";
 }
 
-fn char[] boundary_return_provenance_name(BoundaryReturnProvenance provenance) @inline {
+fn ZString boundary_return_provenance_name(BoundaryReturnProvenance provenance) @inline {
     usz idx = (usz)provenance;
     if (idx < BOUNDARY_RETURN_PROVENANCE_NAMES.len) {
-        return BOUNDARY_RETURN_PROVENANCE_NAMES[idx];
+        return (ZString)BOUNDARY_RETURN_PROVENANCE_NAMES[idx];
     }
     return "unknown";
 }

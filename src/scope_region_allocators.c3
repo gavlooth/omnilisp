@@ -1,6 +1,7 @@
 module main;
 
 fn void* ScopeRegion.alloc_slow(ScopeRegion* self, usz aligned_size) {
+    if (self == null) return null;
     scope_guard_owner(self, "scope_alloc_slow");
     // Determine new chunk capacity: double the previous, or at least fit the request
     usz prev_cap = SCOPE_CHUNK_INITIAL;
@@ -16,12 +17,12 @@ fn void* ScopeRegion.alloc_slow(ScopeRegion* self, usz aligned_size) {
     bool shape_eligible = fiber_temp_scope_shape_eligible(self);
     bool use_fiber_temp = self.fiber_temp_eligible && size_eligible && shape_eligible;
     if (use_fiber_temp) {
-        g_fiber_temp_pool_stats.eligible_slow_allocs++;
+        scope_telemetry_inc(&g_fiber_temp_pool_stats.eligible_slow_allocs);
     } else if (self.fiber_temp_eligible) {
         if (!size_eligible) {
-            g_fiber_temp_pool_stats.bypass_large_allocs++;
+            scope_telemetry_inc(&g_fiber_temp_pool_stats.bypass_large_allocs);
         } else if (!shape_eligible) {
-            g_fiber_temp_pool_stats.bypass_escape_activity_allocs++;
+            scope_telemetry_inc(&g_fiber_temp_pool_stats.bypass_escape_activity_allocs);
         }
     }
 
@@ -49,6 +50,7 @@ fn void* ScopeRegion.alloc_slow(ScopeRegion* self, usz aligned_size) {
  * Escape slow path: allocate a new ESCAPE chunk when current escape chunk is full.
  */
 fn void* ScopeRegion.alloc_escape_slow(ScopeRegion* self, usz aligned_size) {
+    if (self == null) return null;
     scope_guard_owner(self, "scope_alloc_escape_slow");
     scope_assert_escape_tail_consistency(self);
     usz prev_cap = SCOPE_CHUNK_INITIAL;
@@ -91,6 +93,7 @@ fn void* ScopeRegion.alloc_escape_slow(ScopeRegion* self, usz aligned_size) {
  * Fast path: ~3 instructions (load bump, add, compare).
  */
 fn void* ScopeRegion.alloc(ScopeRegion* self, usz size) @inline {
+    if (self == null) return null;
     scope_guard_owner(self, "scope_alloc");
     usz mask = 7;
     if (size > usz.max - mask) return null;
@@ -114,6 +117,7 @@ fn void* ScopeRegion.alloc(ScopeRegion* self, usz size) @inline {
  * Bump-allocate `size` bytes from ESCAPE lane. 8-byte aligned.
  */
 fn void* ScopeRegion.alloc_escape(ScopeRegion* self, usz size) @inline {
+    if (self == null) return null;
     scope_guard_owner(self, "scope_alloc_escape");
     usz mask = 7;
     if (size > usz.max - mask) return null;
@@ -136,6 +140,7 @@ fn void* ScopeRegion.alloc_escape(ScopeRegion* self, usz size) @inline {
 }
 
 fn void* ScopeRegion.alloc_escape_attributed(ScopeRegion* self, usz size, ScopeEscapeAllocSource source) @inline {
+    if (self == null) return null;
     scope_guard_owner(self, "scope_alloc_escape_attributed");
     ScopeEscapeAllocSource previous = self.escape_alloc_source;
     self.escape_alloc_source = source;

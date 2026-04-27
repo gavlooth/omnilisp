@@ -6,6 +6,7 @@ cd "$(dirname "$0")/.."
 normal_log="${1:-build/boundary_hardening_normal.log}"
 asan_log="${2:-build/boundary_hardening_asan.log}"
 diff_range="${OMNI_BOUNDARY_POLICY_RANGE:-}"
+secondary_kind="${OMNI_BOUNDARY_SECONDARY_KIND:-asan}"
 sensitive_file_list="${OMNI_BOUNDARY_SENSITIVE_FILE_LIST:-scripts/boundary_sensitive_files.txt}"
 value_policy_guard="${OMNI_BOUNDARY_VALUE_POLICY_GUARD:-scripts/check_boundary_value_policy_coverage.py}"
 ownership_inventory_guard="${OMNI_BOUNDARY_OWNERSHIP_INVENTORY_GUARD:-scripts/check_memory_ownership_inventory.py}"
@@ -118,6 +119,43 @@ require_fiber_temp_enabled() {
   return 0
 }
 
+require_valgrind_error_free() {
+  local log_file="$1"
+  local bad_error_summary
+  bad_error_summary="$(grep -a "ERROR SUMMARY:" "$log_file" | awk '$4 != "0" { print; exit }' || true)"
+  if [[ -n "$bad_error_summary" ]]; then
+    echo "FAIL: [policy/valgrind] non-zero Valgrind error summary"
+    echo "  line: $bad_error_summary"
+    return 1
+  fi
+  if ! grep -a -q "ERROR SUMMARY: 0 errors" "$log_file"; then
+    echo "FAIL: [policy/valgrind] missing Valgrind ERROR SUMMARY"
+    return 1
+  fi
+
+  local bad_leak_summary
+  bad_leak_summary="$(grep -aE "definitely lost:|indirectly lost:|possibly lost:" "$log_file" | awk '$4 != "0" { print; exit }' || true)"
+  if [[ -n "$bad_leak_summary" ]]; then
+    echo "FAIL: [policy/valgrind] non-zero Valgrind leak summary"
+    echo "  line: $bad_leak_summary"
+    return 1
+  fi
+  return 0
+}
+
+require_valgrind_memory_smoke() {
+  local log_file="$1"
+  local line
+  line="$(extract_summary_line "$log_file" "lisp_slice")"
+  if [[ -z "$line" || "$line" != *"slice=memory-lifetime-smoke"* ]]; then
+    echo "FAIL: [policy/valgrind] missing memory-lifetime-smoke lisp slice summary"
+    [[ -n "$line" ]] && echo "  line: $line"
+    return 1
+  fi
+  require_suite_fail_zero "$log_file" "unified" "valgrind"
+  require_valgrind_error_free "$log_file"
+}
+
 main() {
   "$value_policy_guard"
   load_sensitive_files
@@ -154,7 +192,7 @@ main() {
     return 1
   fi
   if [[ ! -f "$asan_log" ]]; then
-    echo "FAIL: boundary change policy requires ASAN log: $asan_log"
+    echo "FAIL: boundary change policy requires ${secondary_kind} log: $asan_log"
     return 1
   fi
 
@@ -168,14 +206,19 @@ main() {
   require_suite_fail_zero "$normal_log" "scope_region" "normal"
   require_suite_fail_zero "$normal_log" "unified" "normal"
   require_suite_fail_zero "$normal_log" "compiler" "normal"
-  require_suite_fail_zero "$asan_log" "stack_engine" "asan"
-  require_suite_fail_zero "$asan_log" "scope_region" "asan"
-  require_suite_fail_zero "$asan_log" "unified" "asan"
-  require_suite_fail_zero "$asan_log" "compiler" "asan"
   require_fiber_temp_enabled "$normal_log" "normal"
-  require_fiber_temp_enabled "$asan_log" "asan"
 
-  echo "OK: boundary change policy satisfied (normal + ASAN evidence present)."
+  if [[ "$secondary_kind" == "valgrind" ]]; then
+    require_valgrind_memory_smoke "$asan_log"
+  else
+    require_suite_fail_zero "$asan_log" "stack_engine" "asan"
+    require_suite_fail_zero "$asan_log" "scope_region" "asan"
+    require_suite_fail_zero "$asan_log" "unified" "asan"
+    require_suite_fail_zero "$asan_log" "compiler" "asan"
+    require_fiber_temp_enabled "$asan_log" "asan"
+  fi
+
+  echo "OK: boundary change policy satisfied (normal + ${secondary_kind} evidence present)."
 }
 
 main "$@"

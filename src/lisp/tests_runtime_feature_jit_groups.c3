@@ -25,6 +25,62 @@ fn bool run_jit_policy_warm_cache_tests(Interp* interp, int* pass, int* fail) {
         (*fail)++;
     }
 
+    {
+        Expr malformed_with = {};
+        ExprWithModule malformed_body = {};
+        malformed_with.tag = E_WITH_MODULE;
+        malformed_with.with_module = &malformed_body;
+        malformed_body.body_count = 1;
+        malformed_body.body = null;
+        jit_warm_expr_cache(&malformed_with, interp);
+        bool ok = !expr_contains_shift(&malformed_with) && !expr_contains_perform(&malformed_with);
+        if (ok) {
+            emit_pass_literal("[PASS] jit policy: warm-cache tolerates missing with-module body list");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] jit policy: warm-cache tolerates missing with-module body list");
+            (*fail)++;
+        }
+    }
+
+    {
+        Expr** body = (Expr**)mem::malloc(Expr*.sizeof);
+        bool ok = body != null;
+        if (ok) {
+            body[0] = null;
+            Expr malformed_with = {};
+            ExprWithModule malformed_body = {};
+            malformed_with.tag = E_WITH_MODULE;
+            malformed_with.with_module = &malformed_body;
+            malformed_body.body_count = 1;
+            malformed_body.body = body;
+            jit_warm_expr_cache(&malformed_with, interp);
+            ok = !expr_contains_shift(&malformed_with) && !expr_contains_perform(&malformed_with);
+        }
+        if (body != null) mem::free(body);
+        if (ok) {
+            emit_pass_literal("[PASS] jit policy: warm-cache tolerates null with-module body elements");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] jit policy: warm-cache tolerates null with-module body elements");
+            (*fail)++;
+        }
+    }
+
+    {
+        Expr invalid_expr = {};
+        char* raw = (char*)&invalid_expr;
+        raw[0] = (char)127;
+        bool ok = expr_contains_shift(&invalid_expr) && expr_contains_perform(&invalid_expr);
+        if (ok) {
+            emit_pass_literal("[PASS] jit policy: unknown expr tags are continuation-sensitive");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] jit policy: unknown expr tags are continuation-sensitive");
+            (*fail)++;
+        }
+    }
+
     if (!jit_checks_enabled()) return true;
 
     interp.flags.jit_enabled = true;
@@ -132,6 +188,8 @@ fn void run_jit_policy_retired_code_tombstone_table_test(Interp* interp, int* pa
     (void)interp;
     void* fake_code = (void*)0x123450;
     ulong fake_serial = 0xBEEF;
+    void* saturated_code = (void*)0xABCDEF;
+    ulong saturated_serial = 0xFACE;
 
     jit_retired_code_reset();
     bool ok = !jit_retired_code_contains(fake_code, fake_serial);
@@ -145,12 +203,71 @@ fn void run_jit_policy_retired_code_tombstone_table_test(Interp* interp, int* pa
         jit_retired_code_forget_serial(fake_serial);
         ok = !jit_retired_code_contains(fake_code, fake_serial);
     }
+    if (ok) {
+        g_jit_retired_code_count = JIT_RETIRED_CODE_MAX;
+        g_jit_retired_code_saturated = false;
+        ok = !jit_retired_code_insert(saturated_code, saturated_serial) &&
+            g_jit_retired_code_saturated &&
+            jit_retired_code_contains(saturated_code, saturated_serial);
+        jit_retired_code_reset();
+    }
 
     if (ok) {
-        emit_pass_literal("[PASS] jit policy: retired code tombstones track and clear by attach serial");
+        emit_pass_literal("[PASS] jit policy: retired code tombstones track, clear, and saturate fail-closed");
         (*pass)++;
     } else {
-        io::printn("[FAIL] jit policy: retired code tombstones track and clear by attach serial");
+        io::printn("[FAIL] jit policy: retired code tombstones track, clear, and saturate fail-closed");
+        (*fail)++;
+    }
+}
+
+fn void run_jit_policy_state_spill_limit_test(Interp* interp, int* pass, int* fail) {
+    usz saved_state_count = g_jit_state_count;
+    usz saved_spill_count = g_jit_spill_count;
+    JitStateSpillNode* saved_spill_head = g_jit_spill_states;
+    bool saved_gc_needed = runtime_backend_gc_needed();
+    bool saved_pool_warned = runtime_backend_pool_warned();
+    ulong nonce = 123;
+
+    g_jit_state_count = JIT_STATE_POOL_SIZE;
+    g_jit_spill_count = JIT_STATE_SPILL_MAX;
+    g_jit_spill_states = null;
+    runtime_backend_clear_gc_needed();
+    runtime_backend_clear_pool_warned();
+
+    bool tracked = jit_track_compiled_state((void*)0x1234, (void*)0x5678, interp, &nonce);
+    bool ok = !tracked &&
+              nonce == 0 &&
+              g_jit_spill_count == JIT_STATE_SPILL_MAX &&
+              g_jit_spill_states == null &&
+              runtime_backend_gc_needed();
+
+    g_jit_state_count = saved_state_count;
+    g_jit_spill_count = saved_spill_count;
+    g_jit_spill_states = saved_spill_head;
+    if (saved_gc_needed) {
+        runtime_backend_mark_gc_needed();
+    } else {
+        runtime_backend_clear_gc_needed();
+    }
+    if (saved_pool_warned) {
+        runtime_backend_mark_pool_warned();
+    } else {
+        runtime_backend_clear_pool_warned();
+    }
+
+    if (ok) {
+        emit_pass_literal("[PASS] jit policy: state spill limit fails compile tracking closed");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] jit policy: state spill limit fails compile tracking closed (tracked=%s nonce=%d spill_count=%d head=%s gc=%s)",
+            tracked ? "yes" : "no",
+            (long)nonce,
+            (long)g_jit_spill_count,
+            g_jit_spill_states == null ? "null" : "present",
+            runtime_backend_gc_needed() ? "yes" : "no"
+        );
         (*fail)++;
     }
 }
@@ -342,4 +459,3 @@ fn void run_jit_policy_variadic_no_fallback_test(Interp* interp, int* pass, int*
         (*fail)++;
     }
 }
-

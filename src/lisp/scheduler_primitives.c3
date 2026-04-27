@@ -123,15 +123,22 @@ fn Value* prim_spawn(Value*[] args, Env* env, Interp* interp) {
     }
 
     bool promotion_failed = false;
-    usz id = scheduler_add_fiber(co, parent_id, interp, &promotion_failed);
+    bool parent_invalid = false;
+    usz id = scheduler_add_fiber(co, parent_id, interp, &promotion_failed, &parent_invalid);
     if (id >= MAX_FIBERS) {
+        if (co != null && co.tag == COROUTINE && co.coroutine_val != null) {
+            coroutine_ctx_cleanup(co, co.coroutine_val, interp);
+        }
+        if (parent_invalid) {
+            return scheduler_raise(interp, "scheduler/spawn-invalid-parent", "spawn: invalid scheduler parent");
+        }
         if (promotion_failed) {
             return scheduler_raise(interp, "scheduler/spawn-scheduler-promotion-failed", "spawn: failed to promote coroutine into root scope");
         }
         return scheduler_raise(interp, "scheduler/spawn-scheduler-full", "spawn: scheduler full");
     }
 
-    if (parent_id < g_scheduler.fiber_count) {
+    if (parent_id != NO_FIBER && scheduler_parent_accepts_child(parent_id, interp)) {
         g_scheduler.fibers[parent_id].live_children++;
     }
 

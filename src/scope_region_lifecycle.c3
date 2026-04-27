@@ -7,8 +7,8 @@ module main;
 *>
 fn ScopeRegion* scope_create(ScopeRegion* parent = null) {
     ScopeRegion* scope = null;
-    uint generation = 0;
-    uint escape_generation = 0;
+    ulong generation = 0;
+    ulong escape_generation = 0;
     bool fiber_temp_eligible = scope_fiber_temp_context_eligible() && parent != null;
     bool reused_from_freelist = false;
 
@@ -99,7 +99,7 @@ fn ScopeRegion* scope_create(ScopeRegion* parent = null) {
 
     scope_assert_escape_tail_consistency(scope);
 
-    g_scope_memory_telemetry_stats.scope_create_count++;
+    scope_telemetry_inc(&g_scope_memory_telemetry_stats.scope_create_count);
     return scope;
 }
 
@@ -139,7 +139,7 @@ fn void scope_retain(ScopeRegion* scope) @inline {
  */
 fn void scope_release(ScopeRegion* scope) @inline {
     if (scope == null) return;
-    g_scope_memory_telemetry_stats.scope_release_count++;
+    scope_telemetry_inc(&g_scope_memory_telemetry_stats.scope_release_count);
     scope_guard_owner(scope, "scope_release");
     if (scope.refcount == uint.max) {
         // Parent teardown is already running dtors. Child-scope parent releases

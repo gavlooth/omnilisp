@@ -15,6 +15,19 @@ fn BoundaryGraphAuditResult boundary_graph_audit_visit_env(
     usz root_tag,
     usz root_scope_gen
 ) {
+    if (env == null) {
+        return {
+            .ok = true,
+            .reason = BOUNDARY_GRAPH_AUDIT_OK,
+            .root_tag = root_tag,
+            .violating_edge_tag = BOUNDARY_GRAPH_AUDIT_EDGE_TAG_NONE,
+            .root_scope_gen = root_scope_gen,
+            .violating_scope_gen = 0,
+            .target_scope_gen = target_scope != null ? (usz)target_scope.generation : 0,
+            .target_escape_gen = target_scope != null ? (usz)target_scope.escape_generation : 0
+        };
+    }
+
     if (env == global_env || env.is_root_persistent_box()) {
         return {
             .ok = true,

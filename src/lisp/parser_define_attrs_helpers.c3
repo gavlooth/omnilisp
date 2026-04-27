@@ -42,9 +42,18 @@ fn Value* Parser.rewrite_template_interpolation_datum(Parser* self, Value* tmpl)
                 self.set_error("template splice expects a symbol binding name");
                 return null;
             }
-            Value* dotdot_sym = parser_make_symbol_datum(self.interp, self.interp.sym_dotdot);
-            Value* arg_list = parser_make_cons_datum(self.interp, arg, parser_make_nil_datum(self.interp));
-            return parser_make_cons_datum(self.interp, dotdot_sym, arg_list);
+            Value* dotdot_sym = parser_make_symbol_datum(self, self.interp.sym_dotdot);
+            Value* nil = parser_make_nil_datum(self);
+            Value* arg_list = dotdot_sym != null && nil != null
+                ? parser_make_cons_datum(self, arg, nil)
+                : null;
+            Value* rewritten = arg_list != null
+                ? parser_make_cons_datum(self, dotdot_sym, arg_list)
+                : null;
+            if (rewritten == null) {
+                return null;
+            }
+            return rewritten;
         }
     }
 

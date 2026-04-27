@@ -57,8 +57,27 @@ fn void scheduler_test_restore_no_async(void* saved_async) {
     g_scheduler.async_handle = saved_async;
 }
 
-fn void scheduler_test_cleanup_no_async(void* saved_async) {
+fn void scheduler_test_cleanup_synthetic_state() {
+    if (g_scheduler.pending_reads[0].buffer != null) {
+        mem::free(g_scheduler.pending_reads[0].buffer);
+    }
+    if (g_scheduler.pending_reads[0].write_buffer != null) {
+        mem::free(g_scheduler.pending_reads[0].write_buffer);
+    }
+    if (g_scheduler.pending_offloads[0].completion != null) {
+        scheduler_free_offload_completion(g_scheduler.pending_offloads[0].completion);
+    }
+    g_scheduler.pending_reads[0] = {};
+    g_scheduler.pending_offloads[0] = {};
+    g_scheduler.pending_sleeps[0] = {};
+    g_scheduler.fibers[0] = {};
+    g_scheduler.fiber_count = 0;
+    g_scheduler.current_fiber_id = NO_FIBER;
     scheduler_reset_wakeup_queue();
+}
+
+fn void scheduler_test_cleanup_no_async(void* saved_async) {
+    scheduler_test_cleanup_synthetic_state();
     scheduler_test_restore_no_async(saved_async);
 }
 
@@ -107,18 +126,7 @@ fn void scheduler_test_restore_reliable_wakeup_queue(bool saved_initialized) {
 }
 
 fn void scheduler_test_cleanup_single_fiber_no_async(void* saved_async) {
-    if (g_scheduler.pending_reads[0].buffer != null) {
-        mem::free(g_scheduler.pending_reads[0].buffer);
-    }
-    if (g_scheduler.pending_offloads[0].completion != null) {
-        scheduler_free_offload_completion(g_scheduler.pending_offloads[0].completion);
-    }
-    g_scheduler.pending_reads[0] = {};
-    g_scheduler.pending_offloads[0] = {};
-    g_scheduler.pending_sleeps[0] = {};
-    g_scheduler.fibers[0] = {};
-    g_scheduler.fiber_count = 0;
-    scheduler_reset_wakeup_queue();
+    scheduler_test_cleanup_synthetic_state();
     scheduler_test_restore_no_async(saved_async);
 }
 

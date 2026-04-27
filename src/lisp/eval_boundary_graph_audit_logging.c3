@@ -11,43 +11,43 @@ fn void boundary_graph_audit_log_reason(BoundaryGraphAuditResult result) @inline
             return;
         case BOUNDARY_GRAPH_AUDIT_ALLOCATION_FAILED:
             io::eprintfn(
-                "[boundary][graph-audit] allocation failure during reachability audit target_escape_gen=%d",
+                "[boundary][graph-audit] allocation failure during reachability audit target_escape_gen=%ld",
                 (long)result.target_escape_gen
             );
             return;
         case BOUNDARY_GRAPH_AUDIT_SEED_OVERFLOW:
             io::eprintfn(
-                "[boundary][graph-audit] seed overflow while queuing root target_escape_gen=%d",
+                "[boundary][graph-audit] seed overflow while queuing root target_escape_gen=%ld",
                 (long)result.target_escape_gen
             );
             return;
         case BOUNDARY_GRAPH_AUDIT_VALUE_SET_OVERFLOW:
             io::eprintfn(
-                "[boundary][graph-audit] value visit overflow while validating escape reachability target_escape_gen=%d",
+                "[boundary][graph-audit] value visit overflow while validating escape reachability target_escape_gen=%ld",
                 (long)result.target_escape_gen
             );
             return;
         case BOUNDARY_GRAPH_AUDIT_ENV_SET_OVERFLOW:
             io::eprintfn(
-                "[boundary][graph-audit] env visit overflow while validating escape reachability target_escape_gen=%d",
+                "[boundary][graph-audit] env visit overflow while validating escape reachability target_escape_gen=%ld",
                 (long)result.target_escape_gen
             );
             return;
         case BOUNDARY_GRAPH_AUDIT_PUSH_VALUE_OVERFLOW:
             io::eprintfn(
-                "[boundary][graph-audit] value push overflow while traversing graph target_escape_gen=%d",
+                "[boundary][graph-audit] value push overflow while traversing graph target_escape_gen=%ld",
                 (long)result.target_escape_gen
             );
             return;
         case BOUNDARY_GRAPH_AUDIT_PUSH_ENV_OVERFLOW:
             io::eprintfn(
-                "[boundary][graph-audit] env push overflow while traversing graph target_escape_gen=%d",
+                "[boundary][graph-audit] env push overflow while traversing graph target_escape_gen=%ld",
                 (long)result.target_escape_gen
             );
             return;
         case BOUNDARY_GRAPH_AUDIT_REACHABLE_TEMP_VALUE:
             io::eprintfn(
-                "[boundary][graph-audit] violation: reachable Omni edge enters TEMP root_tag=%d violating_edge_tag=%d root_scope_gen=%d violating_scope_gen=%d target_scope_gen=%d target_escape_gen=%d",
+                "[boundary][graph-audit] violation: reachable Omni edge enters TEMP root_tag=%ld violating_edge_tag=%ld root_scope_gen=%ld violating_scope_gen=%ld target_scope_gen=%ld target_escape_gen=%ld",
                 (long)result.root_tag,
                 (long)result.violating_edge_tag,
                 (long)result.root_scope_gen,
@@ -58,7 +58,7 @@ fn void boundary_graph_audit_log_reason(BoundaryGraphAuditResult result) @inline
             return;
         case BOUNDARY_GRAPH_AUDIT_REACHABLE_TEMP_ENV:
             io::eprintfn(
-                "[boundary][graph-audit] violation: reachable Omni edge enters TEMP root_tag=%d violating_edge_tag=%d root_scope_gen=%d violating_scope_gen=%d target_scope_gen=%d target_escape_gen=%d",
+                "[boundary][graph-audit] violation: reachable Omni edge enters TEMP root_tag=%ld violating_edge_tag=%ld root_scope_gen=%ld violating_scope_gen=%ld target_scope_gen=%ld target_escape_gen=%ld",
                 (long)result.root_tag,
                 (long)result.violating_edge_tag,
                 (long)result.root_scope_gen,
@@ -69,7 +69,7 @@ fn void boundary_graph_audit_log_reason(BoundaryGraphAuditResult result) @inline
             return;
         default:
             io::eprintfn(
-                "[boundary][graph-audit] unknown failure reason=%d target_escape_gen=%d",
+                "[boundary][graph-audit] unknown failure reason=%d target_escape_gen=%ld",
                 (int)result.reason,
                 (long)result.target_escape_gen
             );
@@ -82,7 +82,7 @@ fn void boundary_graph_audit_log_commit_context(
     BoundaryGraphAuditResult audit
 ) @inline {
     io::eprintfn(
-        "[boundary][graph-audit] commit-context outcome=%s planned_route=%s selected_route=%s selected_reason=%s stable_publication=%s stable_materialization=%s compatibility_path=%s commit_value_tag=%d commit_scope_gen=%d target_scope_gen=%d target_escape_gen=%d reason=%s root_tag=%d violating_edge_tag=%d violating_scope_gen=%d",
+        "[boundary][graph-audit] commit-context outcome=%s planned_route=%s selected_route=%s selected_reason=%s stable_publication=%s stable_materialization=%s compatibility_path=%s commit_value_tag=%ld commit_scope_gen=%ld target_scope_gen=%ld target_escape_gen=%ld reason=%s root_tag=%ld violating_edge_tag=%ld violating_scope_gen=%ld",
         (ZString)boundary_commit_outcome_name(committed.outcome),
         (ZString)boundary_plan_route_name(committed.planned_route),
         (ZString)boundary_plan_route_name(committed.selected_route),

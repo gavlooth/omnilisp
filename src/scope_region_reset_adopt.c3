@@ -16,11 +16,11 @@ fn void scope_splice_escapes(ScopeRegion* parent, ScopeRegion* child) {
     scope_assert_escape_tail_consistency(child);
     assert(child.first_child == null, "scope_splice_escapes: child has live descendants");
 
-    g_scope_transfer_stats.splice_calls++;
-    g_scope_transfer_stats.splice_escape_chunk_bytes += scope_chunk_bytes(child.escape_chunks);
-    g_scope_transfer_stats.splice_temp_chunk_bytes_freed += scope_chunk_bytes(child.chunks);
-    g_scope_transfer_stats.splice_temp_dtors_run += scope_dtor_count(child.dtors);
-    g_scope_transfer_stats.splice_escape_dtors_transferred += scope_dtor_count(child.escape_dtors);
+    scope_telemetry_inc(&g_scope_transfer_stats.splice_calls);
+    scope_telemetry_add(&g_scope_transfer_stats.splice_escape_chunk_bytes, scope_chunk_bytes(child.escape_chunks));
+    scope_telemetry_add(&g_scope_transfer_stats.splice_temp_chunk_bytes_freed, scope_chunk_bytes(child.chunks));
+    scope_telemetry_add(&g_scope_transfer_stats.splice_temp_dtors_run, scope_dtor_count(child.dtors));
+    scope_telemetry_add(&g_scope_transfer_stats.splice_escape_dtors_transferred, scope_dtor_count(child.escape_dtors));
 
     // Move child's ESCAPE dtors to parent's ESCAPE dtor list.
     if (child.escape_dtors != null) {
@@ -97,7 +97,7 @@ fn void scope_splice_escapes(ScopeRegion* parent, ScopeRegion* child) {
     }
     scope_global_lock();
     if (g_scope_freelist_count < SCOPE_FREELIST_MAX) {
-        g_scope_memory_telemetry_stats.scope_recycle_count++;
+        scope_telemetry_inc(&g_scope_memory_telemetry_stats.scope_recycle_count);
         child.pool_next = g_scope_freelist;
         g_scope_freelist = child;
         g_scope_freelist_count++;

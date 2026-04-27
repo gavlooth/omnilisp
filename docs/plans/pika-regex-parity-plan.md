@@ -3,7 +3,8 @@
 Status date: 2026-03-06
 Owner: Codex session workflow
 
-Use this as the live execution checklist.
+Historical completed checklist. Reopen through `TODO.md` if new Pika regex
+parity work appears.
 
 Legend:
 - `[x]` done

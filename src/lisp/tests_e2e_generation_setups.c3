@@ -36,6 +36,10 @@ const char[][] E2E_SETUPS = {
     `(define s_acc 0)`,
     `(define s_count 0)`,
 
+    // Declarative FFI parity fixture
+    `(define [ffi lib] e2elibc "libc.so.6")`,
+    `(define [ffi λ e2elibc] (strlen (^String s)) ^Integer)`,
+
     // Type/dispatch parity fixtures
     `(define [abstract] Entity)`,
     `(define [struct] (User Entity) (^String name))`,
@@ -46,7 +50,7 @@ const char[][] E2E_SETUPS = {
     `(define (who (^Admin a)) "admin")`,
     `(define (who-parent (^User u)) "parent")`,
     `(define (who (^Float64 n)) "double")`,
-    `(define (ping (^(Value ping) x)) "pong")`,
+    `(define (ping (^#'ping x)) "pong")`,
     `(define (ping (^Symbol x)) "sym")`,
     `(define (alias-check (^UserAlias u)) "alias-ok")`,
     `(define (amb (^Number x)) "n1")`,

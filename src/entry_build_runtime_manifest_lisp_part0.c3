@@ -1,6 +1,6 @@
 module main;
 
-const String[210] AOT_RUNTIME_LISP_SOURCES_PART0 = {
+const String[211] AOT_RUNTIME_LISP_SOURCES_PART0 = {
     "src/lisp/aot.c3",
     "src/lisp/aot_runtime_bridge.c3",
     "src/lisp/aot_runtime_bridge_closure.c3",
@@ -113,6 +113,7 @@ const String[210] AOT_RUNTIME_LISP_SOURCES_PART0 = {
     "src/lisp/compiler_statement_compilation.c3",
     "src/lisp/compiler_stdlib_prelude.c3",
     "src/lisp/compiler_tail_position_compilation_tco.c3",
+    "src/lisp/compiler_tail_position_compilation_tco_module_helpers.c3",
     "src/lisp/compiler_temp_control_flow.c3",
     "src/lisp/compiler_temp_core.c3",
     "src/lisp/compiler_temp_ffi_forms.c3",

@@ -765,7 +765,9 @@ fn Value* matrix_transpose_view_value(Value* source_value, TensorVal* matrix, In
     }
     result.tag = TENSOR;
     result.tensor_val = tensor;
-    main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
+    if (!scope_register_value_dtor_or_cleanup(interp.current_scope, result)) {
+        return make_runtime_out_of_memory_error(interp, "matrix/transpose-view: failed to register Tensor view destructor");
+    }
     return result;
 }
 <*

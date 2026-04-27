@@ -47,6 +47,10 @@ fn bool ref_try_lookup_collection(Interp* interp, Value* coll, Value* key, Value
             *out = raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "ref: dict backing storage is missing");
             return true;
         }
+        if (!hashmap_storage_valid(coll.hashmap_val)) {
+            *out = raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "ref: dict backing entries are missing");
+            return true;
+        }
         Value* result = hashmap_get(coll.hashmap_val, key);
         *out = result == null ? make_nil(interp) : result;
         return true;
@@ -152,6 +156,7 @@ fn Value* prim_keys(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return collection_raise(interp, "type/arity", "keys: expected 1 argument");
     if (args[0].tag != HASHMAP) return collection_raise(interp, "type/arg-mismatch", "keys: expected dict");
     if (args[0].hashmap_val == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "keys: dict backing storage is missing");
+    if (!hashmap_storage_valid(args[0].hashmap_val)) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "keys: dict backing entries are missing");
     return hashmap_keys_list_canonical(args[0].hashmap_val, interp);
 }
 
@@ -162,6 +167,7 @@ fn Value* prim_values(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return collection_raise(interp, "type/arity", "values: expected 1 argument");
     if (args[0].tag != HASHMAP) return collection_raise(interp, "type/arg-mismatch", "values: expected dict");
     if (args[0].hashmap_val == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "values: dict backing storage is missing");
+    if (!hashmap_storage_valid(args[0].hashmap_val)) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "values: dict backing entries are missing");
     return hashmap_values_list_canonical(args[0].hashmap_val, interp);
 }
 
@@ -172,6 +178,7 @@ fn Value* prim_has(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return collection_raise(interp, "type/arity", "has?: expected 2 arguments");
     if (args[0].tag != HASHMAP) return collection_raise(interp, "type/arg-mismatch", "has?: expected dict");
     if (args[0].hashmap_val == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "has?: dict backing storage is missing");
+    if (!hashmap_storage_valid(args[0].hashmap_val)) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "has?: dict backing entries are missing");
     Value* found = hashmap_get(args[0].hashmap_val, args[1]);
     return found != null ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
@@ -183,6 +190,7 @@ fn Value* prim_remove(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return collection_raise(interp, "type/arity", "remove!: expected 2 arguments");
     if (args[0].tag != HASHMAP) return collection_raise(interp, "type/arg-mismatch", "remove!: expected dict");
     if (args[0].hashmap_val == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "remove!: dict backing storage is missing");
+    if (!hashmap_storage_valid(args[0].hashmap_val)) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "remove!: dict backing entries are missing");
     hashmap_remove(args[0].hashmap_val, args[1]);
     return make_void(interp);
 }
@@ -234,6 +242,7 @@ foreach (arg : args) {
 fn Value* prim_set_add(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2 || args[0].tag != SET) return collection_raise(interp, "type/arg-mismatch", "set-add: expected set and value");
     if (args[0].hashmap_val == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "set-add: set backing storage is missing");
+    if (!hashmap_storage_valid(args[0].hashmap_val)) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "set-add: set backing entries are missing");
     Value* true_val = make_symbol(interp, interp.sym_true);
     usz old_cap = (usz)args[0].hashmap_val.capacity;
     if (!hashmap_set(args[0].hashmap_val, args[1], true_val, interp)) {
@@ -253,6 +262,7 @@ fn Value* prim_set_add(Value*[] args, Env* env, Interp* interp) {
 fn Value* prim_set_remove(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2 || args[0].tag != SET) return collection_raise(interp, "type/arg-mismatch", "set-remove: expected set and value");
     if (args[0].hashmap_val == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "set-remove: set backing storage is missing");
+    if (!hashmap_storage_valid(args[0].hashmap_val)) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "set-remove: set backing entries are missing");
     hashmap_remove(args[0].hashmap_val, args[1]);
     return make_void(interp);
 }
@@ -263,6 +273,7 @@ fn Value* prim_set_remove(Value*[] args, Env* env, Interp* interp) {
 fn Value* prim_set_contains(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2 || args[0].tag != SET) return collection_raise(interp, "type/arg-mismatch", "set-contains?: expected set and value");
     if (args[0].hashmap_val == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "set-contains?: set backing storage is missing");
+    if (!hashmap_storage_valid(args[0].hashmap_val)) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "set-contains?: set backing entries are missing");
     Value* v = hashmap_get(args[0].hashmap_val, args[1]);
     return (v != null) ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
@@ -273,6 +284,7 @@ fn Value* prim_set_contains(Value*[] args, Env* env, Interp* interp) {
 fn Value* prim_set_size(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || args[0].tag != SET) return collection_raise(interp, "type/arg-mismatch", "length: expected set");
     if (args[0].hashmap_val == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "length: set backing storage is missing");
+    if (!hashmap_storage_valid(args[0].hashmap_val)) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "length: set backing entries are missing");
     return make_int(interp, (long)args[0].hashmap_val.count);
 }
 
@@ -282,5 +294,6 @@ fn Value* prim_set_size(Value*[] args, Env* env, Interp* interp) {
 fn Value* prim_set_to_list(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || args[0].tag != SET) return collection_raise(interp, "type/arg-mismatch", "List: expected set");
     if (args[0].hashmap_val == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "List: set backing storage is missing");
+    if (!hashmap_storage_valid(args[0].hashmap_val)) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "List: set backing entries are missing");
     return hashmap_keys_list_canonical(args[0].hashmap_val, interp);
 }

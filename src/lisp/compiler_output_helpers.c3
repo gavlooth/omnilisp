@@ -74,14 +74,8 @@ fn void Compiler.emit_ulong(Compiler* self, ulong n) {
 }
 
 fn void Compiler.emit_int(Compiler* self, long n) {
-    bool negative = n < 0;
-    if (negative) {
-        self.emit_char('-');
-        ulong mag = n == long.min ? (ulong)long.max + (ulong)1 : (ulong)(-n);
-        self.emit_ulong(mag);
-        return;
-    }
-    self.emit_ulong((ulong)n);
+    char[32] digits;
+    self.emit(int_to_string(n, digits[..]));
 }
 
 fn void Compiler.emit_usz(Compiler* self, usz n) {

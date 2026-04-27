@@ -209,6 +209,16 @@ fn lisp::Value* ffi_declare_fn(
                 aot_ffi_free_bound(bound);
                 return aot_make_error_best_effort(interp, "aot ffi λ: unsupported parameter ABI tag");
             }
+            if (tag == lisp::FfiTypeTag.FFI_TYPE_VOID) {
+                char[256] ebuf;
+                if (try char[] msg = io::bprintf(&ebuf, "aot ffi λ: unsupported parameter ABI tag %d at index %d",
+                    param_type_tags[i], (int)i)) {
+                    aot_ffi_free_bound(bound);
+                    return aot_make_error_best_effort(interp, msg);
+                }
+                aot_ffi_free_bound(bound);
+                return aot_make_error_best_effort(interp, "aot ffi λ: unsupported parameter ABI tag");
+            }
             bound.param_types[i] = tag;
             if (bound.param_handle_policies != null) {
                 if (lisp::Value* policy_error = aot_ffi_policy_from_spec(interp, &param_handle_policies[i], &bound.param_handle_policies[i])) {

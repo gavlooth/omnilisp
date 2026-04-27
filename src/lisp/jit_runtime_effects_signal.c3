@@ -22,6 +22,13 @@ fn char[] jit_signal_fast_path_primitive_name(Primitive* prim) @inline {
     return prim.name[:len];
 }
 
+fn bool jit_fast_path_primitive_is_valid(Value* fp_prim) @inline {
+    return fp_prim != null &&
+        fp_prim.tag == PRIMITIVE &&
+        fp_prim.prim_val != null &&
+        fp_prim.prim_val.func != null;
+}
+
 fn Value* jit_signal_fast_path_fixed_arity_gate(Interp* interp, Value* fp_prim, usz argc) {
     int fp_arity = fp_prim.prim_val.arity;
     if (fp_arity < 0 || (usz)fp_arity == argc) return null;
@@ -100,6 +107,14 @@ fn Value* jit_signal_call_fast_path_primitive_list_preserving_error(Interp* inte
 }
 
 fn Value* jit_signal_apply_fast_path_prim(Interp* interp, Value* fp_prim, Value* arg, bool* handled) {
+    if (!jit_fast_path_primitive_is_valid(fp_prim)) {
+        if (handled != null) *handled = true;
+        return runtime_effects_raise(
+            interp,
+            "runtime/invalid-fast-path-primitive",
+            "effect fast path: invalid primitive entry"
+        );
+    }
     int fp_arity = fp_prim.prim_val.arity;
     if (fp_arity == 0) {
         *handled = true;

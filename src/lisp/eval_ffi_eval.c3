@@ -25,6 +25,11 @@ extern fn int omni_ffi_call_var(void* fn_ptr, int nargs, int fixed_count,
 
 // eval_ffi_lib — (define [ffi lib] name "path.so")
 fn Value* eval_ffi_lib(Expr* expr, Env* env, Interp* interp) {
+    if (interp == null) return null;
+    if (interp.global_env == null) {
+        return ffi_raise(interp, "ffi/invalid-state", "ffi lib: global environment is unavailable");
+    }
+
     ExprFfiLib* fl = &expr.ffi_lib;
 
     // Evaluate path expression
@@ -226,6 +231,9 @@ fn Value* eval_ffi_fn(Expr* expr, Env* env, Interp* interp) {
             if (!ffi_type_annotation_to_tag(&ff.param_types[i], interp,
                 &bound.param_types[i], &bound.param_handle_policies[i])) {
                 return ffi_unsupported_type_annotation_error(interp, "parameter", &ff.param_types[i]);
+            }
+            if (bound.param_types[i] == FFI_TYPE_VOID) {
+                return ffi_raise(interp, "ffi/unsupported", "ffi λ: unsupported parameter ABI type '^Void'");
             }
             if (bound.param_handle_policies[i].ownership == FFI_HANDLE_OWNED) {
                 return ffi_raise(interp, "ffi/unsupported", "ffi λ: owned ForeignHandle parameter policy is not supported");

@@ -60,7 +60,7 @@ The key insight: `reset` and `handle` each run their body on a **fiber** (a sepa
 **Goal**: Create the new fiber infrastructure files, build them, verify compilation. No existing code is modified.
 **Status**: Complete. Stack engine in `src/stack_engine.c3` with 7 passing tests.
 
-#### 3.0.1 Create `/home/heefoo/Documents/code/Omni/src/fiber.c3`
+#### 3.0.1 Create `src/fiber.c3`
 
 This file contains all Layer 1 primitives.
 
@@ -252,7 +252,7 @@ fn void fiber_context_switch(FiberContext* old_ctx, FiberContext* new_ctx) @nake
 
 **Note on C3 inline assembly**: The existing `context.c3` uses `stmxcsr`/`ldmxcsr`/`fnstcw`/`fldcw` -- need to verify C3 supports these mnemonics. If not, they can be encoded as raw bytes. The existing code does NOT save MXCSR/x87CW, so this is an improvement. If C3 does not support `jmpq *$rcx`, use the existing pattern: `pushq $rcx; ret;` (which works but is CET-unfriendly -- acceptable for now since Omni doesn't use CET).
 
-#### 3.0.2 Update `/home/heefoo/Documents/code/Omni/project.json`
+#### 3.0.2 Update `project.json`
 
 No change needed -- the `"sources": ["src"]` directive already includes all `.c3` files under `src/`. The new `fiber.c3` in `src/` will be automatically compiled.
 
@@ -286,7 +286,7 @@ Build with `c3c build`. Run `./build/main`. All existing 927 tests must pass. Ne
 
 #### 3.1.1 Add fiber fields to `Interp` struct
 
-In `/home/heefoo/Documents/code/Omni/src/lisp/value.c3`, add to the `Interp` struct (after line 1984, before the closing `}`):
+In `src/lisp/value.c3`, add to the `Interp` struct (after line 1984, before the closing `}`):
 
 ```c3
     // Fiber-based continuation system
@@ -323,7 +323,7 @@ The `Value.cont_val` pointer still points to `Continuation*`. The `make_continua
 
 #### 3.1.3 Implement fiber-based `jit_reset_impl_fiber` and `jit_shift_impl_fiber`
 
-In `/home/heefoo/Documents/code/Omni/src/lisp/jit.c3`, add new functions (after `jit_shift_impl`, around line 1031):
+In `src/lisp/jit.c3`, add new functions (after `jit_shift_impl`, around line 1031):
 
 ```c3
 // --- Fiber-based reset/shift ---

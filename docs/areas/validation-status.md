@@ -11,7 +11,7 @@
 ## Current Status
 
 Status: `green`
-As of: 2026-04-27
+As of: 2026-04-30
 
 The latest all-slice follow-up,
 `VALIDATION-ALL-SLICE-NESTED-LET-2026-04-11`, is closed.
@@ -35,19 +35,24 @@ All remaining Deduce subgroups in this lane are now green after the runtime patc
 - `OMNI_DEDUCE_GROUP_FILTER=core-runtime`: `pass=6 fail=0`
 - `OMNI_DEDUCE_GROUP_FILTER=rule-validation`: `pass=70 fail=0`
 
-Latest bounded all-slice result with TLS integration intentionally skipped:
+Latest targeted TLS/async validation:
 
-- unified: `pass=2798 fail=0`
-- compiler: `pass=208 fail=0`
-- remaining emitted failure: none
+- `scripts/run_tls_targeted.sh`: `pass=5 fail=0`
+- TLS-enabled async slice with `OMNI_ENABLE_TLS_INTEGRATION=1`: `pass=104 fail=0`
 
-This is not a replacement for the TLS integration gate; the recorded broad run
-used `OMNI_SKIP_TLS_INTEGRATION=1`.
+Latest bounded all-slice result with TLS integration enabled and no TLS skip:
+
+- result: passed
+- command: `OMNI_VALIDATION_TIMEOUT_SEC=900 scripts/run_validation_container.sh bash -lc './scripts/build_omni_chelpers.sh && c3c build && timeout --kill-after=10s 600s env OMNI_ENABLE_TLS_INTEGRATION=1 OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=all LD_LIBRARY_PATH=/usr/lib:/usr/local/lib ./build/main --test-suite lisp'`
+- summary: `OMNI_TEST_SUMMARY suite=unified pass=5532 fail=0`
+- compiler summary: `OMNI_TEST_SUMMARY suite=compiler pass=390 fail=0`
+
+TLS integration is no longer skipped, and
+`VALIDATION-002-ALL-SLICE-BOUNDARY-JIT-BLOCKER` is closed in `TODO.md`.
 
 ## Next Steps
 
-1. Keep this area green unless a new validation family appears.
-2. Use `TODO.md` for any future validation backlog item instead of reopening
+1. Use `TODO.md` for any future validation backlog item instead of reopening
    closed residual plans.
 
 ## Validation

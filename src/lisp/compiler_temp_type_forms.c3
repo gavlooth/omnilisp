@@ -11,7 +11,7 @@ fn usz Compiler.compile_typed_define_direct(Compiler* self, Expr* define_expr) {
     ExprLambda* lambda = define_expr.define.value.lambda;
     usz params_id = self.next_result();
     char[64] params_name_buf;
-    char[] params_name = compiler_format_generated_name_id(params_name_buf[..], "_aot_typed_params_", (long)params_id);
+    char[] params_name = self.generated_name_id(params_name_buf[..], "_aot_typed_params_", (long)params_id);
 
     if (lambda.param_count > 0) {
         self.emit_indent();
@@ -22,7 +22,7 @@ fn usz Compiler.compile_typed_define_direct(Compiler* self, Expr* define_expr) {
         self.emit(";\n");
         for (usz i = 0; i < lambda.param_count; i++) {
             char[96] target_buf;
-            char[] target = compiler_format_generated_name_index(target_buf[..], params_name, (long)i);
+            char[] target = self.generated_name_index(target_buf[..], params_name, (long)i);
             self.emit_aot_type_annotation_spec_init(target, &lambda.param_annotations[i]);
         }
     }
@@ -46,6 +46,28 @@ fn usz Compiler.compile_typed_define_direct(Compiler* self, Expr* define_expr) {
     self.emit(");\n");
     return id;
 }
+
+fn bool Compiler.emit_helper_published_binding_sync(Compiler* self, SymbolId local_name) {
+    SymbolId backing = INVALID_SYMBOL_ID;
+    if (self.find_active_module_private_backing(local_name, &backing)) {
+        self.emit_indent();
+        self.emit_symbol_name(backing);
+        self.emit(" = aot::lookup_var(\"");
+        self.emit_escaped(self.interp.symbols.get_name(local_name));
+        self.emit("\");\n");
+        return true;
+    }
+    if (self.module_private_symbols.len() > 0) {
+        self.set_compile_error("compiler: inline module helper-published binding missing private backing");
+        return false;
+    }
+    if (self.is_global(local_name)) {
+        self.emit_global_lookup_sync(local_name);
+        return true;
+    }
+    return true;
+}
+
 fn usz Compiler.compile_type_form_direct(Compiler* self, Expr* expr) {
     switch (expr.tag) {
         case E_DEFTYPE:

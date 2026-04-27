@@ -112,6 +112,20 @@ fn bool symbol_table_growth_bounds_valid(usz new_cap, usz new_hash_cap) @inline 
     return true;
 }
 
+fn bool symbol_table_hash_insert(SymbolId* hash_index, usz hash_capacity, SymbolId id, char[] name) {
+    if (hash_index == null || hash_capacity == 0) return false;
+    usz h = hash_symbol(name);
+    usz mask = hash_capacity - 1;
+    for (usz probe = 0; probe < hash_capacity; probe++) {
+        usz slot = (h + probe) & mask;
+        if (hash_index[slot] == INVALID_SYMBOL_ID) {
+            hash_index[slot] = id;
+            return true;
+        }
+    }
+    return false;
+}
+
 fn void SymbolTable.init(SymbolTable* self) {
     self.count = 0;
     self.capacity = 0;
@@ -186,15 +200,16 @@ fn bool SymbolTable.grow(SymbolTable* self) {
         new_hash_index[i] = INVALID_SYMBOL_ID;
     }
 
-    usz mask = new_hash_cap - 1;
     for (usz i = 0; i < self.count; i++) {
-        usz h = hash_symbol(new_entries[i].name[:new_entries[i].len]);
-        for (usz probe = 0; probe < new_hash_cap; probe++) {
-            usz slot = (h + probe) & mask;
-            if (new_hash_index[slot] == INVALID_SYMBOL_ID) {
-                new_hash_index[slot] = (SymbolId)i;
-                break;
-            }
+        if (!symbol_table_hash_insert(
+                new_hash_index,
+                new_hash_cap,
+                (SymbolId)i,
+                new_entries[i].name[:new_entries[i].len]
+            )) {
+            mem::free(new_hash_index);
+            mem::free(new_entries);
+            return false;
         }
     }
 
@@ -284,18 +299,13 @@ fn SymbolId SymbolTable.intern(SymbolTable* self, char[] name) {
         heap_name[i] = name[i];
     }
     heap_name[len] = 0;
+    if (!symbol_table_hash_insert(self.hash_index, self.hash_capacity, id, heap_name[:len])) {
+        mem::free(heap_name);
+        return INVALID_SYMBOL_ID;
+    }
     self.entries[self.count].name = heap_name;
     self.entries[self.count].len = len;
     self.count++;
-
-    // Insert into hash table
-    for (usz probe = 0; probe < self.hash_capacity; probe++) {
-        usz slot = (h + probe) & mask;
-        if (self.hash_index[slot] == INVALID_SYMBOL_ID) {
-            self.hash_index[slot] = id;
-            break;
-        }
-    }
 
     return id;
 }

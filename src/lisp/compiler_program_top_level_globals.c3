@@ -1,7 +1,24 @@
 module lisp;
 
 import std::collections::list;
+import std::io;
 import main;
+
+fn bool compiler_find_global_value_symbol(Interp* interp, Value* target, SymbolId* out_sym) {
+    if (interp == null || target == null || out_sym == null) return false;
+
+    Env* env = interp.global_env;
+    while (env != null) {
+        for (usz i = 0; i < env.binding_count; i++) {
+            if (env.bindings[i].value == target) {
+                *out_sym = env.bindings[i].name;
+                return true;
+            }
+        }
+        env = env.parent;
+    }
+    return false;
+}
 
 fn void Compiler.add_global_if_missing(Compiler* self, SymbolId sym) {
     if (!self.is_global(sym)) {
@@ -14,6 +31,33 @@ fn bool compiler_has_inline_compiled_module(Compiler* self, SymbolId module_name
         if (self.compiled_modules[i].name == module_name) return true;
     }
     return false;
+}
+
+fn bool compiler_can_fold_symbol_literal(Compiler* self, SymbolId name) {
+    if (self == null || !self.allow_symbol_literal_constant_folding) return false;
+    if (self.symbol_is_active_primitive_shadow(name) || self.is_global(name)) return false;
+    return true;
+}
+
+fn bool compiler_expr_is_literal_false(Compiler* self, Expr* expr) {
+    if (self == null || self.interp == null || expr == null) return false;
+    if (expr.tag == E_VAR) {
+        return compiler_can_fold_symbol_literal(self, expr.var_expr.name)
+            && expr.var_expr.name == self.interp.sym_false;
+    }
+    if (expr.tag != E_LIT) return false;
+    return expr.lit.value.tag == NIL ||
+        (expr.lit.value.tag == SYMBOL && expr.lit.value.sym_val == self.interp.sym_false);
+}
+
+fn bool compiler_expr_is_literal_truthy(Compiler* self, Expr* expr) {
+    if (self == null || self.interp == null || expr == null) return false;
+    if (expr.tag == E_VAR) {
+        return compiler_can_fold_symbol_literal(self, expr.var_expr.name)
+            && expr.var_expr.name == self.interp.sym_true;
+    }
+    if (expr.tag != E_LIT) return false;
+    return !compiler_expr_is_literal_false(self, expr);
 }
 
 fn void Compiler.add_inline_module_backing_globals(Compiler* self, Expr* expr) {
@@ -32,8 +76,29 @@ fn void Compiler.add_inline_module_backing_globals(Compiler* self, Expr* expr) {
 fn void Compiler.collect_inline_module_backing_globals_in_expr(Compiler* self, Expr* expr) {
     if (expr == null) return;
     switch (expr.tag) {
+        case E_LIT:
+        case E_VAR:
+        case E_QUOTE:
+        case E_PATH:
+        case E_DEFMACRO:
+        case E_IMPORT:
+        case E_EXPORT_FROM:
+        case E_FFI_LIB:
+        case E_FFI_FN:
+        case E_DEFTYPE:
+        case E_DEFABSTRACT:
+        case E_DEFUNION:
+        case E_DEFALIAS:
+        case E_DEFEFFECT:
+            return;
         case E_MODULE:
             self.add_inline_module_backing_globals(expr);
+        case E_WITH_MODULE:
+            if (expr.with_module != null) {
+                for (usz wi = 0; wi < expr.with_module.body_count; wi++) {
+                    self.collect_inline_module_backing_globals_in_expr(expr.with_module.body[wi]);
+                }
+            }
         case E_DEFINE:
             self.collect_inline_module_backing_globals_in_expr(expr.define.value);
         case E_LAMBDA:
@@ -43,8 +108,14 @@ fn void Compiler.collect_inline_module_backing_globals_in_expr(Compiler* self, E
             self.collect_inline_module_backing_globals_in_expr(expr.app.arg);
         case E_IF:
             self.collect_inline_module_backing_globals_in_expr(expr.if_expr.test);
-            self.collect_inline_module_backing_globals_in_expr(expr.if_expr.then_branch);
-            self.collect_inline_module_backing_globals_in_expr(expr.if_expr.else_branch);
+            if (compiler_expr_is_literal_false(self, expr.if_expr.test)) {
+                self.collect_inline_module_backing_globals_in_expr(expr.if_expr.else_branch);
+            } else if (compiler_expr_is_literal_truthy(self, expr.if_expr.test)) {
+                self.collect_inline_module_backing_globals_in_expr(expr.if_expr.then_branch);
+            } else {
+                self.collect_inline_module_backing_globals_in_expr(expr.if_expr.then_branch);
+                self.collect_inline_module_backing_globals_in_expr(expr.if_expr.else_branch);
+            }
         case E_LET:
             self.collect_inline_module_backing_globals_in_expr(expr.let_expr.init);
             self.collect_inline_module_backing_globals_in_expr(expr.let_expr.body);
@@ -105,6 +176,11 @@ fn void Compiler.collect_inline_module_backing_globals_in_expr(Compiler* self, E
         case E_UNQUOTE_SPLICING:
             self.collect_inline_module_backing_globals_in_expr(expr.unquote_splicing.body);
         default:
+            if (try msg = io::bprintf(&self.error_storage, "compiler: unknown expression tag in inline module backing global collection: %d", (int)expr.tag)) {
+                self.set_compile_error(msg);
+            } else {
+                self.set_compile_error("compiler: unknown expression tag in inline module backing global collection");
+            }
     }
 }
 
@@ -130,6 +206,15 @@ fn void Compiler.collect_expr_generated_globals(Compiler* self, Expr* expr) {
     if (expr == null) return;
 
     switch (expr.tag) {
+        case E_LIT:
+            self.collect_literal_generated_globals(expr.lit.value);
+        case E_VAR:
+        case E_QUOTE:
+        case E_PATH:
+        case E_DEFMACRO:
+        case E_IMPORT:
+        case E_EXPORT_FROM:
+            return;
         case E_DEFINE:
             self.add_global_if_missing(expr.define.name);
             self.collect_expr_generated_globals(expr.define.value);
@@ -140,22 +225,28 @@ fn void Compiler.collect_expr_generated_globals(Compiler* self, Expr* expr) {
                 self.add_global_if_missing(expr.ffi_fn.fn_name);
             }
         case E_LAMBDA:
-            if (expr.lambda != null) self.collect_expr_generated_globals(expr.lambda.body);
+            if (expr.lambda != null) self.collect_expr_generated_globals_lexical(expr.lambda.body);
         case E_APP:
             self.collect_expr_generated_globals(expr.app.func);
             self.collect_expr_generated_globals(expr.app.arg);
         case E_IF:
             self.collect_expr_generated_globals(expr.if_expr.test);
-            self.collect_expr_generated_globals(expr.if_expr.then_branch);
-            self.collect_expr_generated_globals(expr.if_expr.else_branch);
+            if (compiler_expr_is_literal_false(self, expr.if_expr.test)) {
+                self.collect_expr_generated_globals(expr.if_expr.else_branch);
+            } else if (compiler_expr_is_literal_truthy(self, expr.if_expr.test)) {
+                self.collect_expr_generated_globals(expr.if_expr.then_branch);
+            } else {
+                self.collect_expr_generated_globals(expr.if_expr.then_branch);
+                self.collect_expr_generated_globals(expr.if_expr.else_branch);
+            }
         case E_LET:
             self.collect_expr_generated_globals(expr.let_expr.init);
-            self.collect_expr_generated_globals(expr.let_expr.body);
+            self.collect_expr_generated_globals_lexical(expr.let_expr.body);
             self.collect_pattern_generated_globals(expr.let_expr.pattern);
         case E_RESET:
             self.collect_expr_generated_globals(expr.reset.body);
         case E_SHIFT:
-            self.collect_expr_generated_globals(expr.shift.body);
+            self.collect_expr_generated_globals_lexical(expr.shift.body);
         case E_PERFORM:
             if (expr.perform.has_tag_expr) self.collect_expr_generated_globals(expr.perform.tag_expr);
             self.collect_expr_generated_globals(expr.perform.arg);
@@ -168,7 +259,7 @@ fn void Compiler.collect_expr_generated_globals(Compiler* self, Expr* expr) {
                     if (expr.handle.clauses[hi].has_effect_tag_expr) {
                         self.collect_expr_generated_globals(expr.handle.clauses[hi].effect_tag_expr);
                     }
-                    self.collect_expr_generated_globals(expr.handle.clauses[hi].handler_body);
+                    self.collect_expr_generated_globals_lexical(expr.handle.clauses[hi].handler_body);
                 }
             }
         case E_INDEX:
@@ -179,7 +270,7 @@ fn void Compiler.collect_expr_generated_globals(Compiler* self, Expr* expr) {
                 self.collect_expr_generated_globals(expr.match.scrutinee);
                 for (usz mi = 0; mi < expr.match.clause_count; mi++) {
                     self.collect_pattern_generated_globals(expr.match.clauses[mi].pattern);
-                    self.collect_expr_generated_globals(expr.match.clauses[mi].result);
+                    self.collect_expr_generated_globals_lexical(expr.match.clauses[mi].result);
                 }
             }
         case E_AND:
@@ -221,20 +312,117 @@ fn void Compiler.collect_expr_generated_globals(Compiler* self, Expr* expr) {
             if (expr.deftype != null) {
                 self.add_global_if_missing(expr.deftype.name);
             }
+        case E_DEFABSTRACT:
+            self.add_global_if_missing(expr.defabstract.name);
         case E_DEFUNION:
             if (expr.defunion != null) {
+                self.add_global_if_missing(expr.defunion.name);
                 for (usz vi = 0; vi < expr.defunion.variant_count; vi++) {
                     self.add_global_if_missing(expr.defunion.variants[vi].name);
                 }
             }
+        case E_DEFALIAS:
+            self.add_global_if_missing(expr.defalias.name);
+        case E_DEFEFFECT:
+            if (self.reject_lexical_defeffect_globals) {
+                self.set_compile_error("compiler: lexical effect declarations are not supported in AOT");
+            } else {
+                self.add_global_if_missing(expr.defeffect.name);
+            }
         default:
+            if (try msg = io::bprintf(&self.error_storage, "compiler: unknown expression tag in generated global collection: %d", (int)expr.tag)) {
+                self.set_compile_error(msg);
+            } else {
+                self.set_compile_error("compiler: unknown expression tag in generated global collection");
+            }
     }
+}
+
+fn void Compiler.collect_literal_generated_globals(Compiler* self, Value* value) {
+    if (self == null || value == null) return;
+
+    SymbolId global_name = INVALID_SYMBOL_ID;
+    if (value.tag == CLOSURE && compiler_find_global_value_symbol(self.interp, value, &global_name)) {
+        self.add_global_if_missing(global_name);
+        return;
+    }
+
+    switch (value.tag) {
+        case CONS:
+            self.collect_literal_generated_globals(value.cons_val.car);
+            self.collect_literal_generated_globals(value.cons_val.cdr);
+        case ARRAY:
+            if (value.array_val != null) {
+                for (usz i = 0; i < value.array_val.length; i++) {
+                    self.collect_literal_generated_globals(value.array_val.items[i]);
+                }
+            }
+        case HASHMAP:
+        case SET:
+            if (value.hashmap_val != null && hashmap_storage_valid(value.hashmap_val)) {
+                for (uint i = 0; i < value.hashmap_val.capacity; i++) {
+                    if (value.hashmap_val.entries[i].key != null) {
+                        self.collect_literal_generated_globals(value.hashmap_val.entries[i].key);
+                        self.collect_literal_generated_globals(value.hashmap_val.entries[i].value);
+                    }
+                }
+            }
+        case NIL:
+        case INT:
+        case STRING:
+        case SYMBOL:
+        case CLOSURE:
+        case CONTINUATION:
+        case PRIMITIVE:
+        case PARTIAL_PRIM:
+        case ERROR:
+        case DOUBLE:
+        case FLOAT32:
+        case BIG_INTEGER:
+        case BIG_FLOAT:
+        case BIG_COMPLEX:
+        case COMPLEX128:
+        case COMPLEX64:
+        case FFI_HANDLE:
+        case TYPE_INFO:
+        case INSTANCE:
+        case METHOD_TABLE:
+        case MODULE:
+        case ITERATOR:
+        case COROUTINE:
+        case TIME_POINT:
+        case TENSOR:
+        case VOID:
+            return;
+        default:
+            if (try msg = io::bprintf(&self.error_storage, "compiler: unknown value tag in generated global collection: %d", (int)value.tag)) {
+                self.set_compile_error(msg);
+            } else {
+                self.set_compile_error("compiler: unknown value tag in generated global collection");
+            }
+    }
+}
+
+fn void Compiler.collect_expr_generated_globals_lexical(Compiler* self, Expr* expr) {
+    bool saved_effect_rejection = self.reject_lexical_defeffect_globals;
+    bool saved_symbol_folding = self.allow_symbol_literal_constant_folding;
+    self.reject_lexical_defeffect_globals = true;
+    self.allow_symbol_literal_constant_folding = false;
+    self.collect_expr_generated_globals(expr);
+    self.allow_symbol_literal_constant_folding = saved_symbol_folding;
+    self.reject_lexical_defeffect_globals = saved_effect_rejection;
 }
 
 fn void Compiler.collect_pattern_generated_globals(Compiler* self, Pattern* pat) {
     if (pat == null) return;
 
     switch (pat.tag) {
+        case PAT_WILDCARD:
+        case PAT_VAR:
+        case PAT_LIT:
+        case PAT_QUOTE:
+        case PAT_DICT:
+            return;
         case PAT_CONS:
             self.collect_pattern_generated_globals(pat.car_pat);
             self.collect_pattern_generated_globals(pat.cdr_pat);
@@ -249,9 +437,14 @@ fn void Compiler.collect_pattern_generated_globals(Compiler* self, Pattern* pat)
                 self.collect_pattern_generated_globals(pat.ctor_sub_patterns[i]);
             }
         case PAT_GUARD:
-            self.collect_expr_generated_globals(pat.guard_pred);
+            self.collect_expr_generated_globals_lexical(pat.guard_pred);
             self.collect_pattern_generated_globals(pat.guard_sub);
         default:
+            if (try msg = io::bprintf(&self.error_storage, "compiler: unknown pattern tag in generated global collection: %d", (int)pat.tag)) {
+                self.set_compile_error(msg);
+            } else {
+                self.set_compile_error("compiler: unknown pattern tag in generated global collection");
+            }
     }
 }
 
@@ -293,25 +486,4 @@ fn void Compiler.emit_global_lookup_sync(Compiler* self, SymbolId sym) {
     self.emit(" = aot::lookup_var(\"");
     self.emit_escaped(self.interp.symbols.get_name(sym));
     self.emit("\");\n");
-}
-
-fn void Compiler.emit_type_form_global_sync(Compiler* self, Expr* expr) {
-    if (expr == null) return;
-
-    switch (expr.tag) {
-        case E_DEFTYPE:
-            if (expr.deftype != null && self.is_global(expr.deftype.name)) {
-                self.emit_global_lookup_sync(expr.deftype.name);
-            }
-        case E_DEFUNION:
-            if (expr.defunion != null) {
-                for (usz vi = 0; vi < expr.defunion.variant_count; vi++) {
-                    SymbolId variant_name = expr.defunion.variants[vi].name;
-                    if (self.is_global(variant_name)) {
-                        self.emit_global_lookup_sync(variant_name);
-                    }
-                }
-            }
-        default:
-    }
 }

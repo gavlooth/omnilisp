@@ -146,8 +146,8 @@ fn void run_compiler_group_existing_feature_tests(Interp* interp, usz* pass, usz
     {
         char[] code = compile_to_c3("(if true (define nested-global-value 42) nil)", interp);
         bool ok = code.len > 0
-            && str_contains(code, "lisp::Value* nested_global_value;")
-            && str_contains(code, "nested_global_value =")
+            && str_contains(code, "lisp::Value* _omni_sym_nested_global_value_")
+            && str_contains(code, "_omni_sym_nested_global_value_")
             && !str_contains(code, "not supported by AOT lowering");
         compiler_test_finish_bool(
             ok,
@@ -168,7 +168,7 @@ fn void run_compiler_group_existing_feature_tests(Interp* interp, usz* pass, usz
         );
         bool ok = code.len > 0
             && str_contains(code, "// Startup FFI preload")
-            && str_contains(code, "const char[] __omni_ffi_contract_json = `")
+            && str_contains(code, "const char[] OMNI_FFI_CONTRACT_JSON = `")
             && str_contains(code, "\"format\": \"omni.ffi-contract/v1\"")
             && str_contains(code, "\"binding\": \"libc\"")
             && str_contains(code, "\"binding\": \"strlen\"")
@@ -178,6 +178,83 @@ fn void run_compiler_group_existing_feature_tests(Interp* interp, usz* pass, usz
             ok,
             "Compiler: nested control-flow ffi feeds startup preload and embedded contract",
             "[FAIL] Compiler: nested control-flow ffi feeds startup preload and embedded contract",
+            pass,
+            fail
+        );
+    }
+    {
+        char[] code = compile_to_c3(
+            "((lambda () "
+            "  (block "
+            "    (define [ffi lib] tailc \"libc.so.6\") "
+            "    (define [ffi λ tailc] (tailstrlen (^String s)) ^Integer)))) "
+            "tailstrlen",
+            interp
+        );
+        bool ok = code.len > 0
+            && str_contains(code, "aot::ffi_declare_lib(\"tailc\", \"libc.so.6\"")
+            && str_contains(code, "tailc = _r")
+            && str_contains(code, "aot::ffi_declare_fn(\"tailc\", \"tailstrlen\", \"tailstrlen\"")
+            && str_contains(code, "tailstrlen = _r")
+            && !str_contains(code, "unsupported expr type");
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: tail block ffi declarations bind direct results",
+            "[FAIL] Compiler: tail block ffi declarations bind direct results",
+            pass,
+            fail
+        );
+    }
+    {
+        char[] code = compile_to_c3(
+            "(if true (define [ffi lib] branchc \"libc.so.6\") nil) "
+            "branchc",
+            interp
+        );
+        bool ok = code.len > 0
+            && str_contains(code, "aot::ffi_declare_lib(\"branchc\", \"libc.so.6\"")
+            && str_contains(code, "branchc = _r")
+            && !str_contains(code, "unsupported expr type");
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: branch ffi declarations bind direct results",
+            "[FAIL] Compiler: branch ffi declarations bind direct results",
+            pass,
+            fail
+        );
+    }
+    {
+        char[] code = compile_to_c3(
+            "(match 1 (1 (define [ffi lib] matchc \"libc.so.6\")) (_ nil)) "
+            "matchc",
+            interp
+        );
+        bool ok = code.len > 0
+            && str_contains(code, "aot::ffi_declare_lib(\"matchc\", \"libc.so.6\"")
+            && str_contains(code, "matchc = _r")
+            && !str_contains(code, "unsupported expr type");
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: match ffi declarations bind direct results",
+            "[FAIL] Compiler: match ffi declarations bind direct results",
+            pass,
+            fail
+        );
+    }
+    {
+        char[] code = compile_to_c3(
+            "(let (x 1) (define [ffi lib] letc \"libc.so.6\")) "
+            "letc",
+            interp
+        );
+        bool ok = code.len > 0
+            && str_contains(code, "aot::ffi_declare_lib(\"letc\", \"libc.so.6\"")
+            && str_contains(code, "letc = _r")
+            && !str_contains(code, "unsupported expr type");
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: let-body ffi declarations bind direct results",
+            "[FAIL] Compiler: let-body ffi declarations bind direct results",
             pass,
             fail
         );
@@ -715,7 +792,7 @@ fn void run_compiler_group_existing_feature_tests(Interp* interp, usz* pass, usz
             interp
         );
         bool ok = code.len > 0
-            && str_contains(code, "const char[] __omni_ffi_contract_json = `")
+            && str_contains(code, "const char[] OMNI_FFI_CONTRACT_JSON = `")
             && str_contains(code, "\"format\": \"omni.ffi-contract/v1\"")
             && str_contains(code, "\"libraries\": [")
             && str_contains(code, "\"functions\": [")

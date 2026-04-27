@@ -4,7 +4,7 @@
 
 ## Parts
 
-- Part 01: [docs/plans/tensor-scientific-computing-plan-2026-04-11_parts/tensor-scientific-computing-plan-2026-04-11_part_01.md](tensor-scientific-computing-plan-2026-04-11_parts/tensor-scientific-computing-plan-2026-04-11_part_01.md) (571 lines)
-- Part 02: [docs/plans/tensor-scientific-computing-plan-2026-04-11_parts/tensor-scientific-computing-plan-2026-04-11_part_02.md](tensor-scientific-computing-plan-2026-04-11_parts/tensor-scientific-computing-plan-2026-04-11_part_02.md) (340 lines)
-- Part 03: [docs/plans/tensor-scientific-computing-plan-2026-04-11_parts/tensor-scientific-computing-plan-2026-04-11_part_03.md](tensor-scientific-computing-plan-2026-04-11_parts/tensor-scientific-computing-plan-2026-04-11_part_03.md) (437 lines)
+- Part 01: [docs/plans/tensor-scientific-computing-plan-2026-04-11_parts/tensor-scientific-computing-plan-2026-04-11_part_01.md](tensor-scientific-computing-plan-2026-04-11_parts/tensor-scientific-computing-plan-2026-04-11_part_01.md) (570 lines)
+- Part 02: [docs/plans/tensor-scientific-computing-plan-2026-04-11_parts/tensor-scientific-computing-plan-2026-04-11_part_02.md](tensor-scientific-computing-plan-2026-04-11_parts/tensor-scientific-computing-plan-2026-04-11_part_02.md) (339 lines)
+- Part 03: [docs/plans/tensor-scientific-computing-plan-2026-04-11_parts/tensor-scientific-computing-plan-2026-04-11_part_03.md](tensor-scientific-computing-plan-2026-04-11_parts/tensor-scientific-computing-plan-2026-04-11_part_03.md) (436 lines)
 - Part 04: [docs/plans/tensor-scientific-computing-plan-2026-04-11_parts/tensor-scientific-computing-plan-2026-04-11_part_04.md](tensor-scientific-computing-plan-2026-04-11_parts/tensor-scientific-computing-plan-2026-04-11_part_04.md) (158 lines)

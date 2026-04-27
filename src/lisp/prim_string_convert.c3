@@ -445,27 +445,46 @@ fn Value* prim_string_to_number(Value*[] args, Env* env, Interp* interp) {
         if (i < s.len && s[i] == '.') {
             i++;
             double frac = 0.1;
-            while (i < s.len && s[i] >= '0' && s[i] <= '9') { val = val + (double)(s[i] - '0') * frac; frac = frac * 0.1; i++; has_digits = true; }
+            usz fraction_digits = 0;
+            while (i < s.len && s[i] >= '0' && s[i] <= '9') {
+                if (fraction_digits < LEXER_FLOAT_MAX_FRACTION_DIGITS) {
+                    val = val + (double)(s[i] - '0') * frac;
+                    frac = frac * 0.1;
+                }
+                fraction_digits++;
+                i++;
+                has_digits = true;
+            }
         }
         if (!has_digits) return make_nil(interp);
+        bool exponent_out_of_double_range = false;
         if (i < s.len && (s[i] == 'e' || s[i] == 'E')) {
             i++;
             bool exp_neg = false;
             if (i < s.len && (s[i] == '-' || s[i] == '+')) { exp_neg = s[i] == '-'; i++; }
             long exp_val = 0;
+            long exp_limit = exp_neg ? LEXER_FLOAT_MAX_NEGATIVE_EXPONENT : LEXER_FLOAT_MAX_POSITIVE_EXPONENT;
             bool has_exp_digits = false;
             while (i < s.len && s[i] >= '0' && s[i] <= '9') {
                 has_exp_digits = true;
-                if (exp_val > 10000) return make_nil(interp); // bounded parse cost / overflow guard
-                exp_val = exp_val * 10 + (long)(s[i] - '0');
+                long digit = (long)(s[i] - '0');
+                if (exp_val > exp_limit / 10 ||
+                    (exp_val == exp_limit / 10 && digit > exp_limit % 10)) {
+                    exponent_out_of_double_range = true;
+                } else if (!exponent_out_of_double_range) {
+                    exp_val = exp_val * 10 + digit;
+                }
                 i++;
             }
             if (!has_exp_digits) return make_nil(interp);
-            double mult = 1.0;
-            for (long e = 0; e < exp_val; e++) mult = mult * 10.0;
-            if (exp_neg) { val = val / mult; } else { val = val * mult; }
+            if (!exponent_out_of_double_range) {
+                double mult = 1.0;
+                for (long e = 0; e < exp_val; e++) mult = mult * 10.0;
+                if (exp_neg) { val = val / mult; } else { val = val * mult; }
+            }
         }
         if (i != s.len) return make_nil(interp);
+        if (exponent_out_of_double_range) return make_big_float_from_string(interp, s);
         if (negative) val = -val;
         if (!conversion_double_is_finite(val)) return make_big_float_from_string(interp, s);
         return make_double(interp, val);

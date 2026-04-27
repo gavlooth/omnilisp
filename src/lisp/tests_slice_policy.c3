@@ -34,6 +34,8 @@ fn bool lisp_slice_known(char* active_slice) @inline {
         lisp_slice_matches(active_slice, "memory-lifetime") ||
         lisp_slice_matches(active_slice, "memory-lifetime-smoke") ||
         lisp_slice_matches(active_slice, "memory-lifetime-policy") ||
+        lisp_slice_matches(active_slice, "boundary-graph-audit") ||
+        lisp_slice_matches(active_slice, "boundary-telemetry") ||
         lisp_slice_matches(active_slice, "memory-lifetime-soak") ||
         lisp_slice_matches(active_slice, "memory-lifetime-bench") ||
         lisp_slice_matches(active_slice, "memory-stress") ||
@@ -77,6 +79,7 @@ fn bool lisp_slice_memory_ownership(char* active_slice) @inline {
     return lisp_slice_matches(active_slice, "memory-lifetime") ||
         lisp_slice_matches(active_slice, "memory-lifetime-smoke") ||
         lisp_slice_matches(active_slice, "memory-lifetime-policy") ||
+        lisp_slice_matches(active_slice, "boundary-graph-audit") ||
         lisp_slice_matches(active_slice, "memory-lifetime-soak") ||
         lisp_slice_matches(active_slice, "memory-lifetime-bench") ||
         lisp_slice_matches(active_slice, "memory-stress") ||
@@ -108,6 +111,7 @@ fn void reject_deprecated_slice_aliases(char* active_slice) {
     io::printn("Use explicit ownership slices instead:");
     io::printn("- memory-lifetime-smoke          (boundary/scoping correctness)");
     io::printn("- memory-lifetime-policy          (boundary-policy parser contracts)");
+    io::printn("- boundary-graph-audit            (boundary graph reachability audit)");
     io::printn("- memory-lifetime-bench           (boundary benchmark)");
     io::printn("- allocator-validation            (AST arena correctness)");
     io::printn("- allocator-bench                (AST throughput/benchmark)");

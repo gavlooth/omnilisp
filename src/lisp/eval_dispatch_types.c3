@@ -74,16 +74,17 @@ fn bool bind_non_callable_type_symbol(Interp* interp, SymbolId sym) {
  */
 fn bool register_builtin_types(Interp* interp) {
     // Register built-in types with TK_BUILTIN kind
-    SymbolId[25] builtin_names = {
+    SymbolId[26] builtin_names = {
         interp.sym_Float, interp.sym_Float32,
         interp.sym_Integer, interp.sym_BigInteger, interp.sym_BigFloat, interp.sym_BigComplex,
         interp.sym_Complex128, interp.sym_Complex64, interp.sym_Double, interp.sym_String,
         interp.sym_Symbol, interp.sym_List, interp.sym_Boolean,
         interp.sym_Nil, interp.sym_Void, interp.sym_Closure, interp.sym_Array,
         interp.sym_Dictionary, interp.sym_Set, interp.sym_Any, interp.sym_Iterator,
-        interp.sym_TimePoint, interp.sym_Coroutine, interp.sym_Tensor, interp.sym_Kernel
+        interp.sym_TimePoint, interp.sym_Coroutine, interp.sym_Tensor, interp.sym_Kernel,
+        interp.sym_Literal
     };
-    for (usz i = 0; i < 25; i++) {
+    for (usz i = 0; i < 26; i++) {
         TypeInfo info;
         info.name = builtin_names[i];
         info.kind = TK_BUILTIN;
@@ -127,6 +128,7 @@ fn bool register_builtin_types(Interp* interp) {
     interp.tid_BigComplex = interp.types.lookup(interp.sym_BigComplex, &interp.symbols);
     interp.tid_Complex128 = interp.types.lookup(interp.sym_Complex128, &interp.symbols);
     interp.tid_Complex64 = interp.types.lookup(interp.sym_Complex64, &interp.symbols);
+    interp.tid_Float = interp.types.lookup(interp.sym_Float, &interp.symbols);
     interp.tid_Double = interp.types.lookup(interp.sym_Double, &interp.symbols);
     interp.tid_Float32 = interp.types.lookup(interp.sym_Float32, &interp.symbols);
     interp.tid_String = interp.types.lookup(interp.sym_String, &interp.symbols);
@@ -140,6 +142,7 @@ fn bool register_builtin_types(Interp* interp) {
     interp.tid_Dictionary = interp.types.lookup(interp.sym_Dictionary, &interp.symbols);
     interp.tid_Set = interp.types.lookup(interp.sym_Set, &interp.symbols);
     interp.tid_Any = interp.types.lookup(interp.sym_Any, &interp.symbols);
+    interp.tid_Literal = interp.types.lookup(interp.sym_Literal, &interp.symbols);
     interp.tid_Number = interp.types.lookup(interp.sym_Number, &interp.symbols);
     interp.tid_Collection = interp.types.lookup(interp.sym_Collection, &interp.symbols);
     interp.tid_Iterator = interp.types.lookup(interp.sym_Iterator, &interp.symbols);
@@ -152,6 +155,7 @@ fn bool register_builtin_types(Interp* interp) {
         interp.tid_BigComplex == INVALID_TYPE_ID ||
         interp.tid_Complex128 == INVALID_TYPE_ID ||
         interp.tid_Complex64 == INVALID_TYPE_ID ||
+        interp.tid_Float == INVALID_TYPE_ID ||
         interp.tid_Double == INVALID_TYPE_ID ||
         interp.tid_Float32 == INVALID_TYPE_ID ||
         interp.tid_String == INVALID_TYPE_ID || interp.tid_Symbol == INVALID_TYPE_ID ||
@@ -159,7 +163,8 @@ fn bool register_builtin_types(Interp* interp) {
         interp.tid_Nil == INVALID_TYPE_ID || interp.tid_Void == INVALID_TYPE_ID ||
         interp.tid_Closure == INVALID_TYPE_ID || interp.tid_Array == INVALID_TYPE_ID ||
         interp.tid_Dictionary == INVALID_TYPE_ID || interp.tid_Set == INVALID_TYPE_ID ||
-        interp.tid_Any == INVALID_TYPE_ID || interp.tid_Number == INVALID_TYPE_ID ||
+        interp.tid_Any == INVALID_TYPE_ID || interp.tid_Literal == INVALID_TYPE_ID ||
+        interp.tid_Number == INVALID_TYPE_ID ||
         interp.tid_Collection == INVALID_TYPE_ID || interp.tid_Iterator == INVALID_TYPE_ID ||
         interp.tid_TimePoint == INVALID_TYPE_ID || interp.tid_Coroutine == INVALID_TYPE_ID ||
         interp.tid_Tensor == INVALID_TYPE_ID || interp.tid_Kernel == INVALID_TYPE_ID) {
@@ -174,6 +179,7 @@ fn bool register_builtin_types(Interp* interp) {
     interp.types.types[(usz)interp.tid_BigComplex].parent = interp.tid_Number;
     interp.types.types[(usz)interp.tid_Complex128].parent = interp.tid_Number;
     interp.types.types[(usz)interp.tid_Complex64].parent = interp.tid_Number;
+    interp.types.types[(usz)interp.tid_Float].parent = interp.tid_Number;
     interp.types.types[(usz)interp.tid_Double].parent = interp.tid_Number;
     interp.types.types[(usz)interp.tid_Float32].parent = interp.tid_Number;
     interp.types.types[(usz)interp.tid_List].parent = interp.tid_Collection;
@@ -186,6 +192,7 @@ fn bool register_builtin_types(Interp* interp) {
     interp.types.types[(usz)interp.tid_Coroutine].parent = interp.tid_Any;
     interp.types.types[(usz)interp.tid_Tensor].parent = interp.tid_Any;
     interp.types.types[(usz)interp.tid_Kernel].parent = interp.tid_Dictionary;
+    interp.types.types[(usz)interp.tid_Literal].parent = interp.tid_Any;
 
     // Meta/abstract symbols are non-callable, but exposed as first-class
     // descriptor values for canonical printing/introspection surfaces.

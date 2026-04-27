@@ -4,7 +4,7 @@ Source: `memory/CHANGELOG.md`
 
 ## Archive
 
-Older sessions are archived in [archive/CHANGELOG_ARCHIVE_2026-03-08.md](archive/CHANGELOG_ARCHIVE_2026-03-08.md).
+Older sessions are archived in [archive/CHANGELOG_ARCHIVE_2026-03-08.md](../archive/CHANGELOG_ARCHIVE_2026-03-08.md).
 
 ## 2026-03-21
 

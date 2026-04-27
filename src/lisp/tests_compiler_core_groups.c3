@@ -60,6 +60,10 @@ fn Value* compiler_aot_test_unary_invoke(void* data, Value* arg) {
     return arg != null ? arg : aot::make_nil();
 }
 
+fn Value* compiler_aot_test_null_invoke(void* data, Value* arg) {
+    return null;
+}
+
 fn Value* compiler_aot_test_variadic_invoke(void* data, Value* arg_list) {
     return arg_list != null ? arg_list : aot::make_nil();
 }
@@ -87,8 +91,31 @@ struct CompilerAotSumData {
     Value* first;
 }
 
+struct CompilerAotTailBounceData {
+    Value* self;
+    long remaining;
+    long result;
+}
+
 fn bool compiler_error_value_contains(Value* v, char[] needle) {
     return v != null && v.tag == ValueTag.ERROR && str_contains(v.str_chars[:v.str_len], needle);
+}
+
+fn Value* compiler_aot_test_tail_bounce_single(void* data, Value* arg) {
+    CompilerAotTailBounceData* bounce = (CompilerAotTailBounceData*)data;
+    if (bounce == null || bounce.self == null) return aot::make_error("compiler test: missing tail bounce payload");
+    if (bounce.remaining <= 0) return aot::make_int(bounce.result);
+    bounce.remaining--;
+    return aot::invoke_tail(bounce.self, arg != null ? arg : aot::make_nil());
+}
+
+fn Value* compiler_aot_test_tail_bounce_multi(void* data, Value* arg_list) {
+    CompilerAotTailBounceData* bounce = (CompilerAotTailBounceData*)data;
+    if (bounce == null || bounce.self == null) return aot::make_error("compiler test: missing tail bounce payload");
+    if (bounce.remaining <= 0) return aot::make_int(bounce.result);
+    bounce.remaining--;
+    Value* tail_args = arg_list != null ? arg_list : aot::make_nil();
+    return aot::apply_multi_tail(bounce.self, tail_args, 1);
 }
 
 fn Value* compiler_aot_test_sum_second(void* data, Value* arg) {
@@ -109,13 +136,67 @@ fn Value* compiler_aot_test_capture_first(void* data, Value* arg) {
     return aot::make_closure(sum_data, &compiler_aot_test_sum_second);
 }
 
+fn Value* compiler_aot_test_store_fresh_cons_in_cell(void* data, Value* arg) {
+    aot::AotMutableCell* cell = (aot::AotMutableCell*)data;
+    Value* fresh = aot::cons(aot::make_string("fresh"), aot::make_nil());
+    Value* set_error = aot::mutable_cell_set(cell, fresh);
+    if (set_error != null) return set_error;
+    return aot::mutable_cell_get(cell);
+}
+
+fn Value* compiler_aot_test_increment_mutable_cell(void* data, Value* arg) {
+    aot::AotMutableCell* cell = (aot::AotMutableCell*)data;
+    Value* current = aot::mutable_cell_get(cell);
+    if (current == null || current.tag == ValueTag.ERROR) return current;
+    long value = current.tag == ValueTag.INT ? current.int_val : 0;
+    Value* set_error = aot::mutable_cell_set(cell, aot::make_int(value + 1));
+    if (set_error != null) return set_error;
+    return aot::mutable_cell_get(cell);
+}
+
+fn Value* compiler_aot_test_return_arg(void* data, Value* arg) {
+    return arg != null ? arg : aot::make_nil();
+}
+
+fn Value* compiler_aot_test_escaped_mutable_snapshot_body(void* data, Value* arg) {
+    Value* init_error = null;
+    aot::AotMutableCell* cell = aot::make_mutable_cell_checked(aot::make_int(0), &init_error);
+    if (cell == null) return init_error != null ? init_error : aot::make_error("compiler test: failed to allocate mutable cell");
+    Value* increment = aot::make_closure((void*)cell, &compiler_aot_test_increment_mutable_cell);
+    if (increment == null || increment.tag == ValueTag.ERROR) return increment;
+    Value* shift_body = aot::make_closure(null, &compiler_aot_test_return_arg);
+    if (shift_body == null || shift_body.tag == ValueTag.ERROR) return shift_body;
+
+    Value* shifted = aot::compiled_shift(shift_body);
+    if (shifted != null && shifted.tag == ValueTag.ERROR) return shifted;
+    Value* inc_result = aot::invoke(increment, aot::make_nil());
+    if (inc_result != null && inc_result.tag == ValueTag.ERROR) return inc_result;
+    return aot::mutable_cell_get(cell);
+}
+
 fn Value* compiler_aot_test_signal_my_eff(void* data, Value* arg) {
     return aot::compiled_signal(aot::make_symbol("my-eff"), aot::make_int(42));
+}
+
+fn Value* compiler_aot_test_signal_my_eff_ten(void* data, Value* arg) {
+    return aot::compiled_signal(aot::make_symbol("my-eff"), aot::make_int(10));
 }
 
 fn Value* compiler_aot_test_other_eff_handler(void* data, Value* pair) {
     if (pair != null && pair.tag == ValueTag.CONS) return pair.cons_val.cdr;
     return aot::make_nil();
+}
+
+fn Value* compiler_aot_test_abort_five_handler(void* data, Value* pair) {
+    return aot::make_int(5);
+}
+
+fn Value* compiler_aot_test_resolve_plus_one_handler(void* data, Value* pair) {
+    Value* k = aot::car(pair);
+    Value* tail = aot::cdr(pair);
+    Value* v = aot::car(tail);
+    if (v == null || v.tag != ValueTag.INT) return aot::make_error("compiler test: handler payload was not int");
+    return aot::compiled_resolve(k, aot::make_int(v.int_val + 1));
 }
 
 fn Value* compiler_aot_test_constant_zero(void* data, Value* arg) {

@@ -207,6 +207,42 @@ fn void run_memory_lifetime_boundary_graph_audit_tests(Interp* interp, int* pass
         }
     }
 
+    // Invariant: direct env visitor treats a null env as an empty terminal.
+    {
+        main::ScopeRegion* target_scope = main::scope_create(interp.current_scope);
+        if (target_scope == null) {
+            io::printn("[FAIL] lifetime: boundary graph audit null env is terminal");
+            (*fail)++;
+        } else {
+            BoundaryGraphAuditResult audit = boundary_graph_audit_visit_env(
+                null,
+                null,
+                null,
+                null,
+                null,
+                target_scope,
+                null,
+                null,
+                false,
+                BOUNDARY_GRAPH_AUDIT_EDGE_TAG_ENV,
+                0
+            );
+            bool ok = audit.ok &&
+                audit.reason == BOUNDARY_GRAPH_AUDIT_OK &&
+                audit.violating_edge_tag == BOUNDARY_GRAPH_AUDIT_EDGE_TAG_NONE &&
+                audit.target_scope_gen == (usz)target_scope.generation &&
+                audit.target_escape_gen == (usz)target_scope.escape_generation;
+            main::scope_release(target_scope);
+            if (ok) {
+                emit_pass_literal("[PASS] lifetime: boundary graph audit null env is terminal");
+                (*pass)++;
+            } else {
+                io::printn("[FAIL] lifetime: boundary graph audit null env is terminal");
+                (*fail)++;
+            }
+        }
+    }
+
     // Invariant: graph audit treats global-env context as a traversal terminal.
     {
         main::ScopeRegion* saved_scope = interp.current_scope;

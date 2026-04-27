@@ -87,7 +87,7 @@ fn void run_deduce_admin_surface_fallback_tests(Interp* interp, int* pass, int* 
             "       (and (= (ref analyze 'keyed-relation-count) 0) "
             "            (and (= (ref analyze 'unique-relation-count) 1) "
             "                 (and (= (ref analyze 'integrity-constraint-count) 1) "
-            "                      (and (nil? (ref schema 'unique-column)) "
+        "                      (and (null? (ref schema 'unique-column)) "
             "                           (and (= (car unique-columns) 'email) "
             "                                (and (= (car (cdr unique-columns)) 'dept) "
             "                                     (and (= (ref first 'kind) 'unique) "

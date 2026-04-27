@@ -71,6 +71,11 @@ fn ReplLineAction repl_classify_line(char* line, usz len, usz* buf_len) {
 }
 
 fn void repl_eval_buffer(void* rx, char[8192]* buf, usz* buf_len, Interp* interp, char[] ansi_red, char[] ansi_green, char[] ansi_reset) {
+    if (*buf_len >= (*buf).len) {
+        if (rx != null) io::eprintn("Error: REPL input line too long");
+        *buf_len = 0;
+        return;
+    }
     char[] accumulated = (*buf)[:*buf_len];
     int depth = count_paren_depth(accumulated);
     if (depth > 0) return;

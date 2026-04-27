@@ -4,6 +4,6 @@
 
 ## Parts
 
-- Part 01: [docs/plans/fiber-continuation-unification_parts/fiber-continuation-unification_part_01.md](fiber-continuation-unification_parts/fiber-continuation-unification_part_01.md) (624 lines)
-- Part 02: [docs/plans/fiber-continuation-unification_parts/fiber-continuation-unification_part_02.md](fiber-continuation-unification_parts/fiber-continuation-unification_part_02.md) (344 lines)
+- Part 01: [docs/plans/fiber-continuation-unification_parts/fiber-continuation-unification_part_01.md](fiber-continuation-unification_parts/fiber-continuation-unification_part_01.md) (623 lines)
+- Part 02: [docs/plans/fiber-continuation-unification_parts/fiber-continuation-unification_part_02.md](fiber-continuation-unification_parts/fiber-continuation-unification_part_02.md) (343 lines)
 - Part 03: [docs/plans/fiber-continuation-unification_parts/fiber-continuation-unification_part_03.md](fiber-continuation-unification_parts/fiber-continuation-unification_part_03.md) (316 lines)

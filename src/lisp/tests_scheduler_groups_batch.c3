@@ -46,7 +46,7 @@ fn void scheduler_expect_batch_error_releases_shared(
               shared_before == shared_after;
 
     if (ok) {
-        io::printfn("[PASS] %s", (ZString)label);
+        emit_pass(label);
         (*pass)++;
     } else {
         io::printfn(
@@ -133,6 +133,14 @@ fn void run_scheduler_offload_batch_primitive_tests(Interp* interp, int* pass, i
         (*fail)++;
     }
 
+    test_truthy(interp, "offload batch stdlib facade",
+        "(block (define v (offload-batch '((sleep-ms 1) (sleep-ms 1)))) "
+        "       (and (pair? v) "
+        "            (pair? (cdr v)) "
+        "            (null? (cdr (cdr v))) "
+        "            (null? (car v)) "
+        "            (null? (car (cdr v)))))",
+        pass, fail);
     test_error_contains(interp, "offload batch sleep-ms rejects trailing arg",
         "(__raw-offload-batch '((sleep-ms 1 'ignored)))",
         "offload sleep-ms: expected exactly 1 argument", pass, fail);
@@ -184,6 +192,14 @@ fn void run_scheduler_task_spawn_batch_primitive_tests(Interp* interp, int* pass
         (*fail)++;
     }
 
+    test_truthy(interp, "task-spawn batch stdlib facade",
+        "(block (define hs (task-spawn-batch '((sleep-ms 1) (sleep-ms 1)))) "
+        "       (and (pair? hs) "
+        "            (pair? (cdr hs)) "
+        "            (null? (cdr (cdr hs))) "
+        "            (null? (task-join (car hs))) "
+        "            (null? (task-join (car (cdr hs))))))",
+        pass, fail);
     test_error_contains(interp, "task-spawn batch sleep-ms rejects trailing arg",
         "(__raw-task-spawn-batch '((sleep-ms 1 'ignored)))",
         "offload sleep-ms: expected exactly 1 argument", pass, fail);
@@ -267,6 +283,14 @@ fn void run_scheduler_thread_spawn_batch_primitive_tests(Interp* interp, int* pa
         (*fail)++;
     }
 
+    test_truthy(interp, "thread-spawn batch stdlib facade",
+        "(block (define v (thread-spawn-batch '((sleep-ms 1) (sleep-ms 1)))) "
+        "       (and (pair? v) "
+        "            (pair? (cdr v)) "
+        "            (null? (cdr (cdr v))) "
+        "            (null? (car v)) "
+        "            (null? (car (cdr v)))))",
+        pass, fail);
     test_error_contains(interp, "thread-spawn batch sleep-ms rejects trailing arg",
         "(__raw-thread-spawn-batch '((sleep-ms 1 'ignored)))",
         "offload sleep-ms: expected exactly 1 argument", pass, fail);

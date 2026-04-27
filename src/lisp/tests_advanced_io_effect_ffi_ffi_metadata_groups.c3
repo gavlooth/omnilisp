@@ -53,6 +53,17 @@ fn bool ffi_metadata_handle_contract(Value* handle_v, Interp* interp, char[] exp
 }
 
 fn void run_advanced_ffi_system_foreign_handle_metadata_dict_tests(Interp* interp, int* pass, int* fail) {
+    {
+        bool ok = !ffi_symbol_name_equals(interp.sym_ForeignHandle, null, "ForeignHandle");
+        if (ok) {
+            emit_pass_literal("[PASS] ffi metadata symbol-name helper rejects null interpreter");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] ffi metadata symbol-name helper rejects null interpreter");
+            (*fail)++;
+        }
+    }
+
     setup(interp, "(define [ffi lib] libc \"libc.so.6\")");
     setup(interp, "(define [ffi λ libc] (fopen (^String path) (^String mode)) ^{'type ForeignHandle 'name File 'ownership owned 'finalizer fclose})");
     test_tag(interp, "ffi dict fopen return is foreign handle", "(fopen \"/etc/hosts\" \"r\")", FFI_HANDLE, pass, fail);

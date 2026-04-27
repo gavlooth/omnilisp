@@ -415,6 +415,53 @@ fn void run_memory_lifetime_env_lane_barrier_tests(Interp* interp, int* pass, in
         }
     }
 
+    // Invariant: malformed full hash tables fail closed instead of looping.
+    {
+        Env env = {};
+        Binding[2] bindings = {};
+        EnvHashEntry[2] hash_entries = {};
+
+        SymbolId present_a = interp.symbols.intern("__env_full_hash_present_a");
+        SymbolId present_b = interp.symbols.intern("__env_full_hash_present_b");
+        SymbolId missing = interp.symbols.intern("__env_full_hash_missing");
+        bindings[0].name = present_a;
+        bindings[0].value = make_int(interp, 11);
+        bindings[1].name = present_b;
+        bindings[1].value = make_int(interp, 22);
+        hash_entries[0].key = present_a;
+        hash_entries[0].index = 0;
+        hash_entries[1].key = present_b;
+        hash_entries[1].index = 1;
+        env.bindings = &bindings[0];
+        env.binding_count = 2;
+        env.capacity = 2;
+        env.hash_table = &hash_entries[0];
+        env.hash_capacity = 2;
+
+        usz missing_idx = env.hash_lookup(missing);
+        env.hash_insert(missing, 1);
+        Value* missing_value = env.lookup_local(missing);
+        Value* present_value = env.lookup_local(present_a);
+        bool ok = missing_idx == ~(usz)0 &&
+                  missing_value == null &&
+                  present_value != null &&
+                  present_value.tag == INT &&
+                  present_value.int_val == 11;
+
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: env full hash table probes fail closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: env full hash table probes fail closed (missing_idx=%d missing=%s present=%s)",
+                (int)missing_idx,
+                missing_value == null ? "null" : "present",
+                present_value == null ? "null" : "present"
+            );
+            (*fail)++;
+        }
+    }
+
     // Invariant: runtime bootstrap stops before stdlib loading when primitive
     // registration hits a recoverable binding-growth failure.
     {
@@ -450,6 +497,51 @@ fn void run_memory_lifetime_env_lane_barrier_tests(Interp* interp, int* pass, in
                 "[FAIL] lifetime: bootstrap runtime stops before stdlib on registration failure (setup_ok=%s boot_ok=%s plus=%s map=%s)",
                 setup_ok ? "yes" : "no",
                 boot_ok ? "yes" : "no",
+                plus_v != null ? "present" : "null",
+                map_v != null ? "present" : "null"
+            );
+            (*fail)++;
+        }
+    }
+
+    // Invariant: stdlib loader propagates per-form evaluation failures instead
+    // of allowing a partially loaded standard library to look bootstrapped.
+    {
+        Interp* tmp = (Interp*)mem::malloc(Interp.sizeof);
+        bool setup_ok = tmp != null;
+        if (setup_ok) {
+            tmp.init();
+        }
+
+        bool prim_ok = setup_ok && register_primitives(tmp);
+        g_env_force_bindings_alloc_oom = true;
+        bool stdlib_ok = prim_ok && register_stdlib(tmp);
+        g_env_force_bindings_alloc_oom = false;
+
+        SymbolId plus_sid = prim_ok ? tmp.symbols.intern("+") : (SymbolId)0;
+        SymbolId map_sid = prim_ok ? tmp.symbols.intern("map") : (SymbolId)0;
+        Value* plus_v = prim_ok ? tmp.global_env.lookup(plus_sid) : null;
+        Value* map_v = prim_ok ? tmp.global_env.lookup(map_sid) : null;
+        bool ok = setup_ok &&
+                  prim_ok &&
+                  !stdlib_ok &&
+                  plus_v != null &&
+                  map_v == null;
+
+        if (tmp != null) {
+            tmp.destroy();
+            mem::free(tmp);
+        }
+
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: stdlib loader propagates run failure");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: stdlib loader propagates run failure (setup_ok=%s prim_ok=%s stdlib_ok=%s plus=%s map=%s)",
+                setup_ok ? "yes" : "no",
+                prim_ok ? "yes" : "no",
+                stdlib_ok ? "yes" : "no",
                 plus_v != null ? "present" : "null",
                 map_v != null ? "present" : "null"
             );

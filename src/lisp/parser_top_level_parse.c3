@@ -44,6 +44,7 @@ fn List{Expr*} parse_program(char[] source, Interp* interp) {
 
     List{Expr*} exprs;
     while (!lex.at_end() && !p.has_error) {
+        if (!p.ensure_program_expr_limit(exprs.len())) break;
         Expr* e = p.parse_expr();
         if (e != null && !p.has_error) {
             exprs.push(e);

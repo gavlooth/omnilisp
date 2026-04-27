@@ -87,7 +87,7 @@ Example with `lazy.nvim`:
 
 ```lua
 {
-  dir = "/home/heefoo/Documents/code/Omni/tooling/omni-nvim",
+  dir = "/path/to/Omni/tooling/omni-nvim",
   init = function()
     vim.filetype.add({
       extension = {

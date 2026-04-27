@@ -216,19 +216,29 @@ fn bool needs_wrapper_copy(Value* v, Interp* interp) @inline {
 }
 
 fn bool primitive_has_opaque_user_data(Value* v) @inline {
-    return v != null &&
-           v.tag == PRIMITIVE &&
-           v.prim_val != null &&
-           v.prim_val.user_data != null;
+    if (v == null || v.tag != PRIMITIVE || v.prim_val == null) return false;
+    if (v.prim_val.user_data == null) return false;
+    return v.prim_val.user_data_copy == null || v.prim_val.user_data_finalizer == null;
 }
 
 fn bool primitive_clone_plain_header(Primitive* dst, Primitive* src) @inline {
-    if (dst == null || src == null || src.user_data != null) return false;
+    if (dst == null || src == null) return false;
+    *dst = {};
+    if (src.user_data != null && (src.user_data_copy == null || src.user_data_finalizer == null)) return false;
     *dst = *src;
+    dst.user_data = null;
+    if (src.user_data != null) {
+        dst.user_data = src.user_data_copy(src.user_data);
+        if (dst.user_data == null) {
+            dst.user_data_copy = null;
+            dst.user_data_finalizer = null;
+            return false;
+        }
+    }
     return true;
 }
 
-fn Value* copy_instance_to_parent(Value* v, Interp* interp) {
+fn Value* copy_instance_to_parent(Value* v, Interp* interp, BoundaryCopyFault* fault_out = null) {
     if (!needs_wrapper_copy(v, interp)) return v;
     Value* result = g_boundary_force_copy_instance_wrapper_alloc_fail
         ? null
@@ -237,11 +247,16 @@ fn Value* copy_instance_to_parent(Value* v, Interp* interp) {
     result.tag = INSTANCE;
     result.instance_val = v.instance_val;
     instance_retain(v.instance_val);
-    main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
+    if (!main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value)) {
+        instance_release(result.instance_val);
+        result.instance_val = null;
+        if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_DTOR_REGISTRATION;
+        return null;
+    }
     return result;
 }
 
-fn Value* copy_ffi_handle_to_parent(Value* v, Interp* interp) {
+fn Value* copy_ffi_handle_to_parent(Value* v, Interp* interp, BoundaryCopyFault* fault_out = null) {
     if (!ffi_bridge_boundary_value_can_share_across_boundary(v)) return null;
     if (!needs_wrapper_copy(v, interp)) return v;
     Value* result = g_boundary_force_copy_ffi_handle_wrapper_alloc_fail
@@ -251,7 +266,12 @@ fn Value* copy_ffi_handle_to_parent(Value* v, Interp* interp) {
     result.tag = FFI_HANDLE;
     result.ffi_val = v.ffi_val;
     ffi_handle_retain(result.ffi_val);
-    main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
+    if (!main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value)) {
+        ffi_handle_release(result.ffi_val);
+        result.ffi_val = null;
+        if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_DTOR_REGISTRATION;
+        return null;
+    }
     return result;
 }
 

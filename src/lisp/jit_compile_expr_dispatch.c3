@@ -107,6 +107,8 @@ fn JitExprFamily jit_expr_family_for_tag(ExprTag tag) @inline {
         case E_FFI_LIB:
         case E_FFI_FN:
             return JitExprFamily.JIT_EXPR_FAMILY_TYPES_FFI;
+        default:
+            return JitExprFamily.JIT_EXPR_FAMILY_INVALID;
     }
 }
 

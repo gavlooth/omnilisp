@@ -60,9 +60,19 @@ fn char* scope_chunk_data(ScopeChunk* chunk) @inline {
  * Register a destructor to run when this scope is destroyed.
  * The ScopeDtor struct itself is bump-allocated in the scope's chunks.
  */
-<* @require scope != null *>
+fn bool scope_dtor_already_registered(ScopeDtor* head, void* ptr, ScopeDestructorFn func) @inline {
+    ScopeDtor* d = head;
+    while (d != null) {
+        if (d.ptr == ptr && d.func == func) return true;
+        d = d.next;
+    }
+    return false;
+}
+
 fn bool scope_register_dtor(ScopeRegion* scope, void* ptr, ScopeDestructorFn func) {
+    if (scope == null || func == null) return false;
     scope_guard_owner(scope, "scope_register_dtor");
+    if (scope_dtor_already_registered(scope.dtors, ptr, func)) return true;
     ScopeDtor* d = g_scope_force_dtor_alloc_oom
         ? null
         : (ScopeDtor*)scope.alloc(ScopeDtor.sizeof);
@@ -78,10 +88,11 @@ fn bool scope_register_dtor(ScopeRegion* scope, void* ptr, ScopeDestructorFn fun
  * Register a destructor to run when this scope's ESCAPE lane is destroyed.
  * The ScopeDtor struct itself is ESCAPE-lane allocated.
  */
-<* @require scope != null *>
 fn bool scope_register_dtor_escape(ScopeRegion* scope, void* ptr, ScopeDestructorFn func) {
+    if (scope == null || func == null) return false;
     scope_guard_owner(scope, "scope_register_dtor_escape");
     scope_assert_escape_tail_consistency(scope);
+    if (scope_dtor_already_registered(scope.escape_dtors, ptr, func)) return true;
     ScopeDtor* d = g_scope_force_escape_dtor_alloc_oom
         ? null
         : (ScopeDtor*)scope.alloc_escape_attributed(ScopeDtor.sizeof, SCOPE_ESCAPE_ALLOC_DTOR);

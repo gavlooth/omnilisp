@@ -24,8 +24,11 @@ When documents disagree, use this precedence:
 - `memory-runtime-cycle.md` (end-to-end architecture and lifecycle diagrams)
 - `effects-error-model.md`
 - `types-dispatch.md`
+- `ffi-foreign-runtime.md`
 - `compiler-parser-refactor.md`
 - `deduce-runtime.md`
+- `tensor-scientific.md`
+- `validation-status.md`
 
 ## Status Legend
 

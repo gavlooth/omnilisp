@@ -4,7 +4,7 @@ import std::core::mem;
 import main;
 
 fn bool repl_server_worker_busy_locked(ReplServerWorker* worker) @inline {
-    return worker.command_queue_count >= REPL_SERVER_WORKER_QUEUE_CAPACITY;
+    return worker.busy || worker.command_queue_count >= REPL_SERVER_WORKER_QUEUE_CAPACITY;
 }
 
 fn bool repl_server_worker_busy(ReplServerWorker* worker) {
@@ -130,6 +130,9 @@ fn bool repl_server_worker_accepts_stdin(
 
 fn void repl_server_worker_clear_queued_commands(ReplServerWorker* worker) {
     if (worker == null) return;
+    bool locked = worker.mu_ready;
+    if (locked) worker.mu.lock();
+    defer if (locked) worker.mu.unlock();
     for (usz i = 0; i < worker.command_queue_count; i++) {
         usz queue_idx = (worker.command_queue_head + i) %
             REPL_SERVER_WORKER_QUEUE_CAPACITY;

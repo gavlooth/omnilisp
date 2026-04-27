@@ -13,5 +13,6 @@ fn usz Compiler.compile_defabstract_direct(Compiler* self, Expr* expr) {
     self.emit(", ");
     self.emit_string_literal(expr.defabstract.has_parent ? self.interp.symbols.get_name(expr.defabstract.parent) : "");
     self.emit(");\n");
+    self.emit_helper_published_binding_sync(expr.defabstract.name);
     return id;
 }

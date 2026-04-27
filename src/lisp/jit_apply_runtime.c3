@@ -39,7 +39,7 @@ fn Value* jit_eval_call_cont_safe_common(Interp* interp, Expr* expr, Env* env, b
     }
 
     Value* func = jit_eval(expr.call.func, env, interp);
-    if (func != null && func.tag == ERROR) return func;
+    if (jit_sequence_should_stop(interp, func)) return func;
     func = jit_stabilize_staged_value(func, interp);
     if (func != null && func.tag == ERROR) return func;
 
@@ -54,7 +54,7 @@ fn Value* jit_eval_call_cont_safe_common(Interp* interp, Expr* expr, Env* env, b
 
     if (argc == 1) {
         Value* arg = jit_eval(expr.call.args[0], env, interp);
-        if (arg != null && arg.tag == ERROR) return arg;
+        if (jit_sequence_should_stop(interp, arg)) return arg;
         if (is_tail) {
             return jit_apply_value_tail(func, arg, interp);
         }
@@ -74,7 +74,7 @@ fn Value* jit_eval_call_cont_safe_common(Interp* interp, Expr* expr, Env* env, b
     if (argv == null) return jit_raise(interp, "runtime/out-of-memory", "jit: out of memory while staging continuation-sensitive call args");
     for (usz i = 0; i < argc; i++) {
         Value* arg = jit_eval(expr.call.args[i], env, interp);
-        if (arg != null && arg.tag == ERROR) return arg;
+        if (jit_sequence_should_stop(interp, arg)) return arg;
         arg = jit_stabilize_staged_value(arg, interp);
         if (arg != null && arg.tag == ERROR) return arg;
         argv[i] = arg;
@@ -171,7 +171,7 @@ fn Value* jit_apply_value(Value* func, Value* arg, Interp* interp) {
     if (frame_error != null) return frame_error;
     Value* result = jit_apply_value_impl(func, arg, interp);
     interp_apply_frame_leave(interp);
-    return result;
+    return jit_apply_normalize_result(result, interp);
 }
 
 // Tail-call variant: sets TCO bounce fields for CLOSURE instead of recursing.
@@ -195,6 +195,9 @@ fn Value* jit_apply_value_tail(Value* func, Value* arg, Interp* interp) {
     if (func.tag == ERROR) return func;
 
     if (func.tag == CLOSURE) {
+        if (!jit_value_has_closure_payload_and_body(func)) {
+            return jit_invalid_closure_state_error(interp);
+        }
         Env* new_env;
         if (!func.closure_val.has_param && !func.closure_val.has_rest) {
             new_env = func.closure_val.env;

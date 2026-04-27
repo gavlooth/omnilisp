@@ -102,7 +102,7 @@ fn void print_value(Value* v, SymbolTable* syms) {
             char[96] tpb;
             char[] ts = time_point_to_string(v.time_point_val, tpb[..]);
             io::print("#<time-point ");
-            io::print(ts);
+            io::print((String)ts);
             io::print(">");
         }
     }

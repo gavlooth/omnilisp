@@ -38,7 +38,7 @@ struct Cons {
  * Supports variadic lambdas: (lambda (x y .. rest) body)
  */
 struct Closure {
-    uint      scope_gen;      // Scope generation stamp for O(1) membership check
+    ulong     scope_gen;      // Scope generation stamp for O(1) membership check
     main::ScopeRegion* env_scope; // Standalone scope holding env copy (null if root-scope closure)
     SymbolId  param;          // Parameter name (first/only param, or unused if param_count==0)
     SymbolId* params;         // All fixed params (including first), bump-allocated
@@ -63,6 +63,10 @@ $assert(Closure.sizeof == 88);
  * The ctx field points to a suspended StackCtx. Multi-shot continuations
  * clone the context on each invocation.
  */
+alias ContinuationAotSnapshotCapture = fn bool(Continuation* k, Value** error_out);
+alias ContinuationAotSnapshotReplay = fn void(Continuation* k);
+alias ContinuationAotSnapshotRelease = fn void(Continuation* k);
+
 struct Continuation {
     StackCtx* ctx;            // Suspended stack context backing this continuation
     Interp* owner_interp;     // Owning interpreter for boundary ownership checks
@@ -70,12 +74,18 @@ struct Continuation {
     void* handle_state;   // HandleEffectState* (for resolve to reinstall handler)
     bool  handle_retained; // True once boundary retention increments handle_state refcount
     Continuation* next_owned; // Intrusive list for interpreter teardown invalidation
+    void* aot_mutable_snapshot; // AotMutableCellSnapshot* when captured under AOT reset
+    usz   aot_mutable_snapshot_count;
+    ContinuationAotSnapshotReplay aot_mutable_snapshot_replay;
+    ContinuationAotSnapshotRelease aot_mutable_snapshot_release;
 }
 
 /**
  * Primitive — Built-in function.
  */
 alias PrimitiveFn = fn Value*(Value*[] args, Env* env, Interp* interp);
+alias PrimitiveUserDataCopy = fn void*(void* user_data);
+alias PrimitiveUserDataFinalizer = fn void(void* user_data);
 
 struct Primitive {
     char[64] name;
@@ -83,11 +93,13 @@ struct Primitive {
     int arity;           // -1 for variadic
     int tag;             // Extra data (e.g., TypeId for constructors)
     void* user_data;     // Optional data pointer for closure-like primitives
+    PrimitiveUserDataCopy user_data_copy;
+    PrimitiveUserDataFinalizer user_data_finalizer;
 }
 
 // ABI/interop guard: primitive payloads are wrapped by runtime helper code.
 // Update helper bindings and this assertion together when the layout changes.
-$assert(Primitive.sizeof == 88);
+$assert(Primitive.sizeof == 104);
 
 /**
  * PartialPrim — Partially applied primitive (curried).

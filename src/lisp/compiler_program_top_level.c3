@@ -52,25 +52,6 @@ fn void Compiler.emit_top_level_exprs(Compiler* self, List{Expr*}* exprs) {
                 continue;
             }
         }
-        if ((*exprs)[i].tag == E_FFI_LIB) {
-            usz init_r = self.compile_to_temp((*exprs)[i]);
-            self.emit_indent();
-            self.emit_symbol_name((*exprs)[i].ffi_lib.name);
-            self.emit(" = ");
-            self.emit_temp_ref(init_r);
-            self.emit(";\n");
-            continue;
-        }
-        if ((*exprs)[i].tag == E_FFI_FN && (*exprs)[i].ffi_fn != null) {
-            usz init_r = self.compile_to_temp((*exprs)[i]);
-            self.emit_indent();
-            self.emit_symbol_name((*exprs)[i].ffi_fn.fn_name);
-            self.emit(" = ");
-            self.emit_temp_ref(init_r);
-            self.emit(";\n");
-            continue;
-        }
-
         if ((*exprs)[i].tag == E_IMPORT) {
             ExprImport imp = (*exprs)[i].import_expr;
             CompiledModule* inline_mod = imp.has_path ? null : self.find_inline_compiled_module(imp.name);
@@ -157,7 +138,6 @@ fn void Compiler.emit_top_level_exprs(Compiler* self, List{Expr*}* exprs) {
             self.emit("aot::print_value(");
             self.emit_temp_ref(r);
             self.emit(");\n");
-            self.emit_type_form_global_sync((*exprs)[i]);
         } else if ((*exprs)[i].tag == E_DEFINE) {
             usz init_r = self.compile_define_rhs_with_typed_bridge((*exprs)[i]);
             self.emit_indent();
@@ -167,7 +147,6 @@ fn void Compiler.emit_top_level_exprs(Compiler* self, List{Expr*}* exprs) {
             self.emit(";\n");
         } else {
             self.compile_to_temp((*exprs)[i]);
-            self.emit_type_form_global_sync((*exprs)[i]);
         }
     }
 }

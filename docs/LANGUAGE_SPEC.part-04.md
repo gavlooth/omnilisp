@@ -435,8 +435,8 @@ omni --repl --load demo.omni
 ### 14.2 Fibonacci with Dispatch
 
 ```lisp
-(define (fib (^(Value 0) n)) 0)
-(define (fib (^(Value 1) n)) 1)
+(define (fib (^(Literal 0) n)) 0)
+(define (fib (^(Literal 1) n)) 1)
 (define (fib (^Integer n)) (+ (fib (- n 1)) (fib (- n 2))))
 (fib 10)  ; => 55
 ```

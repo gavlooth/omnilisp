@@ -15,6 +15,43 @@ fi
 : "${OMNI_DEDUCE_PERF_SUMMARY:=1}"
 : "${OMNI_DEDUCE_PERF_SKIP_TLS:=1}"
 
+omni_deduce_perf_append_validation_mount() {
+  local mount_arg="$1"
+  if [[ "$validation_extra" != *"$mount_arg"* ]]; then
+    validation_extra="${validation_extra} --mount ${mount_arg}"
+  fi
+  if [[ "${OMNI_HARD_MEM_CAP_METHOD}" == "docker" &&
+        "${OMNI_DOCKER_EXTRA_ARGS:-}" != *"$mount_arg"* &&
+        "$docker_validation_extra" != *"$mount_arg"* ]]; then
+    docker_validation_extra="${docker_validation_extra} --mount ${mount_arg}"
+  fi
+}
+
+if [[ "${1:-}" == "--self-test-validation-mount-bridge" ]]; then
+  validation_extra=""
+  docker_validation_extra=""
+  OMNI_HARD_MEM_CAP_METHOD=docker
+  OMNI_DOCKER_EXTRA_ARGS=""
+
+  test_mount="type=bind,src=/tmp/omni-deduce-perf-self-test,dst=/tmp/omni-deduce-perf-self-test,readonly"
+  omni_deduce_perf_append_validation_mount "$test_mount"
+  if [[ "$validation_extra" != *"$test_mount"* || "$docker_validation_extra" != *"$test_mount"* ]]; then
+    echo "FAIL: validation mount bridge did not populate validation and docker args" >&2
+    exit 1
+  fi
+
+  existing_mount="type=bind,src=/tmp/omni-deduce-perf-existing,dst=/tmp/omni-deduce-perf-existing,readonly"
+  OMNI_DOCKER_EXTRA_ARGS="--mount ${existing_mount}"
+  omni_deduce_perf_append_validation_mount "$existing_mount"
+  if [[ "$docker_validation_extra" == *"$existing_mount"* ]]; then
+    echo "FAIL: validation mount bridge duplicated existing docker mount" >&2
+    exit 1
+  fi
+
+  echo "OK: deduce perf validation mount bridge self-test passed."
+  exit 0
+fi
+
 if [[ "${OMNI_IN_VALIDATION_CONTAINER:-0}" != "1" ]]; then
   if [[ "$OMNI_HARD_MEM_CAP_METHOD" != "docker" ]]; then
     echo "run_deduce_perf_envelope.sh requires Docker-bound execution outside validation containers." >&2
@@ -23,31 +60,40 @@ if [[ "${OMNI_IN_VALIDATION_CONTAINER:-0}" != "1" ]]; then
   fi
 
   validation_extra="${OMNI_VALIDATION_EXTRA_ARGS:-}"
+  docker_validation_extra=""
   if [[ -f /usr/include/yyjson.h && "$validation_extra" != *"/usr/include/yyjson.h"* ]]; then
-    validation_extra="${validation_extra} --mount type=bind,src=/usr/include/yyjson.h,dst=/usr/include/yyjson.h,readonly"
+    omni_deduce_perf_append_validation_mount "type=bind,src=/usr/include/yyjson.h,dst=/usr/include/yyjson.h,readonly"
   fi
   for header in /usr/include/bearssl*.h; do
     if [[ -f "$header" && "$validation_extra" != *"$header"* ]]; then
-      validation_extra="${validation_extra} --mount type=bind,src=${header},dst=${header},readonly"
+      omni_deduce_perf_append_validation_mount "type=bind,src=${header},dst=${header},readonly"
     fi
   done
   if [[ -f /usr/include/uv.h && "$validation_extra" != *"/usr/include/uv.h"* ]]; then
-    validation_extra="${validation_extra} --mount type=bind,src=/usr/include/uv.h,dst=/usr/include/uv.h,readonly"
+    omni_deduce_perf_append_validation_mount "type=bind,src=/usr/include/uv.h,dst=/usr/include/uv.h,readonly"
   fi
   if [[ -d /usr/include/uv && "$validation_extra" != *"/usr/include/uv,dst=/usr/include/uv"* ]]; then
-    validation_extra="${validation_extra} --mount type=bind,src=/usr/include/uv,dst=/usr/include/uv,readonly"
+    omni_deduce_perf_append_validation_mount "type=bind,src=/usr/include/uv,dst=/usr/include/uv,readonly"
   fi
   if [[ -f /usr/include/ffi.h && "$validation_extra" != *"/usr/include/ffi.h"* ]]; then
-    validation_extra="${validation_extra} --mount type=bind,src=/usr/include/ffi.h,dst=/usr/include/ffi.h,readonly"
+    omni_deduce_perf_append_validation_mount "type=bind,src=/usr/include/ffi.h,dst=/usr/include/ffi.h,readonly"
   fi
   if [[ -e /usr/lib/libreplxx.so.0 && "$validation_extra" != *"/usr/lib/libreplxx.so.0"* ]]; then
-    validation_extra="${validation_extra} --mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly"
+    omni_deduce_perf_append_validation_mount "type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly"
   fi
   if [[ -n "$validation_extra" ]]; then
     # Trim leading whitespace from concatenation flow above.
     # shellcheck disable=SC2001
     validation_extra="$(echo "$validation_extra" | sed 's/^ *//')"
     export OMNI_VALIDATION_EXTRA_ARGS="$validation_extra"
+    if [[ -n "$docker_validation_extra" ]]; then
+      docker_validation_extra="$(echo "$docker_validation_extra" | sed 's/^ *//; s/ *$//')"
+      if [[ -n "$docker_validation_extra" && -n "${OMNI_DOCKER_EXTRA_ARGS:-}" ]]; then
+        export OMNI_DOCKER_EXTRA_ARGS="${OMNI_DOCKER_EXTRA_ARGS} ${docker_validation_extra}"
+      elif [[ -n "$docker_validation_extra" ]]; then
+        export OMNI_DOCKER_EXTRA_ARGS="$docker_validation_extra"
+      fi
+    fi
   fi
 
   exec scripts/run_validation_container.sh scripts/run_deduce_perf_envelope.sh

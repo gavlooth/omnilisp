@@ -6,7 +6,8 @@ fn Expr* Parser.parse_qq_string_literal(Parser* self) {
     Expr* e = self.alloc_expr_here();
     if (e == null) return null;
     e.tag = E_LIT;
-    e.lit.value = self.interp.alloc_value_root();
+    e.lit.value = self.alloc_root_value_or_error("out of memory while parsing string literal");
+    if (e.lit.value == null) return null;
     e.lit.value.tag = STRING;
     StringVal* builder = strval_new_from_slice(self.lexer.current.text[:self.lexer.current.text_len]);
     if (builder == null) {
@@ -26,7 +27,8 @@ fn Expr* Parser.parse_qq_list_form(Parser* self) {
         if (e == null) return null;
         self.lexer.advance();
         e.tag = E_LIT;
-        e.lit.value = self.interp.alloc_value_root();
+        e.lit.value = self.alloc_root_value_or_error("out of memory while parsing quasiquote literal");
+        if (e.lit.value == null) return null;
         e.lit.value.tag = NIL;
         return e;
     }
@@ -98,7 +100,8 @@ fn Expr* Parser.parse_qq_int_literal(Parser* self) {
     long val = self.lexer.current.int_value;
     self.lexer.advance();
     e.tag = E_LIT;
-    e.lit.value = self.interp.alloc_value_root();
+    e.lit.value = self.alloc_root_value_or_error("out of memory while parsing quasiquote literal");
+    if (e.lit.value == null) return null;
     e.lit.value.tag = INT;
     e.lit.value.int_val = val;
     return e;

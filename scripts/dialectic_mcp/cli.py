@@ -4,7 +4,9 @@ import argparse
 import json
 import os
 
+from .config import AppConfig
 from .engine import DialecticEngine
+from .mcp_service import build_mcp
 
 
 def make_parser() -> argparse.ArgumentParser:
@@ -59,3 +61,25 @@ def run_cli(engine: DialecticEngine, args: argparse.Namespace) -> int:
         return 0
 
     raise ValueError(f"unknown command: {args.command}")
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = make_parser()
+    args = parser.parse_args(argv)
+
+    if args.mode == "cli" and not args.command:
+        parser.print_help()
+        return 2
+
+    cfg = AppConfig.load(args.config or None)
+    engine = DialecticEngine(cfg)
+
+    if args.mode == "cli":
+        return run_cli(engine, args)
+
+    build_mcp(engine).run()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

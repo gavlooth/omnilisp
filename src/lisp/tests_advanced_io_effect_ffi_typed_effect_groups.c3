@@ -281,10 +281,10 @@ fn void run_advanced_io_typed_effect_tests(Interp* interp, int* pass, int* fail)
         "(handle (signal test/count 42) (test/count x x))", 42, pass, fail);
 
     // Perform with wrong type errors
-    test_error(interp, "effect wrong type int",
-        "(handle (signal test/greet 42) (test/greet x x))", pass, fail);
-    test_error(interp, "effect wrong type str",
-        "(handle (signal test/count \"bad\") (test/count x x))", pass, fail);
+    test_error_contains(interp, "effect wrong type int",
+        "(handle (signal test/greet 42) (test/greet x x))", "argument type mismatch", pass, fail);
+    test_error_contains(interp, "effect wrong type str",
+        "(handle (signal test/count \"bad\") (test/count x x))", "argument type mismatch", pass, fail);
 
     // Undeclared effects are canonical (no declaration => no type check)
     test_eq_interp(interp, "effect undeclared canonical",
@@ -303,8 +303,8 @@ fn void run_advanced_io_typed_effect_tests(Interp* interp, int* pass, int* fail)
         pass, fail);
 
     // io/read-file with wrong type should error (^String)
-    test_error(interp, "io/read-file wrong type",
-        "(handle (signal io/read-file 42) (io/read-file x x))", pass, fail);
+    test_error_contains(interp, "io/read-file wrong type",
+        "(handle (signal io/read-file 42) (io/read-file x x))", "argument type mismatch", pass, fail);
 
     // io/read-file with correct type works
     test_str_interp(interp, "io/read-file correct type",
@@ -506,7 +506,7 @@ fn void run_advanced_io_typed_effect_tests(Interp* interp, int* pass, int* fail)
         "  (tcp-close client) "
         "  (tcp-close server) "
         "  (tcp-close listener) "
-        "  (fs-unlink p) "
+        "  (handle (fs-unlink p) (raise msg nil)) "
         "  got))) "
         "(await f))",
         pass, fail);
@@ -607,7 +607,7 @@ fn void run_advanced_io_typed_effect_tests(Interp* interp, int* pass, int* fail)
         "(define hits {'n 0}) "
         "(define h (signal-handle 10 (lambda (sig) (set! hits 'n (+ (ref hits 'n) 1))))) "
         "(shell \"kill -USR1 $PPID\") "
-        "(async-sleep 20) "
+        "(await (spawn (lambda () (async-sleep 20)))) "
         "(signal-unhandle h) "
         "(= (ref hits 'n) 1))",
         pass, fail);
@@ -636,6 +636,6 @@ fn void run_advanced_io_typed_effect_tests(Interp* interp, int* pass, int* fail)
     test_nil_interp(interp, "defeffect number arg", "(define [effect] (test/num (^Number n)))", pass, fail);
     test_eq_interp(interp, "effect number int",
         "(handle (signal test/num 42) (test/num x x))", 42, pass, fail);
-    test_error(interp, "effect number str",
-        "(handle (signal test/num \"bad\") (test/num x x))", pass, fail);
+    test_error_contains(interp, "effect number str",
+        "(handle (signal test/num \"bad\") (test/num x x))", "argument type mismatch", pass, fail);
 }

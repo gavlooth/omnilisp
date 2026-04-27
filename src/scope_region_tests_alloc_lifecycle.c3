@@ -53,6 +53,22 @@ fn ScopeRegionTestCounts run_scope_region_alloc_lifecycle_tests() {
         scope_release(s);
     }
 
+    // Test 2null: public allocation APIs fail closed on null scopes
+    {
+        ScopeRegion* null_scope = null;
+        bool ok = null_scope.alloc(8) == null &&
+                  null_scope.alloc_escape(8) == null &&
+                  null_scope.alloc_slow(8) == null &&
+                  null_scope.alloc_escape_slow(8) == null &&
+                  null_scope.alloc_escape_attributed(8, SCOPE_ESCAPE_ALLOC_DIRECT) == null;
+        if (ok) {
+            passed++;
+        } else {
+            io::printn("FAIL: null scope allocators fail closed");
+            failed++;
+        }
+    }
+
     // Test 2a: TEMP slow-path chunk allocation OOM returns null without corrupting scope
     {
         ScopeRegion* s = scope_create(null);
@@ -144,16 +160,28 @@ fn ScopeRegionTestCounts run_scope_region_alloc_lifecycle_tests() {
         ScopeRegion* s = scope_create(null);
         int* counter = (int*)mem::malloc(int.sizeof);
         *counter = 0;
-        scope_register_dtor_escape(s, (void*)counter, fn void(void* ptr) {
-            int* c = (int*)ptr;
-            *c = *c + 1;
-        });
-        scope_register_dtor_escape(s, (void*)counter, fn void(void* ptr) {
-            int* c = (int*)ptr;
-            *c = *c + 10;
-        });
+        bool first_registered = scope_register_dtor_escape(s, (void*)counter, &scope_region_test_dtor_add_one);
+        g_scope_force_escape_dtor_alloc_oom = true;
+        bool duplicate_registered = scope_register_dtor_escape(s, (void*)counter, &scope_region_test_dtor_add_one);
+        g_scope_force_escape_dtor_alloc_oom = false;
+        bool distinct_registered = scope_register_dtor_escape(s, (void*)counter, &scope_region_test_dtor_add_ten);
+        usz registered_count = scope_dtor_count(s.escape_dtors);
+        bool tail_consistent = scope_escape_dtor_tail_consistent(s);
         scope_release(s);
-        if (*counter == 11) { passed++; } else { io::printfn("FAIL: escape dtor counter=%d", *counter); failed++; }
+        if (first_registered && duplicate_registered && distinct_registered && registered_count == 2 && tail_consistent && *counter == 11) {
+            passed++;
+        } else {
+            io::printfn(
+                "FAIL: escape dtor duplicate idempotence first=%s duplicate=%s distinct=%s count=%d tail=%s counter=%d",
+                first_registered ? "true" : "false",
+                duplicate_registered ? "true" : "false",
+                distinct_registered ? "true" : "false",
+                (long)registered_count,
+                tail_consistent ? "true" : "false",
+                *counter
+            );
+            failed++;
+        }
         mem::free(counter);
     }
 
@@ -197,6 +225,27 @@ fn ScopeRegionTestCounts run_scope_region_alloc_lifecycle_tests() {
         g_scope_force_dtor_alloc_oom = false;
         g_scope_force_escape_dtor_alloc_oom = false;
         if (counter != null) mem::free(counter);
+    }
+
+    // Test 2f: destructor registration APIs fail closed on null scopes
+    {
+        int counter = 0;
+        bool temp_registered = scope_register_dtor(null, (void*)&counter, fn void(void* ptr) {
+            int* c = (int*)ptr;
+            *c = *c + 1;
+        });
+        bool escape_registered = scope_register_dtor_escape(null, (void*)&counter, fn void(void* ptr) {
+            int* c = (int*)ptr;
+            *c = *c + 10;
+        });
+        bool temp_null_func = scope_register_dtor(null, (void*)&counter, null);
+        bool escape_null_func = scope_register_dtor_escape(null, (void*)&counter, null);
+        if (!temp_registered && !escape_registered && !temp_null_func && !escape_null_func && counter == 0) {
+            passed++;
+        } else {
+            io::printn("FAIL: null scope destructor registration fail closed");
+            failed++;
+        }
     }
 
     // Test 3: Chunk overflow (allocate more than initial chunk)

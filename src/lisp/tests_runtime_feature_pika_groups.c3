@@ -311,22 +311,37 @@ fn void run_pika_tests(Interp* interp, int* pass, int* fail) {
         "(handle (re-find-all-pos \"a)\" \"a\") (raise msg (String (ref msg 'code))))",
         "regex/re-find-all-pos-invalid-pattern", pass, fail);
 
+    setup(interp,
+        "(block "
+        "  (pika/grammar 'g-prune '(rule start \"a\") '(rule dead \"z\")) "
+        "  (pika/grammar 'g-eps '(rule start (seq)) '(rule dead \"x\")) "
+        "  (pika/grammar 'g-start '(rule start \"a\") '(rule dead \"b\")) "
+        "  (pika/grammar 'g-forward-start "
+        "    '(rule start (seq number op number)) "
+        "    '(rule number (scan \"[0-9]+\")) "
+        "    '(rule op (first \"+\" \"-\" \"*\" \"/\"))) "
+        "  (pika/grammar 'g-scan '(rule start (scan \"[a-z]+\"))) "
+        "  (pika/grammar 'g-scan-plus '(rule start (scan \"[a-z]+\"))) "
+        "  (pika/grammar 'g-scan-neg '(rule start (scan \"[^0-9]+\"))) "
+        "  (pika/grammar 'g-scan-d '(rule start (scan \"[\\\\d]+\"))) "
+        "  (pika/grammar 'g-scan-many "
+        "    '(rule start (seq r1 r2 r3 r4 r5 r6 r7 r8 r9)) "
+        "    '(rule r1 (scan \"[a]\")) '(rule r2 (scan \"[b]\")) '(rule r3 (scan \"[c]\")) "
+        "    '(rule r4 (scan \"[d]\")) '(rule r5 (scan \"[e]\")) '(rule r6 (scan \"[f]\")) "
+        "    '(rule r7 (scan \"[g]\")) '(rule r8 (scan \"[h]\")) '(rule r9 (scan \"[i]\"))))");
+
     // Pika grammar: seed/epsilon edge + unreachable-rule pruning
     test_eq(interp, "pika/grammar prunes unreachable rules",
-        "(block (pika/grammar 'g-prune '(rule start \"a\") '(rule dead \"z\")) (length (pika/grammar-rules 'g-prune)))",
+        "(length (pika/grammar-rules 'g-prune))",
         1, pass, fail);
     test_tag(interp, "pika/parse epsilon seq matches empty input",
-        "(block (pika/grammar 'g-eps '(rule start (seq)) '(rule dead \"x\")) (pika/parse 'g-eps \"\"))",
+        "(pika/parse 'g-eps \"\")",
         CONS, pass, fail);
     test_tag(interp, "pika/parse reachable start still matches",
-        "(block (pika/grammar 'g-start '(rule start \"a\") '(rule dead \"b\")) (pika/parse 'g-start \"a\"))",
+        "(pika/parse 'g-start \"a\")",
         CONS, pass, fail);
     test_str_val(interp, "pika/grammar start uses first declared rule with forward refs",
-        "(block (define g (pika/grammar 'g-forward-start "
-        "  '(rule start (seq number op number)) "
-        "  '(rule number (scan \"[0-9]+\")) "
-        "  '(rule op (first \"+\" \"-\" \"*\" \"/\")))) "
-        "  (String (car (pika/parse g \"1+2\"))))",
+        "(String (car (pika/parse 'g-forward-start \"1+2\")))",
         "start", pass, fail);
     test_str_val(interp, "pika/grammar rejects unresolved rule reference",
         "(handle (pika/grammar 'g-undefined-rule '(rule start missing)) (raise msg (String (ref msg 'code))))",
@@ -338,16 +353,16 @@ fn void run_pika_tests(Interp* interp, int* pass, int* fail) {
         "(handle (pika/grammar 'g-duplicate-rule '(rule start \"a\") '(rule start \"b\")) (raise msg (String (ref msg 'code))))",
         "parser/grammar-duplicate-rule", pass, fail);
     test_tag(interp, "pika/parse scan clause basic",
-        "(block (pika/grammar 'g-scan '(rule start (scan \"[a-z]+\"))) (pika/parse 'g-scan \"abc\"))",
+        "(pika/parse 'g-scan \"abc\")",
         CONS, pass, fail);
     test_str_val(interp, "pika/parse scan clause quantifier consumes run",
-        "(block (pika/grammar 'g-scan-plus '(rule start (scan \"[a-z]+\"))) (car (cdr (pika/parse 'g-scan-plus \"abc123\"))))",
+        "(car (cdr (pika/parse 'g-scan-plus \"abc123\")))",
         "abc", pass, fail);
     test_str_val(interp, "pika/parse scan clause negated class",
-        "(block (pika/grammar 'g-scan-neg '(rule start (scan \"[^0-9]+\"))) (car (cdr (pika/parse 'g-scan-neg \"abc123\"))))",
+        "(car (cdr (pika/parse 'g-scan-neg \"abc123\")))",
         "abc", pass, fail);
     test_str_val(interp, "pika/parse scan clause shorthand class",
-        "(block (pika/grammar 'g-scan-d '(rule start (scan \"[\\\\d]+\"))) (car (cdr (pika/parse 'g-scan-d \"123abc\"))))",
+        "(car (cdr (pika/parse 'g-scan-d \"123abc\")))",
         "123", pass, fail);
     test_error_contains(interp, "pika/grammar scan rejects invalid class",
         "(pika/grammar 'g-scan-bad '(rule start (scan \"[]\")))",
@@ -371,13 +386,7 @@ fn void run_pika_tests(Interp* interp, int* pass, int* fail) {
         "(pika/grammar 'g-end-extra '(rule start (end \"x\")))",
         "end expects no operands", pass, fail);
     test_tag(interp, "pika/parse scan clauses beyond cap",
-        "(block "
-        "  (pika/grammar 'g-scan-many "
-        "    '(rule start (seq r1 r2 r3 r4 r5 r6 r7 r8 r9)) "
-        "    '(rule r1 (scan \"[a]\")) '(rule r2 (scan \"[b]\")) '(rule r3 (scan \"[c]\")) "
-        "    '(rule r4 (scan \"[d]\")) '(rule r5 (scan \"[e]\")) '(rule r6 (scan \"[f]\")) "
-        "    '(rule r7 (scan \"[g]\")) '(rule r8 (scan \"[h]\")) '(rule r9 (scan \"[i]\"))) "
-        "  (pika/parse 'g-scan-many \"abcdefghi\"))",
+        "(pika/parse 'g-scan-many \"abcdefghi\")",
         CONS, pass, fail);
     test_str_val(interp, "pika/parse-lisp grammar drift fails closed",
         "(handle (pika/parse-lisp \"#_(+ 1 2) 3\") (raise msg (String (ref msg 'code))))",

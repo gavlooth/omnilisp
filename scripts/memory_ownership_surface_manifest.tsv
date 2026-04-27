@@ -39,13 +39,18 @@ ffi-family	udp-handle	MEM-PROOF-009	foreign-payload-finalizer	opaque	UDP handle 
 ffi-family	ui-ftxui-session	MEM-PROOF-010	foreign-payload-finalizer	opaque	FTXUI session wrapper finalizer owns UI session payload
 ffi-family	uv-timer-callback-handle	MEM-PROOF-009	callback-finalizer	keepalive	UV timer callback handle releases retained callback owner scope
 ffi-family	__disjoint	MEM-PROOF-010	test-foreign-payload	opaque	Wrapper reuse regression disjoint payload
+ffi-family	__leaf-escape-dtor-fail	MEM-PROOF-010	test-foreign-payload	opaque	Wrapper reuse ESCAPE dtor-registration rollback regression payload
+ffi-family	__leaf-wrapper-dtor-fail	MEM-PROOF-010	test-foreign-payload	opaque	Wrapper reuse parent-copy dtor-registration rollback regression payload
 ffi-family	__leaf-wrapper-fail	MEM-PROOF-010	test-foreign-payload	opaque	Wrapper reuse negative regression payload
 ffi-family	__reuse	MEM-PROOF-010	test-foreign-payload	opaque	Wrapper reuse regression reusable payload
 ffi-family	bad-opaque-release	MEM-PROOF-010	test-foreign-payload	opaque	Negative metadata opaque-release test handle family
+ffi-family	null-interp-ffi-cleanup	MEM-PROOF-010	test-foreign-payload	opaque	FFI constructor null-interpreter cleanup regression payload
+ffi-family	null-target-scope-ffi-cleanup	MEM-PROOF-010	test-foreign-payload	opaque	FFI constructor null-target-scope cleanup regression payload
 ffi-family	test-keepalive	MEM-PROOF-010	test-foreign-payload	keepalive	Boundary keepalive regression payload
 ffi-dynamic	src/lisp/aot_runtime_bridge_ffi_lib.c3:make_ffi_handle_ex_with_descriptor	MEM-PROOF-010	dynamic-library-handle	opaque	AOT FFI preload library handle name comes from manifest soname
 ffi-dynamic	src/lisp/eval_ffi_bound_call.c3:make_ffi_handle_ex_with_descriptor	MEM-PROOF-010	dynamic-foreign-return	opaque	Bound FFI descriptor names are declared by FFI metadata
 ffi-dynamic	src/lisp/eval_ffi_eval.c3:make_ffi_handle	MEM-PROOF-010	dynamic-library-handle	opaque	Runtime ffi/lib handle name comes from requested library path
+ffi-dynamic	src/lisp/foreign_runtime_core.c3:make_ffi_handle_ex_with_descriptor	MEM-PROOF-010	dynamic-foreign-buffer	opaque	Foreign runtime buffer wrapper name comes from exported runtime buffer metadata
 ffi-dynamic	src/lisp/prim_ffi_callback.c3:make_ffi_handle_ex	MEM-PROOF-010	dynamic-callback-payload	opaque	FFI callback helper may pass through a declared callback name
 ffi-dynamic	src/lisp/value_constructors.c3:make_ffi_handle	MEM-PROOF-010	ffi-constructor-facade	opaque	Constructor facade forwards caller-declared family name
 ffi-dynamic	src/lisp/value_constructors.c3:make_ffi_handle_ex	MEM-PROOF-010	ffi-constructor-facade	opaque	Constructor facade forwards caller-declared family name

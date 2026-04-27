@@ -27,6 +27,7 @@ fn bool Compiler.compile_call_arg_temps(Compiler* self, Expr** args, usz arg_cou
             self.set_compile_error("compiler: failed to lower call argument");
             return false;
         }
+        self.emit_return_if_sequence_should_stop(arg_temp);
         arg_temps[i] = arg_temp;
     }
     *out_arg_temps = arg_temps;
@@ -50,6 +51,7 @@ fn usz Compiler.build_arg_list_from_temps(Compiler* self, usz[] arg_temps, usz a
         self.emit(", ");
         self.emit_temp_ref(args_list);
         self.emit(");\n");
+        self.emit_return_if_sequence_should_stop(args_list);
     }
     return args_list;
 }
@@ -90,6 +92,7 @@ fn bool Compiler.tail_call_requires_non_tail_path(Compiler* self, Expr* expr) {
 fn usz Compiler.compile_zero_arg_tail_call(Compiler* self, Expr* expr) {
     usz func_r = self.compile_to_temp(expr.call.func);
     if (self.has_error || func_r == usz.max) return usz.max;
+    self.emit_return_if_sequence_should_stop(func_r);
     usz id = self.next_result();
     self.emit_temp_decl(id);
     self.emit(" = aot::apply_multi_tail(");

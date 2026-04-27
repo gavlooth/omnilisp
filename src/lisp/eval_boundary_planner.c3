@@ -57,6 +57,8 @@ fn BoundaryPlanDecision boundary_plan_commit_escape(
                     plan.route = BOUNDARY_PLAN_ROUTE_STABLE_MATERIALIZE_DESTINATION;
                     plan.reason = BOUNDARY_PLAN_REASON_RELEASING_ESCAPE_DESTINATION;
                     plan.stable_materialization_candidate = true;
+                    plan.compatibility_candidate =
+                        boundary_value_tag_has_compatibility_destination(result.tag);
                 } else {
                     plan.route = BOUNDARY_PLAN_ROUTE_COMPATIBILITY_DESTINATION;
                     plan.reason = BOUNDARY_PLAN_REASON_RELEASING_ESCAPE_DESTINATION;

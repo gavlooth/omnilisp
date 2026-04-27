@@ -19,6 +19,13 @@ counter-oriented baseline for the memory-boundary telemetry lane.
 - Runtime log:
   - `.agents/memory-boundary-telemetry-baseline-2026-04-24.log`
 
+Note: the runtime log was refreshed on 2026-04-29 after the
+`memory-lifetime-bench` profile was expanded with product, iterator, tensor,
+nested-module, histogram, and scope-sequence workload families. The original
+2026-04-24 captured summary below remains the first baseline snapshot; use the
+runtime log artifact and `scripts/check_memory_telemetry_benchmark_envelope.sh`
+for the current gate.
+
 Command used:
 
 ```bash
@@ -64,6 +71,19 @@ OMNI_TEST_SUMMARY suite=boundary_decisions splice_attempted=4128 splice_succeede
 - Wall-clock numbers are advisory only. The next gate should prioritize
   correctness and counter deltas, then report wide timing warnings rather than
   strict timing failures.
+
+## Artifact Refresh - 2026-04-29
+
+- Refreshed `.agents/memory-boundary-telemetry-baseline-2026-04-24.log` from a
+  bounded counters-enabled `memory-lifetime-bench` run.
+- The current artifact includes the later workload lines required by
+  `scripts/check_memory_telemetry_benchmark_envelope.sh`:
+  `finwatch_product_memory`, `closure_iterator_pipeline_memory`,
+  `tensor_metadata_crossing_memory`, and `nested_module_return_memory`.
+- The refreshed envelope passes. It warns on
+  `boundary.materialization_copy_bytes_optimizer=220160`, which is the
+  documented nested-module stable-materialization copy-debt signal rather than
+  a failed correctness gate.
 
 ## Recommended Regression Envelope Inputs
 

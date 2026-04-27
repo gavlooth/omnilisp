@@ -23,7 +23,11 @@ fn void Compiler.emit_lambda_capture_struct(Compiler* self, LambdaDef* def) {
     self.emit_usz(def.id);
     self.emit(" {\n");
     for (usz i = 0; i < def.capture_count; i++) {
-        self.emit("    lisp::Value* captured_");
+        if (def.capture_is_mutable[i]) {
+            self.emit("    aot::AotMutableCell* captured_");
+        } else {
+            self.emit("    lisp::Value* captured_");
+        }
         self.emit_symbol_name(def.captures[i]);
         self.emit(";\n");
     }
@@ -35,9 +39,12 @@ fn void Compiler.emit_lambda_definition(Compiler* self, LambdaDef* def) {
     self.emit_lambda_signature(def, is_zero_arg);
     self.indent++;
     self.declared_vars.free();
+    bool previous_emits_value_return = self.emits_value_return;
+    self.emits_value_return = true;
     self.emit_lambda_param_unpack(def, is_zero_arg);
     self.emit_lambda_capture_bindings(def);
     self.emit_lambda_body_return(def);
+    self.emits_value_return = previous_emits_value_return;
     self.indent--;
     self.emit("}\n\n");
 }

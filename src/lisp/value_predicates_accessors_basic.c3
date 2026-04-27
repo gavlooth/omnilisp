@@ -104,7 +104,7 @@ fn bool is_fixed_complex(Value* v) @inline {
 }
 
 fn bool is_number(Value* v) @inline {
-    return v != null && (v.tag == INT || v.tag == DOUBLE || v.tag == FLOAT32 || v.tag == COMPLEX128 || v.tag == COMPLEX64);
+    return is_numeric_value(v);
 }
 
 fn bool is_numeric_value(Value* v) @inline {
@@ -115,14 +115,8 @@ fn bool is_numeric_value(Value* v) @inline {
 }
 
 fn double to_double(Value* v) @inline {
-    if (v.tag == DOUBLE) return v.double_val;
-    if (v.tag == FLOAT32) return (double)v.float32_val;
-    if (v.tag == BIG_FLOAT) {
-        double out = 0.0;
-        if (big_float_try_to_double(v, &out)) return out;
-        return 0.0;
-    }
-    return (double)v.int_val;
+    double out = 0.0;
+    return try_numeric_to_double(v, &out) ? out : 0.0;
 }
 
 fn bool try_numeric_to_double(Value* v, double* out) @inline {
@@ -219,6 +213,7 @@ fn bool ffi_char_slice_equals(char[] left, char[] right) @inline {
 }
 
 fn bool ffi_symbol_name_equals(SymbolId sym, Interp* interp, char[] expected) @inline {
+    if (interp == null) return false;
     return ffi_char_slice_equals(interp.symbols.get_name(sym), expected);
 }
 

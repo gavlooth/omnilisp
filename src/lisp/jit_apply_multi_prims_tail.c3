@@ -27,6 +27,9 @@ fn Value* jit_set_tco_bounce(Interp* interp, Expr* expr, Env* env) @inline {
 }
 
 fn Value* jit_apply_multi_args_tail_variadic(Interp* interp, Value* func, Value* arg_list, usz arg_count) {
+    if (!jit_value_has_closure_payload_and_body(func)) {
+        return jit_invalid_closure_state_error(interp);
+    }
     usz pc = func.closure_val.param_count;
     if (arg_count < pc) {
         char[256] ebuf;
@@ -54,6 +57,9 @@ fn Value* jit_apply_multi_args_tail_variadic(Interp* interp, Value* func, Value*
 }
 
 fn Value* jit_apply_multi_args_tail_closure_multi(Interp* interp, Value* func, Value* arg_list, usz arg_count) {
+    if (!jit_value_has_closure_payload_and_body(func)) {
+        return jit_invalid_closure_state_error(interp);
+    }
     usz pc = func.closure_val.param_count;
     if (arg_count < pc) {
         char[128] buf;
@@ -94,6 +100,7 @@ fn Value* jit_apply_multi_args_tail_closure_multi(Interp* interp, Value* func, V
     }
     if (arg_count > pc) {
         Value* result = jit_eval_in_single_scope(func.closure_val.body, call_env, interp);
+        result = jit_apply_normalize_result(result, interp);
         if (result != null && result.tag != ERROR) {
             usz remaining = arg_count - pc;
             return jit_apply_multi_args_tail(interp, result, curr, remaining);
@@ -104,6 +111,9 @@ fn Value* jit_apply_multi_args_tail_closure_multi(Interp* interp, Value* func, V
 }
 
 fn Value* jit_apply_multi_args_tail_method_table(Interp* interp, Value* func, Value* arg_list, usz arg_count) {
+    if (!jit_value_has_method_table_payload(func)) {
+        return jit_raise(interp, "runtime/evaluation-error", "jit: invalid method table state");
+    }
     Value** args = jit_alloc_multi_arg_buffer(interp, arg_count);
     if (arg_count > 0 && args == null) return jit_raise(interp, "runtime/out-of-memory", "out of memory while preparing call arguments");
     Value* curr = arg_list;
@@ -130,6 +140,9 @@ fn Value* jit_apply_multi_args_tail(Interp* interp, Value* func, Value* arg_list
 
     if (func == null) return jit_null_callable_error(interp);
     if (func.tag == ERROR) return func;
+    if (func.tag == CLOSURE && !jit_value_has_closure_payload_and_body(func)) {
+        return jit_invalid_closure_state_error(interp);
+    }
     if (arg_count == 0 && func.tag == CLOSURE && !func.closure_val.has_param && !func.closure_val.has_rest) {
         return jit_set_tco_bounce(interp, func.closure_val.body, func.closure_val.env);
     }

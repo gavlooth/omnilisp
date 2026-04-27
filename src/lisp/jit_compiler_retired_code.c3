@@ -14,6 +14,7 @@ bool g_jit_retired_code_saturated = false;
 
 fn bool jit_retired_code_contains(void* code, ulong owner_attach_serial) {
     if (code == null || owner_attach_serial == 0) return false;
+    if (g_jit_retired_code_saturated) return true;
     for (usz i = 0; i < g_jit_retired_code_count; i++) {
         if (g_jit_retired_codes[i].code == code &&
             g_jit_retired_codes[i].owner_attach_serial == owner_attach_serial) {

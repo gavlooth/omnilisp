@@ -6,7 +6,8 @@ fn Pattern* Parser.parse_string_pattern_literal(Parser* self) {
     Pattern* p = self.alloc_pattern();
     if (p == null) return null;
     p.tag = PAT_LIT;
-    p.lit_value = self.interp.alloc_value_root();
+    p.lit_value = self.alloc_root_value_or_error("out of memory while parsing pattern literal");
+    if (p.lit_value == null) return null;
     p.lit_value.tag = STRING;
     StringVal* builder = strval_new_from_slice(self.lexer.current.text[:self.lexer.current.text_len]);
     if (builder == null) {
@@ -99,7 +100,15 @@ fn Pattern* Parser.parse_dict_pattern(Parser* self) {
 
     List{SymbolId} keys = {};
     while (self.lexer.current.type == T_SYMBOL && !self.has_error) {
-        keys.push(self.get_current_symbol());
+        SymbolId key = self.get_current_symbol();
+        for (usz i = 0; i < keys.len(); i++) {
+            if ((uint)keys[i] == (uint)key) {
+                self.set_error("duplicate key in dict pattern");
+                keys.free();
+                return null;
+            }
+        }
+        keys.push(key);
         self.lexer.advance();
     }
     if (self.has_error) { keys.free(); return null; }
@@ -130,17 +139,20 @@ fn Pattern* Parser.parse_symbol_pattern(Parser* self) {
     if (p == null) return null;
     if ((uint)sym == (uint)sym_nil) {
         p.tag = PAT_LIT;
-        p.lit_value = self.interp.alloc_value_root();
+        p.lit_value = self.alloc_root_value_or_error("out of memory while parsing pattern literal");
+        if (p.lit_value == null) return null;
         p.lit_value.tag = NIL;
     } else if ((uint)sym == (uint)self.interp.sym_false) {
         p.tag = PAT_LIT;
-        p.lit_value = self.interp.alloc_value_root();
+        p.lit_value = self.alloc_root_value_or_error("out of memory while parsing pattern literal");
+        if (p.lit_value == null) return null;
         p.lit_value.tag = SYMBOL;
         p.lit_value.sym_val = self.interp.sym_false;
     } else if ((uint)sym == (uint)self.interp.sym_Void) {
         // `Void` is a literal singleton value in pattern position.
         p.tag = PAT_LIT;
-        p.lit_value = self.interp.alloc_value_root();
+        p.lit_value = self.alloc_root_value_or_error("out of memory while parsing pattern literal");
+        if (p.lit_value == null) return null;
         p.lit_value.tag = VOID;
     } else {
         p.tag = PAT_VAR;

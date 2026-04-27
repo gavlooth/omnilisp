@@ -1,5 +1,7 @@
 #include <dlfcn.h>
 #include <limits.h>
+#include <pthread.h>
+#include <stdatomic.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -159,75 +161,75 @@ static omni_lapacke_dgeev_fn omni_tensor_lapacke_dgeev = NULL;
 static omni_lapacke_sgeev_fn omni_tensor_lapacke_sgeev = NULL;
 static omni_lapacke_zgeev_fn omni_tensor_lapacke_zgeev = NULL;
 static omni_lapacke_cgeev_fn omni_tensor_lapacke_cgeev = NULL;
-static int omni_tensor_lapack_resolution_attempted = 0;
-static long omni_tensor_lapack_dgesv_calls = 0;
-static long omni_tensor_lapack_dgetrf_calls = 0;
-static long omni_tensor_lapack_dpotrf_calls = 0;
-static long omni_tensor_lapack_dgeqrf_calls = 0;
-static long omni_tensor_lapack_dsyev_calls = 0;
-static long omni_tensor_lapack_dgesvd_calls = 0;
-static long omni_tensor_lapack_dgeev_calls = 0;
-static long omni_tensor_lapack_sgeev_calls = 0;
-static long omni_tensor_lapack_zgeev_calls = 0;
-static long omni_tensor_lapack_cgeev_calls = 0;
-static int omni_tensor_lapack_dgesv_disabled_for_tests = 0;
-static int omni_tensor_lapack_dgetrf_disabled_for_tests = 0;
-static int omni_tensor_lapack_dpotrf_disabled_for_tests = 0;
-static int omni_tensor_lapack_dgeqrf_disabled_for_tests = 0;
-static int omni_tensor_lapack_dsyev_disabled_for_tests = 0;
-static int omni_tensor_lapack_dgesvd_disabled_for_tests = 0;
-static int omni_tensor_lapack_dgeev_disabled_for_tests = 0;
-static int omni_tensor_lapack_sgeev_disabled_for_tests = 0;
-static int omni_tensor_lapack_zgeev_disabled_for_tests = 0;
-static int omni_tensor_lapack_cgeev_disabled_for_tests = 0;
+static pthread_once_t omni_tensor_lapack_resolve_once = PTHREAD_ONCE_INIT;
+static atomic_long omni_tensor_lapack_dgesv_calls = 0;
+static atomic_long omni_tensor_lapack_dgetrf_calls = 0;
+static atomic_long omni_tensor_lapack_dpotrf_calls = 0;
+static atomic_long omni_tensor_lapack_dgeqrf_calls = 0;
+static atomic_long omni_tensor_lapack_dsyev_calls = 0;
+static atomic_long omni_tensor_lapack_dgesvd_calls = 0;
+static atomic_long omni_tensor_lapack_dgeev_calls = 0;
+static atomic_long omni_tensor_lapack_sgeev_calls = 0;
+static atomic_long omni_tensor_lapack_zgeev_calls = 0;
+static atomic_long omni_tensor_lapack_cgeev_calls = 0;
+static atomic_int omni_tensor_lapack_dgesv_disabled_for_tests = 0;
+static atomic_int omni_tensor_lapack_dgetrf_disabled_for_tests = 0;
+static atomic_int omni_tensor_lapack_dpotrf_disabled_for_tests = 0;
+static atomic_int omni_tensor_lapack_dgeqrf_disabled_for_tests = 0;
+static atomic_int omni_tensor_lapack_dsyev_disabled_for_tests = 0;
+static atomic_int omni_tensor_lapack_dgesvd_disabled_for_tests = 0;
+static atomic_int omni_tensor_lapack_dgeev_disabled_for_tests = 0;
+static atomic_int omni_tensor_lapack_sgeev_disabled_for_tests = 0;
+static atomic_int omni_tensor_lapack_zgeev_disabled_for_tests = 0;
+static atomic_int omni_tensor_lapack_cgeev_disabled_for_tests = 0;
 
 static int omni_tensor_backend_lapack_dgesv_disabled(void) {
-    return omni_tensor_lapack_dgesv_disabled_for_tests ||
+    return atomic_load_explicit(&omni_tensor_lapack_dgesv_disabled_for_tests, memory_order_relaxed) ||
         getenv("OMNI_TENSOR_DISABLE_LAPACK_DGESV") != NULL;
 }
 
 static int omni_tensor_backend_lapack_dgetrf_disabled(void) {
-    return omni_tensor_lapack_dgetrf_disabled_for_tests ||
+    return atomic_load_explicit(&omni_tensor_lapack_dgetrf_disabled_for_tests, memory_order_relaxed) ||
         getenv("OMNI_TENSOR_DISABLE_LAPACK_DGETRF") != NULL;
 }
 
 static int omni_tensor_backend_lapack_dpotrf_disabled(void) {
-    return omni_tensor_lapack_dpotrf_disabled_for_tests ||
+    return atomic_load_explicit(&omni_tensor_lapack_dpotrf_disabled_for_tests, memory_order_relaxed) ||
         getenv("OMNI_TENSOR_DISABLE_LAPACK_DPOTRF") != NULL;
 }
 
 static int omni_tensor_backend_lapack_dgeqrf_disabled(void) {
-    return omni_tensor_lapack_dgeqrf_disabled_for_tests ||
+    return atomic_load_explicit(&omni_tensor_lapack_dgeqrf_disabled_for_tests, memory_order_relaxed) ||
         getenv("OMNI_TENSOR_DISABLE_LAPACK_DGEQRF") != NULL;
 }
 
 static int omni_tensor_backend_lapack_dsyev_disabled(void) {
-    return omni_tensor_lapack_dsyev_disabled_for_tests ||
+    return atomic_load_explicit(&omni_tensor_lapack_dsyev_disabled_for_tests, memory_order_relaxed) ||
         getenv("OMNI_TENSOR_DISABLE_LAPACK_DSYEV") != NULL;
 }
 
 static int omni_tensor_backend_lapack_dgesvd_disabled(void) {
-    return omni_tensor_lapack_dgesvd_disabled_for_tests ||
+    return atomic_load_explicit(&omni_tensor_lapack_dgesvd_disabled_for_tests, memory_order_relaxed) ||
         getenv("OMNI_TENSOR_DISABLE_LAPACK_DGESVD") != NULL;
 }
 
 static int omni_tensor_backend_lapack_dgeev_disabled(void) {
-    return omni_tensor_lapack_dgeev_disabled_for_tests ||
+    return atomic_load_explicit(&omni_tensor_lapack_dgeev_disabled_for_tests, memory_order_relaxed) ||
         getenv("OMNI_TENSOR_DISABLE_LAPACK_DGEEV") != NULL;
 }
 
 static int omni_tensor_backend_lapack_sgeev_disabled(void) {
-    return omni_tensor_lapack_sgeev_disabled_for_tests ||
+    return atomic_load_explicit(&omni_tensor_lapack_sgeev_disabled_for_tests, memory_order_relaxed) ||
         getenv("OMNI_TENSOR_DISABLE_LAPACK_SGEEV") != NULL;
 }
 
 static int omni_tensor_backend_lapack_zgeev_disabled(void) {
-    return omni_tensor_lapack_zgeev_disabled_for_tests ||
+    return atomic_load_explicit(&omni_tensor_lapack_zgeev_disabled_for_tests, memory_order_relaxed) ||
         getenv("OMNI_TENSOR_DISABLE_LAPACK_ZGEEV") != NULL;
 }
 
 static int omni_tensor_backend_lapack_cgeev_disabled(void) {
-    return omni_tensor_lapack_cgeev_disabled_for_tests ||
+    return atomic_load_explicit(&omni_tensor_lapack_cgeev_disabled_for_tests, memory_order_relaxed) ||
         getenv("OMNI_TENSOR_DISABLE_LAPACK_CGEEV") != NULL;
 }
 
@@ -282,11 +284,7 @@ static void omni_tensor_backend_lapack_sort_eigenpairs_desc(double* eigenvectors
     }
 }
 
-static int omni_tensor_lapack_resolve(void) {
-    if (omni_tensor_lapack_handle != NULL) return 1;
-    if (omni_tensor_lapack_resolution_attempted) return 0;
-    omni_tensor_lapack_resolution_attempted = 1;
-
+static void omni_tensor_lapack_resolve_once_fn(void) {
     const char* candidates[] = {
         "liblapacke.so.3",
         "liblapacke.so",
@@ -318,7 +316,6 @@ static int omni_tensor_lapack_resolve(void) {
             zgeev_symbol != NULL ||
             cgeev_symbol != NULL
         ) {
-            omni_tensor_lapack_handle = handle;
             if (dgesv_symbol != NULL) {
                 omni_tensor_lapacke_dgesv = (omni_lapacke_dgesv_fn)dgesv_symbol;
             }
@@ -352,11 +349,147 @@ static int omni_tensor_lapack_resolve(void) {
             if (cgeev_symbol != NULL) {
                 omni_tensor_lapacke_cgeev = (omni_lapacke_cgeev_fn)cgeev_symbol;
             }
-            return 1;
+            omni_tensor_lapack_handle = handle;
+            return;
         }
         dlclose(handle);
     }
+}
+
+static int omni_tensor_lapack_resolve(void) {
+    if (omni_tensor_lapack_handle != NULL) return 1;
+    (void)pthread_once(&omni_tensor_lapack_resolve_once, &omni_tensor_lapack_resolve_once_fn);
+    return omni_tensor_lapack_handle != NULL;
+}
+
+int omni_tensor_backend_lapack_dgesv_available(void);
+int omni_tensor_backend_lapack_dgetrf_available(void);
+int omni_tensor_backend_lapack_dpotrf_available(void);
+int omni_tensor_backend_lapack_dgeqrf_available(void);
+int omni_tensor_backend_lapack_dsyev_available(void);
+int omni_tensor_backend_lapack_dgesvd_available(void);
+int omni_tensor_backend_lapack_dgeev_available(void);
+int omni_tensor_backend_lapack_sgeev_available(void);
+int omni_tensor_backend_lapack_zgeev_available(void);
+int omni_tensor_backend_lapack_cgeev_available(void);
+
+static int omni_tensor_lapack_noop_dgetrf(
+    int matrix_layout,
+    omni_lapack_int m,
+    omni_lapack_int n,
+    double* a,
+    omni_lapack_int lda,
+    omni_lapack_int* ipiv
+) {
+    (void)matrix_layout;
+    (void)m;
+    (void)n;
+    (void)a;
+    (void)lda;
+    (void)ipiv;
     return 0;
+}
+
+static int omni_tensor_lapack_noop_dgeqrf(
+    int matrix_layout,
+    omni_lapack_int m,
+    omni_lapack_int n,
+    double* a,
+    omni_lapack_int lda,
+    double* tau
+) {
+    (void)matrix_layout;
+    (void)m;
+    (void)n;
+    (void)a;
+    (void)lda;
+    (void)tau;
+    return 0;
+}
+
+static int omni_tensor_lapack_noop_dorgqr(
+    int matrix_layout,
+    omni_lapack_int m,
+    omni_lapack_int n,
+    omni_lapack_int k,
+    double* a,
+    omni_lapack_int lda,
+    const double* tau
+) {
+    (void)matrix_layout;
+    (void)m;
+    (void)n;
+    (void)k;
+    (void)a;
+    (void)lda;
+    (void)tau;
+    return 0;
+}
+
+int omni_tensor_backend_lapack_partial_symbol_table_for_tests(void) {
+    void* saved_handle = omni_tensor_lapack_handle;
+    omni_lapacke_dgesv_fn saved_dgesv = omni_tensor_lapacke_dgesv;
+    omni_lapacke_dgetrf_fn saved_dgetrf = omni_tensor_lapacke_dgetrf;
+    omni_lapacke_dpotrf_fn saved_dpotrf = omni_tensor_lapacke_dpotrf;
+    omni_lapacke_dgeqrf_fn saved_dgeqrf = omni_tensor_lapacke_dgeqrf;
+    omni_lapacke_dorgqr_fn saved_dorgqr = omni_tensor_lapacke_dorgqr;
+    omni_lapacke_dsyev_fn saved_dsyev = omni_tensor_lapacke_dsyev;
+    omni_lapacke_dgesvd_fn saved_dgesvd = omni_tensor_lapacke_dgesvd;
+    omni_lapacke_dgeev_fn saved_dgeev = omni_tensor_lapacke_dgeev;
+    omni_lapacke_sgeev_fn saved_sgeev = omni_tensor_lapacke_sgeev;
+    omni_lapacke_zgeev_fn saved_zgeev = omni_tensor_lapacke_zgeev;
+    omni_lapacke_cgeev_fn saved_cgeev = omni_tensor_lapacke_cgeev;
+
+    omni_tensor_lapack_handle = (void*)1;
+    omni_tensor_lapacke_dgesv = NULL;
+    omni_tensor_lapacke_dgetrf = omni_tensor_lapack_noop_dgetrf;
+    omni_tensor_lapacke_dpotrf = NULL;
+    omni_tensor_lapacke_dgeqrf = NULL;
+    omni_tensor_lapacke_dorgqr = NULL;
+    omni_tensor_lapacke_dsyev = NULL;
+    omni_tensor_lapacke_dgesvd = NULL;
+    omni_tensor_lapacke_dgeev = NULL;
+    omni_tensor_lapacke_sgeev = NULL;
+    omni_tensor_lapacke_zgeev = NULL;
+    omni_tensor_lapacke_cgeev = NULL;
+
+    int ok = !omni_tensor_backend_lapack_dgesv_available() &&
+        omni_tensor_backend_lapack_dgetrf_available() &&
+        !omni_tensor_backend_lapack_dpotrf_available() &&
+        !omni_tensor_backend_lapack_dgeqrf_available() &&
+        !omni_tensor_backend_lapack_dsyev_available() &&
+        !omni_tensor_backend_lapack_dgesvd_available() &&
+        !omni_tensor_backend_lapack_dgeev_available() &&
+        !omni_tensor_backend_lapack_sgeev_available() &&
+        !omni_tensor_backend_lapack_zgeev_available() &&
+        !omni_tensor_backend_lapack_cgeev_available();
+
+    omni_tensor_lapacke_dgeqrf = omni_tensor_lapack_noop_dgeqrf;
+    omni_tensor_lapacke_dorgqr = NULL;
+    ok = ok && !omni_tensor_backend_lapack_dgeqrf_available();
+
+    omni_tensor_lapacke_dgeqrf = NULL;
+    omni_tensor_lapacke_dorgqr = omni_tensor_lapack_noop_dorgqr;
+    ok = ok && !omni_tensor_backend_lapack_dgeqrf_available();
+
+    omni_tensor_lapacke_dgeqrf = omni_tensor_lapack_noop_dgeqrf;
+    omni_tensor_lapacke_dorgqr = omni_tensor_lapack_noop_dorgqr;
+    ok = ok && omni_tensor_backend_lapack_dgeqrf_available();
+
+    omni_tensor_lapack_handle = saved_handle;
+    omni_tensor_lapacke_dgesv = saved_dgesv;
+    omni_tensor_lapacke_dgetrf = saved_dgetrf;
+    omni_tensor_lapacke_dpotrf = saved_dpotrf;
+    omni_tensor_lapacke_dgeqrf = saved_dgeqrf;
+    omni_tensor_lapacke_dorgqr = saved_dorgqr;
+    omni_tensor_lapacke_dsyev = saved_dsyev;
+    omni_tensor_lapacke_dgesvd = saved_dgesvd;
+    omni_tensor_lapacke_dgeev = saved_dgeev;
+    omni_tensor_lapacke_sgeev = saved_sgeev;
+    omni_tensor_lapacke_zgeev = saved_zgeev;
+    omni_tensor_lapacke_cgeev = saved_cgeev;
+
+    return ok ? 1 : 0;
 }
 
 int omni_tensor_backend_lapack_dgesv_available(void) {
@@ -365,7 +498,7 @@ int omni_tensor_backend_lapack_dgesv_available(void) {
 }
 
 long omni_tensor_backend_lapack_dgesv_call_count(void) {
-    return omni_tensor_lapack_dgesv_calls;
+    return atomic_load_explicit(&omni_tensor_lapack_dgesv_calls, memory_order_relaxed);
 }
 
 int omni_tensor_backend_lapack_dgetrf_available(void) {
@@ -374,7 +507,7 @@ int omni_tensor_backend_lapack_dgetrf_available(void) {
 }
 
 long omni_tensor_backend_lapack_dgetrf_call_count(void) {
-    return omni_tensor_lapack_dgetrf_calls;
+    return atomic_load_explicit(&omni_tensor_lapack_dgetrf_calls, memory_order_relaxed);
 }
 
 int omni_tensor_backend_lapack_dpotrf_available(void) {
@@ -383,7 +516,7 @@ int omni_tensor_backend_lapack_dpotrf_available(void) {
 }
 
 long omni_tensor_backend_lapack_dpotrf_call_count(void) {
-    return omni_tensor_lapack_dpotrf_calls;
+    return atomic_load_explicit(&omni_tensor_lapack_dpotrf_calls, memory_order_relaxed);
 }
 
 int omni_tensor_backend_lapack_dgeqrf_available(void) {
@@ -394,7 +527,7 @@ int omni_tensor_backend_lapack_dgeqrf_available(void) {
 }
 
 long omni_tensor_backend_lapack_dgeqrf_call_count(void) {
-    return omni_tensor_lapack_dgeqrf_calls;
+    return atomic_load_explicit(&omni_tensor_lapack_dgeqrf_calls, memory_order_relaxed);
 }
 
 int omni_tensor_backend_lapack_dsyev_available(void) {
@@ -403,7 +536,7 @@ int omni_tensor_backend_lapack_dsyev_available(void) {
 }
 
 long omni_tensor_backend_lapack_dsyev_call_count(void) {
-    return omni_tensor_lapack_dsyev_calls;
+    return atomic_load_explicit(&omni_tensor_lapack_dsyev_calls, memory_order_relaxed);
 }
 
 int omni_tensor_backend_lapack_dgesvd_available(void) {
@@ -412,7 +545,7 @@ int omni_tensor_backend_lapack_dgesvd_available(void) {
 }
 
 long omni_tensor_backend_lapack_dgesvd_call_count(void) {
-    return omni_tensor_lapack_dgesvd_calls;
+    return atomic_load_explicit(&omni_tensor_lapack_dgesvd_calls, memory_order_relaxed);
 }
 
 int omni_tensor_backend_lapack_dgeev_available(void) {
@@ -421,7 +554,7 @@ int omni_tensor_backend_lapack_dgeev_available(void) {
 }
 
 long omni_tensor_backend_lapack_dgeev_call_count(void) {
-    return omni_tensor_lapack_dgeev_calls;
+    return atomic_load_explicit(&omni_tensor_lapack_dgeev_calls, memory_order_relaxed);
 }
 
 int omni_tensor_backend_lapack_sgeev_available(void) {
@@ -430,7 +563,7 @@ int omni_tensor_backend_lapack_sgeev_available(void) {
 }
 
 long omni_tensor_backend_lapack_sgeev_call_count(void) {
-    return omni_tensor_lapack_sgeev_calls;
+    return atomic_load_explicit(&omni_tensor_lapack_sgeev_calls, memory_order_relaxed);
 }
 
 int omni_tensor_backend_lapack_zgeev_available(void) {
@@ -439,7 +572,7 @@ int omni_tensor_backend_lapack_zgeev_available(void) {
 }
 
 long omni_tensor_backend_lapack_zgeev_call_count(void) {
-    return omni_tensor_lapack_zgeev_calls;
+    return atomic_load_explicit(&omni_tensor_lapack_zgeev_calls, memory_order_relaxed);
 }
 
 int omni_tensor_backend_lapack_cgeev_available(void) {
@@ -448,47 +581,47 @@ int omni_tensor_backend_lapack_cgeev_available(void) {
 }
 
 long omni_tensor_backend_lapack_cgeev_call_count(void) {
-    return omni_tensor_lapack_cgeev_calls;
+    return atomic_load_explicit(&omni_tensor_lapack_cgeev_calls, memory_order_relaxed);
 }
 
 void omni_tensor_backend_lapack_dgeev_disable_for_tests(int disabled) {
-    omni_tensor_lapack_dgeev_disabled_for_tests = disabled != 0;
+    atomic_store_explicit(&omni_tensor_lapack_dgeev_disabled_for_tests, disabled != 0, memory_order_relaxed);
 }
 
 void omni_tensor_backend_lapack_sgeev_disable_for_tests(int disabled) {
-    omni_tensor_lapack_sgeev_disabled_for_tests = disabled != 0;
+    atomic_store_explicit(&omni_tensor_lapack_sgeev_disabled_for_tests, disabled != 0, memory_order_relaxed);
 }
 
 void omni_tensor_backend_lapack_zgeev_disable_for_tests(int disabled) {
-    omni_tensor_lapack_zgeev_disabled_for_tests = disabled != 0;
+    atomic_store_explicit(&omni_tensor_lapack_zgeev_disabled_for_tests, disabled != 0, memory_order_relaxed);
 }
 
 void omni_tensor_backend_lapack_cgeev_disable_for_tests(int disabled) {
-    omni_tensor_lapack_cgeev_disabled_for_tests = disabled != 0;
+    atomic_store_explicit(&omni_tensor_lapack_cgeev_disabled_for_tests, disabled != 0, memory_order_relaxed);
 }
 
 void omni_tensor_backend_lapack_dgesv_disable_for_tests(int disabled) {
-    omni_tensor_lapack_dgesv_disabled_for_tests = disabled != 0;
+    atomic_store_explicit(&omni_tensor_lapack_dgesv_disabled_for_tests, disabled != 0, memory_order_relaxed);
 }
 
 void omni_tensor_backend_lapack_dgetrf_disable_for_tests(int disabled) {
-    omni_tensor_lapack_dgetrf_disabled_for_tests = disabled != 0;
+    atomic_store_explicit(&omni_tensor_lapack_dgetrf_disabled_for_tests, disabled != 0, memory_order_relaxed);
 }
 
 void omni_tensor_backend_lapack_dpotrf_disable_for_tests(int disabled) {
-    omni_tensor_lapack_dpotrf_disabled_for_tests = disabled != 0;
+    atomic_store_explicit(&omni_tensor_lapack_dpotrf_disabled_for_tests, disabled != 0, memory_order_relaxed);
 }
 
 void omni_tensor_backend_lapack_dgeqrf_disable_for_tests(int disabled) {
-    omni_tensor_lapack_dgeqrf_disabled_for_tests = disabled != 0;
+    atomic_store_explicit(&omni_tensor_lapack_dgeqrf_disabled_for_tests, disabled != 0, memory_order_relaxed);
 }
 
 void omni_tensor_backend_lapack_dgesvd_disable_for_tests(int disabled) {
-    omni_tensor_lapack_dgesvd_disabled_for_tests = disabled != 0;
+    atomic_store_explicit(&omni_tensor_lapack_dgesvd_disabled_for_tests, disabled != 0, memory_order_relaxed);
 }
 
 void omni_tensor_backend_lapack_dsyev_disable_for_tests(int disabled) {
-    omni_tensor_lapack_dsyev_disabled_for_tests = disabled != 0;
+    atomic_store_explicit(&omni_tensor_lapack_dsyev_disabled_for_tests, disabled != 0, memory_order_relaxed);
 }
 
 int omni_tensor_backend_lapack_dgesv(
@@ -530,7 +663,7 @@ int omni_tensor_backend_lapack_dgesv(
     free(ipiv);
 
     if (info == 0) {
-        omni_tensor_lapack_dgesv_calls++;
+        atomic_fetch_add_explicit(&omni_tensor_lapack_dgesv_calls, 1, memory_order_relaxed);
         return OMNI_TENSOR_LAPACK_SUCCESS;
     }
     if (info > 0) return OMNI_TENSOR_LAPACK_SINGULAR;
@@ -627,7 +760,7 @@ int omni_tensor_backend_lapack_dgeqrf(
     }
     free(signs);
 
-    omni_tensor_lapack_dgeqrf_calls++;
+    atomic_fetch_add_explicit(&omni_tensor_lapack_dgeqrf_calls, 1, memory_order_relaxed);
     return OMNI_TENSOR_LAPACK_SUCCESS;
 }
 

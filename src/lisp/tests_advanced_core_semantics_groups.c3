@@ -113,9 +113,9 @@ fn void run_advanced_core_semantics_letrec_tests(Interp* interp, int* pass, int*
 
 fn void run_advanced_core_semantics_error_tests(Interp* interp, int* pass, int* fail) {
     // Error handling
-    test_error(interp, "unbound variable", "nonexistent_var_xyz", pass, fail);
-    test_error(interp, "call non-function", "(42 1)", pass, fail);
-    test_error(interp, "capture outside checkpoint", "(capture k 42)", pass, fail);
+    test_error_contains(interp, "unbound variable", "nonexistent_var_xyz", "unbound variable", pass, fail);
+    test_error_contains(interp, "call non-function", "(42 1)", "not a function", pass, fail);
+    test_error_contains(interp, "capture outside checkpoint", "(capture k 42)", "capture outside of checkpoint", pass, fail);
 }
 
 fn void run_advanced_core_semantics_try_raise_tests(Interp* interp, int* pass, int* fail) {

@@ -105,6 +105,7 @@ fn bool run_parse_source(char[] source, Interp* interp, List{Expr*}* exprs, Eval
     p.init(&lex, interp);
 
     while (!lex.at_end() && !p.has_error) {
+        if (!p.ensure_program_expr_limit((*exprs).len())) break;
         Expr* expr = p.parse_expr();
         if (expr != null && !p.has_error) {
             (*exprs).push(expr);

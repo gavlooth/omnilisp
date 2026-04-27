@@ -10,9 +10,7 @@ struct FiberTempScopeState {
 
 fn void test_entry_scope_create_in_stack_ctx(void* arg) {
     FiberTempScopeState* state = (FiberTempScopeState*)arg;
-    usz bypass_before = g_fiber_temp_pool_stats.bypass_escape_activity_allocs;
-    usz eligible_before = g_fiber_temp_pool_stats.eligible_slow_allocs;
-    usz ctx_returns_before = g_fiber_temp_pool_stats.ctx_return_count;
+    FiberTempPoolStats fiber_before = fiber_temp_pool_stats_snapshot();
 
     ScopeRegion* child1 = scope_create(state.parent_scope);
     bool ok1 = true;
@@ -37,12 +35,10 @@ fn void test_entry_scope_create_in_stack_ctx(void* arg) {
     scope_release(child2);
 
     state.ok = (ok1 && ok2) ? 1 : 0;
-    usz bypass_after = g_fiber_temp_pool_stats.bypass_escape_activity_allocs;
-    usz eligible_after = g_fiber_temp_pool_stats.eligible_slow_allocs;
-    usz ctx_returns_after = g_fiber_temp_pool_stats.ctx_return_count;
-    state.bypass_escape = bypass_after > bypass_before ? 1 : 0;
-    state.eligible_slow = eligible_after > eligible_before ? 1 : 0;
-    state.ctx_returns = ctx_returns_after > ctx_returns_before ? 1 : 0;
+    FiberTempPoolStats fiber_after = fiber_temp_pool_stats_snapshot();
+    state.bypass_escape = fiber_after.bypass_escape_activity_allocs > fiber_before.bypass_escape_activity_allocs ? 1 : 0;
+    state.eligible_slow = fiber_after.eligible_slow_allocs > fiber_before.eligible_slow_allocs ? 1 : 0;
+    state.ctx_returns = fiber_after.ctx_return_count > fiber_before.ctx_return_count ? 1 : 0;
 }
 
 fn bool test_stack_ctx_scope_create_in_context() {

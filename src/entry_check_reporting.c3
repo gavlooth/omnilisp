@@ -70,7 +70,7 @@ fn void print_json_escaped_bytes(char[] value) {
                 io::print("\\t");
             default:
                 uint byte = (uint)c & 0xFF;
-                if (byte < 0x20) {
+                if (byte < 0x20 || byte >= 0x80) {
                     io::print("\\u00");
                     print_json_hex_byte(c);
                 } else {

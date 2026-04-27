@@ -27,7 +27,7 @@ fn void run_ml_validation_benchmarks(Interp* interp) {
 
     emit_test_section_banner("ML Validation Benchmarks");
 
-    usz recycle_before = main::g_scope_memory_telemetry_stats.scope_recycle_count;
+    main::ScopeMemoryTelemetryStats scope_before = main::scope_memory_telemetry_stats_snapshot();
     CopyToParentStats copy_before = copy_to_parent_stats_snapshot();
 
     long inference_start_ms = ml_validation_bench_now_ms();
@@ -54,14 +54,16 @@ fn void run_ml_validation_benchmarks(Interp* interp) {
     );
     long training_done_ms = ml_validation_bench_now_ms();
 
-    usz recycle_after = main::g_scope_memory_telemetry_stats.scope_recycle_count;
+    main::ScopeMemoryTelemetryStats scope_after = main::scope_memory_telemetry_stats_snapshot();
     CopyToParentStats copy_after = copy_to_parent_stats_snapshot();
 
     long inference_ok = ml_validation_bench_ok_count(inference_result);
     long training_ok = ml_validation_bench_ok_count(training_result);
     long inference_ms = inference_done_ms > inference_start_ms ? inference_done_ms - inference_start_ms : 0;
     long training_ms = training_done_ms > inference_done_ms ? training_done_ms - inference_done_ms : 0;
-    usz recycle_delta = recycle_after >= recycle_before ? recycle_after - recycle_before : 0;
+    usz recycle_delta = scope_after.scope_recycle_count >= scope_before.scope_recycle_count
+        ? scope_after.scope_recycle_count - scope_before.scope_recycle_count
+        : 0;
     usz copy_total_delta = copy_after.total_calls >= copy_before.total_calls
         ? copy_after.total_calls - copy_before.total_calls
         : 0;

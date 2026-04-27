@@ -19,6 +19,14 @@ fn void run_basic_intro_tests(Interp* interp, int* pass, int* fail) {
     // Primitives
     setup(interp, "(define add +)");
     test_tag(interp, "quote returns list", "(quote (a b c))", CONS, pass, fail);
+    if (interp.tid_Float != INVALID_TYPE_ID &&
+        interp.types.types[(usz)interp.tid_Float].parent == interp.tid_Number) {
+        emit_pass_literal("[PASS] Float type cache is initialized");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] Float type cache is initialized");
+        (*fail)++;
+    }
 
     // Closure
     setup(interp, "(define make-adder (lambda (n) (lambda (x) n)))");
@@ -128,6 +136,9 @@ fn void run_basic_index_and_match_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "match [.. last]", "(match (quote (1 2 3 4 5)) ([.. last] last))", 5, pass, fail);
     test_eq(interp, "match fallthrough", "(match 42 (0 100) (1 200) (x x))", 42, pass, fail);
     test_eq(interp, "match [_ second _]", "(match (quote (1 2 3)) ([_ second _] second))", 2, pass, fail);
+    test_error_contains(interp, "dict pattern rejects duplicate keys",
+        "(match (Dictionary 'name 7) ({name name} name) (_ 0))",
+        "duplicate key in dict pattern", pass, fail);
 }
 
 fn void run_basic_control_flow_tests(Interp* interp, int* pass, int* fail) {
@@ -143,6 +154,38 @@ fn void run_basic_control_flow_tests(Interp* interp, int* pass, int* fail) {
     test_nil(interp, "ref missing dict key => nil", "(ref {'name 42} 'age)", pass, fail);
     test_error_contains(interp, "path missing dict key errors", "(let (m {'name 42}) m.age)",
         "cannot access '.age' on Dictionary value", pass, fail);
+    {
+        SymbolId missing_key = interp.symbols.intern("missing");
+        Value malformed_module = {};
+        malformed_module.tag = MODULE;
+        malformed_module.module_val = null;
+        Value malformed_instance = {};
+        malformed_instance.tag = INSTANCE;
+        malformed_instance.instance_val = null;
+        Value malformed_dict = {};
+        malformed_dict.tag = HASHMAP;
+        malformed_dict.hashmap_val = null;
+
+        EvalResult module_step = eval_path_step(&malformed_module, missing_key, interp);
+        EvalResult instance_step = eval_path_step(&malformed_instance, missing_key, interp);
+        EvalResult dict_step = eval_path_step(&malformed_dict, missing_key, interp);
+        bool ok = module_step.error.has_error &&
+            str_contains(module_step.error.message[:256], "module value is invalid") &&
+            instance_step.error.has_error &&
+            dict_step.error.has_error;
+        if (ok) {
+            emit_pass_literal("[PASS] malformed path payloads fail closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] malformed path payloads fail closed (module=%s instance=%s dict=%s)",
+                module_step.error.has_error ? "error" : "ok",
+                instance_step.error.has_error ? "error" : "ok",
+                dict_step.error.has_error ? "error" : "ok"
+            );
+            (*fail)++;
+        }
+    }
     test_eq(interp, "cons path .car", "(let (p (cons 10 20)) p.car)", 10, pass, fail);
     test_eq(interp, "cons path .cdr", "(let (p (cons 10 20)) p.cdr)", 20, pass, fail);
     test_error_contains(interp, "ref cons symbol key rejected", "(ref (cons 10 20) 'car)",
@@ -242,6 +285,34 @@ fn void run_basic_symbol_table_hardening_tests(Interp* interp, int* pass, int* f
             (*pass)++;
         } else {
             io::printn("[FAIL] symbol table refuses INVALID_SYMBOL_ID ceiling");
+            (*fail)++;
+        }
+        table.destroy();
+    }
+
+    {
+        SymbolTable table = {};
+        table.init();
+        SymbolId anchor = table.intern("hash-full-anchor");
+
+        table.hash_capacity = 1;
+        table.hash_index[0] = anchor;
+        usz count_before = table.count;
+
+        SymbolId first_failed = table.intern("hash-full-beta");
+        SymbolId second_failed = table.intern("hash-full-beta");
+        bool ok = anchor != INVALID_SYMBOL_ID
+            && first_failed == INVALID_SYMBOL_ID
+            && second_failed == INVALID_SYMBOL_ID
+            && table.count == count_before
+            && scheduler_str_eq(table.get_name(anchor), "hash-full-anchor")
+            && scheduler_str_eq(table.get_name((SymbolId)count_before), "<invalid-symbol>");
+
+        if (ok) {
+            emit_pass_literal("[PASS] symbol table hash insertion failure preserves table");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] symbol table hash insertion failure preserves table");
             (*fail)++;
         }
         table.destroy();
@@ -395,6 +466,40 @@ fn TypeInfo make_basic_type_info(SymbolId name) {
 }
 
 fn void run_basic_type_registry_hardening_tests(Interp* interp, int* pass, int* fail) {
+    {
+        TypeRegistry registry = {};
+        SymbolTable syms = {};
+        syms.init();
+        bool setup_ok = registry.init();
+        bool ok = false;
+        if (setup_ok) {
+            SymbolId first_name = syms.intern("type-hash-full-anchor");
+            SymbolId second_name = syms.intern("type-hash-full-rejected");
+            TypeId first_id = registry.register_type(make_basic_type_info(first_name), &syms);
+            if (first_id != INVALID_TYPE_ID && second_name != INVALID_SYMBOL_ID) {
+                registry.hash_capacity = 1;
+                registry.type_hash_index[0] = first_id;
+                usz count_before = registry.type_count;
+
+                TypeId rejected = registry.register_type(make_basic_type_info(second_name), &syms);
+                ok = rejected == INVALID_TYPE_ID &&
+                    registry.type_count == count_before &&
+                    registry.lookup(first_name, &syms) == first_id &&
+                    registry.lookup(second_name, &syms) == INVALID_TYPE_ID;
+            }
+        }
+
+        if (ok) {
+            emit_pass_literal("[PASS] type registry hash insertion failure rolls back new type");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] type registry hash insertion failure rolls back new type");
+            (*fail)++;
+        }
+        registry.destroy();
+        syms.destroy();
+    }
+
     if (!type_registry_fault_injection_enabled()) {
         emit_pass_literal("[PASS] type registry fault-injection hardening skipped (enable OMNI_TEST_FAULT_INJECTION)");
         (*pass)++;
@@ -551,7 +656,7 @@ fn void run_basic_runtime_memory_stats_tests(Interp* interp, int* pass, int* fai
 }
 
 fn void run_basic_runtime_memory_stats_native_tests(Interp* interp, int* pass, int* fail) {
-    usz create_before = main::g_scope_memory_telemetry_stats.scope_create_count;
+    main::ScopeMemoryTelemetryStats before = main::scope_memory_telemetry_stats_snapshot();
     main::ScopeRegion* scope = main::scope_create(interp.root_scope);
     if (scope != null) {
         void* temp_ptr = scope.alloc(24);
@@ -560,9 +665,9 @@ fn void run_basic_runtime_memory_stats_native_tests(Interp* interp, int* pass, i
         (void)escape_ptr;
         main::scope_release(scope);
     }
-    main::ScopeMemoryTelemetryStats stats = main::g_scope_memory_telemetry_stats;
+    main::ScopeMemoryTelemetryStats stats = main::scope_memory_telemetry_stats_snapshot();
     if (scope != null &&
-        stats.scope_create_count >= create_before + 1 &&
+        stats.scope_create_count >= before.scope_create_count + 1 &&
         stats.total_temp_bytes_allocated >= 24 &&
         stats.total_escape_bytes_allocated >= 32 &&
         stats.scope_release_count > 0) {
@@ -570,6 +675,155 @@ fn void run_basic_runtime_memory_stats_native_tests(Interp* interp, int* pass, i
         (*pass)++;
     } else {
         io::printn("[FAIL] runtime memory telemetry native counters");
+        (*fail)++;
+    }
+}
+
+fn void basic_fill_bytes(void* ptr, usz len, char value) {
+    if (ptr == null) return;
+    char* bytes = (char*)ptr;
+    for (usz i = 0; i < len; i++) {
+        bytes[i] = value;
+    }
+}
+
+fn void run_basic_env_alloc_default_tests(Interp* interp, int* pass, int* fail) {
+    main::ScopeRegion* saved_scope = interp.current_scope;
+    main::ScopeRegion* scope = main::scope_create(saved_scope);
+    bool setup_ok = scope != null;
+    bool temp_ok = false;
+    bool escape_ok = false;
+
+    if (setup_ok) {
+        interp.current_scope = scope;
+
+        void* temp_dirty = scope.alloc(Env.sizeof);
+        setup_ok = temp_dirty != null;
+        if (setup_ok) {
+            basic_fill_bytes(temp_dirty, Env.sizeof, (char)1);
+            main::scope_reset_temp_lane(scope);
+            Env* temp_env = interp.alloc_env();
+            temp_ok = temp_env != null &&
+                !temp_env.is_inline &&
+                temp_env.bindings == null &&
+                temp_env.capacity == 0 &&
+                !temp_env.owner_escape_lane;
+        }
+
+        void* escape_dirty = setup_ok ? scope.alloc_escape(Env.sizeof) : null;
+        setup_ok = setup_ok && escape_dirty != null;
+        if (setup_ok) {
+            basic_fill_bytes(escape_dirty, Env.sizeof, (char)1);
+            scope.escape_bump = (char*)escape_dirty;
+            Env* escape_env = interp.alloc_env_escape();
+            escape_ok = escape_env != null &&
+                !escape_env.is_inline &&
+                escape_env.bindings == null &&
+                escape_env.capacity == 0 &&
+                escape_env.owner_escape_lane;
+        }
+
+        interp.current_scope = saved_scope;
+        main::scope_release(scope);
+    }
+
+    bool ok = setup_ok && temp_ok && escape_ok;
+    if (ok) {
+        emit_pass_literal("[PASS] env direct allocators initialize inline state");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] env direct allocators initialize inline state (setup=%s temp=%s escape=%s)",
+            setup_ok ? "yes" : "no",
+            temp_ok ? "yes" : "no",
+            escape_ok ? "yes" : "no");
+        (*fail)++;
+        if (scope != null && interp.current_scope == scope) {
+            interp.current_scope = saved_scope;
+            main::scope_release(scope);
+        }
+    }
+}
+
+fn void run_basic_env_hash_malformed_table_tests(Interp* interp, int* pass, int* fail) {
+    SymbolId key = interp.symbols.intern("env-hash-null-table-key");
+    Env env = {};
+    env.hash_capacity = 2;
+    env.hash_table = null;
+
+    usz missing = env.hash_lookup(key);
+    env.hash_insert(key, 0);
+    usz after_insert = env.hash_lookup(key);
+
+    bool ok = key != INVALID_SYMBOL_ID &&
+        missing == ~(usz)0 &&
+        after_insert == ~(usz)0 &&
+        env.hash_table == null &&
+        env.hash_capacity == 2;
+
+    if (ok) {
+        emit_pass_literal("[PASS] env hash helpers tolerate null table");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] env hash helpers tolerate null table");
+        (*fail)++;
+    }
+}
+
+fn void run_basic_env_copy_unknown_tag_tests(Interp* interp, int* pass, int* fail) {
+    Value invalid = {};
+    char* raw = (char*)&invalid;
+    raw[0] = (char)127;
+
+    Value* copied = copy_env_value_fast(&invalid, interp);
+    if (copied == null) {
+        emit_pass_literal("[PASS] env copy rejects unknown value tag");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] env copy rejects unknown value tag");
+        (*fail)++;
+    }
+}
+
+fn void run_basic_pattern_unknown_tag_tests(Interp* interp, int* pass, int* fail) {
+    Pattern invalid = {};
+    char* raw = (char*)&invalid;
+    raw[0] = (char)127;
+
+    MatchResult result = match_pattern(&invalid, make_nil(interp), interp);
+    bool ok = result.has_error() &&
+        result.error != null &&
+        str_contains(result.error.str_chars[:result.error.str_len], "match: unknown pattern tag");
+    result.cleanup();
+
+    if (ok) {
+        emit_pass_literal("[PASS] pattern matcher rejects unknown pattern tag");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] pattern matcher rejects unknown pattern tag");
+        (*fail)++;
+    }
+}
+
+fn void run_basic_pattern_unknown_rest_position_tests(Interp* interp, int* pass, int* fail) {
+    Pattern invalid = {};
+    invalid.tag = PAT_SEQ;
+    invalid.elem_count = 0;
+    invalid.rest_pos = REST_NONE;
+    char* raw_rest = (char*)&invalid.rest_pos;
+    raw_rest[0] = (char)127;
+
+    MatchResult result = match_pattern(&invalid, make_nil(interp), interp);
+    bool ok = result.has_error() &&
+        result.error != null &&
+        str_contains(result.error.str_chars[:result.error.str_len], "match: unknown sequence rest position");
+    result.cleanup();
+
+    if (ok) {
+        emit_pass_literal("[PASS] pattern matcher rejects unknown sequence rest position");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] pattern matcher rejects unknown sequence rest position");
         (*fail)++;
     }
 }
@@ -592,6 +846,116 @@ fn void run_basic_value_print_hardening_tests(Interp* interp, int* pass, int* fa
     }
 }
 
+fn void run_basic_scope_generation_width_tests(Interp* interp, int* pass, int* fail) {
+    ulong high_generation_floor = (ulong)uint.max + (ulong)8;
+
+    main::scope_global_lock();
+    if (main::g_scope_generation_counter < high_generation_floor) {
+        main::g_scope_generation_counter = high_generation_floor;
+    }
+    main::scope_global_unlock();
+
+    main::ScopeRegion* saved_scope = interp.current_scope;
+    main::ScopeRegion* high_scope = main::scope_create(interp.root_scope);
+    bool setup_ok = high_scope != null;
+    Value* temp_value = null;
+    Value* escape_value = null;
+
+    if (setup_ok) {
+        interp.current_scope = high_scope;
+        temp_value = make_int(interp, 123);
+        escape_value = interp.alloc_value_escape();
+        if (escape_value != null) {
+            escape_value.tag = NIL;
+        }
+        interp.current_scope = saved_scope;
+    }
+
+    bool ok = setup_ok &&
+        high_scope.generation > (ulong)uint.max &&
+        high_scope.escape_generation > (ulong)uint.max &&
+        temp_value != null &&
+        escape_value != null &&
+        temp_value.scope_gen == high_scope.generation &&
+        escape_value.scope_gen == high_scope.escape_generation;
+
+    if (setup_ok) {
+        main::scope_release(high_scope);
+    }
+
+    if (ok) {
+        emit_pass_literal("[PASS] scope generation stamps preserve values above uint max");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] scope generation stamps preserve values above uint max");
+        (*fail)++;
+    }
+}
+
+fn void run_basic_repl_buffer_boundary_tests(Interp* interp, int* pass, int* fail) {
+    char[] empty_storage = {};
+    ReadLineResult zero_read = read_line(empty_storage);
+
+    char[8192] repl_buf = {};
+    usz repl_len = repl_buf.len;
+    repl_eval_buffer(null, &repl_buf, &repl_len, interp, "", "", "");
+
+    bool ok = zero_read.len == 0 &&
+        !zero_read.eof &&
+        !zero_read.truncated &&
+        repl_len == 0;
+
+    if (ok) {
+        emit_pass_literal("[PASS] REPL buffer boundaries reject zero/full buffers");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] REPL buffer boundaries reject zero/full buffers (zero_len=%d eof=%s truncated=%s repl_len=%d)",
+            (long)zero_read.len,
+            zero_read.eof ? "yes" : "no",
+            zero_read.truncated ? "yes" : "no",
+            (long)repl_len
+        );
+        (*fail)++;
+    }
+}
+
+fn void run_basic_repl_server_auth_boundary_tests(Interp* interp, int* pass, int* fail) {
+    (void)interp;
+    ReplServerRequest eval_request = {
+        .has_op = true,
+        .op = "eval",
+    };
+    ReplServerRequest describe_request = {
+        .has_op = true,
+        .op = "describe",
+    };
+
+    ReplServerConnection missing_token_conn = {};
+    repl_server_connection_init(&missing_token_conn, 1, false, false, null, true, null);
+    defer repl_server_connection_destroy(&missing_token_conn);
+
+    char[1] empty_token = {0};
+    ReplServerConnection empty_token_conn = {};
+    repl_server_connection_init(&empty_token_conn, 1, false, false, null, true, &empty_token[0]);
+    defer repl_server_connection_destroy(&empty_token_conn);
+
+    bool ok = missing_token_conn.auth_required &&
+        empty_token_conn.auth_required &&
+        !repl_server_request_is_authorized(&missing_token_conn, &eval_request) &&
+        !repl_server_request_is_authorized(&empty_token_conn, &eval_request) &&
+        repl_server_request_is_authorized(&missing_token_conn, &describe_request) &&
+        repl_server_request_is_authorized(&empty_token_conn, &describe_request);
+
+    if (ok) {
+        emit_pass_literal("[PASS] REPL server auth-required missing token fails closed");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] REPL server auth-required missing token fails closed");
+        (*fail)++;
+    }
+}
+
 fn void run_basic_tests(Interp* interp, int* pass, int* fail) {
     emit_test_section_banner("Basic Tests");
 
@@ -604,6 +968,14 @@ fn void run_basic_tests(Interp* interp, int* pass, int* fail) {
     run_basic_type_registry_hardening_tests(interp, pass, fail);
     run_basic_runtime_memory_stats_tests(interp, pass, fail);
     run_basic_runtime_memory_stats_native_tests(interp, pass, fail);
+    run_basic_env_alloc_default_tests(interp, pass, fail);
+    run_basic_env_hash_malformed_table_tests(interp, pass, fail);
+    run_basic_env_copy_unknown_tag_tests(interp, pass, fail);
+    run_basic_pattern_unknown_tag_tests(interp, pass, fail);
+    run_basic_pattern_unknown_rest_position_tests(interp, pass, fail);
     run_basic_value_print_hardening_tests(interp, pass, fail);
+    run_basic_scope_generation_width_tests(interp, pass, fail);
+    run_basic_repl_buffer_boundary_tests(interp, pass, fail);
+    run_basic_repl_server_auth_boundary_tests(interp, pass, fail);
     run_basic_interp_storage_hardening_tests(interp, pass, fail);
 }

@@ -58,13 +58,7 @@ fn void Compiler.find_free_vars_set(Compiler* self, Expr* expr, List{SymbolId}* 
         self.find_free_vars(expr.set_expr.value, bound_vars, free_vars, enclosing_scope);
         return;
     }
-    // Check if already in free vars
-    bool set_already_free = false;
-    foreach (f : *free_vars) {
-        if ((uint)f == (uint)set_name) { set_already_free = true; break; }
-    }
-    if (!set_already_free) {
-        free_vars.push(set_name);
-    }
+    // An unresolved set! target is not a closure capture. Let later lowering
+    // fail closed instead of creating a silent local binding from lookup_var.
     self.find_free_vars(expr.set_expr.value, bound_vars, free_vars, enclosing_scope);
 }

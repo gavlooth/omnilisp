@@ -14,6 +14,7 @@ import main;
 tlocal lisp::Interp* g_aot_interp = null;
 
 fn bool aot_init() {
+    mutable_cell_registry_reset();
     main::thread_registry_init();
     g_aot_interp = (lisp::Interp*)mem::malloc(lisp::Interp.sizeof);
     if (g_aot_interp == null) {
@@ -27,10 +28,13 @@ fn bool aot_init() {
         return false;
     }
     g_aot_interp.flags.jit_enabled = true;
+    mutable_cell_snapshot_hooks_install();
     return true;
 }
 
 fn void aot_shutdown() {
+    mutable_cell_snapshot_hooks_uninstall();
+    mutable_cell_registry_reset();
     if (g_aot_interp != null) {
         g_aot_interp.destroy();
         mem::free(g_aot_interp);

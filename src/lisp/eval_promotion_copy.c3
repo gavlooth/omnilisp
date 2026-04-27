@@ -192,16 +192,16 @@ fn Value* copy_to_parent_by_route(
             return copy_partial_prim_to_parent(v, interp, fault_out);
         case CP_ROUTE_CONTINUATION:
             // Shallow copy: Value wrapper may be in child scope, cont_val itself is interpreter-lifetime.
-            return copy_continuation_to_parent(v, interp);
+            return copy_continuation_to_parent(v, interp, fault_out);
         case CP_ROUTE_SHARED_WRAPPER:
             // Shared wrappers must be cloned when they are not already reusable
             // in the target chain. This prevents aliasing disjoint collection
             // wrappers after reuse is declined.
             return copy_shared_wrapper_to_parent(v, interp, fault_out);
         case CP_ROUTE_INSTANCE:
-            return copy_instance_to_parent(v, interp);
+            return copy_instance_to_parent(v, interp, fault_out);
         case CP_ROUTE_FFI_HANDLE:
-            return copy_ffi_handle_to_parent(v, interp);
+            return copy_ffi_handle_to_parent(v, interp, fault_out);
         case CP_ROUTE_TYPE_INFO:
             // Type-info entries live in type registry lifetime.
             return v;

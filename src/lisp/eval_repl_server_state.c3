@@ -174,10 +174,10 @@ fn void repl_server_connection_init(
     usz auth_token_len = 0;
     bool auth_token_terminated = !auth_required || auth_token_ptr == null ||
         repl_server_cstr_len_bounded(auth_token_ptr, REPL_SERVER_CSTR_SCAN_MAX, &auth_token_len);
-    conn.auth_required = auth_required && auth_token_ptr != null &&
-        (!auth_token_terminated || auth_token_len > 0);
-    conn.auth_token_ptr = conn.auth_required && auth_token_terminated ? auth_token_ptr : null;
-    conn.auth_token_len = conn.auth_required && auth_token_terminated ? auth_token_len : 0;
+    bool auth_token_valid = auth_required && auth_token_ptr != null && auth_token_terminated && auth_token_len > 0;
+    conn.auth_required = auth_required;
+    conn.auth_token_ptr = auth_token_valid ? auth_token_ptr : null;
+    conn.auth_token_len = auth_token_valid ? auth_token_len : 0;
     conn.preload_project = preload_project;
     conn.preload_project_dir = preload_project_dir;
     repl_server_output_init(&conn.output, write_fd, socket_write);

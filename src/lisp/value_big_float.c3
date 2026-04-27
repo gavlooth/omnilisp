@@ -104,7 +104,7 @@ fn Value* copy_big_float_to_parent(Value* v, Interp* interp, BoundaryCopyFault* 
     result.tag = BIG_FLOAT;
     result.big_float_val = cloned;
     if (!scope_register_value_dtor_or_cleanup(interp.current_scope, result)) {
-        if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
+        if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_DTOR_REGISTRATION;
         return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to register BigFloat copy destructor");
     }
     return result;
@@ -198,6 +198,7 @@ fn void* big_float_handle_from_value(Value* v) {
     if (v == null) return null;
     switch (v.tag) {
         case BIG_FLOAT:
+            if (v.big_float_val == null) return null;
             return omni_big_float_clone(v.big_float_val);
         case INT:
             return omni_big_float_from_i64(v.int_val);
@@ -206,6 +207,7 @@ fn void* big_float_handle_from_value(Value* v) {
         case FLOAT32:
             return omni_big_float_from_double((double)v.float32_val);
         case BIG_INTEGER: {
+            if (v.big_integer_val == null) return null;
             usz len = 0;
             char* rendered = omni_big_integer_to_string(v.big_integer_val, &len);
             if (rendered == null) return null;

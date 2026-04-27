@@ -196,15 +196,6 @@ fn EvalResult eval_deftype(Expr* expr, Env* env, Interp* interp) {
     }
     constructor.prim_val.tag = (int)type_id;
 
-    // Also make type info available as a value
-    Value* type_val = interp.alloc_value();
-    if (type_val == null) {
-        if (existing_type_id == INVALID_TYPE_ID) interp.types.rollback_recent_new_type(type_id, &interp.symbols);
-        return eval_error("out of memory while registering type");
-    }
-    type_val.tag = TYPE_INFO;
-    type_val.type_info_val = &interp.types.types[(usz)type_id];
-
     // Define constructor in global env
     if (!env_define_with_barrier_checked(interp.global_env, dt.name, constructor, interp)) {
         if (existing_type_id == INVALID_TYPE_ID) interp.types.rollback_recent_new_type(type_id, &interp.symbols);

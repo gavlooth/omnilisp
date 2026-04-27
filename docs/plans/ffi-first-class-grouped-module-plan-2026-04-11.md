@@ -4,6 +4,6 @@
 
 ## Parts
 
-- Part 01: [docs/plans/ffi-first-class-grouped-module-plan-2026-04-11_parts/ffi-first-class-grouped-module-plan-2026-04-11_part_01.md](ffi-first-class-grouped-module-plan-2026-04-11_parts/ffi-first-class-grouped-module-plan-2026-04-11_part_01.md) (324 lines)
-- Part 02: [docs/plans/ffi-first-class-grouped-module-plan-2026-04-11_parts/ffi-first-class-grouped-module-plan-2026-04-11_part_02.md](ffi-first-class-grouped-module-plan-2026-04-11_parts/ffi-first-class-grouped-module-plan-2026-04-11_part_02.md) (351 lines)
+- Part 01: [docs/plans/ffi-first-class-grouped-module-plan-2026-04-11_parts/ffi-first-class-grouped-module-plan-2026-04-11_part_01.md](ffi-first-class-grouped-module-plan-2026-04-11_parts/ffi-first-class-grouped-module-plan-2026-04-11_part_01.md) (323 lines)
+- Part 02: [docs/plans/ffi-first-class-grouped-module-plan-2026-04-11_parts/ffi-first-class-grouped-module-plan-2026-04-11_part_02.md](ffi-first-class-grouped-module-plan-2026-04-11_parts/ffi-first-class-grouped-module-plan-2026-04-11_part_02.md) (350 lines)
 - Part 03: [docs/plans/ffi-first-class-grouped-module-plan-2026-04-11_parts/ffi-first-class-grouped-module-plan-2026-04-11_part_03.md](ffi-first-class-grouped-module-plan-2026-04-11_parts/ffi-first-class-grouped-module-plan-2026-04-11_part_03.md) (171 lines)
