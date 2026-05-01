@@ -29,8 +29,10 @@ split gate applies to code files only.
 
 ## Live Queue
 
-- Current actionable count: 0.
-- none currently;
+- Current actionable count: 1.
+- `DOCS-README-001` in Part 18 is open. The root README needs a sectioned,
+  tutorial-style rewrite that covers the whole language surface and
+  cross-links the normative docs without becoming a second spec.
 - Live blocker queue closed by the 2026-04-30 AUDIT-252 M9 default-switch
   classification.
 - `AUDIT-256-FFI-ASYNC-INVALID-ARG-ABI-TAG` in Part 18 is closed. Async FFI

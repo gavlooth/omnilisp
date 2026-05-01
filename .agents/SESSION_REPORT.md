@@ -53,6 +53,80 @@ order is preserved in the part files; some historical parts now exceed the old
 - Part 43: [.agents/session_report_parts/session_report_part_43.md](session_report_parts/session_report_part_43.md) (1420 lines)
 - Part 44: [.agents/session_report_parts/session_report_part_44.md](session_report_parts/session_report_part_44.md) (10005 lines)
 
+## 2026-05-01T10:57:14+02:00 - README Tutorial Overhaul Implementation
+
+Objective attempted: rewrite the root README into a sectioned, tutorial-style
+Omni language entrypoint with examples for the major language areas.
+
+Relevant workspace: `/home/christos/Omni`.
+
+Code or configuration changes made: replaced the README quick-start fragment
+with a structured tour covering the core model, functions and arity, bindings,
+collections and access, quoting/templates, literals and reader tags, mutation,
+control flow, types and dispatch, modules and macros, effects and
+continuations, primitives, build/run, validation, and reference links.
+
+Commands run:
+- `sed -n` inspections of `docs/LANGUAGE_SPEC.md`, `docs/SYNTAX_SPEC.md`,
+  `docs/OMNI_REFERENCE.md`, and `README.md`
+- `rg -n` checks for module/path syntax anchors in the language spec parts
+- `git diff --check`
+- `rg -n "docs/(README|LANGUAGE_SPEC|SYNTAX_SPEC|ARCHITECTURE|PROJECT_TOOLING|RELEASE_STATUS|OMNI_REFERENCE|LLM_LANGUAGE_DIGEST)\\.md" README.md`
+
+Key results: the README now reads as a sectioned tutorial rather than a short
+fragmented quick-start page, and the new examples stay aligned with the
+current syntax and module rules.
+
+Current best recommendation: keep the README as the user-facing learning
+surface, and use `docs/README.md` plus the language and syntax specs for exact
+normative behavior.
+
+Unresolved issues: none from this implementation slice.
+
+Next actions: none required for this slice; future docs work can refine the
+examples or broaden the reference links if the language surface changes.
+
+Dependencies, blockers, or restart requirements: no runtime restart required;
+this is documentation state only.
+
+Signature: GPT-5 Codex
+
+## 2026-05-01T10:57:14+02:00 - README Tutorial Overhaul Plan
+
+Objective attempted: create a durable plan for turning the root README into a
+single sectioned, tutorial-style Omni language entrypoint.
+
+Relevant workspace: `/home/christos/Omni`.
+
+Code or configuration changes made: added
+`docs/plans/readme-tutorial-overhaul-plan-2026-05-01.md`, inserted a live
+TODO item `DOCS-README-001` in `docs/todo_parts/todo_part_18.md`, updated
+`TODO.md` to show one actionable item, and refreshed `docs/plans/README.md`
+to reflect the new live documentation plan.
+
+Commands run:
+- `date --iso-8601=seconds`
+- `sed -n`/`tail` inspections of `README.md`, `docs/README.md`,
+  `docs/plans/README.md`, `docs/todo_parts/todo_part_18.md`, `TODO.md`, and
+  the current session report files
+
+Key results: the repo now has a tracked plan for README consolidation, and the
+live backlog count is no longer stale.
+
+Current best recommendation: execute the README rewrite against the section
+outline in `docs/plans/readme-tutorial-overhaul-plan-2026-05-01.md`, then
+cross-check the examples against the normative docs and link map.
+
+Unresolved issues: the README itself has not been rewritten yet.
+
+Next actions: draft the sectioned README content and align the surrounding doc
+links once the outline is approved.
+
+Dependencies, blockers, or restart requirements: no runtime restart required;
+this is documentation state only.
+
+Signature: GPT-5 Codex
+
 ## 2026-04-30 09:27 CEST - AUDIT-255 FFI Invalid Return ABI Tag Closure
 
 Objective attempted:

@@ -1,107 +1,198 @@
 # Omni Lisp
 
 Omni Lisp is a Lisp dialect with strict-arity lambdas, multiple dispatch,
-algebraic effects, and delimited continuations. The runtime is deterministic
-and scope/region-based, implemented in C3 with JIT and AOT compilation paths.
+algebraic effects, and delimited continuations. The runtime is deterministic,
+scope/region-based, and implemented in C3 with JIT and AOT compilation paths.
 
-This README is aligned with the current syntax and language docs:
-- [Syntax Spec](docs/SYNTAX_SPEC.md)
-- [Language Spec](docs/LANGUAGE_SPEC.md)
-- [Docs Map](docs/README.md)
+This README is the first stop for people using the language. The normative
+contract still lives in:
 
-## Status
+- [docs/README.md](docs/README.md)
+- [docs/LANGUAGE_SPEC.md](docs/LANGUAGE_SPEC.md)
+- [docs/SYNTAX_SPEC.md](docs/SYNTAX_SPEC.md)
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
-Release status is tracked in [Release Status](docs/RELEASE_STATUS.md).
-
-As of 2026-03-10:
-- language feature work is considered complete at current baseline,
-- full release validation is expected to run via Docker-bound gates.
-
-## Syntax Quick Start
-
-The canonical syntax details are in [docs/SYNTAX_SPEC.md](docs/SYNTAX_SPEC.md).
-The examples below match that spec.
-
-### Core Expressions
+## Quick Start
 
 ```lisp
 (define x 10)
 (define y 20)
 (+ x y)
+```
 
+```lisp
 (if (> x 5) "big" "small")
-(block (println "a") (println "b") 42)
+(block
+  (println "first")
+  (println "second")
+  42)
 ```
 
-### `let` Bindings and Destructuring
+Omni is expression-oriented. Most forms return a value, and only `nil` and
+`false` are falsy.
+
+## Core Model
 
 ```lisp
-;; flat pair bindings
-(let (x 1 y 2) (+ x y))
-
-;; array destructuring
-(let ([a b .. rest] [10 20 30 40]) (+ a b))
-
-;; dict destructuring
-(let ({name age} {name "Alice" age 30}) name)
+(define answer 42)
+(define greeting "hello")
+(define flag true)
 ```
 
-### Functions and Arity
+- `nil` and `false` are falsy.
+- `Void` is truthy and represents successful no-result completion.
+- Slash names such as `math/erf` or `io/read` are single symbols, not module
+  dereferences.
+- Dot syntax is the module/value access surface.
 
 ```lisp
-;; strict arity
+(import math)
+(math.pi)
+```
+
+## Functions And Arity
+
+```lisp
 (define (add2 a b) (+ a b))
+(add2 3 4)
+```
 
-;; variadic parameter with ..
+```lisp
 (define (collect first .. rest) rest)
+(collect 1 2 3 4)
+```
 
-;; canonical lambda form (`lambda` remains accepted as a long alias)
+```lisp
 (λ (x y) (+ x y))
 ```
 
-### Collections and Access
+`λ` is the canonical lambda spelling. `lambda` remains accepted as a long
+alias.
+
+Strict arity matters:
 
 ```lisp
-;; list
-'(1 2 3)
-
-;; array literal (desugars to (Array ...))
-[1 2 3]
-
-;; dict literal (desugars to (Dictionary ...)); bare symbol keys auto-quote
-{a 1 b 2}
-
-;; path and index access
-point.x
-arr.[0]
-dict.['key]
+(define (square x) (* x x))
+(square 5)
 ```
 
-### Concise Literals and Strings
+Partial application uses `_`, `|>` or explicit `partial` where appropriate.
+
+## Bindings And Scope
 
 ```lisp
-#xFF                         ;; => 255
-#b1010                       ;; => 10
-#o755                        ;; => 493
+(let (x 1 y 2)
+  (+ x y))
+```
 
-(str "hello {name}")          ;; interpolates through String coercion
-#hex "ff 0a 1b 00"            ;; => [255 10 27 0]
-#time "2024-01-15T10:30:00Z"  ;; => TimePoint
+```lisp
+(let ([a b] [10 20])
+  (+ a b))
+```
+
+```lisp
+(let ({name age} {name "Ada" age 37})
+  name)
+```
+
+```lisp
+(let ^rec (loop (n 5))
+  (if (= n 0)
+      1
+      (* n (loop (- n 1)))))
+```
+
+Use `define` for top-level bindings and `let` for local scope. Named `let`
+lowers through the recursive binding form.
+
+## Collections And Access
+
+```lisp
+'(1 2 3)
+[1 2 3]
+{a 1 b 2}
+```
+
+```lisp
+(define config {port 8080})
+config.port
+config.['port]
+```
+
+```lisp
+(define xs [10 20 30])
+(set! xs.[1] 99)
+xs
+```
+
+- Lists, arrays, and dictionaries are the core collection types.
+- `Dict` is the approved shorthand alias for `Dictionary`.
+- Bare symbol keys in dictionary literals auto-quote.
+
+## Quote, Templates, And Paths
+
+```lisp
+'(1 2 3)
+`(a ,(+ 1 2) ,@(list 3 4))
+```
+
+```lisp
+(define point {x 3 y 4})
+point.x
+point.y
+point.['x]
+```
+
+- `quote` and `quasiquote` are the standard syntax tools for data and code
+  templates.
+- Dot access uses path semantics for fields, module values, and symbol-key
+  lookups.
+
+## Literals And Reader Tags
+
+```lisp
+#xFF
+#b1010
+#o755
+```
+
+```lisp
+(str "hello {name}")
+#hex "ff 0a 1b 00"
+#time "2024-01-15T10:30:00Z"
 #uuid "550e8400-e29b-41d4-a716-446655440000"
 ```
 
-### Mutation
+Reader tags lower as ordinary tag calls:
 
 ```lisp
-(set! name value)
-(set! pair.car value)
-(set! pair.cdr value)
-(set! collection key value) ; generic Array/Dictionary update
+#json "{\"ok\": true}"
+```
+
+Use the reader-tag surface when you want a compact construction or parsing
+form, not a hidden new literal system.
+
+## Mutation
+
+```lisp
+(set! name "Ada")
+(set! pair.car 1)
+(set! pair.cdr 2)
+(set! collection key value)
 ```
 
 `set!` returns `Void` on success.
 
-### Pattern Matching
+## Control Flow
+
+```lisp
+(if (> x 5) "big" "small")
+```
+
+```lisp
+(and (> x 0) (< x 10))
+(or cached-value (compute))
+```
 
 ```lisp
 (match expr
@@ -110,35 +201,108 @@ dict.['key]
   (_ -1))
 ```
 
-### Effects and Continuations
+`match` works with literals, wildcards, sequence patterns, constructors, and
+quoted symbols.
+
+## Types And Dispatch
 
 ```lisp
-;; delimited continuations
-(checkpoint (+ 1 (capture k (k 10))))
+(define [type] Point
+  (^Integer x)
+  (^Integer y))
 
-;; algebraic effects
-(handle
-  (signal 'ask "name")
-  (ask arg (resolve "ok")))
+(define p (Point 3 4))
 ```
 
-## Language Rules That Matter
+```lisp
+(define (describe (^Integer n)) "integer")
+(define (describe (^String s)) "string")
+(define (describe x) "other")
+```
 
-- Truthiness:
-  - falsy: `nil`, `false`
-  - truthy: everything else
-- Collections: list, array, dict.
-- Dispatch is explicit and type-driven; no implicit widening/coercion in method match.
-- Constructors are explicit conversion points.
+```lisp
+(define [union] (Result T E)
+  (Ok T)
+  (Err E))
+```
 
-Canonical type names in docs/runtime are descriptive:
-`Integer`, `Double`, `String`, `Symbol`, `List`, `Array`, `Dictionary`,
-`Set`, `Iterator`, `Coroutine`, `TimePoint`, `Boolean`, `Nil`, `Void`.
+```lisp
+(define [alias] Text String)
+```
 
-Canonical naming is preferred in all surface docs and examples.
-`Dict` remains the only shorthand for `Dictionary` where needed.
+- `define [type]` and `define [struct]` declare nominal product types.
+- `define [union]` declares sum types.
+- Repeated `define` forms with the same name create multiple dispatch methods.
+- Constructor calls are explicit conversion points.
 
-## Build and Run
+## Modules And Macros
+
+```lisp
+(module math-utils (export add multiply)
+  (define (add a b) (+ a b))
+  (define (multiply a b) (* a b)))
+
+(import math-utils)
+(math-utils.add 3 4)
+```
+
+```lisp
+(define [macro] when
+  (syntax-match
+    ([test .. body]
+      (template (if (insert test) (block (splice body)) nil)))))
+```
+
+```lisp
+(define [reader tag] reader-double
+  (syntax-match
+    ([x] (template (+ (insert x) (insert x))))))
+
+#reader-double 21
+```
+
+Use modules for namespacing and macros for syntax extension. Legacy
+clause-style macro forms are removed.
+
+## Effects And Continuations
+
+```lisp
+(checkpoint
+  (+ 1 (capture k (k 10))))
+```
+
+```lisp
+(handle
+  (signal 'ask "name")
+  ((ask value resume)
+    (resume "Ada")))
+```
+
+- `checkpoint` establishes a delimiter.
+- `capture` captures a continuation.
+- `signal` and `handle` implement algebraic effects.
+
+## Primitives And Standard Library
+
+```lisp
+(+ 1 2)
+(= x y)
+(cons 1 '(2 3))
+(str "hello" " " "world")
+```
+
+```lisp
+(list? value)
+(array? value)
+(dict? value)
+(set? value)
+```
+
+The full primitive and standard-library surface is documented in the reference
+chapters, especially the primitives, macros, effects, and CLI/tooling
+sections.
+
+## Build And Run
 
 ```bash
 # full integration build
@@ -146,142 +310,41 @@ OMNI_HOST_TOOLCHAIN_LIB_PATH="${OMNI_HOST_TOOLCHAIN_LIB_PATH:-/usr/local/lib}"
 LIBRARY_PATH="$OMNI_HOST_TOOLCHAIN_LIB_PATH${LIBRARY_PATH:+:$LIBRARY_PATH}" c3c build
 
 # run the repo-local main binary directly
-# installed/user-facing CLI examples elsewhere in the docs use `omni`
 LD_LIBRARY_PATH="$OMNI_HOST_TOOLCHAIN_LIB_PATH${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ./build/main
 ```
-
-`project.json` searches `build`, `/usr/local/lib`, and `deps/lib` for native
-link dependencies such as `lightning`, `replxx`, `omni_chelpers`, and
-`omni_ftxui`. Set `OMNI_HOST_TOOLCHAIN_LIB_PATH` when those libraries live in a
-different local toolchain prefix, for example `$HOME/.local/lib`.
-
-For routine iteration, prefer the fast dev build:
 
 ```bash
 # fast developer build
 scripts/build_fast_dev.sh
 
-# run the lean dev binary
+# lean dev binary
 LD_LIBRARY_PATH="$OMNI_HOST_TOOLCHAIN_LIB_PATH${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ./build/dev-fast/main-dev --eval '(+ 1 2)'
 ```
-
-If you are explicitly not working on the deduce runtime, there is a narrower
-optional profile:
-
-```bash
-scripts/build_fast_nodeduce_dev.sh
-LD_LIBRARY_PATH="$OMNI_HOST_TOOLCHAIN_LIB_PATH${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ./build/dev-fast-nodeduce/main-dev-nodeduce --eval '(+ 1 2)'
-```
-
-Current local baseline on this repo:
-- `c3c build`: about 15s
-- `scripts/build_fast_dev.sh` clean build: about 2.0s
-- `scripts/build_fast_nodeduce_dev.sh` clean build: about 2.0s
-- `scripts/build_fast_dev.sh` unchanged no-op: about 0.06s
-- `scripts/build_fast_nodeduce_dev.sh` unchanged no-op: about 0.06s
-
-To inspect what still dominates the lean target without compiling:
-
-```bash
-scripts/build_fast_dev.sh --profile
-```
-
-That reports the included source count, total included C3 size, and the largest
-files still linked into `main-dev`, along with the largest source groups.
-
-The deduce-free profile is available through:
-
-```bash
-OMNI_FAST_DEV_PROFILE=nodeduce scripts/build_fast_dev.sh --profile
-```
-
-Current profile output shows the remaining weight is dominated by `eval` and
-`jit`, not by optional surfaces like `deduce`.
 
 Use `c3c build` as the integration/full-runtime build. Use
 `scripts/build_fast_dev.sh` for the default edit/build loop when you do not
 need embedded test-suite support.
 
-Do not run multiple `c3c build` processes against the same `build/` tree at the
-same time. Parallel builds can collide on shared object outputs and fail during
-link.
-
-`build_fast_dev.sh` omits the test-entry wiring and all in-tree test sources, so
-it avoids recompiling the test surface, reuses the prebuilt helper archive, and
-it does not contend with the main `build/obj` tree.
-
-`main-dev` currently supports the default iteration loop:
-- `--eval`
-- `--repl`
-- `--repl --project [dir]`
-- `--repl --load <file>`
-- `--check`
-- script execution (`./build/dev-fast/main-dev file.omni`)
-
-`main-dev-nodeduce` supports the same loop, but `deduce`/`deduce/*` are not
-registered and evaluate as unbound names.
-
-Use the full `build/main` binary for
-`--test-suite`, `--gen-e2e`, `--stack-affinity-probe`, `--language-ref`,
-`--lang-ref`, `--manual`, `--init`, `--bind`, `--build`, and `--compile`.
-
-`main-dev` also strips the `pika` module from the fast-build path. Core
-evaluation, REPL, script execution, and non-regex schema flows still work, but
-`pika`-backed regex schema validation is not a parity target for the lean dev
-binary.
-
-The fast target also omits the compiler/AOT/bindgen source families entirely.
-That is why it is materially faster, and also why the full
-`build/main` binary remains the required
-integration build.
-
-## Validation
+## Validation And Tooling
 
 ```bash
-# generate + compile + run e2e compiler output parity
 scripts/run_e2e.sh
 ```
 
-For full gate policy and Docker-capped validation paths, use:
-- [Project Tooling](docs/PROJECT_TOOLING.md)
-- [AGENTS guidance](AGENTS.md)
+For the full gate policy and Docker-capped validation paths, see:
 
-## Editor Tooling
+- [docs/PROJECT_TOOLING.md](docs/PROJECT_TOOLING.md)
+- [docs/RELEASE_STATUS.md](docs/RELEASE_STATUS.md)
+- [docs/OMNI_REFERENCE.md](docs/OMNI_REFERENCE.md)
 
-First-party editor integration scaffolds live under `tooling/`:
+Editor and REPL workflow helpers live under `tooling/`.
 
-- `tooling/tree-sitter-omni` for Tree-sitter grammar and queries
-- `tooling/omni-lsp` for a thin stdio language server
-- `tooling/omni-nvim` for Neovim REPL workflow integration
+## Reference Map
 
-Quick bootstrap (from this repo checkout):
+- [docs/README.md](docs/README.md) for the authoritative docs entrypoint
+- [docs/OMNI_REFERENCE.md](docs/OMNI_REFERENCE.md) for chapter navigation
+- [docs/LLM_LANGUAGE_DIGEST.md](docs/LLM_LANGUAGE_DIGEST.md) for a compact
+  non-normative syntax guide
 
-```bash
-# 1) verify CLI is available
-omni --version
-
-# 2) optional: verify Tree-sitter grammar parses a sample
-cd tooling/tree-sitter-omni
-npm run generate
-npm run parse
-
-# 3) run first-party LSP server
-cd /path/to/Omni
-python3 tooling/omni-lsp/omni_lsp.py
-```
-
-Neovim setup is documented in:
-- `tooling/omni-nvim/README.md`
-- `docs/PROJECT_TOOLING.md` (editor tooling bootstrap section)
-
-## Documentation Index
-
-- [Docs Map](docs/README.md)
-- [Language Spec](docs/LANGUAGE_SPEC.md)
-- [Syntax Spec](docs/SYNTAX_SPEC.md)
-- [Type and Dispatch Syntax](docs/type-system-syntax.md)
-- [Effects Guide](docs/EFFECTS_GUIDE.md)
-- [Architecture](docs/ARCHITECTURE.md)
-- [Project Tooling](docs/PROJECT_TOOLING.md)
-- [Reference Manual](docs/OMNI_REFERENCE.md)
-- [Memory Changelog (implementation truth)](memory/CHANGELOG.md)
+If you are reading this to learn the language, start with the quick start and
+work section-by-section through the examples above.

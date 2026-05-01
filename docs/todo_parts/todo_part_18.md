@@ -1,5 +1,24 @@
 # TODO Part 18
 
+## Documentation Surface Refresh — 2026-05-01
+
+- [ ] `DOCS-README-001` consolidate the root README into a sectioned,
+  tutorial-style language entrypoint.
+  - classification: static documentation, targeted surface overhaul.
+  - why: the current README is a narrow quick start and leaves the language
+    surface fragmented across many docs.
+  - concrete next step: rewrite the README around ordered sections for the
+    language model, core syntax, bindings/functions, collections/access,
+    literals/strings, mutation, control flow/pattern matching, effects and
+    continuations, modules/imports, types/truthiness, and build/run/validation
+    examples, then align the docs map and example links.
+  - prerequisites: confirm section order against
+    `docs/LANGUAGE_SPEC.md`, `docs/SYNTAX_SPEC.md`, `docs/ARCHITECTURE.md`,
+    and `docs/OMNI_REFERENCE.md`.
+  - negative-memory constraint: do not duplicate the normative spec in
+    README or preserve one-off fragmented examples as the primary entrypoint.
+  - plan: `docs/plans/readme-tutorial-overhaul-plan-2026-05-01.md`.
+
 ## Validation Follow-ups — 2026-04-28
 
 - [x] `VALIDATION-001-TLS-INTEGRATION-GATE` close the skipped TLS integration gate before returning validation status to green.

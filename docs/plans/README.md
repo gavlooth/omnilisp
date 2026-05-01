@@ -12,9 +12,10 @@ The live backlog has been consolidated into `TODO.md` at the repo root.
 ## Current Planning State
 
 No plan file in this directory is a live execution queue by itself. `TODO.md`
-is the only live queue, and it currently reports `Current actionable count: 0`.
-The items below are either closed plans, reference specs, or conditional future
-directions that must be reopened through a new TODO entry before implementation.
+is the only live queue, and it currently reports `Current actionable count: 1`
+because of the README overhaul item. The items below are either closed plans,
+reference specs, or conditional future directions that must be reopened
+through a new TODO entry before implementation.
 
 ## Worth Considering, Not Backlog
 
@@ -160,6 +161,10 @@ all-slice pass closed `VALIDATION-002-ALL-SLICE-BOUNDARY-JIT-BLOCKER`.
   parser. Future memory optimization should start from the baseline and
   `scripts/check_memory_telemetry_benchmark_envelope.sh`, not from a live TODO
   under this plan.
+- `readme-tutorial-overhaul-plan-2026-05-01.md`: open docs plan for
+  consolidating the root README into a sectioned, tutorial-style language
+  entrypoint with runnable examples and doc-map cross-links. Tracked by TODO
+  Part 18 `DOCS-README-001`.
 - `vulkan-backend-decision-2026-04-16.md`: completed `TENSOR-100E` baseline note for
   portable explicit GPU execution behind the existing `Tensor` surface. Vulkan
   is runtime-optional, capability-gated, and owned through an Omni C ABI
