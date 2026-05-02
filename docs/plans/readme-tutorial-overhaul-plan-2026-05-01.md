@@ -1,6 +1,6 @@
 # README Tutorial Overhaul Plan
 
-Status: `open`
+Status: `completed`
 As of: 2026-05-01
 
 Objective: turn `README.md` into a single user-facing entrypoint that covers

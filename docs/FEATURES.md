@@ -22,7 +22,7 @@ For removed/renamed syntax, use:
 | Binding and scope | `let`, `let ^rec`, named `let` | `docs/LANGUAGE_SPEC.md` section 3 |
 | Body sequencing | implicit multi-expression bodies in `λ`/`lambda`, `define`, `let`, `let ^rec`, named `let`; explicit `block` elsewhere | `docs/LANGUAGE_SPEC.md` section 3 |
 | Control flow | `if`, `block`, `and`, `or`, `match` | `docs/LANGUAGE_SPEC.md` section 3 |
-| Quoting/templates | `quote`, `quasiquote`, `unquote`, `unquote-splicing` | `docs/LANGUAGE_SPEC.md` section 3 |
+| Quoting/templates | `quote`, `#syntax`, `quasiquote` / `unquote` / `unquote-splicing` | `docs/LANGUAGE_SPEC.md` section 3 |
 | Mutation | `set!` variable/path/generic collection update | `docs/SYNTAX_SPEC.md` + `docs/LANGUAGE_SPEC.md` |
 | Truthiness | falsy: `nil`, `false`; all else truthy | `docs/LANGUAGE_SPEC.md` section 2 |
 | String interpolation | `(str "hello {name}")` | `docs/LANGUAGE_SPEC.md` section 7 |

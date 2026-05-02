@@ -292,8 +292,9 @@ null?
 'symbol     ; equivalent to (quote symbol)
 '(a b c)    ; equivalent to (quote (a b c))
 
-; Quasiquote
-`(a ,x ,@xs)   ; template with unquote and splicing
+; Template (canonical)
+#syntax (a #{x} #{.. xs})   ; template with unquote and splicing
+`(a ,x ,@xs)                 ; legacy quasiquote surface (still supported)
 ```
 
 ### 1.2 S-Expression Forms

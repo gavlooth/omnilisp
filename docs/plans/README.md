@@ -12,10 +12,11 @@ The live backlog has been consolidated into `TODO.md` at the repo root.
 ## Current Planning State
 
 No plan file in this directory is a live execution queue by itself. `TODO.md`
-is the only live queue, and it currently reports `Current actionable count: 1`
-because of the README overhaul item. The items below are either closed plans,
-reference specs, or conditional future directions that must be reopened
-through a new TODO entry before implementation.
+is the only live queue, and it currently reports `Current actionable count: 4`
+because of the README overhaul item plus the new syntax-template surface plan.
+The items below are either closed plans, reference specs, or conditional
+future directions that must be reopened through a new TODO entry before
+implementation.
 
 ## Worth Considering, Not Backlog
 
@@ -165,6 +166,11 @@ all-slice pass closed `VALIDATION-002-ALL-SLICE-BOUNDARY-JIT-BLOCKER`.
   consolidating the root README into a sectioned, tutorial-style language
   entrypoint with runnable examples and doc-map cross-links. Tracked by TODO
   Part 18 `DOCS-README-001`.
+- `syntax-literal-template-surface-plan-2026-05-01.md`: completed language-surface
+  plan for the `#syntax` reader-template form with `#{exp}` unquote and
+  `#{.. exp}` splice. Replaces user-facing quasiquote examples while preserving
+  `quote` and hygienic macro expansion. Tracked by TODO Part 18
+  `SYNTAX-TEMPLATE-001` through `SYNTAX-TEMPLATE-003`.
 - `vulkan-backend-decision-2026-04-16.md`: completed `TENSOR-100E` baseline note for
   portable explicit GPU execution behind the existing `Tensor` surface. Vulkan
   is runtime-optional, capability-gated, and owned through an Omni C ABI

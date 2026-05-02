@@ -462,59 +462,89 @@ fn bool jit_binding_payload_in_releasing_scope(Value* v, main::ScopeRegion* rele
     return false;
 }
 
-fn bool jit_binding_graph_needs_copy(Value* v, Interp* interp, usz depth = 0) {
+fn bool jit_binding_graph_needs_copy(Value* v, Interp* interp) {
     if (v == null || interp == null || interp.releasing_scope == null) return false;
-    if (depth >= 128) return true;
     if (boundary_ptr_in_scope((void*)v, interp.releasing_scope)) return true;
 
-    switch (v.tag) {
-        case CONS:
-            {
-                if (!boundary_ptr_in_target_scope_chain_with_hint((void*)v, interp, v.scope_gen)) {
-                    return true;
-                }
-                Value* current = v;
-                usz cur_depth = depth;
-                while (current != null && current.tag == CONS) {
-                    if (cur_depth >= JIT_TEMP_CONS_SPINE_SCAN_MAX_NODES) return true;
+    Value** stack = (Value**)mem::malloc(Value*.sizeof * 256);
+    if (stack == null) return true;
+    defer mem::free(stack);
+    usz stack_cap = 256;
+    usz stack_count = 0;
 
-                    Value* car = current.cons_val.car;
-                    if (car != null) {
-                        if (boundary_value_in_releasing_scope(car, interp)) return true;
-                        if (!boundary_ptr_in_target_scope_chain_with_hint((void*)car, interp, car.scope_gen)) {
-                            return true;
-                        }
-                        if (jit_binding_graph_needs_copy(car, interp, cur_depth + 1)) return true;
+    stack[stack_count++] = v;
+
+    while (stack_count > 0) {
+        stack_count--;
+        Value* current = stack[stack_count];
+
+        if (boundary_ptr_in_scope((void*)current, interp.releasing_scope)) return true;
+
+        switch (current.tag) {
+            case CONS:
+                {
+                    if (!boundary_ptr_in_target_scope_chain_with_hint((void*)current, interp, current.scope_gen)) {
+                        return true;
                     }
+                    Value* spine = current;
+                    usz spine_nodes = 0;
+                    while (spine != null && spine.tag == CONS) {
+                        if (spine_nodes >= JIT_TEMP_CONS_SPINE_SCAN_MAX_NODES) return true;
 
-                    Value* cdr = current.cons_val.cdr;
-                    if (cdr == null) return false;
-                    if (cdr.tag != CONS) {
+                        Value* car = spine.cons_val.car;
+                        if (car != null) {
+                            if (boundary_value_in_releasing_scope(car, interp)) return true;
+                            if (!boundary_ptr_in_target_scope_chain_with_hint((void*)car, interp, car.scope_gen)) {
+                                return true;
+                            }
+                            if (stack_count >= stack_cap) {
+                                usz new_cap = stack_cap * 2;
+                                Value** new_stack = (Value**)mem::malloc(Value*.sizeof * new_cap);
+                                if (new_stack == null) return true;
+                                for (usz i = 0; i < stack_count; i++) new_stack[i] = stack[i];
+                                mem::free(stack);
+                                stack = new_stack;
+                                stack_cap = new_cap;
+                            }
+                            stack[stack_count++] = car;
+                        }
+
+                        Value* cdr = spine.cons_val.cdr;
+                        if (cdr == null) break;
+                        if (cdr.tag != CONS) {
+                            if (boundary_value_in_releasing_scope(cdr, interp)) return true;
+                            if (!boundary_ptr_in_target_scope_chain_with_hint((void*)cdr, interp, cdr.scope_gen)) {
+                                return true;
+                            }
+                            if (stack_count >= stack_cap) {
+                                usz new_cap = stack_cap * 2;
+                                Value** new_stack = (Value**)mem::malloc(Value*.sizeof * new_cap);
+                                if (new_stack == null) return true;
+                                for (usz i = 0; i < stack_count; i++) new_stack[i] = stack[i];
+                                mem::free(stack);
+                                stack = new_stack;
+                                stack_cap = new_cap;
+                            }
+                            stack[stack_count++] = cdr;
+                            break;
+                        }
                         if (boundary_value_in_releasing_scope(cdr, interp)) return true;
                         if (!boundary_ptr_in_target_scope_chain_with_hint((void*)cdr, interp, cdr.scope_gen)) {
                             return true;
                         }
-                        return jit_binding_graph_needs_copy(cdr, interp, cur_depth + 1);
-                    }
-                    if (boundary_value_in_releasing_scope(cdr, interp)) return true;
-                    if (!boundary_ptr_in_target_scope_chain_with_hint((void*)cdr, interp, cdr.scope_gen)) {
-                        return true;
-                    }
 
-                    current = cdr;
-                    cur_depth++;
+                        spine = cdr;
+                        spine_nodes++;
+                    }
                 }
-                return false;
-            }
-        default:
-            break;
+            default:
+                if (boundary_ptr_in_target_scope_chain_with_hint((void*)current, interp, current.scope_gen)) {
+                    if (boundary_graph_alias_unsafe_for_reuse(current, interp, 0)) return true;
+                }
+                if (jit_value_is_graph_carrying(current)) return true;
+                if (copy_to_parent_payload_in_releasing_scope(current, interp)) return true;
+        }
     }
-
-    if (boundary_ptr_in_target_scope_chain_with_hint((void*)v, interp, v.scope_gen)) {
-        return boundary_graph_alias_unsafe_for_reuse(v, interp, depth);
-    }
-    if (jit_value_is_graph_carrying(v)) return true;
-    if (copy_to_parent_payload_in_releasing_scope(v, interp)) return true;
     return false;
 }
 

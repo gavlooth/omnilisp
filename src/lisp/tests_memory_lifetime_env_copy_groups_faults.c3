@@ -30,13 +30,9 @@ fn void run_memory_lifetime_env_copy_fault_surface_tests(Interp* interp, int* pa
         }
 
         BoundaryEnvCopyResult copied = boundary_copy_env_to_target_scope_checked(deep_leaf, interp, target);
-        bool depth_fault = copied.fault_code == BOUNDARY_ENV_COPY_FAULT_DEPTH_LIMIT;
-        bool parent_fault_with_depth = copied.fault_code == BOUNDARY_ENV_COPY_FAULT_PARENT_COPY &&
-                                       copied.depth >= 256;
         bool ok = setup_ok &&
-                  copied.env == null &&
-                  (depth_fault || parent_fault_with_depth) &&
-                  copied.depth >= 256;
+                  copied.env != null &&
+                  boundary_env_copy_result_ok(copied);
 
         interp.current_scope = saved_scope;
         main::scope_release(source);

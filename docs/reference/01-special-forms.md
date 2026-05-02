@@ -140,16 +140,18 @@ Dot-path errors:
 - `set!: field not found`
 - `set!: target is not an instance or cons`
 
-### `quote` / `quasiquote`
+### `quote` / `#syntax` / `quasiquote`
 
 ```lisp
 'foo                            ;; => symbol foo
 '(1 2 3)                        ;; => list (1 2 3)
 
-`(a ,(+ 1 2) ,@(list 3 4))     ;; => (a 3 3 4)
+#syntax (a #{x} #{.. xs})      ;; canonical template form
+`(a ,x ,@xs)                    ;; legacy quasiquote surface
 ```
 
-Quasiquote supports nesting with depth tracking.
+- `#syntax` is the canonical reader template: `#{x}` unquotes, `#{.. xs}`
+  splices. Legacy `` ` ``, `,`, and `,@` remain fully supported.
 
 ### `and` / `or` — Short-Circuit Logic
 

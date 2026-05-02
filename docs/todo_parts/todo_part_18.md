@@ -1,8 +1,53 @@
 # TODO Part 18
 
+## Syntax Template Surface — 2026-05-01
+
+- [x] `SYNTAX-TEMPLATE-001` freeze the canonical `#syntax` reader-template
+  contract and placeholder grammar.
+  - classification: static language-surface design, targeted naming decision.
+  - why: `quasiquote` / `unquote` are readable to Lisp users but too noisy for
+    the primary surface; `#syntax` is the proposed short canonical name.
+  - concrete next step: document the exact placeholder grammar for inserted
+    and spliced forms, then record the compatibility stance for legacy
+    quasiquote syntax.
+  - prerequisites: confirm the contract against `docs/SYNTAX_SPEC.md` and
+    `docs/LANGUAGE_SPEC.md`.
+  - negative-memory constraint: do not remove `quote`; it still serves the
+    general Lisp data literal use case.
+  - plan: `docs/plans/syntax-literal-template-surface-plan-2026-05-01.md`.
+
+- [x] `SYNTAX-TEMPLATE-002` implement `#syntax` parsing, expansion, and
+  regression coverage.
+  - classification: parser/runtime language behavior, targeted surface
+    implementation.
+  - why: the proposed `#syntax` surface needs real parser and expander support
+    before it can replace user-facing quasiquote examples.
+  - concrete next step: wire `#syntax` into the parser/expander path and add
+    tests that cover literal data, single-form insertion, and splice
+    insertion.
+  - prerequisites: the canonical reader-template contract must be frozen.
+  - negative-memory constraint: do not turn reader literal tags into a second
+    macro system.
+  - plan: `docs/plans/syntax-literal-template-surface-plan-2026-05-01.md`.
+
+- [x] `SYNTAX-TEMPLATE-003` migrate docs and reference examples to the
+  `#syntax` surface.
+  - classification: static documentation, targeted surface migration.
+  - why: once the new literal template form exists, the README and reference
+    chapters should use it instead of `quasiquote` / `unquote` in user-facing
+    examples.
+  - concrete next step: update README, language docs, digest, and reference
+    examples, then record the compatibility policy for legacy quasiquote
+    usage.
+  - prerequisites: the parser/expander implementation must exist or be
+    explicitly blocked.
+  - negative-memory constraint: do not keep `quasiquote` as the primary
+    user-facing syntax once `#syntax` is available and documented.
+  - plan: `docs/plans/syntax-literal-template-surface-plan-2026-05-01.md`.
+
 ## Documentation Surface Refresh — 2026-05-01
 
-- [ ] `DOCS-README-001` consolidate the root README into a sectioned,
+- [x] `DOCS-README-001` consolidate the root README into a sectioned,
   tutorial-style language entrypoint.
   - classification: static documentation, targeted surface overhaul.
   - why: the current README is a narrow quick start and leaves the language
@@ -18,6 +63,116 @@
   - negative-memory constraint: do not duplicate the normative spec in
     README or preserve one-off fragmented examples as the primary entrypoint.
   - plan: `docs/plans/readme-tutorial-overhaul-plan-2026-05-01.md`.
+
+## Capped Recursion Elimination — 2026-05-01
+
+- [x] `RECURSION-001` eliminate JIT quasiquote recursion (`jit_qq_impl`).
+  - classification: runtime anti-pattern removal, high user impact.
+  - why: `jit_qq_impl` uses C recursion with an arbitrary 64-depth cap. Deeply
+    nested quasiquote templates are valid Omni Lisp code and should not fail.
+  - concrete next step: rewrite `jit_qq_impl` in `src/lisp/jit_quasiquote_macros.c3`
+    with an explicit heap-allocated worklist of `(Expr*, depth, phase)` tuples.
+  - prerequisites: understand the current switch cases (E_UNQUOTE, E_UNQUOTE_SPLICING,
+    E_QUASIQUOTE, E_LIT, E_VAR, E_CALL, E_APP, E_QUOTE) and how each combines
+    child results. Preserve the `resolve_terminal_pending` short-circuit.
+  - negative-memory constraint: do not change the emitted Value* shape or the
+    error messages for the existing <=64 depth range.
+  - plan: `docs/plans/eliminate-capped-recursion-anti-pattern-2026-05-01.md`.
+  - done 2026-05-01: rewrote `jit_qq_impl` with `QqWorkItem` heap-allocated work stack
+    and `EvalResult` result stack. Removed 64-depth cap. Added regression test
+    `quasiquote deep nesting 128 levels` in `tests_advanced_macro_hygiene_groups.c3`.
+  - validation: `c3c build`; lisp suite `186 passed, 0 failed`; advanced quasi-pattern
+    slice `23 passed, 0 failed` (includes new deep-nesting test).
+
+- [x] `RECURSION-002` eliminate AOT quasiquote recursion (`compile_qq_flat`).
+  - classification: compiler anti-pattern removal, high user impact.
+  - why: `compile_qq_flat` in `src/lisp/compiler_quasiquote_flat.c3` uses C
+    recursion with an arbitrary 64-depth cap. Same user impact as RECURSION-001.
+  - concrete next step: implement a two-pass approach: (a) build a DAG of
+    `QqCompileNode` structs with dependency edges, (b) emit in topological order.
+  - prerequisites: preserve temp-register ordering (`_r0`, `_r1`, ...) and the
+    existing `emit_return_if_sequence_should_stop` bailout checks.
+  - negative-memory constraint: do not change the emitted C3 text for the
+    existing <=64 depth range.
+  - plan: `docs/plans/eliminate-capped-recursion-anti-pattern-2026-05-01.md`.
+  - done 2026-05-01: rewrote `compile_qq_flat` with an explicit heap-allocated
+    worklist (`AotQqWorkItem* work`, `usz* results`). Removed `AOT_QUASIQUOTE_MAX_DEPTH`
+    constant and 64-depth cap. Added `AotQqState` enum and `AotQqWorkItem` struct.
+    Arrays grow by doubling with OOM fail-closed paths. Preserved all existing
+    semantics for E_UNQUOTE, E_UNQUOTE_SPLICING, E_QUASIQUOTE, E_LIT, E_VAR,
+    E_QUOTE, E_APP, E_CALL. Updated compiler codegen tests to verify 128-deep
+    nesting succeeds instead of 66-deep failing.
+  - validation: `c3c build`; lisp suite `186 passed, 0 failed`; compiler slice
+    `452 passed, 0 failed`.
+
+- [x] `RECURSION-003` eliminate JIT splice item cap (`jit_qq_expand_elements`, `jit_qq_expand_call`).
+  - classification: runtime anti-pattern removal, medium user impact.
+  - why: both functions use `Value*[64] items` fixed arrays for collecting
+    spliced elements. Lists with >64 spliced items are valid.
+  - concrete next step: replace fixed arrays with `List{Value*}` or `mem::malloc`
+    arrays. Add `defer` cleanup.
+  - plan: `docs/plans/eliminate-capped-recursion-anti-pattern-2026-05-01.md`.
+  - done 2026-05-01: replaced `Value*[64] items` with dynamically grown `Value**`
+    heap arrays in both functions. Removed "too many items (max 64)" error.
+    Added regression test `quasiquote splice >64 items` in
+    `tests_advanced_macro_hygiene_groups.c3`.
+  - validation: `c3c build`; lisp suite `186 passed, 0 failed`; compiler slice
+    `452 passed, 0 failed`; advanced quasi-pattern slice `23 passed, 0 failed`.
+
+- [ ] `RECURSION-004` eliminate stable escape graph recursion (`stable_escape_prepare_graph_node`).
+  - classification: runtime anti-pattern removal, high boundary impact.
+  - why: boundary graph preparation recurses on Value graphs with a 128-depth
+    cap. Deeply nested values (nested JSON, nested lists) are valid.
+  - concrete next step: convert to explicit worklist with `(Value*, depth, phase)`
+    tuples on a heap-allocated stack.
+  - prerequisites: preserve the seen-node deduplication (`stable_escape_prepared_find_seen_node`).
+  - plan: `docs/plans/eliminate-capped-recursion-anti-pattern-2026-05-01.md`.
+
+- [ ] `RECURSION-005` eliminate JIT binding graph recursion (`jit_binding_graph_needs_copy`).
+  - classification: runtime anti-pattern removal, high boundary impact.
+  - why: JIT boundary copy detection recurses on cons car/cdr with a 128-depth
+    cap. Deep cons structures are valid.
+  - concrete next step: convert to explicit stack with `(Value*, state)` tuples.
+  - prerequisites: preserve the `boundary_ptr_in_target_scope_chain_with_hint`
+    and `boundary_value_in_releasing_scope` checks.
+  - plan: `docs/plans/eliminate-capped-recursion-anti-pattern-2026-05-01.md`.
+
+- [ ] `RECURSION-006` eliminate env copy recursion (`copy_env_to_scope_inner_checked`).
+  - classification: runtime anti-pattern removal, medium boundary impact.
+  - why: env chain copying recurses on `env.parent` with a 256-depth cap. Long
+    closure capture chains are valid.
+  - concrete next step: convert parent traversal to an iterative while loop.
+    May need a two-pass: first collect frames, then materialize in reverse.
+  - plan: `docs/plans/eliminate-capped-recursion-anti-pattern-2026-05-01.md`.
+
+- [ ] `RECURSION-007` eliminate macro splice tail recursion (`append_values`).
+  - classification: runtime anti-pattern removal, low user impact.
+  - why: `append_values` is tail-recursive on the cons spine with a 10000 cap.
+    Trivial to convert to a loop.
+  - concrete next step: rewrite as iterative reversal + cons building.
+  - plan: `docs/plans/eliminate-capped-recursion-anti-pattern-2026-05-01.md`.
+
+- [ ] `RECURSION-008` eliminate value serializer recursion (`serialize_value_to_buf_depth`).
+  - classification: compiler anti-pattern removal, low user impact.
+  - why: AOT value serialization recurses on cons/array/hashmap/set with a
+    128-depth cap. Only hits deeply nested literals in compiled output.
+  - concrete next step: convert to explicit stack with `(Value*, state)` tuples.
+  - plan: `docs/plans/eliminate-capped-recursion-anti-pattern-2026-05-01.md`.
+
+- [ ] `RECURSION-009` raise parser nesting cap or make iterative (`parse_expr`).
+  - classification: parser anti-pattern removal, low user impact.
+  - why: parser expression nesting is capped at 1024. A file with 1025 nested
+    parens is valid Omni Lisp.
+  - concrete next step: raise `PARSER_MAX_NESTING` from 1024 to 8192 or 16384.
+    Each parser frame is tiny (~32 bytes); 8192 frames = ~256 KB on an 8 MB stack.
+  - plan: `docs/plans/eliminate-capped-recursion-anti-pattern-2026-05-01.md`.
+
+- [ ] `RECURSION-POLICY-001` add "no new capped recursion" rule to C3 style guide.
+  - classification: policy/documentation.
+  - why: prevent future regressions.
+  - concrete next step: add a section to `docs/C3_STYLE.md` or `CLAUDE.md`
+    forbidding depth-capped recursion on user data.
+  - plan: `docs/plans/eliminate-capped-recursion-anti-pattern-2026-05-01.md`.
 
 ## Validation Follow-ups — 2026-04-28
 

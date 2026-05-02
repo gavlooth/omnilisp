@@ -240,17 +240,21 @@ Dot-path invalid-target errors:
 - `set!: field not found` (missing final instance field)
 - `set!: target is not an instance or cons` (final target value is not mutable path target)
 
-### 3.7 `quote` / `quasiquote`
+### 3.7 `quote` / `#syntax` / `quasiquote`
 
 ```lisp
 (quote datum)       ; or 'datum
 'foo                ; => symbol foo
 '(1 2 3)            ; => list (1 2 3)
 
-`(a ,(+ 1 2) ,@(list 3 4))  ; => (a 3 3 4)
+#syntax (a #{x} #{.. xs})  ; canonical template form
+`(a ,x ,@xs)               ; legacy quasiquote surface (still supported)
 ```
 
-Quasiquote supports nesting with depth tracking (Bawden's algorithm).
+- `#syntax` is the canonical reader template. `#{x}` unquotes, `#{.. xs}`
+  splices. It expands to `E_QUASIQUOTE` and shares the same JIT/AOT
+  implementation as `` ` ``.
+- Legacy `` ` ``, `,`, and `,@` remain fully supported.
 
 ### 3.8 `and` / `or` -- Short-Circuit Logic
 

@@ -36,7 +36,7 @@
 
 ```ebnf
 program     = { expr } ;
-expr        = literal | symbol | path | quoted | quasiquoted
+expr        = literal | symbol | path | quoted | syntax_tpl | quasiquoted
             | list | array_lit | dict_lit | indexed | accessor | reader_tag ;
 
 literal     = integer | radix_integer | float | string ;
@@ -50,6 +50,7 @@ symbol      = symbol_char { symbol_char } ;
 path        = symbol "." symbol { "." symbol } ;
 
 quoted      = "'" datum ;
+syntax_tpl  = "#syntax" datum ;
 quasiquoted = "`" datum ;
 list        = "(" { expr } ")" ;
 array_lit   = "[" { expr } "]" ;           (* equivalent to Array constructor call *)

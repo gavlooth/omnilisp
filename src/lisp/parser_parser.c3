@@ -4,7 +4,7 @@ import std::core::mem;
 // SECTION 2: PARSER
 // =============================================================================
 
-const int PARSER_MAX_NESTING = 1024;
+const int PARSER_MAX_NESTING = 8192;
 const usz PARSER_MAX_PROGRAM_EXPRS = 65536;
 
 bool g_parser_force_ast_expr_alloc_fail = false;

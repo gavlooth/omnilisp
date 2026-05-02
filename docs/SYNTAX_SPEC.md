@@ -66,6 +66,7 @@ and binds that symbol explicitly.
 | E_QUASIQUOTE | `` `expr `` | Template with unquote |
 | E_UNQUOTE | `,expr` | Unquote inside quasiquote |
 | E_UNQUOTE_SPLICING | `,@expr` | Splice into quasiquote |
+| E_READER_TAG | `#tag form` | Reader tag shorthand (e.g. `#syntax`) |
 | E_MATCH | `(match expr clauses...)` | Pattern matching |
 | E_RESET | `(checkpoint body)` | Delimited continuation prompt |
 | E_SHIFT | `(capture k body)` | Capture continuation |
@@ -231,12 +232,18 @@ Dot-path errors:
 (block expr1 expr2 ... exprN)  ;; returns last value, TCO on last
 ```
 
-### 3.7 `quote` / `quasiquote`
+### 3.7 `quote` / `#syntax` / `quasiquote`
 
 ```lisp
 (quote datum)        ;; or 'datum
-`(a ,(+ 1 2) ,@(list 3 4))  ;; => (a 3 3 4)
+#syntax (a #{x} #{.. xs})  ;; canonical template form
+`(a ,x ,@xs)          ;; legacy quasiquote surface (still supported)
 ```
+
+- `#syntax` is the canonical reader template. `#{x}` unquotes, `#{.. xs}`
+  splices. It expands to the same `E_QUASIQUOTE` AST as `` ` `` and shares
+  the JIT/AOT implementation.
+- `` ` ``, `,`, and `,@` remain fully supported for compatibility.
 
 ### 3.8 `match` - Pattern Matching
 
@@ -469,7 +476,7 @@ Runtime partial application — prepends initial args to a variadic lambda:
 
 ```ebnf
 program     = { expr } ;
-expr        = literal | symbol | path | quoted | quasiquoted
+expr        = literal | symbol | path | quoted | syntax_tpl | quasiquoted
             | list | array_lit | dict_lit | indexed | accessor | reader_tag ;
 
 literal     = integer | radix_integer | float | string ;
@@ -483,6 +490,7 @@ symbol      = symbol_char { symbol_char } ;
 path        = symbol "." symbol { "." symbol } ;
 
 quoted      = "'" datum ;
+syntax_tpl  = "#syntax" datum ;
 quasiquoted = "`" datum ;
 list        = "(" { expr } ")" ;
 array_lit   = "[" { expr } "]" ;           (* equivalent to Array constructor call *)

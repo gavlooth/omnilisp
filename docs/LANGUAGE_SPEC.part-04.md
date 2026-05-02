@@ -549,7 +549,7 @@ See `docs/PROJECT_TOOLING.md` for the complete reference including `omni.toml` f
 
 ```ebnf
 program     = { expr } ;
-expr        = literal | symbol | path | quoted | quasiquoted | reader_tag
+expr        = literal | symbol | path | quoted | syntax_tpl | quasiquoted | reader_tag
             | list | array_lit | dict_lit | indexed | accessor ;
 
 literal     = integer | radix_integer | float | string ;
@@ -565,6 +565,7 @@ symbol      = symbol_char { symbol_char } ;
 path        = symbol "." symbol { "." symbol } ;
 
 quoted      = "'" datum ;
+syntax_tpl  = "#syntax" datum ;
 quasiquoted = "`" datum ;
 reader_tag  = "#" symbol expr ;           (* equivalent to one-argument call *)
 list        = "(" { expr } ")" ;

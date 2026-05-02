@@ -36,7 +36,7 @@ fn void run_memory_lifetime_boundary_transition_regression_tests(Interp* interp,
                          committed.value != null &&
                          committed.value.tag == ERROR;
 
-        // Env transition: depth-limit path must deterministically report depth fault.
+        // Env transition: deep env chains copy successfully without recursion limit.
         interp.current_scope = releasing_scope;
         Env* env_src = make_env(interp, interp.global_env);
         SymbolId env_sym = interp.symbols.intern("__boundary_transition_env");
@@ -47,8 +47,8 @@ fn void run_memory_lifetime_boundary_transition_regression_tests(Interp* interp,
             target_scope,
             256
         );
-        bool env_ok = !boundary_env_copy_result_ok(env_copied) &&
-                      env_copied.fault_code == BOUNDARY_ENV_COPY_FAULT_DEPTH_LIMIT;
+        bool env_ok = boundary_env_copy_result_ok(env_copied) &&
+                      env_copied.env != null;
 
         // Splice transition: non-unique child refcount must deterministically reject with explicit reason.
         main::scope_retain(releasing_scope);

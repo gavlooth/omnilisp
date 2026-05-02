@@ -133,7 +133,7 @@ xs
 
 ```lisp
 '(1 2 3)
-`(a ,(+ 1 2) ,@(list 3 4))
+#syntax (a #{x} #{.. xs})
 ```
 
 ```lisp
@@ -143,8 +143,11 @@ point.y
 point.['x]
 ```
 
-- `quote` and `quasiquote` are the standard syntax tools for data and code
-  templates.
+- `quote` prevents evaluation for literal data.
+- `#syntax` is the canonical template form: `#{x}` unquotes, `#{.. xs}`
+  splices. It produces the same AST as quasiquote and reuses the same
+  JIT/AOT paths.
+- Legacy `` ` ``, `,`, and `,@` remain fully supported.
 - Dot access uses path semantics for fields, module values, and symbol-key
   lookups.
 

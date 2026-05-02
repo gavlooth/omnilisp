@@ -444,45 +444,47 @@ fn void run_compiler_group_quasiquote_macro_tests(Interp* interp, usz* pass_out,
     }
 
     {
-        char[96] source;
-        for (usz i = 0; i < 66; i++) source[i] = '`';
-        source[66] = 'x';
-        source[67] = 0;
+        char[256] source;
+        for (usz i = 0; i < 128; i++) source[i] = '`';
+        source[128] = 'x';
+        source[129] = 0;
         char[] error = "";
-        char[] code = compile_to_c3(source[:67], interp, &error);
-        bool ok = code.len == 0 &&
-            str_contains(error, "quasiquote nesting too deep (max 64)") &&
+        char[] code = compile_to_c3(source[:129], interp, &error);
+        bool ok = code.len > 0 &&
+            !str_contains(error, "quasiquote nesting too deep") &&
+            str_contains(code, "aot::make_symbol") &&
             !str_contains(code, "_r184467");
         compiler_test_finish_bool(
             ok,
-            "Compiler: AOT quasiquote nesting depth fails closed",
-            "[FAIL] Compiler: AOT quasiquote nesting depth fails closed",
+            "Compiler: AOT quasiquote deep nesting 128 levels",
+            "[FAIL] Compiler: AOT quasiquote deep nesting 128 levels",
             &pass,
             &fail
         );
     }
 
     {
-        char[96] source;
+        char[256] source;
         source[0] = '`';
         source[1] = '(';
-        for (usz i = 0; i < 66; i++) source[i + 2] = '`';
-        source[68] = 'x';
-        source[69] = ' ';
-        source[70] = 'y';
-        source[71] = ' ';
-        source[72] = 'z';
-        source[73] = ')';
-        source[74] = 0;
+        for (usz i = 0; i < 128; i++) source[i + 2] = '`';
+        source[130] = 'x';
+        source[131] = ' ';
+        source[132] = 'y';
+        source[133] = ' ';
+        source[134] = 'z';
+        source[135] = ')';
+        source[136] = 0;
         char[] error = "";
-        char[] code = compile_to_c3(source[:74], interp, &error);
-        bool ok = code.len == 0 &&
-            str_contains(error, "quasiquote nesting too deep (max 64)") &&
+        char[] code = compile_to_c3(source[:136], interp, &error);
+        bool ok = code.len > 0 &&
+            !str_contains(error, "quasiquote nesting too deep") &&
+            str_contains(code, "aot::make_symbol") &&
             !str_contains(code, "_r184467");
         compiler_test_finish_bool(
             ok,
-            "Compiler: AOT quasiquote call nesting propagates failure",
-            "[FAIL] Compiler: AOT quasiquote call nesting propagates failure",
+            "Compiler: AOT quasiquote call deep nesting 128 levels",
+            "[FAIL] Compiler: AOT quasiquote call deep nesting 128 levels",
             &pass,
             &fail
         );
@@ -525,6 +527,61 @@ fn void run_compiler_group_quasiquote_macro_tests(Interp* interp, usz* pass_out,
             ok,
             "Compiler: AOT quasiquote unsupported template fails closed",
             "[FAIL] Compiler: AOT quasiquote unsupported template fails closed",
+            &pass,
+            &fail
+        );
+    }
+
+    // #syntax reader template compiler tests (SYNTAX-TEMPLATE-002)
+    {
+        char[] code = compile_to_c3("(let (x 5) #syntax (a #{x}))", interp);
+        bool ok = str_contains(code, "aot::cons") && str_contains(code, "make_symbol");
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: syntax template compiles natively",
+            "[FAIL] Compiler: syntax template compiles natively",
+            &pass,
+            &fail
+        );
+    }
+
+    {
+        char[] code = compile_to_c3("(let (x 5) #syntax (a #{x}))", interp);
+        bool ok = str_contains(code, "make_symbol(\"a\")");
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: syntax template uses make_symbol",
+            "[FAIL] Compiler: syntax template uses make_symbol",
+            &pass,
+            &fail
+        );
+    }
+
+    {
+        char[2048] source;
+        usz len = 0;
+        for (usz i = 0; i < 128; i++) {
+            source[len++] = '#';
+            source[len++] = 's';
+            source[len++] = 'y';
+            source[len++] = 'n';
+            source[len++] = 't';
+            source[len++] = 'a';
+            source[len++] = 'x';
+            source[len++] = ' ';
+        }
+        source[len++] = 'x';
+        source[len] = 0;
+        char[] error = "";
+        char[] code = compile_to_c3(source[:len], interp, &error);
+        bool ok = code.len > 0 &&
+            !str_contains(error, "syntax template nesting too deep") &&
+            str_contains(code, "aot::make_symbol") &&
+            !str_contains(code, "_r184467");
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: AOT syntax template deep nesting 128 levels",
+            "[FAIL] Compiler: AOT syntax template deep nesting 128 levels",
             &pass,
             &fail
         );

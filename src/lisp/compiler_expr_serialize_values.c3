@@ -7,18 +7,12 @@ import main;
 // =============================================================================
 // SECTION 4c: EXPRESSION SERIALIZER (value + type-annotation forms)
 // =============================================================================
-const usz COMPILER_VALUE_SERIALIZE_MAX_DEPTH = 128;
-
 fn void Compiler.serialize_value_to_buf(Compiler* self, Value* v, List{char}* buf) {
-    self.serialize_value_to_buf_depth(v, buf, 0);
+    self.serialize_value_to_buf_depth(v, buf);
 }
 
-fn void Compiler.serialize_value_to_buf_depth(Compiler* self, Value* v, List{char}* buf, usz depth) {
+fn void Compiler.serialize_value_to_buf_depth(Compiler* self, Value* v, List{char}* buf) {
     if (self.has_error) return;
-    if (depth > COMPILER_VALUE_SERIALIZE_MAX_DEPTH) {
-        self.set_compile_error("compiler: value serializer recursion limit exceeded");
-        return;
-    }
     if (v == null || v.tag == NIL) {
         self.buf_append(buf, "nil");
         return;
@@ -61,7 +55,7 @@ fn void Compiler.serialize_value_to_buf_depth(Compiler* self, Value* v, List{cha
             self.serialize_time_point_value_to_buf(v.time_point_val, buf);
 
         case CONS:
-            self.serialize_cons_value_to_buf_depth(v, buf, depth + 1);
+            self.serialize_cons_value_to_buf_depth(v, buf);
 
         case BIG_INTEGER:
             self.serialize_big_integer_value_to_buf(v, buf);
@@ -73,13 +67,13 @@ fn void Compiler.serialize_value_to_buf_depth(Compiler* self, Value* v, List{cha
             self.serialize_big_complex_value_to_buf(v, buf);
 
         case ARRAY:
-            self.serialize_array_value_to_buf(v, buf, depth + 1);
+            self.serialize_array_value_to_buf(v, buf);
 
         case HASHMAP:
-            self.serialize_hashmap_value_to_buf(v, buf, depth + 1, false);
+            self.serialize_hashmap_value_to_buf(v, buf, false);
 
         case SET:
-            self.serialize_hashmap_value_to_buf(v, buf, depth + 1, true);
+            self.serialize_hashmap_value_to_buf(v, buf, true);
 
         case VOID:
             self.buf_append(buf, "Void");
@@ -299,7 +293,7 @@ fn void Compiler.serialize_big_complex_value_to_buf(Compiler* self, Value* v, Li
     buf.push(')');
 }
 
-fn void Compiler.serialize_array_value_to_buf(Compiler* self, Value* v, List{char}* buf, usz depth) {
+fn void Compiler.serialize_array_value_to_buf(Compiler* self, Value* v, List{char}* buf) {
     if (v.array_val == null) {
         self.set_unsupported_serialized_value_error(ARRAY);
         return;
@@ -307,13 +301,13 @@ fn void Compiler.serialize_array_value_to_buf(Compiler* self, Value* v, List{cha
     buf.push('[');
     for (usz i = 0; i < v.array_val.length; i++) {
         if (i > 0) buf.push(' ');
-        self.serialize_value_to_buf_depth(v.array_val.items[i], buf, depth);
+        self.serialize_value_to_buf_depth(v.array_val.items[i], buf);
         if (self.has_error) return;
     }
     buf.push(']');
 }
 
-fn void Compiler.serialize_hashmap_value_to_buf(Compiler* self, Value* v, List{char}* buf, usz depth, bool is_set_value) {
+fn void Compiler.serialize_hashmap_value_to_buf(Compiler* self, Value* v, List{char}* buf, bool is_set_value) {
     if (v.hashmap_val == null) {
         self.set_unsupported_serialized_value_error(v.tag);
         return;
@@ -334,7 +328,7 @@ fn void Compiler.serialize_hashmap_value_to_buf(Compiler* self, Value* v, List{c
         for (usz i = 0; i < slots.len; i++) {
             uint slot = slots[i];
             buf.push(' ');
-            self.serialize_value_to_buf_depth(v.hashmap_val.entries[slot].key, buf, depth);
+            self.serialize_value_to_buf_depth(v.hashmap_val.entries[slot].key, buf);
             if (self.has_error) return;
         }
         buf.push(')');
@@ -345,28 +339,28 @@ fn void Compiler.serialize_hashmap_value_to_buf(Compiler* self, Value* v, List{c
     for (usz i = 0; i < slots.len; i++) {
         uint slot = slots[i];
         if (i > 0) buf.push(' ');
-        self.serialize_value_to_buf_depth(v.hashmap_val.entries[slot].key, buf, depth);
+        self.serialize_value_to_buf_depth(v.hashmap_val.entries[slot].key, buf);
         if (self.has_error) return;
         buf.push(' ');
-        self.serialize_value_to_buf_depth(v.hashmap_val.entries[slot].value, buf, depth);
+        self.serialize_value_to_buf_depth(v.hashmap_val.entries[slot].value, buf);
         if (self.has_error) return;
     }
     buf.push('}');
 }
 
-fn void Compiler.serialize_cons_value_to_buf_depth(Compiler* self, Value* v, List{char}* buf, usz depth) {
+fn void Compiler.serialize_cons_value_to_buf_depth(Compiler* self, Value* v, List{char}* buf) {
     buf.push('(');
-    self.serialize_value_to_buf_depth(v.cons_val.car, buf, depth);
+    self.serialize_value_to_buf_depth(v.cons_val.car, buf);
     Value* rest = v.cons_val.cdr;
     while (rest != null && rest.tag == CONS) {
         buf.push(' ');
-        self.serialize_value_to_buf_depth(rest.cons_val.car, buf, depth);
+        self.serialize_value_to_buf_depth(rest.cons_val.car, buf);
         if (self.has_error) return;
         rest = rest.cons_val.cdr;
     }
     if (rest != null && rest.tag != NIL) {
         self.buf_append(buf, " . ");
-        self.serialize_value_to_buf_depth(rest, buf, depth);
+        self.serialize_value_to_buf_depth(rest, buf);
         if (self.has_error) return;
     }
     buf.push(')');

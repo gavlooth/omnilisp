@@ -2580,3 +2580,65 @@
 - `[INVALIDATED]` 2026-04-30 Do not list or accept `Void` as a value-bearing
   callback parameter type; C `void` parameter lists are represented by an empty
   callback parameter list, while `Void` remains a return type.
+- `[FACT]` 2026-05-01 `RECURSION-001` is closed. `jit_qq_impl` in
+  `src/lisp/jit_quasiquote_macros.c3` has been rewritten from recursive C calls
+  to an explicit heap-allocated worklist (`QqWorkItem* work`, `EvalResult* results`).
+  The 64-depth cap is removed. Added `QqState` enum (`QQ_ENTER`, `QQ_WRAP_UNQUOTE`,
+  `QQ_WRAP_UNQUOTE_SPLICING`, `QQ_WRAP_QUASIQUOTE`, `QQ_COMBINE_APP`) and
+  `QqWorkItem` struct. Arrays grow by doubling with OOM fail-closed paths.
+  Preserved `resolve_terminal_pending` short-circuit, all existing expression tag
+  semantics, and cons allocation failure injection. Regression test
+  `quasiquote deep nesting 128 levels` added to
+  `tests_advanced_macro_hygiene_groups.c3`. Validation passed `c3c build`,
+  lisp suite (`186 passed, 0 failed`), advanced quasi-pattern slice
+  (`23 passed, 0 failed`).
+- `[FACT]` 2026-05-01 `RECURSION-003` is closed. `jit_qq_expand_elements` and
+  `jit_qq_expand_call` in `src/lisp/jit_quasiquote_macros.c3` no longer use
+  fixed `Value*[64] items` arrays for splicing. Both now use dynamically grown
+  `Value**` heap arrays (initial cap 16, double on overflow) with `defer`
+  cleanup and OOM fail-closed paths. The "quasiquote splice: too many items
+  (max 64)" error is removed. Regression test `quasiquote splice >64 items`
+  added to `tests_advanced_macro_hygiene_groups.c3`. Validation passed
+  `c3c build`, lisp suite (`186 passed, 0 failed`), compiler slice
+  (`452 passed, 0 failed`), advanced quasi-pattern slice (`23 passed, 0 failed`).
+- `[FACT]` 2026-05-01 `RECURSION-002` is closed. `compile_qq_flat` in
+  `src/lisp/compiler_quasiquote_flat.c3` has been rewritten from recursive C
+  calls to an explicit heap-allocated worklist (`AotQqWorkItem* work`,
+  `usz* results`). The `AOT_QUASIQUOTE_MAX_DEPTH` constant and 64-depth cap are
+  removed. Added `AotQqState` enum (`AOT_QQ_ENTER`, `AOT_QQ_WRAP_UNQUOTE`,
+  `AOT_QQ_WRAP_UNQUOTE_SPLICING`, `AOT_QQ_WRAP_QUASIQUOTE`) and
+  `AotQqWorkItem` struct. Arrays grow by doubling with OOM fail-closed paths.
+  Preserved all existing expression tag semantics, temp-register ordering,
+  `emit_return_if_sequence_should_stop` checks, and delegation to
+  `compile_qq_app_list` and `compile_qq_call_flat`. Updated compiler codegen
+  tests to verify 128-deep nesting succeeds (previously 66-deep was expected
+  to fail). Validation passed `c3c build`, lisp suite (`186 passed, 0 failed`),
+  compiler slice (`452 passed, 0 failed`).
+
+## 2026-05-01 - #syntax Reader Template (SYNTAX-TEMPLATE-001/002/003)
+
+- `[FACT]` Added `#syntax` reader template parser in
+  `src/lisp/parser_syntax_template.c3`. `#syntax datum` produces `E_QUASIQUOTE`
+  AST nodes and reuses the existing JIT/AOT quasiquote infrastructure.
+  Placeholder grammar: `#{exp}` unquotes, `#{.. exp}` splices. Nested
+  `#syntax` is supported. Comma (`,`) and comma-at (`,@`) are rejected inside
+  `#syntax` with clear parse errors. `#{...}` outside `#syntax` is also
+  rejected.
+- `[FACT]` Added `T_HASH_LBRACE` lexer token (`#{`) in
+  `parser_lexer.c3` and `parser_lexer_string_hash_helpers.c3`.
+- `[FACT]` Parser dispatch in `src/lisp/parser_expr_reader_forms.c3` detects
+  `#syntax` reader tags before the generic reader-tag-to-call lowering and
+  routes them to `parse_syntax_template()`.
+- `[FACT]` Added runtime tests in `tests_advanced_macro_hygiene_groups.c3`:
+  basic template, unquote, standalone unquote, splice, splice empty, escape
+  literal, comma rejection, comma-at rejection.
+- `[FACT]` Added compiler tests in `tests_compiler_codegen_groups.c3`:
+  native compilation, `make_symbol` usage, and 128-level deep nesting.
+- `[FACT]` Migrated docs to prefer `#syntax`: `README.md`,
+  `docs/SYNTAX_SPEC.md`, `docs/LANGUAGE_SPEC.part-02.md`,
+  `docs/LANGUAGE_SPEC.part-04.md`, `docs/FEATURES.md`,
+  `docs/reference/01-special-forms.md`, `docs/reference/13-appendix-limits-grammar.md`,
+  `docs/LLM_LANGUAGE_DIGEST.md`.
+- `[FACT]` Validation passed `c3c build`, lisp suite (`186 passed, 0 failed`),
+  compiler slice (`455 passed, 0 failed`), advanced macro hygiene slice
+  (`110 passed, 0 failed`), `git diff --check`.

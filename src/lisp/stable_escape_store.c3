@@ -122,10 +122,54 @@ fn bool stable_escape_env_binding_value_count(Env* env, Env* stop_at, usz* out_c
     return true;
 }
 
+struct GraphPrepareWorkItem {
+    Value* value;
+    usz* out_index;
+    usz state;
+    usz reserved_index;
+    usz* child_indices;
+    usz child_count;
+}
+
+struct GraphPrepareWorkStack {
+    GraphPrepareWorkItem* items;
+    usz count;
+    usz capacity;
+}
+
+fn bool graph_work_stack_push(
+    GraphPrepareWorkStack* stack,
+    Value* value,
+    usz* out_index,
+    usz state = 0,
+    usz reserved_index = 0,
+    usz* child_indices = null,
+    usz child_count = 0
+) @inline {
+    if (stack == null) return false;
+    if (stack.count == stack.capacity) {
+        usz new_capacity = stack.capacity > 0 ? stack.capacity * 2 : 64;
+        if (new_capacity > usz.max / GraphPrepareWorkItem.sizeof) return false;
+        GraphPrepareWorkItem* grown = (GraphPrepareWorkItem*)mem::realloc(stack.items, GraphPrepareWorkItem.sizeof * new_capacity);
+        if (grown == null) return false;
+        stack.items = grown;
+        stack.capacity = new_capacity;
+    }
+    stack.items[stack.count] = {
+        .value = value,
+        .out_index = out_index,
+        .state = state,
+        .reserved_index = reserved_index,
+        .child_indices = child_indices,
+        .child_count = child_count
+    };
+    stack.count++;
+    return true;
+}
+
 fn bool stable_escape_prepare_env_binding_values(
     StableEscapePreparedGraphScratch* scratch,
     Env* env,
-    usz depth,
     usz* out_offset,
     usz* out_count
 ) {
@@ -134,17 +178,14 @@ fn bool stable_escape_prepare_env_binding_values(
     usz child_capacity = 0;
     defer if (child_indices != null) mem::free(child_indices);
     usz child_count = 0;
-    usz env_depth = 0;
     Env* cur = env;
     while (cur != null && cur != scratch.global_env) {
-        if (depth + env_depth >= BOUNDARY_ALIAS_MAX_DEPTH) return false;
-        env_depth++;
         if (cur.bindings == null && cur.binding_count > 0) return false;
         for (usz i = 0; i < cur.binding_count; i++) {
             Value* binding_value = cur.bindings[i].value;
             if (binding_value == null) continue;
             usz child_index = STABLE_ESCAPE_PREPARED_INVALID_INDEX;
-            if (!stable_escape_prepare_graph_node(scratch, binding_value, &child_index, depth + env_depth)) return false;
+            if (!stable_escape_prepare_graph_node(scratch, binding_value, &child_index)) return false;
             if (!stable_escape_prepare_graph_append_index(&child_indices, &child_count, &child_capacity, child_index)) return false;
         }
         cur = cur.parent;
@@ -162,197 +203,215 @@ fn bool stable_escape_prepare_env_binding_values(
 fn bool stable_escape_prepare_graph_node(
     StableEscapePreparedGraphScratch* scratch,
     Value* value,
-    usz* out_index,
-    usz depth = 0
+    usz* out_index
 ) {
     if (scratch == null || value == null || out_index == null) return false;
-    if (depth >= BOUNDARY_ALIAS_MAX_DEPTH) return false;
 
-    usz seen_index = stable_escape_prepared_find_seen_node(scratch, value);
-    if (seen_index != STABLE_ESCAPE_PREPARED_INVALID_INDEX) {
-        scratch.risk_flags |= STABLE_GRAPH_PASSPORT_RISK_SHARED_REFERENCE;
-        *out_index = seen_index;
-        return true;
+    GraphPrepareWorkStack stack = {};
+    defer {
+        if (stack.items != null) {
+            for (usz i = 0; i < stack.count; i++) {
+                if (stack.items[i].child_indices != null) mem::free(stack.items[i].child_indices);
+            }
+            mem::free(stack.items);
+        }
     }
 
-    switch (value.tag) {
-        case CLOSURE:
-            if (value.closure_val == null) return false;
-            scratch.risk_flags |= STABLE_GRAPH_PASSPORT_RISK_MUTABLE_GRAPH | STABLE_GRAPH_PASSPORT_RISK_ENV_CAPTURE;
-            usz closure_index = STABLE_ESCAPE_PREPARED_INVALID_INDEX;
-            if (!stable_escape_prepare_graph_reserve_node(scratch, &closure_index)) return false;
-            scratch.nodes[closure_index] = {
-                .tag = CLOSURE,
-                .source = value,
-                .child_offset = STABLE_ESCAPE_PREPARED_INVALID_INDEX,
-                .child_count = 0
-            };
-            scratch.nodes[closure_index].mutation_epoch = stable_graph_value_mutation_epoch(value);
-            if (!stable_escape_prepared_register_seen(scratch, value, closure_index)) return false;
+    if (!graph_work_stack_push(&stack, value, out_index)) return false;
 
-            usz env_child_offset = STABLE_ESCAPE_PREPARED_INVALID_INDEX;
-            usz env_child_count = 0;
-            if (!stable_escape_prepare_env_binding_values(
-                scratch,
-                value.closure_val.env,
-                depth + 1,
-                &env_child_offset,
-                &env_child_count
-            )) return false;
-            scratch.nodes[closure_index].child_offset = env_child_offset;
-            scratch.nodes[closure_index].child_count = env_child_count;
-            *out_index = closure_index;
-            return true;
-        case CONS:
-            scratch.risk_flags |= STABLE_GRAPH_PASSPORT_RISK_MUTABLE_GRAPH;
-            usz node_index = STABLE_ESCAPE_PREPARED_INVALID_INDEX;
-            if (!stable_escape_prepare_graph_reserve_node(scratch, &node_index)) return false;
-            scratch.nodes[node_index] = {
-                .tag = CONS,
-                .source = value,
-                .child_offset = STABLE_ESCAPE_PREPARED_INVALID_INDEX,
-                .child_count = 0
-            };
-            scratch.nodes[node_index].mutation_epoch = stable_graph_value_mutation_epoch(value);
-            if (!stable_escape_prepared_register_seen(scratch, value, node_index)) return false;
+    while (stack.count > 0) {
+        GraphPrepareWorkItem item = stack.items[--stack.count];
 
-            usz car_index = STABLE_ESCAPE_PREPARED_INVALID_INDEX;
-            usz cdr_index = STABLE_ESCAPE_PREPARED_INVALID_INDEX;
-            if (!stable_escape_prepare_graph_node(scratch, value.cons_val.car, &car_index, depth + 1)) return false;
-            if (!stable_escape_prepare_graph_node(scratch, value.cons_val.cdr, &cdr_index, depth + 1)) return false;
-            usz child_offset = scratch.edge_count;
-            if (!stable_escape_prepare_graph_append_edge(scratch, car_index)) return false;
-            if (!stable_escape_prepare_graph_append_edge(scratch, cdr_index)) return false;
-            scratch.nodes[node_index].child_offset = child_offset;
-            scratch.nodes[node_index].child_count = 2;
-            *out_index = node_index;
-            return true;
-        case ARRAY:
-            if (value.array_val == null) return false;
-            scratch.risk_flags |= STABLE_GRAPH_PASSPORT_RISK_MUTABLE_GRAPH;
-            usz array_index = STABLE_ESCAPE_PREPARED_INVALID_INDEX;
-            if (!stable_escape_prepare_graph_reserve_node(scratch, &array_index)) return false;
-            scratch.nodes[array_index] = {
-                .tag = ARRAY,
-                .source = value,
-                .child_offset = STABLE_ESCAPE_PREPARED_INVALID_INDEX,
-                .child_count = 0
-            };
-            scratch.nodes[array_index].mutation_epoch = stable_graph_value_mutation_epoch(value);
-            if (!stable_escape_prepared_register_seen(scratch, value, array_index)) return false;
+        if (item.state == 0) { // ENTER
+            if (item.value == null || item.out_index == null) return false;
+            usz seen_index = stable_escape_prepared_find_seen_node(scratch, item.value);
+            if (seen_index != STABLE_ESCAPE_PREPARED_INVALID_INDEX) {
+                scratch.risk_flags |= STABLE_GRAPH_PASSPORT_RISK_SHARED_REFERENCE;
+                *item.out_index = seen_index;
+                continue;
+            }
 
-            usz* array_child_indices = null;
-            usz array_child_count = 0;
-            usz array_child_capacity = 0;
-            defer if (array_child_indices != null) mem::free(array_child_indices);
-            for (usz i = 0; i < value.array_val.length; i++) {
-                usz child_index = STABLE_ESCAPE_PREPARED_INVALID_INDEX;
-                if (!stable_escape_prepare_graph_node(scratch, value.array_val.items[i], &child_index, depth + 1)) {
-                    return false;
+            switch (item.value.tag) {
+                case CLOSURE:
+                    if (item.value.closure_val == null) return false;
+                    scratch.risk_flags |= STABLE_GRAPH_PASSPORT_RISK_MUTABLE_GRAPH | STABLE_GRAPH_PASSPORT_RISK_ENV_CAPTURE;
+                    usz closure_index = STABLE_ESCAPE_PREPARED_INVALID_INDEX;
+                    if (!stable_escape_prepare_graph_reserve_node(scratch, &closure_index)) return false;
+                    scratch.nodes[closure_index] = {
+                        .tag = CLOSURE,
+                        .source = item.value,
+                        .child_offset = STABLE_ESCAPE_PREPARED_INVALID_INDEX,
+                        .child_count = 0
+                    };
+                    scratch.nodes[closure_index].mutation_epoch = stable_graph_value_mutation_epoch(item.value);
+                    if (!stable_escape_prepared_register_seen(scratch, item.value, closure_index)) return false;
+
+                    usz env_child_offset = STABLE_ESCAPE_PREPARED_INVALID_INDEX;
+                    usz env_child_count = 0;
+                    if (!stable_escape_prepare_env_binding_values(scratch, item.value.closure_val.env, &env_child_offset, &env_child_count)) return false;
+                    scratch.nodes[closure_index].child_offset = env_child_offset;
+                    scratch.nodes[closure_index].child_count = env_child_count;
+                    *item.out_index = closure_index;
+                    continue;
+                case CONS:
+                    scratch.risk_flags |= STABLE_GRAPH_PASSPORT_RISK_MUTABLE_GRAPH;
+                    usz cons_index = STABLE_ESCAPE_PREPARED_INVALID_INDEX;
+                    if (!stable_escape_prepare_graph_reserve_node(scratch, &cons_index)) return false;
+                    scratch.nodes[cons_index] = {
+                        .tag = CONS,
+                        .source = item.value,
+                        .child_offset = STABLE_ESCAPE_PREPARED_INVALID_INDEX,
+                        .child_count = 0
+                    };
+                    scratch.nodes[cons_index].mutation_epoch = stable_graph_value_mutation_epoch(item.value);
+                    if (!stable_escape_prepared_register_seen(scratch, item.value, cons_index)) return false;
+
+                    usz* cons_children = (usz*)mem::malloc(2 * usz.sizeof);
+                    if (cons_children == null) return false;
+                    if (!graph_work_stack_push(&stack, item.value, item.out_index, 1, cons_index, cons_children, 2)) {
+                        mem::free(cons_children);
+                        return false;
+                    }
+                    if (!graph_work_stack_push(&stack, item.value.cons_val.cdr, &cons_children[1])) {
+                        return false;
+                    }
+                    if (!graph_work_stack_push(&stack, item.value.cons_val.car, &cons_children[0])) {
+                        return false;
+                    }
+                    continue;
+                case ARRAY:
+                    if (item.value.array_val == null) return false;
+                    scratch.risk_flags |= STABLE_GRAPH_PASSPORT_RISK_MUTABLE_GRAPH;
+                    usz array_index = STABLE_ESCAPE_PREPARED_INVALID_INDEX;
+                    if (!stable_escape_prepare_graph_reserve_node(scratch, &array_index)) return false;
+                    scratch.nodes[array_index] = {
+                        .tag = ARRAY,
+                        .source = item.value,
+                        .child_offset = STABLE_ESCAPE_PREPARED_INVALID_INDEX,
+                        .child_count = 0
+                    };
+                    scratch.nodes[array_index].mutation_epoch = stable_graph_value_mutation_epoch(item.value);
+                    if (!stable_escape_prepared_register_seen(scratch, item.value, array_index)) return false;
+
+                    usz arr_len = item.value.array_val.length;
+                    usz* arr_children = arr_len > 0 ? (usz*)mem::malloc(arr_len * usz.sizeof) : null;
+                    if (arr_len > 0 && arr_children == null) return false;
+                    if (!graph_work_stack_push(&stack, item.value, item.out_index, 1, array_index, arr_children, arr_len)) {
+                        if (arr_children != null) mem::free(arr_children);
+                        return false;
+                    }
+                    for (usz i = arr_len; i > 0; i--) {
+                        if (!graph_work_stack_push(&stack, item.value.array_val.items[i - 1], arr_children != null ? &arr_children[i - 1] : null)) {
+                            return false;
+                        }
+                    }
+                    continue;
+                case HASHMAP:
+                    if (item.value.hashmap_val == null || item.value.hashmap_val.entries == null) return false;
+                    scratch.risk_flags |= STABLE_GRAPH_PASSPORT_RISK_MUTABLE_GRAPH;
+                    usz hashmap_index = STABLE_ESCAPE_PREPARED_INVALID_INDEX;
+                    if (!stable_escape_prepare_graph_reserve_node(scratch, &hashmap_index)) return false;
+                    scratch.nodes[hashmap_index] = {
+                        .tag = HASHMAP,
+                        .source = item.value,
+                        .child_offset = STABLE_ESCAPE_PREPARED_INVALID_INDEX,
+                        .child_count = 0
+                    };
+                    scratch.nodes[hashmap_index].mutation_epoch = stable_graph_value_mutation_epoch(item.value);
+                    if (!stable_escape_prepared_register_seen(scratch, item.value, hashmap_index)) return false;
+
+                    HashMap* map = item.value.hashmap_val;
+                    usz pair_count = 0;
+                    for (uint i = 0; i < map.capacity; i++) {
+                        if (map.entries[i].key != null) pair_count++;
+                    }
+                    usz pair_child_count = pair_count * 2;
+                    usz* pair_children = pair_child_count > 0 ? (usz*)mem::malloc(pair_child_count * usz.sizeof) : null;
+                    if (pair_child_count > 0 && pair_children == null) return false;
+                    if (!graph_work_stack_push(&stack, item.value, item.out_index, 1, hashmap_index, pair_children, pair_child_count)) {
+                        if (pair_children != null) mem::free(pair_children);
+                        return false;
+                    }
+                    usz pair_idx = pair_child_count;
+                    for (uint i = map.capacity; i > 0; i--) {
+                        HashEntry* entry = &map.entries[i - 1];
+                        if (entry.key == null) continue;
+                        pair_idx -= 2;
+                        if (!graph_work_stack_push(&stack, entry.value, &pair_children[pair_idx + 1])) {
+                            return false;
+                        }
+                        if (!graph_work_stack_push(&stack, entry.key, &pair_children[pair_idx])) {
+                            return false;
+                        }
+                    }
+                    continue;
+                case SET:
+                    if (item.value.hashmap_val == null || item.value.hashmap_val.entries == null) return false;
+                    scratch.risk_flags |= STABLE_GRAPH_PASSPORT_RISK_MUTABLE_GRAPH;
+                    usz set_index = STABLE_ESCAPE_PREPARED_INVALID_INDEX;
+                    if (!stable_escape_prepare_graph_reserve_node(scratch, &set_index)) return false;
+                    scratch.nodes[set_index] = {
+                        .tag = SET,
+                        .source = item.value,
+                        .child_offset = STABLE_ESCAPE_PREPARED_INVALID_INDEX,
+                        .child_count = 0
+                    };
+                    scratch.nodes[set_index].mutation_epoch = stable_graph_value_mutation_epoch(item.value);
+                    if (!stable_escape_prepared_register_seen(scratch, item.value, set_index)) return false;
+
+                    HashMap* set_map = item.value.hashmap_val;
+                    usz member_count = 0;
+                    for (uint i = 0; i < set_map.capacity; i++) {
+                        if (set_map.entries[i].key != null) member_count++;
+                    }
+                    usz* member_children = member_count > 0 ? (usz*)mem::malloc(member_count * usz.sizeof) : null;
+                    if (member_count > 0 && member_children == null) return false;
+                    if (!graph_work_stack_push(&stack, item.value, item.out_index, 1, set_index, member_children, member_count)) {
+                        if (member_children != null) mem::free(member_children);
+                        return false;
+                    }
+                    usz member_idx = member_count;
+                    for (uint i = set_map.capacity; i > 0; i--) {
+                        HashEntry* entry = &set_map.entries[i - 1];
+                        if (entry.key == null) continue;
+                        member_idx--;
+                        if (!graph_work_stack_push(&stack, entry.key, &member_children[member_idx])) {
+                            return false;
+                        }
+                    }
+                    continue;
+                default:
+                    if (boundary_alias_value_has_child_payload(item.value)) return false;
+                    usz scalar_index = STABLE_ESCAPE_PREPARED_INVALID_INDEX;
+                    if (!stable_escape_prepare_graph_reserve_node(scratch, &scalar_index)) return false;
+                    scratch.nodes[scalar_index] = stable_escape_prepared_scalar_node(item.value);
+                    if (!stable_escape_prepared_register_seen(scratch, item.value, scalar_index)) return false;
+                    *item.out_index = scalar_index;
+                    continue;
+            }
+        } else { // FINALIZE
+            if (item.out_index == null) return false;
+            if (item.child_count > 0 && item.child_indices != null) {
+                usz child_offset = scratch.edge_count;
+                for (usz i = 0; i < item.child_count; i++) {
+                    if (!stable_escape_prepare_graph_append_edge(scratch, item.child_indices[i])) {
+                        mem::free(item.child_indices);
+                        return false;
+                    }
                 }
-                if (!stable_escape_prepare_graph_append_index(
-                    &array_child_indices,
-                    &array_child_count,
-                    &array_child_capacity,
-                    child_index
-                )) return false;
+                scratch.nodes[item.reserved_index].child_offset = child_offset;
+                scratch.nodes[item.reserved_index].child_count = item.child_count;
+            } else {
+                scratch.nodes[item.reserved_index].child_offset = STABLE_ESCAPE_PREPARED_INVALID_INDEX;
+                scratch.nodes[item.reserved_index].child_count = 0;
             }
-            usz child_offset = scratch.edge_count;
-            for (usz i = 0; i < array_child_count; i++) {
-                if (!stable_escape_prepare_graph_append_edge(scratch, array_child_indices[i])) return false;
-            }
-            scratch.nodes[array_index].child_offset =
-                array_child_count > 0 ? child_offset : STABLE_ESCAPE_PREPARED_INVALID_INDEX;
-            scratch.nodes[array_index].child_count = array_child_count;
-            *out_index = array_index;
-            return true;
-        case HASHMAP:
-            if (value.hashmap_val == null || value.hashmap_val.entries == null) return false;
-            scratch.risk_flags |= STABLE_GRAPH_PASSPORT_RISK_MUTABLE_GRAPH;
-            usz hashmap_index = STABLE_ESCAPE_PREPARED_INVALID_INDEX;
-            if (!stable_escape_prepare_graph_reserve_node(scratch, &hashmap_index)) return false;
-            scratch.nodes[hashmap_index] = {
-                .tag = HASHMAP,
-                .source = value,
-                .child_offset = STABLE_ESCAPE_PREPARED_INVALID_INDEX,
-                .child_count = 0
-            };
-            scratch.nodes[hashmap_index].mutation_epoch = stable_graph_value_mutation_epoch(value);
-            if (!stable_escape_prepared_register_seen(scratch, value, hashmap_index)) return false;
-
-            HashMap* map = value.hashmap_val;
-            usz* pair_child_indices = null;
-            usz pair_child_count = 0;
-            usz pair_child_capacity = 0;
-            defer if (pair_child_indices != null) mem::free(pair_child_indices);
-            for (uint i = 0; i < map.capacity; i++) {
-                HashEntry* entry = &map.entries[i];
-                if (entry.key == null) continue;
-                usz key_index = STABLE_ESCAPE_PREPARED_INVALID_INDEX;
-                usz value_index = STABLE_ESCAPE_PREPARED_INVALID_INDEX;
-                if (!stable_escape_prepare_graph_node(scratch, entry.key, &key_index, depth + 1)) return false;
-                if (!stable_escape_prepare_graph_node(scratch, entry.value, &value_index, depth + 1)) return false;
-                if (!stable_escape_prepare_graph_append_index(&pair_child_indices, &pair_child_count, &pair_child_capacity, key_index)) return false;
-                if (!stable_escape_prepare_graph_append_index(&pair_child_indices, &pair_child_count, &pair_child_capacity, value_index)) return false;
-            }
-            usz pair_child_offset = scratch.edge_count;
-            for (usz i = 0; i < pair_child_count; i++) {
-                if (!stable_escape_prepare_graph_append_edge(scratch, pair_child_indices[i])) return false;
-            }
-            scratch.nodes[hashmap_index].child_offset =
-                pair_child_count > 0 ? pair_child_offset : STABLE_ESCAPE_PREPARED_INVALID_INDEX;
-            scratch.nodes[hashmap_index].child_count = pair_child_count;
-            *out_index = hashmap_index;
-            return true;
-        case SET:
-            if (value.hashmap_val == null || value.hashmap_val.entries == null) return false;
-            scratch.risk_flags |= STABLE_GRAPH_PASSPORT_RISK_MUTABLE_GRAPH;
-            usz set_index = STABLE_ESCAPE_PREPARED_INVALID_INDEX;
-            if (!stable_escape_prepare_graph_reserve_node(scratch, &set_index)) return false;
-            scratch.nodes[set_index] = {
-                .tag = SET,
-                .source = value,
-                .child_offset = STABLE_ESCAPE_PREPARED_INVALID_INDEX,
-                .child_count = 0
-            };
-            scratch.nodes[set_index].mutation_epoch = stable_graph_value_mutation_epoch(value);
-            if (!stable_escape_prepared_register_seen(scratch, value, set_index)) return false;
-
-            HashMap* set_map = value.hashmap_val;
-            usz* member_child_indices = null;
-            usz member_child_count = 0;
-            usz member_child_capacity = 0;
-            defer if (member_child_indices != null) mem::free(member_child_indices);
-            for (uint i = 0; i < set_map.capacity; i++) {
-                HashEntry* entry = &set_map.entries[i];
-                if (entry.key == null) continue;
-                usz member_index = STABLE_ESCAPE_PREPARED_INVALID_INDEX;
-                if (!stable_escape_prepare_graph_node(scratch, entry.key, &member_index, depth + 1)) return false;
-                if (!stable_escape_prepare_graph_append_index(
-                    &member_child_indices,
-                    &member_child_count,
-                    &member_child_capacity,
-                    member_index
-                )) return false;
-            }
-            usz member_child_offset = scratch.edge_count;
-            for (usz i = 0; i < member_child_count; i++) {
-                if (!stable_escape_prepare_graph_append_edge(scratch, member_child_indices[i])) return false;
-            }
-            scratch.nodes[set_index].child_offset =
-                member_child_count > 0 ? member_child_offset : STABLE_ESCAPE_PREPARED_INVALID_INDEX;
-            scratch.nodes[set_index].child_count = member_child_count;
-            *out_index = set_index;
-            return true;
-        default:
-            if (boundary_alias_value_has_child_payload(value)) return false;
-            usz scalar_index = STABLE_ESCAPE_PREPARED_INVALID_INDEX;
-            if (!stable_escape_prepare_graph_reserve_node(scratch, &scalar_index)) return false;
-            scratch.nodes[scalar_index] = stable_escape_prepared_scalar_node(value);
-            if (!stable_escape_prepared_register_seen(scratch, value, scalar_index)) return false;
-            *out_index = scalar_index;
-            return true;
+            *item.out_index = item.reserved_index;
+            if (item.child_indices != null) mem::free(item.child_indices);
+            continue;
+        }
     }
+
+    return true;
 }
 
 fn StableEscapeStore* stable_escape_store_from_interp(Interp* interp) @inline {

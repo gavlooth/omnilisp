@@ -51,6 +51,17 @@ fn Expr* Parser.parse_regex_literal_expr(Parser* self) {
 }
 
 fn Expr* Parser.parse_reader_tag_expr(Parser* self) {
+    // Detect #syntax reader template before treating as ordinary reader tag
+    bool is_syntax_tag = self.lexer.current.text_len == 6;
+    if (is_syntax_tag) {
+        char[] tag_text = self.lexer.current.text[:6];
+        is_syntax_tag = tag_text[0] == 's' && tag_text[1] == 'y' && tag_text[2] == 'n'
+                     && tag_text[3] == 't' && tag_text[4] == 'a' && tag_text[5] == 'x';
+    }
+    if (is_syntax_tag) {
+        return self.parse_syntax_template();
+    }
+
     SymbolId tag = self.get_current_symbol();
     usz tag_line = self.lexer.current.line;
     usz tag_col = self.lexer.current.column;

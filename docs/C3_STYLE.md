@@ -274,6 +274,7 @@ Before merging C3 changes, verify:
 4. Compile-time invariants are asserted where layout/size matters.
 5. Ownership across scopes is explicit and test-covered.
 6. No macro added where function/generic is sufficient.
+7. No new capped recursion on user-controlled data; explicit stacks/worklists used for graph traversals.
 
 ## 14. Boundary Hardening Rules (Omni Runtime)
 
@@ -303,3 +304,41 @@ When touching older code, incrementally modernize:
 5. Add `@nodiscard` to critical result-returning APIs.
 
 Do this opportunistically in touched code; avoid giant style-only refactors unless requested.
+
+## 16. Recursion and Stack Safety
+
+Do not introduce new capped recursion on user-controlled data structures.
+
+### Rules
+
+- **No depth-capped recursion on variable-size graphs.** Functions that walk cons spines, env chains, value graphs, AST nodes, or other user-controlled structures must use explicit heap-allocated stacks or worklists, not C call-stack recursion guarded by an arbitrary depth constant.
+- **Depth constants are not a substitute for iteration.** A `MAX_DEPTH` check that returns an error after N levels is an anti-pattern when the underlying traversal could be made iterative. Convert recursive walks to explicit stacks.
+- **Keep iteration limits for resource bounds only.** Node-count limits, buffer-size limits, or loop-iteration caps are acceptable when they protect against unbounded work or memory growth, not merely to prevent stack overflow.
+- **Preserve deduplication and ordering semantics.** When converting a recursive post-order traversal to a worklist, maintain seen-node sets and child-edge ordering so that the prepared graph, serialized output, or copied structure remains identical.
+- **Fail closed on worklist allocation failure.** If growing an explicit stack or worklist fails, return the same fault the recursive version would have returned (or a typed allocation fault), never silently truncate.
+
+### Example
+
+```c3
+// Anti-pattern: capped recursion on cons spine
+fn bool walk_spine(Value* v, usz depth) {
+    if (depth >= 128) return false; // stack-overflow "fix"
+    if (v == null) return true;
+    return walk_spine(v.cons_val.cdr, depth + 1);
+}
+
+// Preferred: explicit stack with iteration cap
+fn bool walk_spine(Value* v) {
+    Value** stack = null;
+    usz count = 0;
+    usz capacity = 0;
+    defer if (stack != null) mem::free(stack);
+    if (!push_value(&stack, &count, &capacity, v)) return false;
+    while (count > 0) {
+        Value* cur = stack[--count];
+        if (cur == null) continue;
+        if (!push_value(&stack, &count, &capacity, cur.cons_val.cdr)) return false;
+    }
+    return true;
+}
+```

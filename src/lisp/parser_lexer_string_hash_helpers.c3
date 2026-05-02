@@ -165,6 +165,11 @@ fn bool Lexer.scan_hash_dispatch(Lexer* self) {
     switch (next) {
         case '_':
             return self.scan_hash_underscore_form(next);
+        case '{':
+            self.next_char();  // consume #
+            self.next_char();  // consume {
+            self.current.type = T_HASH_LBRACE;
+            return true;
         case 'r':
             if (self.scan_hash_regex_literal(next)) return true;
             if (self.scan_hash_reader_tag(next)) return true;

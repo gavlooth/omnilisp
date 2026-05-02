@@ -325,8 +325,9 @@ fn void copy_env_rollback_materialized_bindings(
 }
 
 fn bool copy_env_is_terminal_frame(Env* env, Interp* interp, usz depth) @inline {
+    (void)depth;
     if (env == null || env == interp.global_env) return true;
-    return depth >= 256;
+    return false;
 }
 
 fn bool copy_env_frame_in_target_or_root_scope(Env* env, Interp* interp) @inline {

@@ -29,10 +29,29 @@ split gate applies to code files only.
 
 ## Live Queue
 
-- Current actionable count: 1.
+- Current actionable count: 11.
 - `DOCS-README-001` in Part 18 is open. The root README needs a sectioned,
   tutorial-style rewrite that covers the whole language surface and
   cross-links the normative docs without becoming a second spec.
+- `SYNTAX-TEMPLATE-001` through `SYNTAX-TEMPLATE-003` in Part 18 are open.
+  The language surface needs a deliberate `#syntax` reader-template contract,
+  parser support, and docs migration plan that keeps `quote` and hygienic
+  macros intact.
+- `RECURSION-004` through `RECURSION-009` and `RECURSION-POLICY-001` in Part 18
+  are open. Capped recursion on user data (quasiquote, value graphs, env chains,
+  parser nesting) is an anti-pattern. Each must be converted to explicit
+  heap-allocated stacks, iterative loops, or two-pass dependency graphs.
+  Plan: `docs/plans/eliminate-capped-recursion-anti-pattern-2026-05-01.md`.
+- `RECURSION-001` is closed. JIT quasiquote `jit_qq_impl` now uses an explicit
+  heap-allocated worklist; the 64-depth cap is removed. Regression test
+  `quasiquote deep nesting 128 levels` passes.
+- `RECURSION-002` is closed. AOT quasiquote `compile_qq_flat` now uses an
+  explicit heap-allocated worklist; the 64-depth cap is removed. Compiler
+  codegen tests now verify 128-deep nesting succeeds.
+- `RECURSION-003` is closed. JIT splice item caps in `jit_qq_expand_elements`
+  and `jit_qq_expand_call` are removed; fixed `Value*[64]` arrays are replaced
+  with dynamically grown heap arrays. Regression test
+  `quasiquote splice >64 items` passes.
 - Live blocker queue closed by the 2026-04-30 AUDIT-252 M9 default-switch
   classification.
 - `AUDIT-256-FFI-ASYNC-INVALID-ARG-ABI-TAG` in Part 18 is closed. Async FFI

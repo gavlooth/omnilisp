@@ -26,6 +26,7 @@ enum TokenType : char {
     T_LBRACE,       // { for metadata dictionaries
     T_RBRACE,       // } for metadata dictionaries
     T_HASH_UNDERSCORE, // #_ or #N_ form comment (int_value = N)
+    T_HASH_LBRACE,  // #{ expr } syntax template interpolation
     T_REGEX,        // #r"pattern" compiled regex literal
     T_READER_TAG,   // #tag form reader tag shorthand
     T_ERROR,

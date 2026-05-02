@@ -83,6 +83,8 @@ fn void run_advanced_macro_hygiene_quasi_pattern_tests(Interp* interp, int* pass
     test_eq(interp, "quasiquote splice len", "(length `(a ,@qq-lst d))", 5, pass, fail);
     setup(interp, "(define qq-empty (list))");
     test_eq(interp, "quasiquote splice empty", "(length `(a ,@qq-empty b))", 2, pass, fail);
+    setup(interp, "(define qq-range-80 (range 80))");
+    test_eq(interp, "quasiquote splice >64 items", "(length `(a ,@qq-range-80 b))", 82, pass, fail);
     setup(interp, "(define qq-bad-tail (cons 1 2))");
     test_error_contains(interp, "quasiquote splice rejects improper list",
         "`(a ,@qq-bad-tail b)", ",@ value is not a proper list", pass, fail);
@@ -94,6 +96,62 @@ fn void run_advanced_macro_hygiene_quasi_pattern_tests(Interp* interp, int* pass
         pass,
         fail
     );
+
+    // #syntax reader template (SYNTAX-TEMPLATE-002)
+    test_tag(interp, "syntax template basic", "#syntax (a b c)", CONS, pass, fail);
+    setup(interp, "(define st-x 42)");
+    test_tag(interp, "syntax template unquote", "#syntax (a #{st-x} c)", CONS, pass, fail);
+    test_eq(interp, "syntax template standalone unquote", "#syntax #{st-x}", 42, pass, fail);
+    setup(interp, "(define st-lst (list 1 2 3))");
+    test_eq(interp, "syntax template splice len", "(length #syntax (a #{.. st-lst} d))", 5, pass, fail);
+    setup(interp, "(define st-empty (list))");
+    test_eq(interp, "syntax template splice empty", "(length #syntax (a #{.. st-empty} b))", 2, pass, fail);
+    test_error_contains(interp, "syntax template rejects comma",
+        "#syntax (a ,st-x c)", "unexpected comma in #syntax template", pass, fail);
+    test_error_contains(interp, "syntax template rejects comma-at",
+        "#syntax (a ,@st-lst d)", "unexpected comma-at in #syntax template", pass, fail);
+
+    // Deep nesting regression test: verify quasiquote nesting beyond the
+    // old 64-depth cap works correctly in the JIT path (RECURSION-001).
+    {
+        const usz DEPTH = 128;
+        char[512] expr_buf;
+        usz len = 0;
+        bool build_ok = true;
+        for (usz i = 0; i < DEPTH; i++) {
+            if (len + 1 >= expr_buf.len) { build_ok = false; break; }
+            expr_buf[len++] = '`';
+        }
+        if (build_ok && len + 3 < expr_buf.len) {
+            expr_buf[len++] = '4';
+            expr_buf[len++] = '2';
+            expr_buf[len] = 0;
+        } else {
+            build_ok = false;
+        }
+
+        if (!build_ok) {
+            io::printn("[FAIL] deep quasiquote expr builder");
+            (*fail)++;
+        } else {
+            Expr* deep_expr = parse(advanced_test_cstr_slice(&expr_buf), interp);
+            if (deep_expr == null || deep_expr.tag != E_QUASIQUOTE) {
+                io::printn("[FAIL] deep quasiquote parse failed");
+                (*fail)++;
+            } else {
+                Value* result = jit_eval_quasiquote(interp, deep_expr, interp.global_env);
+                if (result != null && result.tag != ERROR) {
+                    emit_pass_literal("[PASS] quasiquote deep nesting 128 levels");
+                    (*pass)++;
+                } else {
+                    io::printfn("[FAIL] quasiquote deep nesting 128 levels: tag=%d msg=%s",
+                        result != null ? (int)result.tag : -1,
+                        result != null && result.tag == ERROR ? result.str_chars[:result.str_len] : "null");
+                    (*fail)++;
+                }
+            }
+        }
+    }
 
     // Pattern macros
     setup(interp, "(define [macro] when (syntax-match ([test .. body] (template (if (insert test) (block (splice body)) nil)))))");

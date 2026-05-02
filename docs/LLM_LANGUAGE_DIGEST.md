@@ -210,6 +210,17 @@ Macros use `syntax-match` under `(define [macro] ...)`.
 
 Legacy clause-style macro forms are removed.
 
+## Templates
+
+`#syntax` is the canonical template form. It produces the same AST as
+quasiquote and reuses the same runtime paths.
+
+```lisp
+#syntax (a #{x} #{.. xs})   ; #{x} unquotes, #{.. xs} splices
+```
+
+Legacy `` ` ``, `,`, and `,@` remain fully supported.
+
 ## Destructuring And Patterns
 
 Arrays and dictionaries destructure in binding and parameter positions.

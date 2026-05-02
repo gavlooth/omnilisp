@@ -181,6 +181,20 @@ fn Value* append_values(Value* a, Value* b, Interp* interp, usz depth = 0) {
     if (b != null && b.tag == ERROR) return b;
     if (is_nil(a)) return b;
     if (!is_cons(a)) return make_error(interp, "macro template splice target must be a proper list");
-    if (depth >= 10000) return make_error(interp, "macro template splice exceeded recursion limit");
-    return make_cons(interp, a.cons_val.car, append_values(a.cons_val.cdr, b, interp, depth + 1));
+    (void)depth;
+    // Iterative: reverse a, then cons onto b
+    Value* rev = make_nil(interp);
+    Value* cur = a;
+    while (!is_nil(cur)) {
+        if (!is_cons(cur)) return make_error(interp, "macro template splice target must be a proper list");
+        rev = make_cons(interp, cur.cons_val.car, rev);
+        if (rev != null && rev.tag == ERROR) return rev;
+        cur = cur.cons_val.cdr;
+    }
+    while (!is_nil(rev)) {
+        b = make_cons(interp, rev.cons_val.car, b);
+        if (b != null && b.tag == ERROR) return b;
+        rev = rev.cons_val.cdr;
+    }
+    return b;
 }
